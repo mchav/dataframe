@@ -1,13 +1,8 @@
-# dataframe
-
-An intuitive, dynamically-typed DataFrame library.
-
-Example usage
-
-```haskell
 module Main where
 
 import qualified Data.DataFrame as D
+
+-- Example usage of DataFrame library
 
 main :: IO ()
 main = do
@@ -26,5 +21,3 @@ main = do
 -- An example of a parsing function.
 priceToDouble :: String -> Double
 priceToDouble  = (read :: String -> Double) . (drop 1 )
-
-```
