@@ -2,7 +2,7 @@
 
 An intuitive, dynamically-typed DataFrame library.
 
-Example usage
+Example usage for [Chipotle data](https://raw.githubusercontent.com/justmarkham/DAT8/master/data/chipotle.tsv).
 
 ```haskell
 module Main where
@@ -11,7 +11,7 @@ import qualified Data.DataFrame as D
 
 main :: IO ()
 main = do
-    rawFrame <- D.readCsv "/home/yavinda/code/data/chipotle.tsv"
+    rawFrame <- D.readCsv "./chipotle.tsv"
     putStrLn "Sample the first 3 rows of the dataframe"
     print (D.take 3 rawFrame)
     let f = D.apply "quantity" (read :: String -> Int)
