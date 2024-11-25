@@ -32,11 +32,10 @@ executable dataframe
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:    base,
+                      array,
                       bytestring,
-                      cassava,
                       containers,
-                      HList,
-                      HMap,
+                      text,
                       vector
     hs-source-dirs:   app,
                       src

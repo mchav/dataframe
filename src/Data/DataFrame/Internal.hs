@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Data.DataFrame.Internal (
     DataFrame(..),
@@ -7,10 +8,13 @@ module Data.DataFrame.Internal (
     Indexed,
     empty) where
 
-import Data.DataFrame.Util
-import Data.Function
-import Data.List (groupBy, sortBy)
+import Data.DataFrame.Util ( applySnd, showTable )
+import Data.Function ( on )
+import Data.List (groupBy, sortBy, elemIndex)
 import Data.Map (Map)
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Typeable (Typeable)
 import Data.Vector (Vector)
 
@@ -21,21 +25,26 @@ import qualified Data.Vector as V
 type Indexed a = Vector (Int, a)
 
 data Column where
-    MkColumn :: (Typeable a, Show a) => {values :: (Indexed a)} -> Column
+    MkColumn :: (Typeable a, Show a) => (Indexed a) -> Column
 
 instance Show Column where
-    show (MkColumn {values = column}) = show column
+    show :: Column -> String
+    show (MkColumn column) = show column
 
 data DataFrame = DataFrame {
-    columns :: Map String Column
+    columns :: Map Text Column,
+    _columnNames :: [Text]
 }
 
 empty :: DataFrame
-empty = DataFrame { columns = M.empty }
+empty = DataFrame { columns = M.empty, _columnNames = [] }
 
 instance Show DataFrame where
-    show d = let mapList = M.toList (columns d)
-                 header = map fst mapList
-                 rows = map (map snd) $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst) $ concat $ map (\((MkColumn { values = column' })) -> V.toList $ V.map (applySnd show) column') (map snd mapList)
-             in showTable header rows
+    show :: DataFrame -> String
+    show d = let mapList' = M.toList (columns d)
+                 sortedHeader = map fst mapList'
+                 header = _columnNames d
+                 mapList = map (\h -> mapList' !! fromMaybe 0 (elemIndex h sortedHeader)) header
+                 rows = map (map snd) $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst) $ concatMap ((\((MkColumn column')) -> V.toList $ V.map (applySnd show) column') . snd) mapList
+             in showTable (map T.unpack header) rows
 
