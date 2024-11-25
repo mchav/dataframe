@@ -30,7 +30,7 @@ split c s = split' c s False ""
 
 split' :: Char -> T.Text -> Bool -> T.Text -> [T.Text]
 split' c s inQuote acc
-    | T.empty == s                                       = []
+    | T.empty == s                                       = [acc]
     | T.head s == '\"'                                   = split' c (T.tail s) (not inQuote) (acc `T.append` T.singleton (T.head s))
     | (T.head s == c || T.head s == '\r') && not inQuote = acc : split' c (T.tail s) inQuote ""
     | otherwise                                          = split' c (T.tail s) inQuote (acc `T.append` T.singleton (T.head s))
