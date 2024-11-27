@@ -6,31 +6,38 @@ synopsis: An intuitive, dynamically-typed DataFrame library.
 
 description: An intuitive, dynamically-typed DataFrame library.
 
--- A URL where users can report bugs.
--- bug-reports:
+bug-reports: https://github.com/mchav/dataframe/issues
 
--- The license under which the package is released.
--- license:
 author:             Michael Chavinda
 maintainer:         mschavinda@gmail.com
 
--- A copyright notice.
--- copyright:
--- category:
+copyright: (c) 2024-2024 Michael Chavinda
+category: Data
 extra-source-files: CHANGELOG.md
 
-executable dataframe
-    main-is:          Main.hs
+library dataframe-lib
+    exposed-modules: Data.DataFrame
+    other-modules: Data.DataFrame.IO,
+                   Data.DataFrame.Internal,
+                   Data.DataFrame.Operations,
+                   Data.DataFrame.Util
+    build-depends:    base,
+                      array,
+                      bytestring,
+                      containers,
+                      text,
+                      vector
+    hs-source-dirs:   src
+    default-language: Haskell2010
 
-    -- Modules included in this executable, other than Main.
+executable dataframe
+    main-is:       Main.hs
     other-modules: Data.DataFrame,
                    Data.DataFrame.IO,
                    Data.DataFrame.Internal,
                    Data.DataFrame.Operations,
                    Data.DataFrame.Util
 
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
     build-depends:    base,
                       array,
                       bytestring,
@@ -39,4 +46,14 @@ executable dataframe
                       vector
     hs-source-dirs:   app,
                       src
+    default-language: Haskell2010
+
+test-suite tests
+    type: exitcode-stdio-1.0
+    main-is: DataFrameTests.hs
+    build-depends: base,
+                   HUnit,
+                   vector,
+                   dataframe-lib
+    hs-source-dirs: tests
     default-language: Haskell2010

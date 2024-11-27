@@ -25,7 +25,7 @@ import qualified Data.Vector as V
 type Indexed a = Vector (Int, a)
 
 data Column where
-    MkColumn :: (Typeable a, Show a) => (Indexed a) -> Column
+    MkColumn :: (Typeable a, Show a, Ord a) => (Indexed a) -> Column
 
 instance Show Column where
     show :: Column -> String
@@ -45,6 +45,8 @@ instance Show DataFrame where
                  sortedHeader = map fst mapList'
                  header = _columnNames d
                  mapList = map (\h -> mapList' !! fromMaybe 0 (elemIndex h sortedHeader)) header
-                 rows = map (map snd) $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst) $ concatMap ((\((MkColumn column')) -> V.toList $ V.map (applySnd show) column') . snd) mapList
-             in showTable (map T.unpack header) rows
+                 rows = map (map snd)
+                      $ groupBy ((==) `on` fst) $ sortBy (compare `on` fst)
+                      $ concatMap ((\(MkColumn column') -> V.toList $ V.map (applySnd (T.pack . show)) column') . snd) mapList
+             in T.unpack $ showTable header rows
 
