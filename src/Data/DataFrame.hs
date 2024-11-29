@@ -1,11 +1,13 @@
 module Data.DataFrame (
     Internal.DataFrame,
-    Internal.Indexed,
     Internal.empty,
 
     IO.readCsv,
     IO.readTsv,
     IO.readValue,
+    IO.readInteger,
+    IO.readInt,
+    IO.readDouble,
     IO.readSeparated,
     IO.splitIgnoring,
     IO.safeReadValue,
@@ -15,12 +17,13 @@ module Data.DataFrame (
     Operations.addColumnWithDefault,
     Operations.apply,
     Operations.applyWhere,
+    Operations.applyMany,
     Operations.applyInt,
     Operations.applyAtIndex,
     Operations.applyDouble,
     Operations.getColumn,
     Operations.getIntColumn,
-    Operations.getUnindexedColumn,
+    Operations.getIndexedColumn,
     Operations.sum,
     Operations.sumWhere,
     Operations.take,
@@ -33,7 +36,8 @@ module Data.DataFrame (
     Operations.groupBy,
     Operations.reduceBy,
     Operations.columnSize,
-    Operations.info
+    Operations.info,
+    Operations.combine
     ) where
 
 import qualified Data.DataFrame.IO as IO

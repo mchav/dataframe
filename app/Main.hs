@@ -1,13 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
 import Data.List (delete)
 import qualified Data.DataFrame as D
-import qualified Data.Text as T
+import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
 import Data.DataFrame.Operations (dimensions)
 import Data.Maybe (fromMaybe, isNothing, isJust)
+import Data.Function
 
 -- Example usage of DataFrame library
 
@@ -19,7 +21,7 @@ main = do
 
     putStrLn "Chipotle Data"
     chipotle
-    putStrLn $ replicate 100 '-' 
+    putStrLn $ replicate 100 '-'
 
     putStrLn "One Billion Row Challenge"
     oneBillingRowChallenge
@@ -27,7 +29,7 @@ main = do
 
     putStrLn "Covid Data"
     covid
-    putStrLn $ replicate 100 '-' 
+    putStrLn $ replicate 100 '-'
 
 mean :: V.Vector Double -> Double
 mean xs = V.sum xs / fromIntegral (V.length xs)
@@ -35,10 +37,10 @@ mean xs = V.sum xs / fromIntegral (V.length xs)
 oneBillingRowChallenge :: IO ()
 oneBillingRowChallenge = do
     rawFrame <- D.readSeparated ';' "./data/measurements.txt"
-    let parsed = D.apply "Measurement" (D.readValue @Double) rawFrame
-    print $ D.reduceBy "Measurement" (\v -> (V.minimum v, mean v, V.maximum v))
-          . D.groupBy "City"
-          $ parsed
+    let parsed = D.apply "Measurement" D.readDouble rawFrame
+    print $ parsed
+          & D.groupBy ["City"]
+          & D.reduceBy "Measurement" (\v -> (V.minimum v, mean v, V.maximum v))
 
 housing :: IO ()
 housing = do
@@ -50,10 +52,9 @@ housing = do
     let parsed = foldr (`D.apply` D.safeReadValue @Double) rawFrame doubleColumns
 
     -- Sample.
-
     mapM_ (print . (\name -> (name, D.columnSize name parsed))) (D.columnNames parsed)
 
-    print (D.valueCounts @T.Text "ocean_proximity" parsed)
+    print (D.valueCounts @C.ByteString "ocean_proximity" parsed)
 
 covid :: IO ()
 covid = do
@@ -62,12 +63,12 @@ covid = do
     print $ dimensions rawFrame
     print $ D.take 10 rawFrame
     -- value of all exports from 2015
-    let parsed = D.apply "Value" (D.readValue @Int)
-               . D.apply "Year" (D.readValue @Int)
-               $ rawFrame
-    let exports2015 = D.filter "Direction" ((==) @T.Text "Exports")
-                    . D.filter "Year" ((==) @Int 2015)
-                    $ parsed
+    let parsed = rawFrame
+               & D.apply "Year" D.readInt
+               & D.apply "Value" D.readInt
+    let exports2015 = parsed
+                    & D.filter "Year" ((==) @Int 2015)
+                    & D.filter "Direction" ((==) @C.ByteString "Exports")
     print (D.sum @Int "Value" exports2015)
 
 chipotle :: IO ()
@@ -75,78 +76,78 @@ chipotle = do
     rawFrame <- D.readTsv "./data/chipotle.tsv"
     -- Information on non-null values and inferred data types
     mapM_ print $ D.info rawFrame
-    
+
     print $ D.dimensions rawFrame
 
-    -- Sampling the dataframe
+    -- -- Sampling the dataframe
     print $ D.take 5 rawFrame
 
     -- Transform the data from a raw string into
     -- respective types (throws error on failure)
-    let f = D.apply "choice_description" toIngredientList
-          -- drop dollar sign and parse price as double
-          . D.apply "item_price" (D.readValue @Double . T.drop 1)
-          -- Index based change.
-          . D.applyAtIndex 0 "quantity" (flip ((-) @Integer) 2)
+    let f = rawFrame
+          & D.apply "quantity" D.readInteger
+          & D.apply "order_id" D.readInteger
           -- Change a specfic order ID
-          . D.applyWhere "order_id" ((==) @Integer 1) "quantity" ((+) @Integer 2)
-          . D.apply "order_id" (D.readValue @Integer)
-          . D.apply "quantity" (D.readValue @Integer)
-          $ rawFrame
+          & D.applyWhere "order_id" ((==) @Integer 1) "quantity" ((+) @Integer 2)
+          -- Index based change.
+          & D.applyAtIndex 0 "quantity" (flip ((-) @Integer) 2)
+          -- drop dollar sign and parse price as double
+          & D.apply "item_price" (D.readValue @Double . C.drop 1)
+          -- Custom parsing 
+          & D.apply "choice_description" toIngredientList
 
     -- sample the dataframe.
     print $ D.take 10 f
 
     -- Create a total_price column that is quantity * item_price
-    let totalPrice = V.zipWith (*)
-                (V.map fromIntegral $ D.getUnindexedColumn @Integer "quantity" f)
-                (D.getUnindexedColumn @Double "item_price" f)
-    let withTotalPrice = D.addColumn "total_price" totalPrice f
+    let multiply (a :: Integer) (b :: Double) = fromIntegral a * b
+    let withTotalPrice = D.addColumn "total_price"
+                                     (D.combine "quantity" "item_price" multiply f) f
 
     -- sample a filtered subset of the dataframe
     putStrLn "Sample dataframe"
-    print $ D.take 10
-          . D.filter "total_price" ((>) @Double 100)
-          . D.select ["quantity", "item_name", "item_price", "total_price"]
-          $ withTotalPrice
+    print $ withTotalPrice 
+          & D.select ["quantity", "item_name", "item_price", "total_price"]
+          & D.filter "total_price" ((<) @Double 100)
+          & D.take 10 
 
     -- Check how many chicken burritos were ordered.
     -- There are two ways to checking how many chicken burritos
     -- were ordered.
-    let searchTerm = "Chicken Burrito" :: T.Text
-    
+    let searchTerm = "Chicken Burrito" :: C.ByteString
+
     -- 1) Using sumWhere
     print (D.sumWhere "item_name"
                       (searchTerm ==)
                       "quantity" f :: Integer)
 
     -- 2) Using select + reduce
-    print $ D.reduceBy @Integer "quantity" V.sum
-          . D.groupBy "item_name"
+    print $ f
+          & D.select ["item_name", "quantity"]
           -- It's more efficient to filter before grouping.
-          . D.filter "item_name" (searchTerm ==)
-          . D.select ["item_name", "quantity"]
-          $ f
+          & D.filter "item_name" (searchTerm ==)
+          & D.groupBy ["item_name"]
+          & D.reduceBy @Integer "quantity" V.sum
 
     -- Similarly, we can aggregate quantities by all rows.
-    print $ D.reduceBy @Integer "quantity" V.sum
-          . D.groupBy "item_name"
-          . D.select ["item_name", "quantity"]
-          $ f
+    print $ f
+          & D.select ["item_name", "quantity"]
+          & D.groupBy ["item_name"]
+          & D.reduceBy @Integer "quantity" V.sum
 
-    let firstOrder = D.filter "choice_description" (any (T.isInfixOf "Guacamole"). fromMaybe [])
-                   . D.filter "item_name" (("Chicken Bowl" :: T.Text) ==)
-                   $ withTotalPrice
+    let firstOrder = withTotalPrice
+                   & D.filter "choice_description" (any (C.isInfixOf "Guacamole"). fromMaybe [])
+                   & D.filter "item_name" (("Chicken Bowl" :: C.ByteString) ==)
 
     print $ D.sum @Integer "quantity" firstOrder
     print $ D.sum @Double "item_price" firstOrder
     print $ D.take 10 firstOrder
 
 -- An example of a parsing function.
-toIngredientList :: T.Text -> Maybe [T.Text]
+toIngredientList :: C.ByteString -> Maybe [C.ByteString]
 toIngredientList v
     | v == ""                 = Just []
     | v == "NULL"             = Nothing
-    | T.isPrefixOf "[" v      = toIngredientList $ T.init (T.tail v)
-    | not (T.isInfixOf "," v) = Just [v]
-    | otherwise = foldl (\a b -> (++) <$> a <*> b) (Just []) (map (toIngredientList . T.strip) (D.splitIgnoring ',' '[' v))
+    | C.isPrefixOf "[" v      = toIngredientList $ C.init (C.tail v)
+    | not (C.isInfixOf "," v) = Just [v]
+    | otherwise = foldl (\a b -> (++) <$> a <*> b) (Just []) (map (toIngredientList . C.strip) (D.splitIgnoring ',' '[' v))

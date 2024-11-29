@@ -3,14 +3,17 @@
 {-# LANGUAGE TypeApplications #-}
 module Data.DataFrame.Util where
 
-import qualified Data.Text as T
+import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
+import qualified Data.Vector.Mutable as VM
 
 import Data.Array ( Ix(range), Array, (!), array )
 import Data.List (transpose, intercalate, groupBy, sortBy)
 import Data.Typeable (cast)
-import Text.Read ( readMaybe ) 
+import Text.Read ( readMaybe )
 import Type.Reflection ( TypeRep )
+import Control.Monad.ST (runST)
+import Control.Monad (foldM_)
 
 -- Apply a function to the second value of a tuple.
 applySnd :: (b -> c) -> (a, b) -> (a, c)
@@ -20,59 +23,58 @@ applySnd f (x, y) = (x, f y)
 
 -- Adapted from: https://stackoverflow.com/questions/5929377/format-list-output-in-haskell
 -- a type for fill functions
-type Filler = Int -> T.Text -> T.Text
+type Filler = Int -> C.ByteString -> C.ByteString
 
 -- a type for describing table columns
 data ColDesc t = ColDesc { colTitleFill :: Filler
-                         , colTitle     :: T.Text
+                         , colTitle     :: C.ByteString
                          , colValueFill :: Filler
                          }
 
 -- functions that fill a string (s) to a given width (n) by adding pad
 -- character (c) to align left, right, or center
-fillLeft :: Char -> Int -> T.Text -> T.Text
-fillLeft c n s = s `T.append` T.replicate (n - T.length s) (T.singleton c)
+fillLeft :: Char -> Int -> C.ByteString -> C.ByteString
+fillLeft c n s = s `C.append` C.replicate (n - C.length s) c
 
-fillRight :: Char -> Int -> T.Text -> T.Text
-fillRight c n s = T.replicate (n - T.length s) (T.singleton c) `T.append` s
+fillRight :: Char -> Int -> C.ByteString -> C.ByteString
+fillRight c n s = C.replicate (n - C.length s) c `C.append` s
 
-fillCenter :: Char -> Int -> T.Text -> T.Text
-fillCenter c n s = T.replicate l c' `T.append` s `T.append` T.replicate r c'
-    where x = n - T.length s
+fillCenter :: Char -> Int -> C.ByteString -> C.ByteString
+fillCenter c n s = C.replicate l c `C.append` s `C.append` C.replicate r c
+    where x = n - C.length s
           l = x `div` 2
           r = x - l
-          c' = T.singleton c
 
 -- functions that fill with spaces
-left :: Int -> T.Text -> T.Text
+left :: Int -> C.ByteString -> C.ByteString
 left = fillLeft ' '
 
-right :: Int -> T.Text -> T.Text
+right :: Int -> C.ByteString -> C.ByteString
 right = fillRight ' '
 
-center :: Int -> T.Text -> T.Text
+center :: Int -> C.ByteString -> C.ByteString
 center = fillCenter ' '
 
-showTable :: [T.Text] -> [[T.Text]] -> T.Text
+showTable :: [C.ByteString] -> [[C.ByteString]] -> C.ByteString
 showTable header rows =
     let
         cs = map (\h -> ColDesc center h left) header
-        widths = [maximum $ map T.length col | col <- transpose $ header : rows]
-        separator = T.intercalate "-|-" [T.replicate width "-" | width <- widths]
-        fillCols fill cols = T.intercalate " | " [fill c width col | (c, width, col) <- zip3 cs widths cols]
+        widths = [maximum $ map C.length col | col <- transpose $ header : rows]
+        separator = C.intercalate "-|-" [C.replicate width '-' | width <- widths]
+        fillCols fill cols = C.intercalate " | " [fill c width col | (c, width, col) <- zip3 cs widths cols]
     in
-        T.unlines $ fillCols colTitleFill header : separator : map (fillCols colValueFill) rows
+        C.unlines $ fillCols colTitleFill header : separator : map (fillCols colValueFill) rows
 
 headOr :: a -> [a] -> a
 headOr v []     = v
 headOr _ (x:xs) = x
 
-editDistance :: T.Text -> T.Text -> Int
+editDistance :: C.ByteString -> C.ByteString -> Int
 editDistance xs ys = table ! (m,n)
     where
-    (m,n) = (T.length xs, T.length ys)
-    x     = array (1,m) (zip [1..] (T.unpack xs))
-    y     = array (1,n) (zip [1..] (T.unpack ys))
+    (m,n) = (C.length xs, C.length ys)
+    x     = array (1,m) (zip [1..] (C.unpack xs))
+    y     = array (1,n) (zip [1..] (C.unpack ys))
 
     table :: Array (Int,Int) Int
     table = array bnds [(ij, dist ij) | ij <- range bnds]
@@ -88,39 +90,50 @@ editDistance xs ys = table ! (m,n)
 red :: String -> String
 red s = "\ESC[31m[" ++ s ++ "\ESC[0m"
 
-columnNotFound :: T.Text -> T.Text -> [T.Text] -> String
+columnNotFound :: C.ByteString -> C.ByteString -> [C.ByteString] -> String
 columnNotFound name callPoint columns = red "\n\n[ERROR] " ++
-        "Column not found: " ++ T.unpack name ++ " for operation " ++
-        T.unpack callPoint ++ "\n\tDid you mean " ++
-        T.unpack (guessColumnName name columns) ++ "?\n\n"
+        "Column not found: " ++ C.unpack name ++ " for operation " ++
+        C.unpack callPoint ++ "\n\tDid you mean " ++
+        C.unpack (guessColumnName name columns) ++ "?\n\n"
 
 
-typeMismatchError :: T.Text
-                  -> T.Text
+typeMismatchError :: C.ByteString
+                  -> C.ByteString
                   -> Type.Reflection.TypeRep a
                   -> Type.Reflection.TypeRep b
                   -> String
 typeMismatchError name callPoint givenType expectedType = red
         $ "\n\n[Error] Wrong type specified for column: " ++
-            T.unpack name ++ "\n\tTried to get a column of type: " ++
+            C.unpack name ++ "\n\tTried to get a column of type: " ++
             show givenType ++ " but column was of type: " ++ show expectedType ++
-            "\n\tWhen calling function: " ++ T.unpack callPoint ++ "\n\n"
+            "\n\tWhen calling function: " ++ C.unpack callPoint ++ "\n\n"
 
-guessColumnName :: T.Text -> [T.Text] -> T.Text
+guessColumnName :: C.ByteString -> [C.ByteString] -> C.ByteString
 guessColumnName userInput columns = snd
                              $ minimum
                              $ map (\k -> (editDistance userInput k, k))
                              columns
 
-inferType :: V.Vector T.Text -> T.Text
+inferType :: V.Vector C.ByteString -> C.ByteString
 inferType xs
     | xs == V.empty = "Unknown"
-    | otherwise = case readMaybe @Int $ T.unpack $ V.head xs of
+    | otherwise = case readMaybe @Int $ C.unpack $ V.head xs of
                         Just _ -> "Int"
-                        Nothing -> case readMaybe @Integer $ T.unpack $ V.head xs of
+                        Nothing -> case readMaybe @Integer $ C.unpack $ V.head xs of
                                         Just _ -> "Integer"
-                                        Nothing -> case readMaybe @Double $ T.unpack $ V.head xs of
+                                        Nothing -> case readMaybe @Double $ C.unpack $ V.head xs of
                                                         Just _ -> "Double"
-                                                        Nothing -> case readMaybe @Bool $ T.unpack $ V.head xs of
+                                                        Nothing -> case readMaybe @Bool $ C.unpack $ V.head xs of
                                                                         Just _  -> "Bool"
                                                                         Nothing -> "Text"
+
+appendWithFrontMin :: (Ord a, Eq a) => a -> [a] -> [a]
+appendWithFrontMin x []     = [x]
+appendWithFrontMin x (y:ys) = if x < y then x:y:ys else y:x:ys
+
+getIndices :: [Int] -> V.Vector a -> V.Vector a
+getIndices indices xs = runST $ do
+    xs' <- VM.new (length indices)
+    -- TODO: This is currently unsafe
+    foldM_ (\acc index -> VM.write xs' acc (xs V.! index) >> return (acc + 1)) 0 indices 
+    V.freeze xs'
