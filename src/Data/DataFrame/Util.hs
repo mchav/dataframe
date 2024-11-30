@@ -4,7 +4,6 @@
 module Data.DataFrame.Util where
 
 import qualified Data.ByteString.Char8 as C
-import qualified Data.Set as S
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 

@@ -7,7 +7,6 @@ import Data.List (delete)
 import qualified Data.DataFrame as D
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
-import qualified Data.Text as T
 
 import Data.DataFrame.Operations (dimensions)
 import Data.Maybe (fromMaybe, isNothing, isJust)
