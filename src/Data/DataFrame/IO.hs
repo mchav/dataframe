@@ -41,7 +41,7 @@ readTsv = readSeparated '\t'
 
 readSeparated :: Char -> String -> IO DataFrame
 readSeparated c path = withFile path ReadMode $ \handle -> do
-    columnNames <- C.split c <$> C.hGetLine handle
+    columnNames <- map C.strip . C.split c <$> C.hGetLine handle
     rs <- C.lines <$> C.hGetContents handle
     let vals = mkColumns c (length columnNames) rs
     return $ foldl' (\df (i, name) -> addColumn name (vals V.! i) df) empty (zip [0..] columnNames)
@@ -61,7 +61,7 @@ mkColumns c columnLength xs = let
             let rowValues = split c s
             foldM_ (\columnIndex s' -> do
                 column <- VM.read modifier columnIndex
-                VM.write column rowIndex s'
+                VM.write column rowIndex (C.strip s')
                 return (columnIndex + 1)) 0 rowValues
             return (rowIndex + 1)) 0 xs
         res <- VM.new columnLength :: ST s (VM.MVector s (V.Vector C.ByteString))
