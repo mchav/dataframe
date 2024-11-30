@@ -31,9 +31,9 @@ import Type.Reflection ( Typeable, TypeRep, typeRep )
 import GHC.Stack (HasCallStack)
 
 data Column where
-    MkColumn :: (Typeable a, Show a, Ord a) => Vector a -> Column
+    MkColumn :: (Typeable a, Show a) => Vector a -> Column
 
-fetchColumn :: forall a . (HasCallStack, Typeable a, Show a, Ord a) => Column -> Vector a
+fetchColumn :: forall a . (HasCallStack, Typeable a, Show a) => Column -> Vector a
 fetchColumn (MkColumn (column :: Vector b)) = let
                     repb :: Type.Reflection.TypeRep b = Type.Reflection.typeRep @b
                     repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
@@ -45,7 +45,7 @@ fetchColumn (MkColumn (column :: Vector b)) = let
                                                  repb
                     Just Refl -> column 
 
-transformColumn :: forall a b . (Typeable a, Show a, Ord a, Typeable b, Show b, Ord b)
+transformColumn :: forall a b . (Typeable a, Show a, Typeable b, Show b)
                 => (Vector a -> Vector b) -> Column -> Column
 transformColumn f c = MkColumn $! f (fetchColumn c) 
 

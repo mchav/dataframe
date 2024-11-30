@@ -134,3 +134,7 @@ getIndices indices xs = runST $ do
     -- have the same length. This isn't enforced anywhere in the library.
     foldM_ (\acc index -> VM.write xs' acc (xs V.! index) >> return (acc + 1)) 0 indices 
     V.freeze xs'
+
+appendWithFrontMin :: (Ord a) => a -> [a] -> [a]
+appendWithFrontMin x []     = [x]
+appendWithFrontMin x (y:ys) = if x < y then x:y:ys else y:x:ys

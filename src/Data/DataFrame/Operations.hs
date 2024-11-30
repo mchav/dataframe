@@ -40,9 +40,8 @@ import Data.Vector (Vector)
 import Prelude hiding (take, sum, filter)
 import qualified Prelude as P
 
-import Data.Containers.ListUtils (nubOrd)
-import Data.List (sort, group, (\\), delete, sortBy, foldl')
 import qualified Data.ByteString.Char8 as C
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Map.Strict as MS
 import qualified Data.Set as S
@@ -50,11 +49,11 @@ import qualified Data.Vector as V
 import Data.Maybe (fromMaybe)
 import qualified Data.DataFrame.Internal as DI
 import Data.DataFrame.Util
-    ( columnNotFound, typeMismatchError, inferType, getIndices )
+    ( columnNotFound, typeMismatchError, inferType, getIndices, appendWithFrontMin )
 
 
-addColumn :: forall a. (Typeable a, Show a, Ord a)
-          => C.ByteString            -- Column Name
+addColumn :: forall a. (Typeable a, Show a)
+          => C.ByteString      -- Column Name
           -> V.Vector a        -- Data to add to column
           -> DataFrame         -- DataFrame to add to column
           -> DataFrame
@@ -64,7 +63,7 @@ addColumn name xs d = d {
                             then _columnNames d
                           else _columnNames d ++ [name] }
 
-addColumnWithDefault :: forall a. (Typeable a, Show a, Ord a)
+addColumnWithDefault :: forall a. (Typeable a, Show a)
           => a          -- Default Value
           -> C.ByteString     -- Column name
           -> V.Vector a -- Data to add to column
@@ -75,7 +74,7 @@ addColumnWithDefault defaultValue name xs d = let
         values = xs V.++ V.fromList (repeat defaultValue)
     in addColumn name (V.take rows values) d
 
-getColumn' :: forall a. (Typeable a, Show a, Ord a)
+getColumn' :: forall a. (Typeable a, Show a)
           => Maybe C.ByteString -- Call point
           -> C.ByteString     -- Column Name
           -> DataFrame  -- DataFrame to get column from
@@ -86,7 +85,7 @@ getColumn' callPoint name d = case name `MS.lookup` columns d of
                                      (columnNames d)
     Just c@(MkColumn (column :: Vector b)) -> DI.fetchColumn @a c
 
-getColumn :: forall a. (Typeable a, Show a, Ord a)
+getColumn :: forall a. (Typeable a, Show a)
           => C.ByteString     -- Column Name
           -> DataFrame        -- DataFrame to get column from
           -> Vector a
@@ -95,10 +94,10 @@ getColumn = getColumn' Nothing
 getIntColumn :: C.ByteString -> DataFrame -> Vector Int
 getIntColumn = getColumn' Nothing
 
-getIndexedColumn :: forall a . (Typeable a, Show a, Ord a) => C.ByteString -> DataFrame -> Vector (Int, a)
+getIndexedColumn :: forall a . (Typeable a, Show a) => C.ByteString -> DataFrame -> Vector (Int, a)
 getIndexedColumn columnName df = V.indexed (getColumn columnName df)
 
-apply :: forall b c. (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c)
+apply :: forall b c. (Typeable b, Typeable c, Show b, Show c)
       => C.ByteString   -- Column name
       -> (b -> c)       -- function to apply
       -> DataFrame      -- DataFrame to apply operation to
@@ -111,28 +110,28 @@ apply columnName f d =
             Nothing -> error $ columnNotFound columnName "apply" (columnNames d)
             Just column'  -> Just $ transformColumn (V.map f) column'
 
-applyMany :: (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c)
+applyMany :: (Typeable b, Typeable c, Show b, Show c)
           => [C.ByteString]
           -> (b -> c)
           -> DataFrame
           -> DataFrame
-applyMany names f df = foldl' (\d name -> apply name f d) df names
+applyMany names f df = L.foldl' (\d name -> apply name f d) df names
 
-applyInt :: (Typeable b, Show b, Ord b)
+applyInt :: (Typeable b, Show b)
          => C.ByteString       -- Column name
          -> (Int -> b)   -- function to apply
          -> DataFrame    -- DataFrame to apply operation to
          -> DataFrame
 applyInt = apply
 
-applyDouble :: (Typeable b, Show b, Ord b)
+applyDouble :: (Typeable b, Show b)
             => C.ByteString          -- Column name
             -> (Double -> b)   -- function to apply
             -> DataFrame       -- DataFrame to apply operation to
             -> DataFrame
 applyDouble = apply
 
-applyWhere :: forall a b c. (Typeable a, Typeable b, Show a, Show b, Ord a, Ord b)
+applyWhere :: forall a b c. (Typeable a, Typeable b, Show a, Show b)
            => C.ByteString      -- Criterion Column
            -> (a -> Bool) -- Filter condition
            -> C.ByteString      -- Column name
@@ -144,9 +143,9 @@ applyWhere filterColumnName condition columnName f df = let
         indexes = V.map fst $ V.filter (condition . snd) filterColumn
     in if V.null indexes
        then df
-       else foldl' (\d i -> applyAtIndex i columnName f d) df indexes
+       else L.foldl' (\d i -> applyAtIndex i columnName f d) df indexes
 
-applyAtIndex :: forall a. (Typeable a, Show a, Ord a)
+applyAtIndex :: forall a. (Typeable a, Show a)
            => Int         -- Index
            -> C.ByteString      -- Column name
            -> (a -> a)    -- function to apply
@@ -166,7 +165,7 @@ take n d = d { columns = MS.map
 dimensions :: DataFrame -> (Int, Int)
 dimensions d = (numRows, numColumns)
     where columnSize (MkColumn column') = V.length column'
-          numRows = foldl' (flip (max . columnSize . snd)) 0 (MS.toList (columns d))
+          numRows = L.foldl' (flip (max . columnSize . snd)) 0 (MS.toList (columns d))
           numColumns = MS.size $ columns d
 
 -- Get column names of the DataFrame in order of insertion.
@@ -176,7 +175,7 @@ columnNames = _columnNames
 sum :: (Typeable a, Show a, Ord a, Num a) => C.ByteString -> DataFrame -> a
 sum name df = V.sum $ getColumn' (Just "sum") name df
 
-sumWhere :: (Typeable a, Show a, Ord a, Typeable b, Show b, Ord b, Num b)
+sumWhere :: (Typeable a, Show a, Typeable b, Show b, Num b)
          => C.ByteString
          -> (a -> Bool)
          -> C.ByteString
@@ -189,7 +188,7 @@ sumWhere filterColumnName condition columnName df = let
            then 0
            else V.sum $ V.ifilter (\i v -> i `S.member` indexes) $ getColumn' (Just "sum") columnName df
 
-filter :: (Typeable a, Show a, Ord a)
+filter :: (Typeable a, Show a)
             => C.ByteString
             -> (a -> Bool)
             -> DataFrame
@@ -205,17 +204,17 @@ columnSize name df = case name `MS.lookup` columns df of
                         Nothing -> error $ columnNotFound name "apply" (columnNames df)
                         Just (MkColumn (column' :: Vector a))  -> V.length column'
 
-valueCounts :: (Typeable a, Show a, Ord a) => C.ByteString -> DataFrame -> [(a, Integer)]
+valueCounts :: forall a . (Typeable a, Show a) => C.ByteString -> DataFrame -> [(a, Integer)]
 valueCounts columnName df = let
-        column = sort $ V.toList (getColumn columnName df)
-    in map (\xs -> (head xs, fromIntegral $ length xs)) (group column)
+        column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) (getColumn @a columnName df)
+    in map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
 
 select :: [C.ByteString]
               -> DataFrame
               -> DataFrame
 select cs df
-    | not $ any (`elem` columnNames df) cs = error $ columnNotFound (C.pack $ show $ cs \\ columnNames df) "select" (columnNames df)
-    | otherwise = foldl' addKeyValue DI.empty cs
+    | not $ any (`elem` columnNames df) cs = error $ columnNotFound (C.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
+    | otherwise = L.foldl' addKeyValue DI.empty cs
             where addKeyValue d k = d { columns = MS.insert k (columns df MS.! k) (columns d),
                                         _columnNames = _columnNames d ++ [k] }
 
@@ -223,7 +222,7 @@ dropColumns :: [C.ByteString]
             -> DataFrame
             -> DataFrame
 dropColumns cs df = let
-        keysToKeep = columnNames df \\ cs
+        keysToKeep = columnNames df L.\\ cs
     in select keysToKeep df
 
 
@@ -231,13 +230,19 @@ groupBy :: [C.ByteString]
         -> DataFrame
         -> DataFrame
 groupBy names df
-    | not $ any (`elem` columnNames df) names = error $ columnNotFound (C.pack $ show $ names \\ columnNames df) "groupBy" (columnNames df)
-    | otherwise = foldl' addColumns initDf groupingColumns
-            where indices = nubOrd $! foldl' (getAdjacentIndices df) [] names
-                  keyIndices = map (S.elemAt 0) indices
+    | not $ any (`elem` columnNames df) names = error $ columnNotFound (C.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
+    | otherwise = L.foldl' addColumns initDf groupingColumns
+            where values = V.map (mkRowRep df (S.fromList names)) (V.generate (fst (dimensions df) - 1) id)
+                  valueIndices = V.ifoldl' (\m v k -> MS.insertWith (appendWithFrontMin . head) k [v] m) M.empty values
+                  valueIndicesInitOrder = L.sortBy (compare `on` (head . snd)) $! MS.toList valueIndices
+                  indices = map snd valueIndicesInitOrder
+                  keyIndices = map (head . snd) valueIndicesInitOrder
                   addColumns = groupColumns indices df
-                  initDf = foldl' (mkGroupedColumns keyIndices df) DI.empty names
-                  groupingColumns = columnNames df \\ names
+                  initDf = L.foldl' (mkGroupedColumns keyIndices df) DI.empty names
+                  groupingColumns = columnNames df L.\\ names
+
+mkRowRep :: DataFrame -> S.Set C.ByteString -> Int -> String
+mkRowRep df names i = MS.foldlWithKey (\acc k (MkColumn c) -> if S.member k names then acc ++ show (c V.! i) else acc) "" (columns df)
 
 mkGroupedColumns :: [Int] -> DataFrame -> DataFrame -> C.ByteString -> DataFrame
 mkGroupedColumns indices df acc name
@@ -247,23 +252,15 @@ mkGroupedColumns indices df acc name
                 vs = indices `getIndices` column
             in addColumn name vs acc
 
-groupColumns :: [S.Set Int] -> DataFrame -> DataFrame -> C.ByteString -> DataFrame
+groupColumns :: [[Int]] -> DataFrame -> DataFrame -> C.ByteString -> DataFrame
 groupColumns indices df acc name
     = case (MS.!) (columns df) name of
         (MkColumn column) ->
             let
-                vs = V.fromList $ map ((`getIndices` column) . S.toList) indices
+                vs = V.fromList $ map (`getIndices` column) indices
             in addColumn name vs acc
 
-getAdjacentIndices :: DataFrame -> [S.Set Int] -> C.ByteString -> [S.Set Int]
-getAdjacentIndices df acc name
-    = case (MS.!) (columns df) name of
-        c@(MkColumn (column :: Vector a)) -> let
-                valueIndices = V.ifoldl' (\m v k -> MS.insertWith S.union k (S.singleton v) m) M.empty column
-                indices = V.toList $ V.map (valueIndices MS.!) column
-            in if null acc then indices else zipWith S.intersection indices acc
-
-reduceBy :: (Typeable a, Show a, Ord a, Typeable b, Show b, Ord b)
+reduceBy :: (Typeable a, Show a, Typeable b, Show b)
          => C.ByteString
          -> (Vector a -> b)
          -> DataFrame
@@ -280,7 +277,7 @@ info df = map
                $ getColumn @C.ByteString name df,
                inferType $ getColumn @C.ByteString name df)) (columnNames df)
 
-combine :: forall a b c . (Typeable a, Show a, Ord a, Typeable b, Show b, Ord b, Typeable c, Show c)
+combine :: forall a b c . (Typeable a, Show a, Typeable b, Show b, Typeable c, Show c)
         => C.ByteString
         -> C.ByteString
         -> (a -> b -> c)
@@ -291,7 +288,7 @@ combine firstColumn secondColumn f df = V.zipWith f (getColumn @a firstColumn df
 
 -- Since this potentially changes the length of a column and could break other operations e.g
 -- groupBy and filter we do not (and should not) export it.
-update :: forall a b. (Typeable a, Show a, Ord a)
+update :: forall a b. (Typeable a, Show a)
        => C.ByteString
        -> V.Vector a
        -> DataFrame
