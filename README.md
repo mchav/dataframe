@@ -35,8 +35,7 @@ main = do
     -- Transform the data from a raw string into
     -- respective types (throws error on failure)
     let f = rawFrame
-          & D.apply "quantity" D.readInteger
-          & D.apply "order_id" D.readInteger
+          & D.applyMany ["quantity", "order_id"] D.readInteger
           -- Change a specfic order ID
           & D.applyWhere "order_id" ((==) @Integer 1) "quantity" ((+) @Integer 2)
           -- Index based change.
