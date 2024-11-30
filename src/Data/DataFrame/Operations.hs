@@ -40,6 +40,7 @@ import Data.Vector (Vector)
 import Prelude hiding (take, sum, filter)
 import qualified Prelude as P
 
+import Data.Containers.ListUtils (nubOrd)
 import Data.List (sort, group, (\\), delete, sortBy, foldl')
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Map as M
@@ -49,7 +50,7 @@ import qualified Data.Vector as V
 import Data.Maybe (fromMaybe)
 import qualified Data.DataFrame.Internal as DI
 import Data.DataFrame.Util
-    ( columnNotFound, typeMismatchError, inferType, appendWithFrontMin, getIndices )
+    ( columnNotFound, typeMismatchError, inferType, getIndices )
 
 
 addColumn :: forall a. (Typeable a, Show a, Ord a)
@@ -230,27 +231,37 @@ groupBy :: [C.ByteString]
         -> DataFrame
         -> DataFrame
 groupBy names df
-    | not $ any (`elem` columnNames df) names = error $ columnNotFound (head names) "groupBy" (columnNames df)
-    | otherwise = case head names `MS.lookup` columns df of
-                        Nothing -> error "Nothing"
-                        Just c@(MkColumn (column' :: Vector a)) ->
-                            let
-                                column = DI.fetchColumn @a c
-                                valueIndices = V.ifoldl' (\m v k -> MS.insertWith (appendWithFrontMin . head) k [v] m) M.empty column
-                                valueIndicesInitOrder = sortBy (compare `on` (head . snd)) $! MS.toList valueIndices
-                                keys = map fst valueIndicesInitOrder
-                                indices = map snd valueIndicesInitOrder
-                                nameSet = S.fromList names
-                                otherColumns = P.filter (`S.notMember` nameSet) (columnNames df)
-                                initDf = addColumn (head names) (V.fromList keys) DI.empty
-                            in foldl' (\d cname -> case cname `MS.lookup` columns df of
-                                                    Nothing -> error $ columnNotFound cname "groupBy" (columnNames df)
-                                                    Just c'@(MkColumn (column'' :: Vector b)) ->
-                                                        let
-                                                            vs = V.fromList $ map (`getIndices` DI.fetchColumn @b c') indices
-                                                        in addColumn cname vs d) initDf otherColumns
+    | not $ any (`elem` columnNames df) names = error $ columnNotFound (C.pack $ show $ names \\ columnNames df) "groupBy" (columnNames df)
+    | otherwise = foldl' addColumns initDf groupingColumns
+            where indices = nubOrd $! foldl' (getAdjacentIndices df) [] names
+                  keyIndices = map (S.elemAt 0) indices
+                  addColumns = groupColumns indices df
+                  initDf = foldl' (mkGroupedColumns keyIndices df) DI.empty names
+                  groupingColumns = columnNames df \\ names
 
+mkGroupedColumns :: [Int] -> DataFrame -> DataFrame -> C.ByteString -> DataFrame
+mkGroupedColumns indices df acc name
+    = case (MS.!) (columns df) name of
+        (MkColumn column) ->
+            let
+                vs = indices `getIndices` column
+            in addColumn name vs acc
 
+groupColumns :: [S.Set Int] -> DataFrame -> DataFrame -> C.ByteString -> DataFrame
+groupColumns indices df acc name
+    = case (MS.!) (columns df) name of
+        (MkColumn column) ->
+            let
+                vs = V.fromList $ map ((`getIndices` column) . S.toList) indices
+            in addColumn name vs acc
+
+getAdjacentIndices :: DataFrame -> [S.Set Int] -> C.ByteString -> [S.Set Int]
+getAdjacentIndices df acc name
+    = case (MS.!) (columns df) name of
+        c@(MkColumn (column :: Vector a)) -> let
+                valueIndices = V.ifoldl' (\m v k -> MS.insertWith S.union k (S.singleton v) m) M.empty column
+                indices = V.toList $ V.map (valueIndices MS.!) column
+            in if null acc then indices else zipWith S.intersection indices acc
 
 reduceBy :: (Typeable a, Show a, Ord a, Typeable b, Show b, Ord b)
          => C.ByteString

@@ -4,6 +4,7 @@
 module Data.DataFrame.Util where
 
 import qualified Data.ByteString.Char8 as C
+import qualified Data.Set as S
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 
@@ -127,13 +128,10 @@ inferType xs
                                                                         Just _  -> "Bool"
                                                                         Nothing -> "Text"
 
-appendWithFrontMin :: (Ord a, Eq a) => a -> [a] -> [a]
-appendWithFrontMin x []     = [x]
-appendWithFrontMin x (y:ys) = if x < y then x:y:ys else y:x:ys
-
 getIndices :: [Int] -> V.Vector a -> V.Vector a
 getIndices indices xs = runST $ do
     xs' <- VM.new (length indices)
-    -- TODO: This is currently unsafe
+    -- TODO: This is currently unsafe since it assumes all columns
+    -- have the same length. This isn't enforced anywhere in the library.
     foldM_ (\acc index -> VM.write xs' acc (xs V.! index) >> return (acc + 1)) 0 indices 
     V.freeze xs'

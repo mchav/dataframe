@@ -43,6 +43,7 @@ executable dataframe
                       bytestring == 0.12.1.0,
                       bytestring-lexing == 0.5.0.14,
                       containers == 0.7,
+                      text == 2.1.2,
                       vector == 0.13.2.0
     hs-source-dirs:   app,
                       src

@@ -7,6 +7,8 @@ import Data.List (delete)
 import qualified Data.DataFrame as D
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
+import qualified Data.Text as T
+
 import Data.DataFrame.Operations (dimensions)
 import Data.Maybe (fromMaybe, isNothing, isJust)
 import Data.Function
@@ -65,11 +67,12 @@ covid = do
     -- value of all exports from 2015
     let parsed = rawFrame
                & D.apply "Year" D.readInt
-               & D.apply "Value" D.readInt
-    let exports2015 = parsed
-                    & D.filter "Year" ((==) @Int 2015)
-                    & D.filter "Direction" ((==) @C.ByteString "Exports")
-    print (D.sum @Int "Value" exports2015)
+               & D.apply "Value" D.readInteger
+    print $ parsed
+          & D.filter "Direction" ((==) @C.ByteString "Exports")
+          & D.select ["Direction", "Year", "Country", "Value"]
+          & D.groupBy ["Direction", "Year", "Country"]
+          & D.reduceBy @Integer "Value" V.sum
 
 chipotle :: IO ()
 chipotle = do
