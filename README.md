@@ -70,6 +70,20 @@ main = do
                       (searchTerm ==)
                       "quantity" f :: Integer)
 
+    -- 2) Using select + reduce
+    print $ f
+          & D.select ["item_name", "quantity"]
+          -- It's more efficient to filter before grouping.
+          & D.filter "item_name" (searchTerm ==)
+          & D.groupBy ["item_name"]
+          & D.reduceBy @Integer "quantity" V.sum
+
+    -- Similarly, we can aggregate quantities by all rows.
+    print $ f
+          & D.select ["item_name", "quantity"]
+          & D.groupBy ["item_name"]
+          & D.reduceBy @Integer "quantity" V.sum
+
 ```
 
 Future work:
