@@ -212,7 +212,9 @@ valueCounts columnName df = let
 select :: [C.ByteString]
               -> DataFrame
               -> DataFrame
-select cs df = foldl' addKeyValue DI.empty cs
+select cs df
+    | not $ any (`elem` columnNames df) cs = error $ columnNotFound (C.pack $ show $ cs \\ columnNames df) "select" (columnNames df)
+    | otherwise = foldl' addKeyValue DI.empty cs
             where addKeyValue d k = d { columns = MS.insert k (columns df MS.! k) (columns d),
                                         _columnNames = _columnNames d ++ [k] }
 
