@@ -6,7 +6,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 module Data.DataFrame.Operations (
-    info,
     addColumn,
     addColumnWithDefault,
     dimensions,
@@ -31,11 +30,15 @@ module Data.DataFrame.Operations (
     reduceBy,
     columnSize,
     combine,
+    parseDefaults
 ) where
 
 import Data.DataFrame.Internal ( Column(..), DataFrame(..), transformColumn )
 import Data.Function (on)
 import Data.Typeable (Typeable)
+import Data.Type.Equality
+    ( type (:~:)(Refl), TestEquality(testEquality) )
+import Type.Reflection ( Typeable, TypeRep, typeRep, typeOf )
 import Data.Vector (Vector)
 import Prelude hiding (take, sum, filter)
 import qualified Prelude as P
@@ -50,6 +53,9 @@ import Data.Maybe (fromMaybe)
 import qualified Data.DataFrame.Internal as DI
 import Data.DataFrame.Util
     ( columnNotFound, typeMismatchError, inferType, getIndices, appendWithFrontMin )
+import Text.Read (readMaybe)
+import GHC.Stack (HasCallStack)
+import Data.ByteString.Lex.Fractional (readDecimal)
 
 
 addColumn :: forall a. (Typeable a, Show a)
@@ -267,16 +273,6 @@ reduceBy :: (Typeable a, Show a, Typeable b, Show b)
          -> DataFrame
 reduceBy = apply
 
--- Counts number of non-empty columns in a Raw text CSV for each row
--- And also gives a best guess of the row's data type.
-info :: DataFrame -> [(C.ByteString, Int, C.ByteString)]
-info df = map
-      (\ name
-         -> (name,
-             V.length $ V.filter (\v -> v /= "" && v /= "NULL")
-               $ getColumn @C.ByteString name df,
-               inferType $ getColumn @C.ByteString name df)) (columnNames df)
-
 combine :: forall a b c . (Typeable a, Show a, Typeable b, Show b, Typeable c, Show c)
         => C.ByteString
         -> C.ByteString
@@ -294,3 +290,29 @@ update :: forall a b. (Typeable a, Show a)
        -> DataFrame
        -> DataFrame
 update name xs df = df {columns = MS.adjust (const (MkColumn xs)) name (columns df)}
+
+parseDefaults :: DataFrame -> DataFrame
+parseDefaults df = df { columns = MS.map parseDefault (columns df) } 
+
+parseDefault :: Column -> Column
+parseDefault (MkColumn (c :: V.Vector a)) = let
+        repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
+        repByteString :: Type.Reflection.TypeRep C.ByteString = Type.Reflection.typeRep @C.ByteString
+    in case repa `testEquality` repByteString of
+        Nothing -> MkColumn c
+        Just Refl -> let
+                example = C.strip (V.head c)
+            in case C.readInt example of
+                Just (v, "") -> MkColumn $ V.map (fst . fromMaybe (0, ""). C.readInt) c
+                Just _ -> MkColumn $ V.map (fromMaybe 0 . readDouble) c
+                Nothing -> case readDouble example of
+                    Just _ -> MkColumn $ V.map (fromMaybe 0 . readDouble) c
+                    Nothing -> MkColumn c
+
+-- TODO: This is duplicated from the IO file. Refactor these into
+-- A common file for type conversions.
+readDouble :: HasCallStack => C.ByteString -> Maybe Double
+readDouble s = let isNegative = C.head s == '-'
+    in case readDecimal (if isNegative then C.tail s else s) of
+            Nothing -> Nothing
+            Just(value, _) -> Just $ (if isNegative then -1.0 else 1.0) * value

@@ -37,13 +37,24 @@ fetchColumn :: forall a . (HasCallStack, Typeable a, Show a) => Column -> Vector
 fetchColumn (MkColumn (column :: Vector b)) = let
                     repb :: Type.Reflection.TypeRep b = Type.Reflection.typeRep @b
                     repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
+                    -- These are the defaults selected by the extension
+                    -- ExtendDefaults
+                    repInteger :: Type.Reflection.TypeRep Integer = Type.Reflection.typeRep @Integer
+                    repInt :: Type.Reflection.TypeRep Int = Type.Reflection.typeRep @Int
                 in case repa `testEquality` repb of
-                    -- TODO: This doesn't pass useful information about the call point.
-                    Nothing -> error $ typeMismatchError ""
-                                                 ""
-                                                 repa
-                                                 repb
-                    Just Refl -> column 
+                    Just Refl -> column
+                    -- Asuming type defaults are on manualy handle the conversion between
+                    -- integer and int
+                    Nothing -> case repa `testEquality` repInt of
+                        Just Refl -> case repb `testEquality` repInteger of
+                            Just Refl -> V.map fromIntegral column
+                            Nothing -> error $ typeMismatchError "" "" repa repb
+                        Nothing -> case repa `testEquality` repInteger of
+                            Just Refl -> case repb `testEquality` repInt of
+                                Just Refl -> V.map fromIntegral column
+                                -- TODO: This doesn't pass useful information about the call point.
+                                Nothing -> error $ typeMismatchError "" "" repa repb
+                            Nothing -> error $ typeMismatchError "" "" repa repb
 
 transformColumn :: forall a b . (Typeable a, Show a, Typeable b, Show b)
                 => (Vector a -> Vector b) -> Column -> Column

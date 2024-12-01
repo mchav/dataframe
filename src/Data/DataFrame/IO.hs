@@ -23,7 +23,7 @@ import qualified Data.Vector.Mutable as VM
 
 import Control.Monad.ST ( ST, runST )
 import Data.DataFrame.Internal ( empty, DataFrame )
-import Data.DataFrame.Operations (addColumn, columnNames)
+import Data.DataFrame.Operations (addColumn, columnNames, parseDefaults)
 import Data.List (transpose, foldl')
 import Data.Maybe ( fromMaybe )
 import GHC.Stack (HasCallStack)
@@ -44,7 +44,8 @@ readSeparated c path = withFile path ReadMode $ \handle -> do
     columnNames <- map C.strip . C.split c <$> C.hGetLine handle
     rs <- C.lines <$> C.hGetContents handle
     let vals = mkColumns c (length columnNames) rs
-    return $ foldl' (\df (i, name) -> addColumn name (vals V.! i) df) empty (zip [0..] columnNames)
+    let df = foldl' (\df (i, name) -> addColumn name (vals V.! i) df) empty (zip [0..] columnNames)
+    return $ parseDefaults df
 
 -- Read CSV into columnar format using mutable 2D Vectors
 -- Ugly but saves us ~2GB in memory allocation vs using 

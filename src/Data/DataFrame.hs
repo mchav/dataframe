@@ -36,7 +36,6 @@ module Data.DataFrame (
     Operations.groupBy,
     Operations.reduceBy,
     Operations.columnSize,
-    Operations.info,
     Operations.combine
     ) where
 
