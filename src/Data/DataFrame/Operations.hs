@@ -312,7 +312,8 @@ parseDefault (MkColumn (c :: V.Vector a)) = let
 -- TODO: This is duplicated from the IO file. Refactor these into
 -- A common file for type conversions.
 readDouble :: HasCallStack => C.ByteString -> Maybe Double
-readDouble s = let isNegative = C.head s == '-'
+readDouble s = let
+        isNegative = if C.null s then False else C.head s == '-'
     in case readDecimal (if isNegative then C.tail s else s) of
             Nothing -> Nothing
             Just(value, _) -> Just $ (if isNegative then -1.0 else 1.0) * value
