@@ -292,7 +292,7 @@ update :: forall a b. (Typeable a, Show a)
 update name xs df = df {columns = MS.adjust (const (MkColumn xs)) name (columns df)}
 
 parseDefaults :: DataFrame -> DataFrame
-parseDefaults df = df { columns = MS.map parseDefault (columns df) } 
+parseDefaults df = df { columns = MS.map parseDefault (columns df) }
 
 parseDefault :: Column -> Column
 parseDefault (MkColumn (c :: V.Vector a)) = let
@@ -313,7 +313,7 @@ parseDefault (MkColumn (c :: V.Vector a)) = let
 -- A common file for type conversions.
 readDouble :: HasCallStack => C.ByteString -> Maybe Double
 readDouble s = let
-        isNegative = if C.null s then False else C.head s == '-'
+        isNegative = (not (C.null s) && (C.head s == '-'))
     in case readDecimal (if isNegative then C.tail s else s) of
             Nothing -> Nothing
             Just(value, _) -> Just $ (if isNegative then -1.0 else 1.0) * value
