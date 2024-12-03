@@ -7,32 +7,75 @@ import qualified Data.Vector as V
 import qualified System.Exit as Exit
 
 import Test.HUnit
- 
+
 testData :: D.DataFrame
-testData = D.addColumn "test1" (V.fromList ([1..10] :: [Int]))
+testData = D.addColumn "test1" (V.fromList ([1..26] :: [Int]))
          . D.addColumn "test2" (V.fromList ['a'..'z'])
          $ D.empty
 
-dimensions_correctDimensions :: Test
-dimensions_correctDimensions = TestCase (assertEqual "should be (26, 2)" (26, 2) (D.dimensions testData))
+-- Dimensions
+correctDimensions :: Test
+correctDimensions = TestCase (assertEqual "should be (26, 2)" (26, 2) (D.dimensions testData))
 
-take_DfLengthEqualsTakeParam :: Test
-take_DfLengthEqualsTakeParam = TestCase (assertEqual "should be (5, 2)" (5, 2) (D.dimensions $ D.take 5 testData))
+emptyDataframeDimensions :: Test
+emptyDataframeDimensions = TestCase (assertEqual "should be (0, 0)" (0, 0) (D.dimensions D.empty))
 
-take_DfLengthGreaterThanTakeParam :: Test
-take_DfLengthGreaterThanTakeParam = TestCase (assertEqual "should be (26, 2)" (26, 2) (D.dimensions $ D.take 30 testData))
+dimensionsTest :: [Test]
+dimensionsTest = [ TestLabel "dimensions_correctDimensions" correctDimensions
+                 , TestLabel "dimensions_emptyDataframeDimensions" emptyDataframeDimensions
+                 ]
 
-take_EmptyDfZeroes :: Test
-take_EmptyDfZeroes = TestCase (assertEqual "should be (0, 0)" (0, 0) (D.dimensions $ D.take 5 D.empty))
- 
+-- take
+lengthEqualsTakeParam :: Test
+lengthEqualsTakeParam = TestCase (assertEqual "should be (5, 2)" (5, 2) (D.dimensions $ D.take 5 testData))
+
+lengthGreaterThanTakeParam :: Test
+lengthGreaterThanTakeParam = TestCase (assertEqual "should be (26, 2)" (26, 2) (D.dimensions $ D.take 30 testData))
+
+emptyIsZero :: Test
+emptyIsZero = TestCase (assertEqual "should be (0, 0)" (0, 0) (D.dimensions $ D.take 5 D.empty))
+
+negativeIsZero :: Test
+negativeIsZero = TestCase (assertEqual "should be (0, 2)" (0, 2) (D.dimensions $ D.take (-1) testData))
+
+takeTest :: [Test]
+takeTest = [ TestLabel "lengthEqualsTakeParam" lengthEqualsTakeParam
+           , TestLabel "lengthGreaterThanTakeParam" lengthGreaterThanTakeParam
+           , TestLabel "emptyIsZero" emptyIsZero
+           , TestLabel "negativeIsZero" negativeIsZero
+           ]
+
+-- addColumn
+dimensionsChangeAfterAdd :: Test
+dimensionsChangeAfterAdd = TestCase (assertEqual "should be (26, 3)"
+                                     (26, 3)
+                                     (D.dimensions $ D.addColumn @Int "new" (V.fromList [1..26]) testData))
+
+dimensionsNotChangedAfterDuplicate :: Test
+dimensionsNotChangedAfterDuplicate = TestCase (assertEqual "should be (26, 3)"
+                                     (26, 3)
+                                     (D.dimensions $ D.addColumn @Int "new" (V.fromList [1..26])
+                                                   $ D.addColumn @Int "new" (V.fromList [1..26]) testData))
+
+columnChangedAfterDuplicate :: Test
+columnChangedAfterDuplicate = TestCase (assertEqual "should be (26, 3)"
+                                     (10, 26)
+                                     (V.length $ D.getColumn @Int "new" $ D.addColumn @Int "new" (V.fromList [1..10])
+                                                   $ D.addColumn @Int "new" (V.fromList [1..26]) testData,
+                                      V.length $ D.getColumn @Int "new" $ D.addColumn @Int "new" (V.fromList [1..26]) testData))
+
+addColumnTest :: [Test]
+addColumnTest = [ TestLabel "dimensionsChangeAfterAdd" dimensionsChangeAfterAdd
+           , TestLabel "dimensionsNotChangedAfterDuplicate" dimensionsNotChangedAfterDuplicate
+           , TestLabel "columnChangedAfterDuplicate" columnChangedAfterDuplicate
+           ]
+
 tests :: Test
-tests = TestList [ TestLabel "dimensions_correctDimensions" dimensions_correctDimensions
-                 , TestLabel "take_DfLengthEqualsTakeParam" take_DfLengthEqualsTakeParam
-                 , TestLabel "take_EmptyDfZeroes" take_EmptyDfZeroes
-                 , TestLabel "take_DfLengthGreaterThanTakeParam" take_DfLengthGreaterThanTakeParam ]
- 
+tests = TestList $  dimensionsTest
+                ++ takeTest
+                ++ addColumnTest
+
 main :: IO ()
 main = do
     result <- runTestTT tests
     if failures result > 0 then Exit.exitFailure else Exit.exitSuccess
- 
