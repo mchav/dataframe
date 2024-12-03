@@ -88,7 +88,11 @@ editDistance xs ys = table ! (m,n)
 
 -- terminal color functions
 red :: String -> String
-red s = "\ESC[31m[" ++ s ++ "\ESC[0m"
+red s = "\ESC[31m" ++ s ++ "\ESC[0m"
+green :: String -> String
+green s= "\ESC[32m" ++ s ++ "\ESC[0m"
+brightGreen :: String -> String
+brightGreen s = "\ESC[92m" ++ s ++ "\ESC[0m"
 
 columnNotFound :: C.ByteString -> C.ByteString -> [C.ByteString] -> String
 columnNotFound name callPoint columns = red "\n\n[ERROR] " ++
@@ -97,16 +101,29 @@ columnNotFound name callPoint columns = red "\n\n[ERROR] " ++
         C.unpack (guessColumnName name columns) ++ "?\n\n"
 
 
-typeMismatchError :: C.ByteString
-                  -> C.ByteString
-                  -> Type.Reflection.TypeRep a
+typeMismatchError :: Type.Reflection.TypeRep a
                   -> Type.Reflection.TypeRep b
                   -> String
-typeMismatchError name callPoint givenType expectedType = red
-        $ "\n\n[Error] Wrong type specified for column: " ++
-            C.unpack name ++ "\n\tTried to get a column of type: " ++
-            show givenType ++ " but column was of type: " ++ show expectedType ++
-            "\n\tWhen calling function: " ++ C.unpack callPoint ++ "\n\n"
+typeMismatchError givenType expectedType = red
+        $ red "\n\n[Error]: Type Mismatch" ++ "\n\tWhile running your code I tried to "
+        ++ "get a column of type: " ++ green (show givenType) ++
+        " but column was of type: " ++ red (show expectedType)
+
+addCallPointInfo :: C.ByteString -> Maybe C.ByteString -> String -> String
+addCallPointInfo name (Just cp) err = err ++ ("\n\tThis happed when calling function " ++
+                                              brightGreen (C.unpack cp) ++ " on the column " ++
+                                              brightGreen (C.unpack name) ++ "\n\n" ++
+                                              typeAnnotationSuggestion (C.unpack cp))
+addCallPointInfo name Nothing err = err ++ ("\n\tOn the column " ++ C.unpack name ++ "\n\n" ++
+                                            typeAnnotationSuggestion "<function>")
+
+typeAnnotationSuggestion :: String -> String
+typeAnnotationSuggestion cp = "\n\n\tTry adding a type at the end of the function e.g " ++
+                              "change\n\t\t" ++ red (cp ++ " arg1 arg2") ++ " to \n\t\t" ++
+                              green ("(" ++ cp ++ " arg1 arg2 :: <Type>)") ++ "\n\tor add " ++
+                              "{-# LANGUAGE TypeApplications #-} to the top of your " ++
+                              "file then change the call to \n\t\t" ++
+                              brightGreen (cp ++ " @<Type> arg1 arg2") 
 
 guessColumnName :: C.ByteString -> [C.ByteString] -> C.ByteString
 guessColumnName userInput columns = snd

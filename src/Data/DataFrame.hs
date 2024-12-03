@@ -12,6 +12,8 @@ module Data.DataFrame (
     IO.splitIgnoring,
     IO.safeReadValue,
     IO.readWithDefault,
+    IO.defaultOptions,
+    IO.ReadOptions(..),
 
     Operations.addColumn,
     Operations.addColumnWithDefault,
@@ -36,7 +38,9 @@ module Data.DataFrame (
     Operations.groupBy,
     Operations.reduceBy,
     Operations.columnSize,
-    Operations.combine
+    Operations.combine,
+    Operations.sortBy,
+    Operations.SortOrder(..)
     ) where
 
 import qualified Data.DataFrame.IO as IO

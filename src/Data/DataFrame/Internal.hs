@@ -4,7 +4,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Data.DataFrame.Internal (
     DataFrame(..),
@@ -33,7 +32,7 @@ import GHC.Stack (HasCallStack)
 data Column where
     MkColumn :: (Typeable a, Show a) => Vector a -> Column
 
-fetchColumn :: forall a . (HasCallStack, Typeable a, Show a) => Column -> Vector a
+fetchColumn :: forall a . (HasCallStack, Typeable a, Show a) => Column -> Either String (Vector a)
 fetchColumn (MkColumn (column :: Vector b)) = let
                     repb :: Type.Reflection.TypeRep b = Type.Reflection.typeRep @b
                     repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
@@ -42,23 +41,23 @@ fetchColumn (MkColumn (column :: Vector b)) = let
                     repInteger :: Type.Reflection.TypeRep Integer = Type.Reflection.typeRep @Integer
                     repInt :: Type.Reflection.TypeRep Int = Type.Reflection.typeRep @Int
                 in case repa `testEquality` repb of
-                    Just Refl -> column
+                    Just Refl -> Right column
                     -- Asuming type defaults are on manualy handle the conversion between
                     -- integer and int
                     Nothing -> case repa `testEquality` repInt of
                         Just Refl -> case repb `testEquality` repInteger of
-                            Just Refl -> V.map fromIntegral column
-                            Nothing -> error $ typeMismatchError "" "" repa repb
+                            Just Refl -> Right $ V.map fromIntegral column
+                            Nothing -> Left $ typeMismatchError repa repb
                         Nothing -> case repa `testEquality` repInteger of
                             Just Refl -> case repb `testEquality` repInt of
-                                Just Refl -> V.map fromIntegral column
+                                Just Refl -> Right $ V.map fromIntegral column
                                 -- TODO: This doesn't pass useful information about the call point.
-                                Nothing -> error $ typeMismatchError "" "" repa repb
-                            Nothing -> error $ typeMismatchError "" "" repa repb
+                                Nothing -> Left $ typeMismatchError repa repb
+                            Nothing -> Left $ typeMismatchError repa repb
 
 transformColumn :: forall a b . (Typeable a, Show a, Typeable b, Show b)
-                => (Vector a -> Vector b) -> Column -> Column
-transformColumn f c = MkColumn $! f (fetchColumn c) 
+                => (Vector a -> Vector b) -> Column -> Either String Column
+transformColumn f c = fetchColumn c >>= \column -> pure $ MkColumn (f column)
 
 instance Show Column where
     show :: Column -> String

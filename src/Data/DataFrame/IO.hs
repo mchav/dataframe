@@ -1,7 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Strict #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Data.DataFrame.IO (
     readSeparated,
@@ -13,7 +11,9 @@ module Data.DataFrame.IO (
     readInteger,
     readDouble,
     safeReadValue,
-    readWithDefault) where
+    readWithDefault,
+    defaultOptions,
+    ReadOptions(..)) where
 
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Map as M
@@ -33,19 +33,30 @@ import System.IO ( withFile, IOMode(ReadMode) )
 import Control.Monad (foldM_, forM_, replicateM_)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 
+data ReadOptions = ReadOptions {
+    hasHeader :: Bool,
+    inferTypes :: Bool
+}
+
+defaultOptions :: ReadOptions
+defaultOptions = ReadOptions { hasHeader = True, inferTypes = True }
+
 readCsv :: String -> IO DataFrame
-readCsv = readSeparated ','
+readCsv = readSeparated ',' defaultOptions
 
 readTsv :: String -> IO DataFrame
-readTsv = readSeparated '\t'
+readTsv = readSeparated '\t' defaultOptions
 
-readSeparated :: Char -> String -> IO DataFrame
-readSeparated c path = withFile path ReadMode $ \handle -> do
-    columnNames <- map C.strip . C.split c <$> C.hGetLine handle
+readSeparated :: Char -> ReadOptions-> String -> IO DataFrame
+readSeparated c opts path = withFile path ReadMode $ \handle -> do
     rs <- C.lines <$> C.hGetContents handle
-    let vals = mkColumns c (length columnNames) rs
+    let firstRow = (map C.strip . C.split c . head) rs
+    let columnNames = if hasHeader opts
+                      then firstRow
+                      else map (C.pack . show) [0..(length firstRow - 1)]
+    let vals = mkColumns c (length columnNames) (if hasHeader opts then tail rs else rs)
     let df = foldl' (\df (i, name) -> addColumn name (vals V.! i) df) empty (zip [0..] columnNames)
-    return $ parseDefaults df
+    return $ if inferTypes opts then parseDefaults df else df
 
 -- Read CSV into columnar format using mutable 2D Vectors
 -- Ugly but saves us ~2GB in memory allocation vs using 

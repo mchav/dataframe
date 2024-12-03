@@ -30,7 +30,9 @@ module Data.DataFrame.Operations (
     reduceBy,
     columnSize,
     combine,
-    parseDefaults
+    parseDefaults,
+    sortBy,
+    SortOrder(..)
 ) where
 
 import Data.DataFrame.Internal ( Column(..), DataFrame(..), transformColumn )
@@ -52,7 +54,7 @@ import qualified Data.Vector as V
 import Data.Maybe (fromMaybe)
 import qualified Data.DataFrame.Internal as DI
 import Data.DataFrame.Util
-    ( columnNotFound, typeMismatchError, inferType, getIndices, appendWithFrontMin )
+    ( columnNotFound, typeMismatchError, inferType, getIndices, appendWithFrontMin, addCallPointInfo )
 import Text.Read (readMaybe)
 import GHC.Stack (HasCallStack)
 import Data.ByteString.Lex.Fractional (readDecimal)
@@ -89,7 +91,9 @@ getColumn' callPoint name d = case name `MS.lookup` columns d of
     Nothing -> error $ columnNotFound name
                                      (fromMaybe "getColumn" callPoint)
                                      (columnNames d)
-    Just c@(MkColumn (column :: Vector b)) -> DI.fetchColumn @a c
+    Just c@(MkColumn (column :: Vector b)) -> case DI.fetchColumn @a c of
+                                                Left err -> error $ addCallPointInfo name callPoint err
+                                                Right cs -> cs
 
 getColumn :: forall a. (Typeable a, Show a)
           => C.ByteString     -- Column Name
@@ -114,7 +118,9 @@ apply columnName f d =
         alteration :: Maybe Column -> Maybe Column
         alteration c' = case c' of
             Nothing -> error $ columnNotFound columnName "apply" (columnNames d)
-            Just column'  -> Just $ transformColumn (V.map f) column'
+            Just column'  -> case transformColumn (V.map f) column' of
+                                Left err -> error $ addCallPointInfo columnName (Just "apply") err
+                                Right cs -> Just cs
 
 applyMany :: (Typeable b, Typeable c, Show b, Show c)
           => [C.ByteString]
@@ -194,7 +200,7 @@ sumWhere filterColumnName condition columnName df = let
            then 0
            else V.sum $ V.ifilter (\i v -> i `S.member` indexes) $ getColumn' (Just "sum") columnName df
 
-filter :: (Typeable a, Show a)
+filter :: forall a . (Typeable a, Show a)
             => C.ByteString
             -> (a -> Bool)
             -> DataFrame
@@ -202,7 +208,23 @@ filter :: (Typeable a, Show a)
 filter filterColumnName condition df = let
         filterColumn = getIndexedColumn filterColumnName df
         indexes = S.fromList $ V.toList $ V.map fst $ V.filter (condition . snd) filterColumn
-        f (MkColumn (column :: Vector b)) = MkColumn $ V.ifilter (\i v -> i `S.member` indexes) column
+        f c@(MkColumn (column :: Vector b)) = case DI.fetchColumn @a c of
+                                                Right cs -> MkColumn $ V.ifilter (\i v -> i `S.member` indexes) cs
+                                                Left err -> error $ addCallPointInfo filterColumnName (Just "filter") err
+    in df { columns = MS.map f (columns df) }
+
+data SortOrder = Ascending | Descending deriving (Eq)
+
+sortBy ::forall a . (Typeable a, Show a, Ord a)
+       => C.ByteString
+       -> SortOrder
+       -> DataFrame
+       -> DataFrame
+sortBy sortColumnName order df = let
+        sortColumn = getIndexedColumn @a sortColumnName df
+        sortOrder = if order == Ascending then compare else flip compare
+        indices = map fst $ L.sortBy (sortOrder `on` snd) $ V.toList sortColumn
+        f (MkColumn (column :: Vector b)) = MkColumn $ indices `getIndices` column
     in df { columns = MS.map f (columns df) }
 
 columnSize :: C.ByteString -> DataFrame -> Int
@@ -212,7 +234,7 @@ columnSize name df = case name `MS.lookup` columns df of
 
 valueCounts :: forall a . (Typeable a, Show a) => C.ByteString -> DataFrame -> [(a, Integer)]
 valueCounts columnName df = let
-        column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) (getColumn @a columnName df)
+        column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) (getColumn' @a (Just "valueCounts") columnName df)
     in map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
 
 select :: [C.ByteString]
@@ -279,8 +301,8 @@ combine :: forall a b c . (Typeable a, Show a, Typeable b, Show b, Typeable c, S
         -> (a -> b -> c)
         -> DataFrame
         -> V.Vector c
-combine firstColumn secondColumn f df = V.zipWith f (getColumn @a firstColumn df)
-                                                    (getColumn @b secondColumn df)
+combine firstColumn secondColumn f df = V.zipWith f (getColumn' @a (Just "combine") firstColumn df)
+                                                    (getColumn' @b (Just "combine") secondColumn df)
 
 -- Since this potentially changes the length of a column and could break other operations e.g
 -- groupBy and filter we do not (and should not) export it.

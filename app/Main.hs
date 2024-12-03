@@ -41,7 +41,7 @@ mean xs = V.sum xs / fromIntegral (V.length xs)
 
 oneBillingRowChallenge :: IO ()
 oneBillingRowChallenge = do
-    parsed <- D.readSeparated ';' "./data/measurements.txt"
+    parsed <- D.readSeparated ';' D.defaultOptions "./data/measurements.txt"
     print $ parsed
           & D.groupBy ["City"]
           & D.reduceBy "Measurement" (\v -> (V.minimum v, mean v, V.maximum v))
@@ -121,12 +121,14 @@ chipotle = do
           & D.filter "item_name" (searchTerm ==)
           & D.groupBy ["item_name"]
           & D.reduceBy "quantity" V.sum
+          & D.sortBy "quanity" D.Descending
 
     -- Similarly, we can aggregate quantities by all rows.
     print $ f
           & D.select ["item_name", "quantity"]
           & D.groupBy ["item_name"]
           & D.reduceBy "quantity" V.sum
+          & D.sortBy "quanity" D.Descending
 
     let firstOrder = withTotalPrice
                    & D.filter "choice_description" (any (C.isInfixOf "Guacamole"). fromMaybe [])
