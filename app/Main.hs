@@ -129,6 +129,7 @@ chipotle = do
           & D.groupBy ["item_name"]
           & D.reduceBy "quantity" V.sum
           & D.sortBy "quanity" D.Descending
+          & D.take 10
 
     let firstOrder = withTotalPrice
                    & D.filter "choice_description" (any (C.isInfixOf "Guacamole"). fromMaybe [])
