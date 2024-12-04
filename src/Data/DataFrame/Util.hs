@@ -110,7 +110,7 @@ typeMismatchError givenType expectedType = red
         " but column was of type: " ++ red (show expectedType)
 
 addCallPointInfo :: C.ByteString -> Maybe C.ByteString -> String -> String
-addCallPointInfo name (Just cp) err = err ++ ("\n\tThis happed when calling function " ++
+addCallPointInfo name (Just cp) err = err ++ ("\n\tThis happened when calling function " ++
                                               brightGreen (C.unpack cp) ++ " on the column " ++
                                               brightGreen (C.unpack name) ++ "\n\n" ++
                                               typeAnnotationSuggestion (C.unpack cp))
@@ -149,7 +149,10 @@ getIndices indices xs = runST $ do
     xs' <- VM.new (length indices)
     -- TODO: This is currently unsafe since it assumes all columns
     -- have the same length. This isn't enforced anywhere in the library.
-    foldM_ (\acc index -> VM.write xs' acc (xs V.! index) >> return (acc + 1)) 0 indices 
+    foldM_ (\acc index -> case xs V.!? index of
+                            Just v -> VM.write xs' acc v >> return (acc + 1)
+                            Nothing -> error "A column has less entries than other rows")
+                            0 indices
     V.freeze xs'
 
 appendWithFrontMin :: (Ord a) => a -> [a] -> [a]

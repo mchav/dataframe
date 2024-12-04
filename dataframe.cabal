@@ -21,7 +21,7 @@ library dataframe-lib
                    Data.DataFrame.Internal,
                    Data.DataFrame.Operations,
                    Data.DataFrame.Util
-    build-depends:    base == 4.17.2.0,
+    build-depends:    base ^>= 4.17.2.0,
                       array == 0.5.4.0,
                       bytestring == 0.12.1.0,
                       bytestring-lexing == 0.5.0.14,
@@ -38,7 +38,7 @@ executable dataframe
                    Data.DataFrame.Operations,
                    Data.DataFrame.Util
 
-    build-depends:    base == 4.17.2.0,
+    build-depends:    base ^>= 4.17.2.0,
                       array == 0.5.4.0,
                       bytestring == 0.12.1.0,
                       bytestring-lexing == 0.5.0.14,
@@ -51,7 +51,7 @@ executable dataframe
 test-suite tests
     type: exitcode-stdio-1.0
     main-is: DataFrameTests.hs
-    build-depends: base == 4.17.2.0,
+    build-depends: base ^>= 4.17.2.0,
                    HUnit == 1.6.2.0,
                    vector == 0.13.2.0,
                    dataframe-lib

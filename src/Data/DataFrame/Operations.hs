@@ -208,10 +208,10 @@ filter :: forall a . (Typeable a, Show a)
 filter filterColumnName condition df = let
         filterColumn = getIndexedColumn filterColumnName df
         indexes = S.fromList $ V.toList $ V.map fst $ V.filter (condition . snd) filterColumn
-        f c@(MkColumn (column :: Vector b)) = case DI.fetchColumn @a c of
+        f k c@(MkColumn (column :: Vector b)) = case DI.fetchColumn @b c of
                                                 Right cs -> MkColumn $ V.ifilter (\i v -> i `S.member` indexes) cs
-                                                Left err -> error $ addCallPointInfo filterColumnName (Just "filter") err
-    in df { columns = MS.map f (columns df) }
+                                                Left err -> error $ addCallPointInfo k (Just "filter") err
+    in df { columns = MS.mapWithKey f (columns df) }
 
 data SortOrder = Ascending | Descending deriving (Eq)
 
@@ -260,17 +260,43 @@ groupBy :: [C.ByteString]
 groupBy names df
     | not $ any (`elem` columnNames df) names = error $ columnNotFound (C.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
     | otherwise = L.foldl' addColumns initDf groupingColumns
-            where values = V.map (mkRowRep df (S.fromList names)) (V.generate (fst (dimensions df) - 1) id)
-                  valueIndices = V.ifoldl' (\m v k -> MS.insertWith (appendWithFrontMin . head) k [v] m) M.empty values
+            where -- Create a string representation of each row.
+                  values = V.map (mkRowRep df (S.fromList names)) (V.generate (fst (dimensions df) - 1) id)
+                  -- Create a mapping from the row representation to the list of indices that
+                  -- have that row representation. This will allow us to combine the indexes
+                  -- where the rows are the same.
+                  valueIndices = V.ifoldl' (\m index rowRep -> MS.insertWith (appendWithFrontMin . head) rowRep [index] m) M.empty values
+                  -- Since the min is at the head this allows us to get the min in constant time and sort by it
+                  -- That way we can recover the original order of the rows.
                   valueIndicesInitOrder = L.sortBy (compare `on` (head . snd)) $! MS.toList valueIndices
+                  -- For the ungrouped columns these will be the indexes to get for each row.
+                  -- We rely on this list being in the same order as the rows.
                   indices = map snd valueIndicesInitOrder
+                  -- These are the indexes of the grouping/key rows i.e the minimum elements
+                  -- of the list.
                   keyIndices = map (head . snd) valueIndicesInitOrder
+                  -- this will be our main worker function in the fold that takes all
+                  -- indices and replaces each value in a column with a list of
+                  -- the elements with the indices where the grouped row
+                  -- values are the same.
                   addColumns = groupColumns indices df
+                  -- Out initial DF will just be all the grouped rows added to an
+                  -- empty dataframe. The entries are dedued and are in their
+                  -- initial order.
                   initDf = L.foldl' (mkGroupedColumns keyIndices df) DI.empty names
+                  -- All the rest of the columns that we are grouping by.
                   groupingColumns = columnNames df L.\\ names
 
 mkRowRep :: DataFrame -> S.Set C.ByteString -> Int -> String
-mkRowRep df names i = MS.foldlWithKey (\acc k (MkColumn c) -> if S.member k names then acc ++ show (c V.! i) else acc) "" (columns df)
+mkRowRep df names i = MS.foldlWithKey go "" (columns df)
+    where go acc k (MkColumn c) =
+            if S.notMember k names
+            then acc
+            else case c V.!? i of
+                Just e -> acc ++ show e
+                Nothing -> error $ "Column " ++ (C.unpack k) ++
+                                    " has less items than " ++
+                                    "the other columns."
 
 mkGroupedColumns :: [Int] -> DataFrame -> DataFrame -> C.ByteString -> DataFrame
 mkGroupedColumns indices df acc name
