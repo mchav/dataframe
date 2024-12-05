@@ -40,9 +40,12 @@ module Data.DataFrame (
     Operations.columnSize,
     Operations.combine,
     Operations.sortBy,
-    Operations.SortOrder(..)
+    Operations.SortOrder(..),
+
+    Display.plotHistograms
     ) where
 
 import qualified Data.DataFrame.IO as IO
 import qualified Data.DataFrame.Internal as Internal
 import qualified Data.DataFrame.Operations as Operations
+import qualified Data.DataFrame.Display.Terminal as Display

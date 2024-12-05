@@ -55,13 +55,16 @@ housing = do
 
     print $ D.take 5 parsed
 
-    print (D.valueCounts @C.ByteString "ocean_proximity" parsed)
+    D.plotHistograms parsed
 
 covid :: IO ()
 covid = do
     rawFrame <- D.readCsv "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
     print $ dimensions rawFrame
     print $ D.take 10 rawFrame
+
+    D.plotHistograms rawFrame
+
     -- value of all exports from 2015
     print $ rawFrame
           & D.filter "Direction" (== "Exports")

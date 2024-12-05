@@ -20,7 +20,8 @@ library dataframe-lib
     other-modules: Data.DataFrame.IO,
                    Data.DataFrame.Internal,
                    Data.DataFrame.Operations,
-                   Data.DataFrame.Util
+                   Data.DataFrame.Util,
+                   Data.DataFrame.Display.Terminal
     build-depends:    base ^>= 4.17.2.0,
                       array == 0.5.4.0,
                       bytestring == 0.12.1.0,
@@ -36,7 +37,8 @@ executable dataframe
                    Data.DataFrame.IO,
                    Data.DataFrame.Internal,
                    Data.DataFrame.Operations,
-                   Data.DataFrame.Util
+                   Data.DataFrame.Util,
+                   Data.DataFrame.Display.Terminal
 
     build-depends:    base ^>= 4.17.2.0,
                       array == 0.5.4.0,
