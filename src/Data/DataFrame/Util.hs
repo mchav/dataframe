@@ -126,10 +126,9 @@ typeAnnotationSuggestion cp = "\n\n\tTry adding a type at the end of the functio
                               brightGreen (cp ++ " @<Type> arg1 arg2") 
 
 guessColumnName :: C.ByteString -> [C.ByteString] -> C.ByteString
-guessColumnName userInput columns = snd
-                             $ minimum
-                             $ map (\k -> (editDistance userInput k, k))
-                             columns
+guessColumnName userInput columns = case map (\k -> (editDistance userInput k, k)) columns of
+    []   -> ""
+    res  -> (snd . minimum) res
 
 inferType :: V.Vector C.ByteString -> C.ByteString
 inferType xs
@@ -147,8 +146,6 @@ inferType xs
 getIndices :: [Int] -> V.Vector a -> V.Vector a
 getIndices indices xs = runST $ do
     xs' <- VM.new (length indices)
-    -- TODO: This is currently unsafe since it assumes all columns
-    -- have the same length. This isn't enforced anywhere in the library.
     foldM_ (\acc index -> case xs V.!? index of
                             Just v -> VM.write xs' acc v >> return (acc + 1)
                             Nothing -> error "A column has less entries than other rows")
