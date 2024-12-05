@@ -20,9 +20,9 @@ default (Int, C.ByteString)
 
 main :: IO ()
 main = do
---     putStrLn "Housing"
---     housing
---     putStrLn $ replicate 100 '-'
+    putStrLn "Housing"
+    housing
+    putStrLn $ replicate 100 '-'
 
     putStrLn "Chipotle Data"
     chipotle
