@@ -41,6 +41,8 @@ plotForColumn cname (DI.MkColumn (column :: V.Vector a)) df = do
             let maxValue = maximum $ map snd counts
             let increment = maxValue `div` 50
             let longestLabelLength = maximum $ map (length . fst) counts
+            let longestBar = fromIntegral $ (maxValue * fromIntegral n `div` increment) `div` fromIntegral n + 1
+            putStrLn $ "|" ++ replicate (longestLabelLength + length (show maxValue) + longestBar + 6) '-' ++ "|"
             forM_ counts $ \(label, count) -> do
                 let barChunks = fromIntegral $ (count * fromIntegral n `div` increment) `div` fromIntegral n
                 let remainder = fromIntegral $ (count * fromIntegral n `div` increment) `rem` fromIntegral n
@@ -50,10 +52,11 @@ plotForColumn cname (DI.MkColumn (column :: V.Vector a)) df = do
                 let bar = replicate barChunks '█' ++ fractional
 
                 let disp = if null bar then "| " else bar
-                putStrLn $ brightGreen (rightJustify label longestLabelLength) ++ " | " ++
-                            rightJustify (show count) (length (show maxValue)) ++
+                putStrLn $ "|" ++ brightGreen (rightJustify label longestLabelLength) ++ " | " ++
+                            rightJustify (show count) (length (show maxValue)) ++ " |" ++
                             " " ++ brightBlue bar
-            putStrLn $ replicate 50 '-'
+                putStrLn $ "|" ++ replicate (longestLabelLength + length (show maxValue) + longestBar + 6) '-' ++ "|"
+            putChar '\n'
 
 rightJustify :: String -> Int -> String
 rightJustify s n = replicate (max 0 (n - length s)) ' ' ++ s
