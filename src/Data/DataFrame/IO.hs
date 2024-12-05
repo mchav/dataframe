@@ -35,11 +35,12 @@ import Control.Monad.IO.Class (MonadIO(liftIO))
 
 data ReadOptions = ReadOptions {
     hasHeader :: Bool,
-    inferTypes :: Bool
+    inferTypes :: Bool,
+    safeRead :: Bool
 }
 
 defaultOptions :: ReadOptions
-defaultOptions = ReadOptions { hasHeader = True, inferTypes = True }
+defaultOptions = ReadOptions { hasHeader = True, inferTypes = True, safeRead = False }
 
 readCsv :: String -> IO DataFrame
 readCsv = readSeparated ',' defaultOptions
@@ -56,7 +57,7 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
                       else map (C.pack . show) [0..(length firstRow - 1)]
     let vals = mkColumns c (length columnNames) (if hasHeader opts then tail rs else rs)
     let df = foldl' (\df (i, name) -> addColumn name (vals V.! i) df) empty (zip [0..] columnNames)
-    return $ if inferTypes opts then parseDefaults df else df
+    return $ if inferTypes opts then parseDefaults (safeRead opts) df else df
 
 -- Read CSV into columnar format using mutable 2D Vectors
 -- Ugly but saves us ~2GB in memory allocation vs using 

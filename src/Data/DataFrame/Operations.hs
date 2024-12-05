@@ -51,7 +51,7 @@ import qualified Data.Map as M
 import qualified Data.Map.Strict as MS
 import qualified Data.Set as S
 import qualified Data.Vector as V
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import qualified Data.DataFrame.Internal as DI
 import Data.DataFrame.Util
     ( columnNotFound, typeMismatchError, inferType, getIndices, appendWithFrontMin, addCallPointInfo )
@@ -339,11 +339,11 @@ update :: forall a b. (Typeable a, Show a)
        -> DataFrame
 update name xs df = df {columns = MS.adjust (const (MkColumn xs)) name (columns df)}
 
-parseDefaults :: DataFrame -> DataFrame
-parseDefaults df = df { columns = MS.map parseDefault (columns df) }
+parseDefaults :: Bool -> DataFrame -> DataFrame
+parseDefaults safeRead df = df { columns = MS.map (parseDefault safeRead) (columns df) }
 
-parseDefault :: Column -> Column
-parseDefault (MkColumn (c :: V.Vector a)) = let
+parseDefault :: Bool -> Column -> Column
+parseDefault safeRead (MkColumn (c :: V.Vector a)) = let
         repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
         repByteString :: Type.Reflection.TypeRep C.ByteString = Type.Reflection.typeRep @C.ByteString
     in case repa `testEquality` repByteString of
@@ -351,10 +351,19 @@ parseDefault (MkColumn (c :: V.Vector a)) = let
         Just Refl -> let
                 example = C.strip (V.head c)
             in case C.readInt example of
-                Just (v, "") -> MkColumn $ V.map (fst . fromMaybe (0, ""). C.readInt) c
-                Just _ -> MkColumn $ V.map (fromMaybe 0 . readDouble) c
+                Just (v, "") -> let
+                        safeVector = V.map (fmap fst . C.readInt) c
+                        hasNulls = V.length safeVector /= V.length (V.filter isJust safeVector)
+                    in (if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fst . fromMaybe (0, ""). C.readInt) c))
+                Just _ -> let
+                        safeVector = V.map readDouble c
+                        hasNulls = V.length safeVector /= V.length (V.filter isJust safeVector)
+                    in if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fromMaybe 0 . readDouble) c)
                 Nothing -> case readDouble example of
-                    Just _ -> MkColumn $ V.map (fromMaybe 0 . readDouble) c
+                    Just _ -> let
+                            safeVector = V.map readDouble c
+                            hasNulls = V.length safeVector /= V.length (V.filter isJust safeVector)
+                        in if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fromMaybe 0 . readDouble) c)
                     Nothing -> MkColumn c
 
 -- TODO: This is duplicated from the IO file. Refactor these into
