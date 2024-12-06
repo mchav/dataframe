@@ -64,11 +64,11 @@ plotGivenCounts cname counts = do
 
         let bar = replicate barChunks '█' ++ fractional
         let disp = if null bar then "| " else bar
-        putStrLn $ "|" ++ brightGreen (rightJustify label longestLabelLength) ++ " | " ++
-                    rightJustify (show count) (length (show maxValue)) ++ " |" ++
+        putStrLn $ "|" ++ brightGreen (leftJustify label longestLabelLength) ++ " | " ++
+                    leftJustify (show count) (length (show maxValue)) ++ " |" ++
                     " " ++ brightBlue bar
         putStrLn $ "|" ++ replicate (longestLabelLength + length (show maxValue) + longestBar + 6) '-' ++ "|"
     putChar '\n'
 
-rightJustify :: String -> Int -> String
-rightJustify s n = s ++ replicate (max 0 (n - length s)) ' '
+leftJustify :: String -> Int -> String
+leftJustify s n = s ++ replicate (max 0 (n - length s)) ' '
