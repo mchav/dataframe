@@ -1,0 +1,7 @@
+:set -XOverloadedStrings
+:set -XTypeApplications
+
+import qualified Data.ByteString.Char8 as Str
+
+default (Int, Str.ByteString)
+
