@@ -54,13 +54,13 @@ plotGivenCounts cname counts = do
         let barChunks = fromIntegral $ (count * fromIntegral n `div` increment) `div` fromIntegral n
         let remainder = fromIntegral $ (count * fromIntegral n `div` increment) `rem` fromIntegral n
         
-        #ifdef mingw32_HOST_OS
+#ifdef mingw32_HOST_OS
         -- Windows doesn't deal well with the fractional unicode types.
         -- They may use a different encoding.
         let fractional = []
-        #else
+#else
         let fractional = ([chr (ord '█' + n - remainder - 1) | remainder > 0])
-        #endif
+#endif
 
         let bar = replicate barChunks '█' ++ fractional
         let disp = if null bar then "| " else bar
