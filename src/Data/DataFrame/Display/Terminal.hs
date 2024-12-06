@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE CPP #-}
 module Data.DataFrame.Display.Terminal where
 
 import qualified Data.ByteString.Char8 as Str
@@ -52,7 +53,15 @@ plotGivenCounts cname counts = do
     forM_ counts $ \(label, count) -> do
         let barChunks = fromIntegral $ (count * fromIntegral n `div` increment) `div` fromIntegral n
         let remainder = fromIntegral $ (count * fromIntegral n `div` increment) `rem` fromIntegral n
-        let fractional = ([chr (ord '█' + n - remainder) | remainder > 0])
+        
+        #ifdef mingw32_HOST_OS
+        -- Windows doesn't deal well with the fractional unicode types.
+        -- They may use a different encoding.
+        let fractional = []
+        #else
+        let fractional = ([chr (ord '█' + n - remainder - 1) | remainder > 0])
+        #endif
+
         let bar = replicate barChunks '█' ++ fractional
         let disp = if null bar then "| " else bar
         putStrLn $ "|" ++ brightGreen (rightJustify label longestLabelLength) ++ " | " ++
@@ -62,4 +71,4 @@ plotGivenCounts cname counts = do
     putChar '\n'
 
 rightJustify :: String -> Int -> String
-rightJustify s n = replicate (max 0 (n - length s)) ' ' ++ s
+rightJustify s n = s ++ replicate (max 0 (n - length s)) ' '
