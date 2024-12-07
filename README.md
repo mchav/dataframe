@@ -111,5 +111,6 @@ toIngredientList v
 
 Future work:
 * Apache arrow and Parquet compatability
-* Integration with plotting libraries (considering ASCII terminal plots for now)
-* Integration with common data formats
+* Integration with common data formats (currently only supports CSV)
+* Support windowed plotting (currently only supports ASCII plots)
+* Create a lazy API that builds an execution graph instead of running eagerly (will be used to compute on files larger than RAM)
