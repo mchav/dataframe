@@ -42,7 +42,8 @@ module Data.DataFrame (
     Operations.sortBy,
     Operations.SortOrder(..),
 
-    Display.plotHistograms
+    Display.plotHistograms,
+    Display.HistogramOrientation(..)
     ) where
 
 import qualified Data.DataFrame.IO as IO
