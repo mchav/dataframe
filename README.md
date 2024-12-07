@@ -11,7 +11,9 @@ Non-goals:
 
 Example usage
 
-![Screencast of usage im GHCI](./static/example.gif)
+![Screencast of usage in GHCI](./static/example.gif)
+
+Longer form examples in `./app` folder using many of the constructs in the API.
 
 Future work:
 * Apache arrow and Parquet compatability
