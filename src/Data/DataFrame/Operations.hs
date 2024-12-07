@@ -32,7 +32,8 @@ module Data.DataFrame.Operations (
     combine,
     parseDefaults,
     sortBy,
-    SortOrder(..)
+    SortOrder(..),
+    columnInfo
 ) where
 
 import Data.DataFrame.Internal ( Column(..), DataFrame(..), transformColumn )
@@ -51,7 +52,7 @@ import qualified Data.Map as M
 import qualified Data.Map.Strict as MS
 import qualified Data.Set as S
 import qualified Data.Vector as V
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import qualified Data.DataFrame.Internal as DI
 import Data.DataFrame.Util
     ( columnNotFound, typeMismatchError, inferType, getIndices, appendWithFrontMin, addCallPointInfo )
@@ -294,7 +295,7 @@ mkRowRep df names i = MS.foldlWithKey go "" (columns df)
             then acc
             else case c V.!? i of
                 Just e -> acc ++ show e
-                Nothing -> error $ "Column " ++ (C.unpack k) ++
+                Nothing -> error $ "Column " ++ C.unpack k ++
                                     " has less items than " ++
                                     "the other columns."
 
@@ -346,23 +347,24 @@ parseDefault :: Bool -> Column -> Column
 parseDefault safeRead (MkColumn (c :: V.Vector a)) = let
         repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
         repByteString :: Type.Reflection.TypeRep C.ByteString = Type.Reflection.typeRep @C.ByteString
+        emptyToNothing v = if v == C.empty || v == " " then Nothing else Just v
     in case repa `testEquality` repByteString of
         Nothing -> MkColumn c
         Just Refl -> let
                 example = C.strip (V.head c)
             in case C.readInt example of
                 Just (v, "") -> let
-                        safeVector = V.map (fmap fst . C.readInt) c
-                        hasNulls = V.length safeVector /= V.length (V.filter isJust safeVector)
+                        safeVector = V.map (fmap fst . (=<<) C.readInt . emptyToNothing) c
+                        hasNulls = V.length (V.filter isNothing safeVector) > 0
                     in (if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fst . fromMaybe (0, ""). C.readInt) c))
                 Just _ -> let
-                        safeVector = V.map readDouble c
-                        hasNulls = V.length safeVector /= V.length (V.filter isJust safeVector)
+                        safeVector = V.map ((=<<) readDouble . emptyToNothing) c
+                        hasNulls = V.length (V.filter isNothing safeVector) > 0
                     in if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fromMaybe 0 . readDouble) c)
                 Nothing -> case readDouble example of
                     Just _ -> let
-                            safeVector = V.map readDouble c
-                            hasNulls = V.length safeVector /= V.length (V.filter isJust safeVector)
+                            safeVector = V.map ((=<<) readDouble . emptyToNothing) c
+                            hasNulls = V.length (V.filter isNothing safeVector) > 0
                         in if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fromMaybe 0 . readDouble) c)
                     Nothing -> MkColumn c
 
@@ -374,3 +376,8 @@ readDouble s = let
     in case readDecimal (if isNegative then C.tail s else s) of
             Nothing -> Nothing
             Just(value, _) -> Just $ (if isNegative then -1.0 else 1.0) * value
+
+
+columnInfo :: DataFrame -> [(String, Int)]
+columnInfo df = L.sortBy (compare `on` snd) (MS.foldlWithKey go [] (columns df))
+    where go acc k (MkColumn (c :: Vector a)) = (C.unpack k, V.length $ V.filter ((/=) "Nothing" . show) c) : acc

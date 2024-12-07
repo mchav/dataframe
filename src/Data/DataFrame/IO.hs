@@ -40,7 +40,7 @@ data ReadOptions = ReadOptions {
 }
 
 defaultOptions :: ReadOptions
-defaultOptions = ReadOptions { hasHeader = True, inferTypes = True, safeRead = False }
+defaultOptions = ReadOptions { hasHeader = True, inferTypes = True, safeRead = True }
 
 readCsv :: String -> IO DataFrame
 readCsv = readSeparated ',' defaultOptions

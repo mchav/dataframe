@@ -41,6 +41,7 @@ module Data.DataFrame (
     Operations.combine,
     Operations.sortBy,
     Operations.SortOrder(..),
+    Operations.columnInfo,
 
     Display.plotHistograms,
     Display.HistogramOrientation(..)
