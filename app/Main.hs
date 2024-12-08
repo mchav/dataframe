@@ -55,7 +55,7 @@ housing = do
 
     print $ D.take 5 parsed
 
-    D.plotHistograms VerticalHistogram parsed
+    D.plotHistograms D.VerticalHistogram parsed
 
 covid :: IO ()
 covid = do
@@ -63,7 +63,7 @@ covid = do
     print $ dimensions rawFrame
     print $ D.take 10 rawFrame
 
-    D.plotHistograms VerticalHistogram rawFrame
+    D.plotHistograms D.VerticalHistogram rawFrame
 
     -- value of all exports from 2015
     print $ rawFrame
