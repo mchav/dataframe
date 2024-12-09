@@ -42,7 +42,7 @@ fetchColumn (MkColumn (column :: Vector b)) = let
                     repInt :: Type.Reflection.TypeRep Int = Type.Reflection.typeRep @Int
                 in case repa `testEquality` repb of
                     Just Refl -> Right column
-                    -- Asuming type defaults are on manualy handle the conversion between
+                    -- Assuming type defaults are on manualy handle the conversion between
                     -- integer and int
                     Nothing -> case repa `testEquality` repInt of
                         Just Refl -> case repb `testEquality` repInteger of
