@@ -7,7 +7,8 @@ synopsis: An intuitive, dynamically-typed DataFrame library.
 description: An intuitive, dynamically-typed DataFrame library.
 
 bug-reports: https://github.com/mchav/dataframe/issues
-
+license:            GPL-3.0-or-later
+license-file:       LICENSE
 author:             Michael Chavinda
 maintainer:         mschavinda@gmail.com
 
@@ -25,9 +26,9 @@ library dataframe-lib
                    Data.DataFrame.Display.Terminal
     build-depends:    base >= 4.17.2.0,
                       array ^>= 0.5,
-                      bytestring ^>= 0.12,
+                      bytestring >= 0.11.5.3 && < 0.13,
                       bytestring-lexing ^>= 0.5,
-                      containers ^>= 0.7,
+                      containers >= 0.6.7 && < 0.8,
                       vector ^>= 0.13
     hs-source-dirs:   src
     default-language: Haskell2010
@@ -43,9 +44,9 @@ executable dataframe
 
     build-depends:    base >= 4.17.2.0,
                       array ^>= 0.5,
-                      bytestring ^>= 0.12,
+                      bytestring >= 0.11.5.3 && < 0.13,
                       bytestring-lexing ^>= 0.5,
-                      containers ^>= 0.7,
+                      containers >= 0.6.7 && < 0.8,
                       vector ^>= 0.13
     hs-source-dirs:   app,
                       src
