@@ -4,7 +4,7 @@ version:            0.1.0.0
 
 synopsis: An intuitive, dynamically-typed DataFrame library.
 
-description: An intuitive, dynamically-typed DataFrame library.
+description: An intuitive, dynamically-typed DataFrame library for exploratory data analysis.
 
 bug-reports: https://github.com/mchav/dataframe/issues
 license:            GPL-3.0-or-later
@@ -15,7 +15,11 @@ maintainer:         mschavinda@gmail.com
 copyright: (c) 2024-2024 Michael Chavinda
 category: Data
 tested-with: GHC ==9.10.1 || ==9.8.3 || ==9.6.6
-extra-source-files: CHANGELOG.md
+extra-doc-files: CHANGELOG.md README.md
+
+source-repository head
+  type:     git
+  location: https://github.com/mchav/dataframe
 
 library dataframe-lib
     exposed-modules: Data.DataFrame
@@ -24,7 +28,7 @@ library dataframe-lib
                    Data.DataFrame.Operations,
                    Data.DataFrame.Util,
                    Data.DataFrame.Display.Terminal
-    build-depends:    base >= 4.17.2.0,
+    build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
                       bytestring >= 0.11.5.3 && < 0.13,
                       bytestring-lexing ^>= 0.5,
