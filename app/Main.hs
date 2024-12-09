@@ -8,6 +8,8 @@ import Data.List (delete)
 import qualified Data.DataFrame as D
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
+import qualified Data.Vector.Generic as VG
+import qualified Data.Vector.Unboxed as VU
 
 import Data.DataFrame.Operations (dimensions)
 import Data.Maybe (fromMaybe, isNothing, isJust)
@@ -36,15 +38,15 @@ main = do
     covid
     putStrLn $ replicate 100 '-'
 
-mean :: V.Vector Double -> Double
-mean xs = V.sum xs / fromIntegral (V.length xs)
+mean :: VU.Vector Double -> Double
+mean xs = VU.sum xs / fromIntegral (VU.length xs)
 
 oneBillingRowChallenge :: IO ()
 oneBillingRowChallenge = do
-    parsed <- D.readSeparated ';' D.defaultOptions "./data/measurements.txt"
+    parsed <- D.readSeparated ';' D.defaultOptions "../1brc/measurements.txt"
     print $ parsed
           & D.groupBy ["City"]
-          & D.reduceBy "Measurement" (\v -> (V.minimum v, mean v, V.maximum v))
+          & D.reduceBy "Measurement" (\v -> (VU.minimum v, mean v, VU.maximum v))
 
 housing :: IO ()
 housing = do
@@ -70,7 +72,7 @@ covid = do
           & D.filter "Direction" (== "Exports")
           & D.select ["Direction", "Year", "Country", "Value"]
           & D.groupBy ["Direction", "Year", "Country"]
-          & D.reduceBy "Value" V.sum
+          & D.reduceBy "Value" VU.sum
 
 chipotle :: IO ()
 chipotle = do
@@ -97,8 +99,7 @@ chipotle = do
 
     -- Create a total_price column that is quantity * item_price
     let multiply (a :: Int) (b :: Double) = fromIntegral a * b
-    let withTotalPrice = D.addColumn "total_price"
-                                     (D.combine "quantity" "item_price" multiply f) f
+    let withTotalPrice = D.combine "total_price" multiply "quantity" "item_price" f
 
     -- sample a filtered subset of the dataframe
     putStrLn "Sample dataframe"
@@ -112,25 +113,19 @@ chipotle = do
     -- were ordered.
     let searchTerm = "Chicken Burrito" :: C.ByteString
 
-    -- 1) Using sumWhere
-    print (D.sumWhere "item_name"
-                      (searchTerm ==)
-                      "quantity" f)
-
-    -- 2) Using select + reduce
     print $ f
           & D.select ["item_name", "quantity"]
           -- It's more efficient to filter before grouping.
           & D.filter "item_name" (searchTerm ==)
           & D.groupBy ["item_name"]
-          & D.reduceBy "quantity" V.sum
+          & D.reduceBy "quantity" VU.sum
           & D.sortBy "quantity" D.Descending
 
     -- Similarly, we can aggregate quantities by all rows.
     print $ f
           & D.select ["item_name", "quantity"]
           & D.groupBy ["item_name"]
-          & D.reduceBy "quantity" V.sum
+          & D.reduceBy "quantity" VU.sum
           & D.sortBy "quantity" D.Descending
           & D.take 10
 
@@ -138,8 +133,6 @@ chipotle = do
                    & D.filter "choice_description" (any (C.isInfixOf "Guacamole"). fromMaybe [])
                    & D.filter "item_name" (("Chicken Bowl" :: C.ByteString) ==)
 
-    print $ D.sum "quantity" firstOrder
-    print $ D.sum @Double "item_price" firstOrder
     print $ D.take 10 firstOrder
 
 -- An example of a parsing function.

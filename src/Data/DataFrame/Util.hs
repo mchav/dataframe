@@ -6,6 +6,8 @@ module Data.DataFrame.Util where
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Data.Array ( Ix(range), Array, (!), array )
 import Data.List (transpose, intercalate, groupBy, sortBy)
@@ -153,6 +155,15 @@ getIndices indices xs = runST $ do
                             Nothing -> error "A column has less entries than other rows")
                             0 indices
     V.freeze xs'
+
+getIndicesUnboxed :: VU.Unbox a => [Int] -> VU.Vector a -> VU.Vector a
+getIndicesUnboxed indices xs = runST $ do
+    xs' <- VUM.new (length indices)
+    foldM_ (\acc index -> case xs VU.!? index of
+                            Just v -> VUM.write xs' acc v >> return (acc + 1)
+                            Nothing -> error "A column has less entries than other rows")
+                            0 indices
+    VU.freeze xs'
 
 appendWithFrontMin :: (Ord a) => a -> [a] -> [a]
 appendWithFrontMin x []     = [x]

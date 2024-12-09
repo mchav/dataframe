@@ -8,14 +8,15 @@
 module Data.DataFrame.Internal (
     DataFrame(..),
     Column(..),
-    transformColumn,
-    fetchColumn,
+    toColumn,
+    toColumnUnboxed,
     empty) where
 
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Map as M
 import qualified Data.Map.Strict as MS
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 
 import Data.DataFrame.Util ( applySnd, showTable, typeMismatchError )
 import Data.Function (on)
@@ -28,45 +29,42 @@ import Data.Type.Equality
     ( type (:~:)(Refl), TestEquality(testEquality) )
 import Type.Reflection ( Typeable, TypeRep, typeRep )
 import GHC.Stack (HasCallStack)
+import Data.Vector.Unboxed (Unbox)
 
 data Column where
-    MkColumn :: (Typeable a, Show a) => Vector a -> Column
-
-fetchColumn :: forall a . (HasCallStack, Typeable a, Show a) => Column -> Either String (Vector a)
-fetchColumn (MkColumn (column :: Vector b)) = let
-                    repb :: Type.Reflection.TypeRep b = Type.Reflection.typeRep @b
-                    repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
-                    -- These are the defaults selected by the extension
-                    -- ExtendDefaults
-                    repInteger :: Type.Reflection.TypeRep Integer = Type.Reflection.typeRep @Integer
-                    repInt :: Type.Reflection.TypeRep Int = Type.Reflection.typeRep @Int
-                in case repa `testEquality` repb of
-                    Just Refl -> Right column
-                    -- Assuming type defaults are on manualy handle the conversion between
-                    -- integer and int
-                    Nothing -> case repa `testEquality` repInt of
-                        Just Refl -> case repb `testEquality` repInteger of
-                            Just Refl -> Right $ V.map fromIntegral column
-                            Nothing -> Left $ typeMismatchError repa repb
-                        Nothing -> case repa `testEquality` repInteger of
-                            Just Refl -> case repb `testEquality` repInt of
-                                Just Refl -> Right $ V.map fromIntegral column
-                                -- TODO: This doesn't pass useful information about the call point.
-                                Nothing -> Left $ typeMismatchError repa repb
-                            Nothing -> Left $ typeMismatchError repa repb
-
-transformColumn :: forall a b . (Typeable a, Show a, Typeable b, Show b)
-                => (Vector a -> Vector b) -> Column -> Either String Column
-transformColumn f c = fetchColumn c >>= \column -> pure $ MkColumn (f column)
+    BoxedColumn :: (Typeable a, Show a, Ord a) => Vector a -> Column
+    UnboxedColumn :: (Typeable a, Show a, Ord a, Unbox a) => VU.Vector a -> Column
 
 instance Show Column where
     show :: Column -> String
-    show (MkColumn column) = show column
+    show (BoxedColumn column) = show column
 
 data DataFrame = DataFrame {
     columns :: Map C.ByteString Column,
     _columnNames :: [C.ByteString]
 }
+
+toColumn :: forall a . (Typeable a, Show a, Ord a) => Vector a -> Column
+toColumn xs = let
+        repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
+        repInt :: Type.Reflection.TypeRep Int = Type.Reflection.typeRep @Int
+        repDouble :: Type.Reflection.TypeRep Double = Type.Reflection.typeRep @Double
+    in case testEquality repa repInt of
+        Just Refl -> UnboxedColumn (VU.convert xs)
+        Nothing -> case testEquality repa repDouble of
+            Just Refl -> UnboxedColumn (VU.convert xs)
+            Nothing -> BoxedColumn xs
+
+toColumnUnboxed :: forall a . (Typeable a, Show a) => VU.Vector a -> Column
+toColumnUnboxed xs = let
+        repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
+        repInt :: Type.Reflection.TypeRep Int = Type.Reflection.typeRep @Int
+        repDouble :: Type.Reflection.TypeRep Double = Type.Reflection.typeRep @Double
+    in case testEquality repa repInt of
+        Just Refl -> UnboxedColumn (VU.convert xs)
+        Nothing -> case testEquality repa repDouble of
+            Just Refl -> UnboxedColumn (VU.convert xs)
+            Nothing -> error "Value isn't boxed"
 
 empty :: DataFrame
 empty = DataFrame { columns = M.empty, _columnNames = [] }
@@ -75,7 +73,8 @@ instance Show DataFrame where
     show :: DataFrame -> String
     show d = let
                  header = _columnNames d
-                 get (MkColumn column) = V.map (C.pack . show) column
+                 get (BoxedColumn column) = V.map (C.pack . show) column
+                 get (UnboxedColumn column) = V.map (C.pack . show) (V.convert column)
                  getByteStringColumnFromFrame df name = get $ (MS.!) (columns d) name
                  rows = transpose
                       $ map (V.toList . getByteStringColumnFromFrame d) header

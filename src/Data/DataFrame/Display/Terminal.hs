@@ -12,6 +12,7 @@ import qualified Data.DataFrame.Internal as DI
 import qualified Data.DataFrame.Operations as Ops
 import qualified Data.Map as M
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 
 import Control.Monad ( forM_, forM )
 import Data.Bifunctor ( first )
@@ -36,7 +37,7 @@ plotHistograms orientation df = do
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
 plotForColumn :: HasCallStack => Str.ByteString -> DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
-plotForColumn cname (DI.MkColumn (column :: V.Vector a)) orientation df = do
+plotForColumn cname (DI.BoxedColumn (column :: V.Vector a)) orientation df = do
     let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
         repByteString :: Type.Reflection.TypeRep Str.ByteString = Type.Reflection.typeRep @Str.ByteString
         repString :: Type.Reflection.TypeRep String = Type.Reflection.typeRep @String
@@ -46,6 +47,21 @@ plotForColumn cname (DI.MkColumn (column :: V.Vector a)) orientation df = do
                 Just Refl -> Ops.valueCounts @String cname df
                 -- Support other scalar types.
                 Nothing -> rangedNumericValueCounts column
+    if null counts
+    then pure ()
+    else case orientation of
+        VerticalHistogram -> plotVerticalGivenCounts cname counts
+        HorizontalHistogram -> plotGivenCounts cname counts
+plotForColumn cname (DI.UnboxedColumn (column :: VU.Vector a)) orientation df = do
+    let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
+        repByteString :: Type.Reflection.TypeRep Str.ByteString = Type.Reflection.typeRep @Str.ByteString
+        repString :: Type.Reflection.TypeRep String = Type.Reflection.typeRep @String
+    let counts = case repa `testEquality` repByteString of
+            Just Refl -> map (first show) $ Ops.valueCounts @Str.ByteString cname df
+            Nothing -> case repa `testEquality` repString of
+                Just Refl -> Ops.valueCounts @String cname df
+                -- Support other scalar types.
+                Nothing -> rangedNumericValueCounts (V.convert column)
     if null counts
     then pure ()
     else case orientation of
