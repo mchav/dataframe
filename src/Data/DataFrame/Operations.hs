@@ -207,8 +207,8 @@ filter :: forall a . (Typeable a, Show a)
             -> DataFrame
             -> DataFrame
 filter filterColumnName condition df = let
-        filterColumn = getIndexedColumn filterColumnName df
-        indexes = S.fromList $ V.toList $ V.map fst $ V.filter (condition . snd) filterColumn
+        filterColumn = getColumn filterColumnName df
+        indexes = V.ifoldl' (\s i v -> if condition v then S.insert i s else s) S.empty filterColumn
         f k c@(MkColumn (column :: Vector b)) = case DI.fetchColumn @b c of
                                                 Right cs -> MkColumn $ V.ifilter (\i v -> i `S.member` indexes) cs
                                                 Left err -> error $ addCallPointInfo k (Just "filter") err
@@ -355,16 +355,16 @@ parseDefault safeRead (MkColumn (c :: V.Vector a)) = let
             in case C.readInt example of
                 Just (v, "") -> let
                         safeVector = V.map (fmap fst . (=<<) C.readInt . emptyToNothing) c
-                        hasNulls = V.length (V.filter isNothing safeVector) > 0
+                        hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
                     in (if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fst . fromMaybe (0, ""). C.readInt) c))
                 Just _ -> let
                         safeVector = V.map ((=<<) readDouble . emptyToNothing) c
-                        hasNulls = V.length (V.filter isNothing safeVector) > 0
+                        hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
                     in if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fromMaybe 0 . readDouble) c)
                 Nothing -> case readDouble example of
                     Just _ -> let
                             safeVector = V.map ((=<<) readDouble . emptyToNothing) c
-                            hasNulls = V.length (V.filter isNothing safeVector) > 0
+                            hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
                         in if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fromMaybe 0 . readDouble) c)
                     Nothing -> MkColumn c
 
