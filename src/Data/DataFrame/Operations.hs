@@ -7,6 +7,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 module Data.DataFrame.Operations (
     addColumn,
+    addColumn',
     addColumnWithDefault,
     dimensions,
     columnNames,
@@ -31,6 +32,7 @@ module Data.DataFrame.Operations (
     columnSize,
     combine,
     parseDefaults,
+    parseDefault,
     sortBy,
     SortOrder(..),
     columnInfo
@@ -68,6 +70,16 @@ addColumn :: forall a. (Typeable a, Show a)
           -> DataFrame
 addColumn name xs d = d {
            columns = MS.insert name (MkColumn xs) (columns d),
+           _columnNames = if name `elem` _columnNames d
+                            then _columnNames d
+                          else _columnNames d ++ [name] }
+
+addColumn' :: C.ByteString      -- Column Name
+          -> Column
+          -> DataFrame         -- DataFrame to add to column
+          -> DataFrame
+addColumn' name xs d = d {
+           columns = MS.insert name xs (columns d),
            _columnNames = if name `elem` _columnNames d
                             then _columnNames d
                           else _columnNames d ++ [name] }

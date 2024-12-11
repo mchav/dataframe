@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Strict #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Data.DataFrame.IO (
     readSeparated,
@@ -22,8 +23,8 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 
 import Control.Monad.ST ( ST, runST )
-import Data.DataFrame.Internal ( empty, DataFrame )
-import Data.DataFrame.Operations (addColumn, columnNames, parseDefaults)
+import Data.DataFrame.Internal ( empty, DataFrame, Column(..) )
+import Data.DataFrame.Operations (addColumn, addColumn', columnNames, parseDefaults, parseDefault)
 import Data.List (transpose, foldl')
 import Data.Maybe ( fromMaybe )
 import GHC.Stack (HasCallStack)
@@ -56,8 +57,11 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
                       then firstRow
                       else map (C.pack . show) [0..(length firstRow - 1)]
     let vals = mkColumns c (length columnNames) (if hasHeader opts then tail rs else rs)
-    let df = foldl' (\df (i, name) -> addColumn name (vals V.! i) df) empty (zip [0..] columnNames)
-    return $ if inferTypes opts then parseDefaults (safeRead opts) df else df
+    let df = foldl' (\df (i, name) -> let
+                col' = MkColumn (vals V.! i)
+                col = if inferTypes opts then parseDefault (safeRead opts) col' else col'
+            in addColumn' name col df) empty (zip [0..] columnNames)
+    return df
 
 -- Read CSV into columnar format using mutable 2D Vectors
 -- Ugly but saves us ~2GB in memory allocation vs using 
