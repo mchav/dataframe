@@ -22,17 +22,22 @@ import qualified Data.Set as S
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 
+import Control.Monad (foldM_, forM_, replicateM_, foldM, zipWithM_)
+import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST ( ST, runST )
 import Data.DataFrame.Internal ( empty, DataFrame, Column(..) )
 import Data.DataFrame.Operations (addColumn, addColumn', columnNames, parseDefaults, parseDefault)
 import Data.List (transpose, foldl')
 import Data.Maybe ( fromMaybe )
+import GHC.IO (unsafePerformIO)
+import GHC.IO.Handle
+    ( hClose, hFlush, hSeek, SeekMode(AbsoluteSeek), hIsEOF )
+import GHC.IO.Handle.Types (Handle)
 import GHC.Stack (HasCallStack)
 import Text.Read (readMaybe)
 import Data.ByteString.Lex.Fractional ( readDecimal )
-import System.IO ( withFile, IOMode(ReadMode) )
-import Control.Monad (foldM_, forM_, replicateM_)
-import Control.Monad.IO.Class (MonadIO(liftIO))
+import System.Directory ( removeFile )
+import System.IO ( withFile, IOMode(ReadMode), openTempFile )
 
 data ReadOptions = ReadOptions {
     hasHeader :: Bool,
@@ -51,41 +56,34 @@ readTsv = readSeparated '\t' defaultOptions
 
 readSeparated :: Char -> ReadOptions-> String -> IO DataFrame
 readSeparated c opts path = withFile path ReadMode $ \handle -> do
-    rs <- C.lines <$> C.hGetContents handle
-    let firstRow = (map C.strip . C.split c . head) rs
-    let columnNames = if hasHeader opts
-                      then firstRow
-                      else map (C.pack . show) [0..(length firstRow - 1)]
-    let vals = mkColumns c (length columnNames) (if hasHeader opts then tail rs else rs)
-    let df = foldl' (\df (i, name) -> let
-                col' = MkColumn (vals V.! i)
-                col = if inferTypes opts then parseDefault (safeRead opts) col' else col'
-            in addColumn' name col df) empty (zip [0..] columnNames)
+    columnNames <-if hasHeader opts
+                  then map C.strip . C.split c <$> C.hGetLine handle
+                  else return []
+    tmpFiles <- getTempFiles columnNames
+    mkColumns c tmpFiles handle
+    df <- foldM (\df (i, name) -> do
+        let h = snd $ tmpFiles !! i
+        hSeek h AbsoluteSeek 0
+        col'' <- C.lines <$> C.hGetContents h
+        let col' = MkColumn (V.fromList col'')
+        let col = if inferTypes opts then parseDefault (safeRead opts) col' else col'
+        return $ addColumn' name col df) empty (zip [0..] columnNames)
+    mapM_ (\(f, h) -> hClose handle >> removeFile f) tmpFiles
     return df
 
--- Read CSV into columnar format using mutable 2D Vectors
--- Ugly but saves us ~2GB in memory allocation vs using 
--- a list of lists + transpose 
-mkColumns :: Char -> Int -> [C.ByteString] -> V.Vector (V.Vector C.ByteString)
-mkColumns c columnLength xs = let
-        rowLength = length xs
-    in runST $ do
-        modifier <- VM.new columnLength :: ST s (VM.MVector s (VM.MVector s C.ByteString))
-        forM_ [0..(columnLength - 1)] $ \i ->  do
-            v <- VM.new rowLength :: ST s (VM.MVector s C.ByteString)
-            VM.write modifier i v
-        foldM_ (\rowIndex s -> do
-            let rowValues = split c s
-            foldM_ (\columnIndex s' -> do
-                column <- VM.read modifier columnIndex
-                VM.write column rowIndex (C.strip s')
-                return (columnIndex + 1)) 0 rowValues
-            return (rowIndex + 1)) 0 xs
-        res <- VM.new columnLength :: ST s (VM.MVector s (V.Vector C.ByteString))
-        VM.imapM_ (\i v -> do
-            r <- V.freeze v
-            VM.write res i r) modifier
-        V.freeze res
+
+getTempFiles :: [C.ByteString] -> IO [(String, Handle)]
+getTempFiles cnames = do
+    mapM (openTempFile "/tmp" . C.unpack) cnames
+
+
+mkColumns :: Char -> [(String, Handle)] -> Handle -> IO ()
+mkColumns c tmpFiles inputHandle = do
+    row <- C.hGetLine inputHandle
+    let splitRow = split c row
+    zipWithM_ (\s (f, h) -> C.hPutStrLn h s >> hFlush h) splitRow tmpFiles
+    isEOF <- hIsEOF inputHandle
+    if isEOF then return () else mkColumns c tmpFiles inputHandle
 
 split :: Char -> C.ByteString -> [C.ByteString]
 split c s
