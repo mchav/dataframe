@@ -6,15 +6,15 @@ module Main where
 
 import Data.List (delete)
 import qualified Data.DataFrame as D
-import qualified Data.ByteString.Char8 as C
+import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Data.DataFrame.Operations (dimensions)
 import Data.Maybe (fromMaybe, isNothing, isJust)
 import Data.Function ( (&) )
 
--- Numbers default to int and strings to bytestring
-default (Int, C.ByteString)
+-- Numbers default to int and strings to text
+default (Int, T.Text)
 
 -- Example usage of DataFrame library
 
@@ -88,7 +88,7 @@ chipotle = do
           -- Index based change.
           & D.applyAtIndex 0 "quantity" (flip (-) 2)
           -- drop dollar sign and parse price as double
-          & D.apply "item_price" (D.readValue @Double . C.drop 1)
+          & D.apply "item_price" (D.readValue @Double . T.drop 1)
           -- Custom parsing 
           & D.apply "choice_description" toIngredientList
 
@@ -110,7 +110,7 @@ chipotle = do
     -- Check how many chicken burritos were ordered.
     -- There are two ways to checking how many chicken burritos
     -- were ordered.
-    let searchTerm = "Chicken Burrito" :: C.ByteString
+    let searchTerm = "Chicken Burrito" :: T.Text
 
     -- 1) Using sumWhere
     print (D.sumWhere "item_name"
@@ -135,18 +135,18 @@ chipotle = do
           & D.take 10
 
     let firstOrder = withTotalPrice
-                   & D.filter "choice_description" (any (C.isInfixOf "Guacamole"). fromMaybe [])
-                   & D.filter "item_name" (("Chicken Bowl" :: C.ByteString) ==)
+                   & D.filter "choice_description" (any (T.isInfixOf "Guacamole"). fromMaybe [])
+                   & D.filter "item_name" (("Chicken Bowl" :: T.Text) ==)
 
     print $ D.sum "quantity" firstOrder
     print $ D.sum @Double "item_price" firstOrder
     print $ D.take 10 firstOrder
 
 -- An example of a parsing function.
-toIngredientList :: C.ByteString -> Maybe [C.ByteString]
+toIngredientList :: T.Text -> Maybe [T.Text]
 toIngredientList v
     | v == ""                 = Just []
     | v == "NULL"             = Nothing
-    | C.isPrefixOf "[" v      = toIngredientList $ C.init (C.tail v)
-    | not (C.isInfixOf "," v) = Just [v]
-    | otherwise = foldl (\a b -> (++) <$> a <*> b) (Just []) (map (toIngredientList . C.strip) (D.splitIgnoring ',' '[' v))
+    | T.isPrefixOf "[" v      = toIngredientList $ T.init (T.tail v)
+    | not (T.isInfixOf "," v) = Just [v]
+    | otherwise = foldl (\a b -> (++) <$> a <*> b) (Just []) (map (toIngredientList . T.strip) (D.splitIgnoring ',' '[' v))

@@ -1,6 +1,7 @@
 module Data.DataFrame (
     Internal.DataFrame,
     Internal.empty,
+    Internal.asText,
 
     IO.readCsv,
     IO.readTsv,

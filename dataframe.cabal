@@ -30,10 +30,9 @@ library dataframe-lib
                    Data.DataFrame.Display.Terminal
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
-                      bytestring >= 0.11.5.3 && < 0.13,
-                      bytestring-lexing ^>= 0.5,
                       containers >= 0.6.7 && < 0.8,
                       directory >= 1.3.0.0,
+                      text >= 2.0,
                       vector ^>= 0.13
     hs-source-dirs:   src
     default-language: Haskell2010
@@ -49,10 +48,9 @@ executable dataframe
 
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
-                      bytestring >= 0.11.5.3 && < 0.13,
-                      bytestring-lexing ^>= 0.5,
                       containers >= 0.6.7 && < 0.8,
                       directory >= 1.3.0.0,
+                      text >= 2.0,
                       vector ^>= 0.13
     hs-source-dirs:   app,
                       src
