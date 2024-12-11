@@ -165,8 +165,8 @@ applyAtIndex :: forall a. (Typeable a, Show a)
            -> DataFrame   -- DataFrame to apply operation to
            -> DataFrame
 applyAtIndex i columnName f df = let
-                valueColumn = getIndexedColumn columnName df
-                updated = V.map (\(index, value) -> if index == i then f value else value) valueColumn
+                valueColumn = getColumn columnName df
+                updated = V.imap (\index value -> if index == i then f value else value) valueColumn
             in update columnName updated df
 
 -- Take the first n rows of a DataFrame.
