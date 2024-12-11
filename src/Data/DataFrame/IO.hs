@@ -58,7 +58,8 @@ readSeparated :: Char -> ReadOptions-> String -> IO DataFrame
 readSeparated c opts path = withFile path ReadMode $ \handle -> do
     columnNames <-if hasHeader opts
                   then map C.strip . C.split c <$> C.hGetLine handle
-                  else return []
+                  else return [] -- TODO: this current doesn't work for a CSV file
+                                 -- with no header. We can read a line and seek back.
     tmpFiles <- getTempFiles columnNames
     mkColumns c tmpFiles handle
     df <- foldM (\df (i, name) -> do
