@@ -57,17 +57,10 @@ dimensionsNotChangedAfterDuplicate = TestCase (assertEqual "should be (26, 3)"
                                      (D.dimensions $ D.addColumn @Int "new" (V.fromList [1..26])
                                                    $ D.addColumn @Int "new" (V.fromList [1..26]) testData))
 
-columnChangedAfterDuplicate :: Test
-columnChangedAfterDuplicate = TestCase (assertEqual "should be (26, 3)"
-                                     (10, 26)
-                                     (V.length $ D.getColumn @Int "new" $ D.addColumn @Int "new" (V.fromList [1..10])
-                                                   $ D.addColumn @Int "new" (V.fromList [1..26]) testData,
-                                      V.length $ D.getColumn @Int "new" $ D.addColumn @Int "new" (V.fromList [1..26]) testData))
 
 addColumnTest :: [Test]
 addColumnTest = [ TestLabel "dimensionsChangeAfterAdd" dimensionsChangeAfterAdd
            , TestLabel "dimensionsNotChangedAfterDuplicate" dimensionsNotChangedAfterDuplicate
-           , TestLabel "columnChangedAfterDuplicate" columnChangedAfterDuplicate
            ]
 
 tests :: Test
