@@ -6,6 +6,8 @@ module Data.DataFrame.Util where
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Data.Array ( Ix(range), Array, (!), array )
 import Data.List (transpose, intercalate, groupBy, sortBy)
@@ -110,8 +112,9 @@ typeMismatchError :: Type.Reflection.TypeRep a
                   -> Type.Reflection.TypeRep b
                   -> String
 typeMismatchError givenType expectedType = red
-        $ red "\n\n[Error]: Type Mismatch" ++ "\n\tWhile running your code I tried to "
-        ++ "get a column of type: " ++ green (show givenType) ++
+        $ red "\n\n[Error]: Type Mismatch" ++
+        "\n\tWhile running your code I tried to " ++
+        "get a column of type: " ++ green (show givenType) ++
         " but column was of type: " ++ red (show expectedType)
 
 addCallPointInfo :: T.Text -> Maybe T.Text -> String -> String
@@ -156,6 +159,15 @@ getIndices indices xs = runST $ do
                             Nothing -> error "A column has less entries than other rows")
                             0 indices
     V.freeze xs'
+
+getIndicesUnboxed :: VU.Unbox a => [Int] -> VU.Vector a -> VU.Vector a
+getIndicesUnboxed indices xs = runST $ do
+    xs' <- VUM.new (length indices)
+    foldM_ (\acc index -> case xs VU.!? index of
+                            Just v -> VUM.write xs' acc v >> return (acc + 1)
+                            Nothing -> error "A column has less entries than other rows")
+                            0 indices
+    VU.freeze xs'
 
 appendWithFrontMin :: (Ord a) => a -> [a] -> [a]
 appendWithFrontMin x []     = [x]

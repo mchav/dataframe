@@ -12,6 +12,7 @@ import qualified Data.DataFrame.Operations as Ops
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 
 import Control.Monad ( forM_, forM )
 import Data.Bifunctor ( first )
@@ -36,7 +37,7 @@ plotHistograms orientation df = do
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
 plotForColumn :: HasCallStack => T.Text -> DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
-plotForColumn cname (DI.MkColumn (column :: V.Vector a)) orientation df = do
+plotForColumn cname (DI.BoxedColumn (column :: V.Vector a)) orientation df = do
     let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
         repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
         repString :: Type.Reflection.TypeRep String = Type.Reflection.typeRep @String
@@ -46,6 +47,21 @@ plotForColumn cname (DI.MkColumn (column :: V.Vector a)) orientation df = do
                 Just Refl -> Ops.valueCounts @String cname df
                 -- Support other scalar types.
                 Nothing -> rangedNumericValueCounts column
+    if null counts
+    then pure ()
+    else case orientation of
+        VerticalHistogram -> plotVerticalGivenCounts cname counts
+        HorizontalHistogram -> plotGivenCounts cname counts
+plotForColumn cname (DI.UnboxedColumn (column :: VU.Vector a)) orientation df = do
+    let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
+        repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
+        repString :: Type.Reflection.TypeRep String = Type.Reflection.typeRep @String
+    let counts = case repa `testEquality` repText of
+            Just Refl -> map (first show) $ Ops.valueCounts @T.Text cname df
+            Nothing -> case repa `testEquality` repString of
+                Just Refl -> Ops.valueCounts @String cname df
+                -- Support other scalar types.
+                Nothing -> rangedNumericValueCounts (V.convert column)
     if null counts
     then pure ()
     else case orientation of
