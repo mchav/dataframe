@@ -112,8 +112,9 @@ typeMismatchError :: Type.Reflection.TypeRep a
                   -> Type.Reflection.TypeRep b
                   -> String
 typeMismatchError givenType expectedType = red
-        $ red "\n\n[Error]: Type Mismatch" ++ "\n\tWhile running your code I tried to "
-        ++ "get a column of type: " ++ green (show givenType) ++
+        $ red "\n\n[Error]: Type Mismatch" ++
+        "\n\tWhile running your code I tried to " ++
+        "get a column of type: " ++ green (show givenType) ++
         " but column was of type: " ++ red (show expectedType)
 
 addCallPointInfo :: T.Text -> Maybe T.Text -> String -> String

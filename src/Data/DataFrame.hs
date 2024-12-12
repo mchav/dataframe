@@ -30,7 +30,7 @@ module Data.DataFrame (
     Operations.filter,
     Operations.valueCounts,
     Operations.select,
-    Operations.dropColumns,
+    Operations.drop,
     Operations.groupBy,
     Operations.reduceBy,
     Operations.columnSize,

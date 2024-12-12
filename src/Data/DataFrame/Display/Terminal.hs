@@ -36,7 +36,7 @@ plotHistograms orientation df = do
 
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
-plotForColumn :: HasCallStack => Str.ByteString -> DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
+plotForColumn :: HasCallStack => T.Text -> DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
 plotForColumn cname (DI.BoxedColumn (column :: V.Vector a)) orientation df = do
     let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
         repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
@@ -54,10 +54,10 @@ plotForColumn cname (DI.BoxedColumn (column :: V.Vector a)) orientation df = do
         HorizontalHistogram -> plotGivenCounts cname counts
 plotForColumn cname (DI.UnboxedColumn (column :: VU.Vector a)) orientation df = do
     let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
-        repByteString :: Type.Reflection.TypeRep Str.ByteString = Type.Reflection.typeRep @Str.ByteString
+        repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
         repString :: Type.Reflection.TypeRep String = Type.Reflection.typeRep @String
-    let counts = case repa `testEquality` repByteString of
-            Just Refl -> map (first show) $ Ops.valueCounts @Str.ByteString cname df
+    let counts = case repa `testEquality` repText of
+            Just Refl -> map (first show) $ Ops.valueCounts @T.Text cname df
             Nothing -> case repa `testEquality` repString of
                 Just Refl -> Ops.valueCounts @String cname df
                 -- Support other scalar types.

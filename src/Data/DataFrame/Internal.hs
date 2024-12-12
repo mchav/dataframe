@@ -10,8 +10,6 @@ module Data.DataFrame.Internal (
     Column(..),
     toColumn,
     toColumnUnboxed,
-    transformColumn,
-    fetchColumn,
     empty,
     asText) where
 
@@ -34,6 +32,8 @@ import Data.Type.Equality
     ( type (:~:)(Refl), TestEquality(testEquality) )
 import Type.Reflection ( Typeable, TypeRep, typeRep )
 
+-- | Our representation of a column is a GADT that can store data in either
+-- a vector with boxed elements or 
 data Column where
     BoxedColumn :: (Typeable a, Show a, Ord a) => Vector a -> Column
     UnboxedColumn :: (Typeable a, Show a, Ord a, Unbox a) => VU.Vector a -> Column
@@ -43,32 +43,30 @@ instance Show Column where
     show (BoxedColumn column) = show column
 
 data DataFrame = DataFrame {
+    -- | Our main data structure stores a dataframe as
+    -- a map of columns.
     columns :: Map T.Text Column,
+    -- | Keeps the column names in the order they were inserted in.
     _columnNames :: [T.Text]
 }
 
+-- | Converts a an unboxed vector to a column making sure to put
+-- the vector into an appropriate column type by reflection on the
+-- vector's type parameter.
 toColumn :: forall a . (Typeable a, Show a, Ord a) => Vector a -> Column
-toColumn xs = let
-        repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
-        repInt :: Type.Reflection.TypeRep Int = Type.Reflection.typeRep @Int
-        repDouble :: Type.Reflection.TypeRep Double = Type.Reflection.typeRep @Double
-    in case testEquality repa repInt of
+toColumn xs = case testEquality (typeRep @a) (typeRep @Int) of
+    Just Refl -> UnboxedColumn (VU.convert xs)
+    Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
         Just Refl -> UnboxedColumn (VU.convert xs)
-        Nothing -> case testEquality repa repDouble of
-            Just Refl -> UnboxedColumn (VU.convert xs)
-            Nothing -> BoxedColumn xs
+        Nothing -> BoxedColumn xs
 
-toColumnUnboxed :: forall a . (Typeable a, Show a) => VU.Vector a -> Column
-toColumnUnboxed xs = let
-        repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
-        repInt :: Type.Reflection.TypeRep Int = Type.Reflection.typeRep @Int
-        repDouble :: Type.Reflection.TypeRep Double = Type.Reflection.typeRep @Double
-    in case testEquality repa repInt of
-        Just Refl -> UnboxedColumn (VU.convert xs)
-        Nothing -> case testEquality repa repDouble of
-            Just Refl -> UnboxedColumn (VU.convert xs)
-            Nothing -> error "Value isn't boxed"
+-- | Converts a an unboxed vector to a column making sure to put
+-- the vector into an appropriate column type by reflection on the
+-- vector's type parameter.
+toColumnUnboxed :: forall a . (Typeable a, Show a, Ord a, Unbox a) => VU.Vector a -> Column
+toColumnUnboxed = UnboxedColumn
 
+-- | O(1) Creates an empty dataframe
 empty :: DataFrame
 empty = DataFrame { columns = M.empty, _columnNames = [] }
 
@@ -79,7 +77,18 @@ instance Show DataFrame where
 asText :: DataFrame -> T.Text
 asText d = let
         header = _columnNames d
-        get (MkColumn column) = V.map (T.pack . show) column
+        -- Separate out cases dynamically so we don't end up making round trip string
+        -- copies.
+        get (BoxedColumn (column :: Vector a)) = let
+                repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
+                repString :: Type.Reflection.TypeRep String = Type.Reflection.typeRep @String
+                repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
+            in case testEquality repa repText of
+                Just Refl -> column
+                Nothing -> case testEquality repa repString of
+                    Just Refl -> V.map T.pack column
+                    Nothing -> V.map (T.pack . show) column
+        get (UnboxedColumn column) = V.map (T.pack . show) (V.convert column)
         getTextColumnFromFrame df name = get $ (MS.!) (columns d) name
         rows = transpose
             $ map (V.toList . getTextColumnFromFrame d) header
