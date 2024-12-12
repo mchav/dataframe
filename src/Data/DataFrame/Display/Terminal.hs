@@ -7,10 +7,10 @@
 {-# LANGUAGE NumericUnderscores #-}
 module Data.DataFrame.Display.Terminal where
 
-import qualified Data.ByteString.Char8 as Str
 import qualified Data.DataFrame.Internal as DI
 import qualified Data.DataFrame.Operations as Ops
 import qualified Data.Map as M
+import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
@@ -39,10 +39,10 @@ plotHistograms orientation df = do
 plotForColumn :: HasCallStack => Str.ByteString -> DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
 plotForColumn cname (DI.BoxedColumn (column :: V.Vector a)) orientation df = do
     let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
-        repByteString :: Type.Reflection.TypeRep Str.ByteString = Type.Reflection.typeRep @Str.ByteString
+        repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
         repString :: Type.Reflection.TypeRep String = Type.Reflection.typeRep @String
-    let counts = case repa `testEquality` repByteString of
-            Just Refl -> map (first show) $ Ops.valueCounts @Str.ByteString cname df
+    let counts = case repa `testEquality` repText of
+            Just Refl -> map (first show) $ Ops.valueCounts @T.Text cname df
             Nothing -> case repa `testEquality` repString of
                 Just Refl -> Ops.valueCounts @String cname df
                 -- Support other scalar types.
@@ -68,7 +68,7 @@ plotForColumn cname (DI.UnboxedColumn (column :: VU.Vector a)) orientation df = 
         VerticalHistogram -> plotVerticalGivenCounts cname counts
         HorizontalHistogram -> plotGivenCounts cname counts
 
-plotGivenCounts :: HasCallStack => Str.ByteString -> [(String, Integer)] -> IO ()
+plotGivenCounts :: HasCallStack => T.Text -> [(String, Integer)] -> IO ()
 plotGivenCounts cname counts = do
     putStrLn $ "\nHistogram for " ++ show cname ++ "\n"
     let n = 8 :: Int
@@ -98,7 +98,7 @@ plotGivenCounts cname counts = do
     mapM_ putStrLn (border : body)
     putChar '\n'
 
-plotVerticalGivenCounts :: HasCallStack => Str.ByteString -> [(String, Integer)] -> IO ()
+plotVerticalGivenCounts :: HasCallStack => T.Text -> [(String, Integer)] -> IO ()
 plotVerticalGivenCounts cname counts = do
     putStrLn $ "\nHistogram for " ++ show cname ++ "\n"
     let n = 8 :: Int

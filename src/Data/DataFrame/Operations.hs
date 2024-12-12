@@ -7,6 +7,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 module Data.DataFrame.Operations (
     addColumn,
+    addColumn',
     addColumnWithDefault,
     dimensions,
     columnNames,
@@ -26,41 +27,39 @@ module Data.DataFrame.Operations (
     columnSize,
     combine,
     parseDefaults,
+    parseDefault,
     sortBy,
     SortOrder(..),
     columnInfo
 ) where
 
-import qualified Data.ByteString.Char8 as C
 import qualified Data.DataFrame.Internal as DI
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Map.Strict as MS
 import qualified Data.Set as S
+import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Prelude as P
 
-import Data.ByteString.Lex.Fractional (readDecimal)
-import Data.DataFrame.Internal ( Column(..), DataFrame(..) )
+import Data.DataFrame.Internal ( Column(..), DataFrame(..), transformColumn )
 import Data.DataFrame.Util
 import Data.Function (on)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Typeable (Typeable)
 import Data.Type.Equality
     ( type (:~:)(Refl), TestEquality(testEquality) )
-import Type.Reflection ( Typeable, TypeRep, typeRep, typeOf )
 import Data.Vector (Vector)
 import GHC.Stack (HasCallStack)
 import Prelude hiding (take, sum, filter)
 import Text.Read (readMaybe)
-import Unsafe.Coerce (unsafeCoerce)
+import Type.Reflection ( Typeable, TypeRep, typeRep, typeOf )
 
 
 addColumn :: forall a. (Typeable a, Show a, Ord a)
-          => C.ByteString      -- Column Name
-          -> V.Vector a               -- Data to add to column
+          => T.Text            -- Column Name
+          -> V.Vector a        -- Data to add to column
           -> DataFrame         -- DataFrame to add to column
           -> DataFrame
 addColumn name xs d = d {
@@ -69,20 +68,30 @@ addColumn name xs d = d {
                             then _columnNames d
                           else _columnNames d ++ [name] }
 
-addUnboxedColumn :: forall a. (Typeable a, Show a)
-                 => C.ByteString      -- Column Name
-                 -> VU.Vector a               -- Data to add to column
-                 -> DataFrame         -- DataFrame to add to column
+addUnboxedColumn :: forall a. (Typeable a, Show a, Ord a)
+                 => T.Text       -- Column Name
+                 -> VU.Vector a  -- Data to add to column
+                 -> DataFrame    -- DataFrame to add to column
                  -> DataFrame
 addUnboxedColumn name xs d = d {
            columns = MS.insert name (DI.toColumnUnboxed xs) (columns d),
+           _columnNames = if name `elem` _columnNames d
+                          then _columnNames d
+                          else _columnNames d ++ [name] }
+
+addColumn' :: T.Text      -- Column Name
+           -> Column
+           -> DataFrame   -- DataFrame to add to column
+           -> DataFrame
+addColumn' name xs d = d {
+           columns = MS.insert name xs (columns d),
            _columnNames = if name `elem` _columnNames d
                             then _columnNames d
                           else _columnNames d ++ [name] }
 
 addColumnWithDefault :: forall a. (Typeable a, Show a, Ord a)
           => a          -- Default Value
-          -> C.ByteString     -- Column name
+          -> T.Text     -- Column name
           -> V.Vector a -- Data to add to column
           -> DataFrame  -- DataFrame to add to column
           -> DataFrame
@@ -92,7 +101,7 @@ addColumnWithDefault defaultValue name xs d = let
     in addColumn name (V.take rows values) d
 
 apply :: forall b c. (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c)
-      => C.ByteString   -- Column name
+      => T.Text  -- Column name
       -> (b -> c)       -- function to apply
       -> DataFrame      -- DataFrame to apply operation to
       -> DataFrame
@@ -126,32 +135,32 @@ apply columnName f d =
 
 
 applyMany :: (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c)
-          => [C.ByteString]
+          => [T.Text]
           -> (b -> c)
           -> DataFrame
           -> DataFrame
 applyMany names f df = L.foldl' (\d name -> apply name f d) df names
 
-applyInt :: (Typeable b, Show b, Ord b)
-         => C.ByteString       -- Column name
+applyInt :: (Typeable b, Show b, Ord a)
+         => T.Text       -- Column name
          -> (Int -> b)   -- function to apply
          -> DataFrame    -- DataFrame to apply operation to
          -> DataFrame
 applyInt = apply
 
-applyDouble :: (Typeable b, Show b, Ord b)
-            => C.ByteString          -- Column name
+applyDouble :: (Typeable b, Show b, Ord a)
+            => T.Text          -- Column name
             -> (Double -> b)   -- function to apply
             -> DataFrame       -- DataFrame to apply operation to
             -> DataFrame
 applyDouble = apply
 
-applyWhere :: forall a b . (Typeable a, Typeable b, Show a, Show b)
-           => C.ByteString      -- Criterion Column
-           -> (a -> Bool)       -- Filter condition
-           -> C.ByteString      -- Column name
-           -> (b -> b)          -- function to apply
-           -> DataFrame         -- DataFrame to apply operation to
+applyWhere :: forall a b c. (Typeable a, Typeable b, Show a, Show b, Ord a, Ord b)
+           => T.Text      -- Criterion Column
+           -> (a -> Bool) -- Filter condition
+           -> T.Text      -- Column name
+           -> (b -> b)    -- function to apply
+           -> DataFrame   -- DataFrame to apply operation to
            -> DataFrame
 applyWhere filterColumnName condition columnName f df = let
         repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
@@ -179,9 +188,9 @@ applyWhere filterColumnName condition columnName f df = let
                     then df
                     else VU.foldl' (\d i -> applyAtIndex i columnName f d) df indexes
 
-applyAtIndex :: forall a. (Typeable a, Show a)
+applyAtIndex :: forall a. (Typeable a, Show a, Ord a)
            => Int         -- Index
-           -> C.ByteString      -- Column name
+           -> T.Text      -- Column name
            -> (a -> a)    -- function to apply
            -> DataFrame   -- DataFrame to apply operation to
            -> DataFrame
@@ -219,14 +228,14 @@ dimensions d = (numRows, numColumns)
           numColumns = MS.size $ columns d
 
 -- Get column names of the DataFrame in order of insertion.
-columnNames :: DataFrame -> [C.ByteString]
+columnNames :: DataFrame -> [T.Text]
 columnNames = _columnNames
 
-filter :: forall a . (Typeable a, Show a)
-            => C.ByteString
-            -> (a -> Bool)
-            -> DataFrame
-            -> DataFrame
+filter :: forall a . (Typeable a, Show a, Ord a)
+       => T.Text
+       -> (a -> Bool)
+       -> DataFrame
+       -> DataFrame
 filter filterColumnName condition df = let
         repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
         pick indexes c@(BoxedColumn column) = BoxedColumn $ V.ifilter (\i v -> i `S.member` indexes) column
@@ -250,7 +259,7 @@ filter filterColumnName condition df = let
 
 data SortOrder = Ascending | Descending deriving (Eq)
 
-sortBy :: C.ByteString
+sortBy :: T.Text
        -> SortOrder
        -> DataFrame
        -> DataFrame
@@ -271,13 +280,13 @@ sortBy sortColumnName order df = let
                 indexes = map fst $ VU.ifoldr (\i e acc -> insertSorted order (i, e) acc) [] column
             in df { columns = MS.map (pick indexes) (columns df) }
 
-columnSize :: C.ByteString -> DataFrame -> Int
+columnSize :: T.Text -> DataFrame -> Int
 columnSize name df = case name `MS.lookup` columns df of
                         Nothing -> error $ columnNotFound name "apply" (columnNames df)
                         Just (BoxedColumn column')  -> V.length column'
                         Just (UnboxedColumn column')  -> VU.length column'
 
-valueCounts :: forall a . (Typeable a, Show a) => C.ByteString -> DataFrame -> [(a, Integer)]
+valueCounts :: forall a . (Typeable a, Show a, Ord a) => T.Text -> DataFrame -> [(a, Integer)]
 valueCounts columnName df = let
         repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
     in case columnName `MS.lookup` columns df of
@@ -295,16 +304,16 @@ valueCounts columnName df = let
                 Nothing -> error "UNIMPLEMENTED"
                 Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
 
-select :: [C.ByteString]
-              -> DataFrame
-              -> DataFrame
+select :: [T.Text]
+       -> DataFrame
+       -> DataFrame
 select cs df
-    | not $ any (`elem` columnNames df) cs = error $ columnNotFound (C.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
+    | not $ any (`elem` columnNames df) cs = error $ columnNotFound (T.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
     | otherwise = L.foldl' addKeyValue DI.empty cs
             where addKeyValue d k = d { columns = MS.insert k (columns df MS.! k) (columns d),
                                         _columnNames = _columnNames d ++ [k] }
 
-dropColumns :: [C.ByteString]
+dropColumns :: [T.Text]
             -> DataFrame
             -> DataFrame
 dropColumns cs df = let
@@ -312,11 +321,11 @@ dropColumns cs df = let
     in select keysToKeep df
 
 
-groupBy :: [C.ByteString]
+groupBy :: [T.Text]
         -> DataFrame
         -> DataFrame
 groupBy names df
-    | not $ any (`elem` columnNames df) names = error $ columnNotFound (C.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
+    | not $ any (`elem` columnNames df) names = error $ columnNotFound (T.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
     | otherwise = L.foldl' addColumns initDf groupingColumns
             where -- Create a string representation of each row.
                   values = V.map (mkRowRep df (S.fromList names)) (V.generate (fst (dimensions df) - 1) id)
@@ -345,14 +354,14 @@ groupBy names df
                   -- All the rest of the columns that we are grouping by.
                   groupingColumns = columnNames df L.\\ names
 
-mkRowRep :: DataFrame -> S.Set C.ByteString -> Int -> String
+mkRowRep :: DataFrame -> S.Set T.Text -> Int -> String
 mkRowRep df names i = MS.foldlWithKey go "" (columns df)
     where go acc k (BoxedColumn c) =
             if S.notMember k names
             then acc
             else case c V.!? i of
                 Just e -> acc ++ show e
-                Nothing -> error $ "Column " ++ C.unpack k ++
+                Nothing -> error $ "Column " ++ T.unpack k ++
                                     " has less items than " ++
                                     "the other columns."
           go acc k (UnboxedColumn c) =
@@ -364,7 +373,7 @@ mkRowRep df names i = MS.foldlWithKey go "" (columns df)
                                     " has less items than " ++
                                     "the other columns."
 
-mkGroupedColumns :: [Int] -> DataFrame -> DataFrame -> C.ByteString -> DataFrame
+mkGroupedColumns :: [Int] -> DataFrame -> DataFrame -> T.Text -> DataFrame
 mkGroupedColumns indices df acc name
     = case (MS.!) (columns df) name of
         (BoxedColumn column) ->
@@ -376,7 +385,7 @@ mkGroupedColumns indices df acc name
                 vs = indices `getIndicesUnboxed` column
             in addUnboxedColumn name vs acc
 
-groupColumns :: [[Int]] -> DataFrame -> DataFrame -> C.ByteString -> DataFrame
+groupColumns :: [[Int]] -> DataFrame -> DataFrame -> T.Text -> DataFrame
 groupColumns indices df acc name
     = case (MS.!) (columns df) name of
         (BoxedColumn column) ->
@@ -389,14 +398,15 @@ groupColumns indices df acc name
             in addColumn name vs acc
 
 reduceBy :: (Typeable a, Show a, Ord a, Typeable b, Show b, Ord b, Typeable (v a), Show (v a), Ord (v a), VG.Vector v a)
-         => C.ByteString
+         => T.Text
          -> (v a -> b)
          -> DataFrame
          -> DataFrame
 reduceBy = apply
 
-combine :: forall a b c . (Typeable a, Show a, Ord a, Typeable b, Show b, Ord b, Typeable c, Show c, Ord c)
-        => C.ByteString
+combine :: forall a b c . (Typeable a, Show a, Ord a, Typeable b, Show b, Ord b, Typeable c, Show c)
+        => T.Text
+        -> T.Text
         -> (a -> b -> c)
         -> C.ByteString
         -> C.ByteString
@@ -475,39 +485,25 @@ parseDefaults safeRead df = df { columns = MS.map (parseDefault safeRead) (colum
 parseDefault :: Bool -> Column -> Column
 parseDefault safeRead (BoxedColumn (c :: V.Vector a)) = let
         repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
-        repByteString :: Type.Reflection.TypeRep C.ByteString = Type.Reflection.typeRep @C.ByteString
-        emptyToNothing v = if v == C.empty || v == " " then Nothing else Just v
-    in case repa `testEquality` repByteString of
-        Nothing -> BoxedColumn c
+        repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
+        emptyToNothing v = if v == T.empty || v == " " then Nothing else Just v
+    in case repa `testEquality` repText of
+        Nothing -> MkColumn c
         Just Refl -> let
-                example = C.strip (V.head c)
-            in case C.readInt example of
-                Just (v, "") -> let
-                        safeVector = V.map (fmap fst . (=<<) C.readInt . emptyToNothing) c
-                        hasNulls = V.length (V.filter isNothing safeVector) > 0
-                    in (if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fst . fromMaybe (0, ""). C.readInt) c))
+                example = T.strip (V.head c)
+            in case readInt example of
                 Just _ -> let
-                        safeVector = V.map ((=<<) readDouble . emptyToNothing) c
-                        hasNulls = V.length (V.filter isNothing safeVector) > 0
-
-                    in if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fromMaybe 0 . readDouble) c)
+                        safeVector = V.map ((=<<) readInt . emptyToNothing) c
+                        hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
+                    in (if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fromMaybe 0 . readInt) c))
                 Nothing -> case readDouble example of
                     Just _ -> let
                             safeVector = V.map ((=<<) readDouble . emptyToNothing) c
-                            hasNulls = V.length (V.filter isNothing safeVector) > 0
-                        in if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fromMaybe 0 . readDouble) c)
-                    Nothing -> BoxedColumn c
-
--- TODO: This is duplicated from the IO file. Refactor these into
--- A common file for type conversions.
-readDouble :: HasCallStack => C.ByteString -> Maybe Double
-readDouble s = let
-        isNegative = (not (C.null s) && (C.head s == '-'))
-    in case readDecimal (if isNegative then C.tail s else s) of
-            Nothing -> Nothing
-            Just(value, _) -> Just $ (if isNegative then -1.0 else 1.0) * value
-
+                            hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
+                        in if safeRead && hasNulls then MkColumn safeVector else MkColumn (V.map (fromMaybe 0 . readDouble) c)
+                    Nothing -> MkColumn c
 
 columnInfo :: DataFrame -> [(String, Int)]
 columnInfo df = L.sortBy (compare `on` snd) (MS.foldlWithKey go [] (columns df))
     where go acc k (BoxedColumn (c :: Vector a)) = (C.unpack k, V.length $ V.filter ((/=) "Nothing" . show) c) : acc
+          go acc k (UnboxedColumn (c :: VU.Vector a)) = (C.unpack k, V.length $ V.filter ((/=) "Nothing" . show) (V.convert c)) : acc
