@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Strict #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -38,7 +39,7 @@ import GHC.IO.Handle
 import GHC.IO.Handle.Types (Handle)
 import GHC.Stack (HasCallStack)
 import Text.Read (readMaybe)
-import System.Directory ( removeFile )
+import System.Directory ( removeFile, getTemporaryDirectory )
 import System.IO ( withFile, IOMode(ReadMode), openTempFile )
 
 -- | Record for CSV read options.
@@ -92,7 +93,8 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
 -- If no columns are specified then the names default to column indices.
 getTempFiles :: [T.Text] -> IO [(String, Handle)]
 getTempFiles cnames = do
-    mapM (openTempFile "/tmp" . T.unpack) cnames
+    tmpFolder <- getTemporaryDirectory
+    mapM (openTempFile tmpFolder . T.unpack) cnames
 
 -- | Extracts each row from the character separated file
 -- and writes each value to a file storing all the values
