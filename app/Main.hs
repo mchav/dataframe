@@ -43,7 +43,7 @@ mean xs = VU.sum xs / fromIntegral (VU.length xs)
 
 oneBillingRowChallenge :: IO ()
 oneBillingRowChallenge = do
-    parsed <- D.readSeparated ';' D.defaultOptions "../1brc/measurements.txt"
+    parsed <- D.readSeparated ';' D.defaultOptions "./data/measurements.txt"
     print $ parsed
           & D.groupBy ["City"]
           & D.reduceBy "Measurement" (\v -> (VU.minimum v, mean v, VU.maximum v))
@@ -136,10 +136,11 @@ chipotle = do
     print $ D.take 10 firstOrder
 
 -- An example of a parsing function.
-toIngredientList :: T.Text -> Maybe [T.Text]
-toIngredientList v
+toIngredientList :: Maybe T.Text -> Maybe [T.Text]
+toIngredientList Nothing = Nothing
+toIngredientList (Just v)
     | v == ""                 = Just []
     | v == "NULL"             = Nothing
-    | T.isPrefixOf "[" v      = toIngredientList $ T.init (T.tail v)
+    | T.isPrefixOf "[" v      = toIngredientList $ Just $ T.init (T.tail v)
     | not (T.isInfixOf "," v) = Just [v]
-    | otherwise = foldl (\a b -> (++) <$> a <*> b) (Just []) (map (toIngredientList . T.strip) (D.splitIgnoring ',' '[' v))
+    | otherwise = foldl (\a b -> (++) <$> a <*> b) (Just []) (map (toIngredientList. Just . T.strip) (D.splitIgnoring ',' '[' v))
