@@ -486,9 +486,11 @@ parseDefault safeRead (BoxedColumn (c :: V.Vector a)) = let
                                 hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
                             in if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
 
--- | O(n) Returns the number of non-null columns in the dataframe.
-columnInfo :: DataFrame -> [(String, Int)]
-columnInfo df = L.sortBy (compare `on` snd) (MS.foldlWithKey go [] (columns df))
-    where go acc k (BoxedColumn (c :: Vector a)) = (T.unpack k, V.length $ V.filter (flip S.member nullish . show) c) : acc
-          go acc k (UnboxedColumn (c :: VU.Vector a)) = (T.unpack k, V.length $ V.filter (flip S.member nullish . show) (V.convert c)) : acc
+-- | O(n) Returns the number of non-null columns in the dataframe and the type associated
+-- with each column.
+columnInfo :: DataFrame -> [(String, Int, String)]
+columnInfo df = L.sortBy (compare `on` snd') (MS.foldlWithKey go [] (columns df))
+    where go acc k (BoxedColumn (c :: Vector a)) = (T.unpack k, V.length $ V.filter (flip S.member nullish . show) c, show $ typeRep @a) : acc
+          go acc k (UnboxedColumn (c :: VU.Vector a)) = (T.unpack k, V.length $ V.filter (flip S.member nullish . show) (V.convert c), show $ typeRep @a) : acc
           nullish = S.fromList ["Nothing", "NULL", "",  " ", "nan"]
+          snd' (_, x, _) = x 
