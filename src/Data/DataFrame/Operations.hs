@@ -258,18 +258,13 @@ sortBy :: T.Text
 sortBy sortColumnName order df = let
         pick indexes c@(BoxedColumn column) = BoxedColumn $ indexes `getIndices` column
         pick indexes c@(UnboxedColumn column) = UnboxedColumn $ indexes `getIndicesUnboxed` column
-        -- TODO: This is a REALLY inefficient sorting algorithm (insertion sort).
-        -- Complains about escaping context when you try and use sort by.
-        insertSorted _ t [] = [t]
-        insertSorted Ascending t@(a, b) lst@(x:xs) = if b < snd x then t:lst else insertSorted Ascending t xs
-        insertSorted Descending t@(a, b) lst@(x:xs) = if b > snd x then t:lst else insertSorted Descending t xs
     in case sortColumnName `M.lookup` columns df of
         Nothing -> error $ columnNotFound sortColumnName "valueCounts" (columnNames df)
         Just (BoxedColumn (column :: V.Vector c)) -> let
-                indexes = map fst $ V.ifoldr (\i e acc -> insertSorted order (i, e) acc) [] column
+                indexes = map snd . (if order == Ascending then S.toAscList else S.toDescList) $ VG.ifoldr (\i e acc -> S.insert (e, i) acc) S.empty column
             in df { columns = MS.map (pick indexes) (columns df) }
         Just (UnboxedColumn (column :: VU.Vector c)) -> let
-                indexes = map fst $ VU.ifoldr (\i e acc -> insertSorted order (i, e) acc) [] column
+                indexes = map snd $ (if order == Ascending then S.toAscList else S.toDescList) $ VU.ifoldr (\i e acc -> S.insert (e, i) acc) S.empty column
             in df { columns = MS.map (pick indexes) (columns df) }
 
 -- | O(log n) Get the number of elements in a given column.
