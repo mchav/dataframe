@@ -35,7 +35,7 @@ import Data.List (transpose, foldl')
 import Data.Maybe ( fromMaybe )
 import GHC.IO (unsafePerformIO)
 import GHC.IO.Handle
-    ( hClose, hFlush, hSeek, SeekMode(AbsoluteSeek), hIsEOF )
+    ( hClose, hSeek, SeekMode(AbsoluteSeek), hIsEOF )
 import GHC.IO.Handle.Types (Handle)
 import GHC.Stack (HasCallStack)
 import Text.Read (readMaybe)
@@ -103,7 +103,7 @@ mkColumns :: Char -> [(String, Handle)] -> Handle -> IO ()
 mkColumns c tmpFiles inputHandle = do
     row <- TIO.hGetLine inputHandle
     let splitRow = split c row
-    zipWithM_ (\s (f, h) -> TIO.hPutStrLn h s >> hFlush h) splitRow tmpFiles
+    zipWithM_ (\s (f, h) -> TIO.hPutStrLn h s) splitRow tmpFiles
     isEOF <- hIsEOF inputHandle
     if isEOF then return () else mkColumns c tmpFiles inputHandle
 
