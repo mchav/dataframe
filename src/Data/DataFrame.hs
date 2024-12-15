@@ -1,8 +1,7 @@
-module Data.DataFrame (
-    Internal.DataFrame,
+module Data.DataFrame
+  ( Internal.DataFrame,
     Internal.empty,
     Internal.asText,
-
     IO.readCsv,
     IO.readTsv,
     IO.readValue,
@@ -14,8 +13,7 @@ module Data.DataFrame (
     IO.safeReadValue,
     IO.readWithDefault,
     IO.defaultOptions,
-    IO.ReadOptions(..),
-
+    IO.ReadOptions (..),
     Operations.addColumn,
     Operations.addColumnWithDefault,
     Operations.apply,
@@ -36,14 +34,14 @@ module Data.DataFrame (
     Operations.columnSize,
     Operations.combine,
     Operations.sortBy,
-    Operations.SortOrder(..),
+    Operations.SortOrder (..),
     Operations.columnInfo,
-
     Display.plotHistograms,
-    Display.HistogramOrientation(..)
-    ) where
+    Display.HistogramOrientation (..),
+  )
+where
 
+import qualified Data.DataFrame.Display.Terminal as Display
 import qualified Data.DataFrame.IO as IO
 import qualified Data.DataFrame.Internal as Internal
 import qualified Data.DataFrame.Operations as Operations
-import qualified Data.DataFrame.Display.Terminal as Display

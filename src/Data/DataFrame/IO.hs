@@ -73,7 +73,7 @@ readSeparated :: Char -> ReadOptions-> String -> IO DataFrame
 readSeparated c opts path = withFile path ReadMode $ \handle -> do
     firstRow <- map T.strip . T.split (c ==) <$> TIO.hGetLine handle
     let columnNames = if hasHeader opts
-                      then firstRow
+                      then map (T.filter (/= '\"')) firstRow
                       else map (T.singleton . intToDigit) [0..(length firstRow - 1)]
     -- If there was no header rewind the file cursor.
     unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
@@ -102,7 +102,7 @@ getTempFiles cnames = do
 mkColumns :: Char -> [(String, Handle)] -> Handle -> IO ()
 mkColumns c tmpFiles inputHandle = do
     row <- TIO.hGetLine inputHandle
-    let splitRow = split c row
+    let splitRow = (map (T.filter (/= '\"')) . split c) row
     zipWithM_ (\s (f, h) -> TIO.hPutStrLn h s) splitRow tmpFiles
     isEOF <- hIsEOF inputHandle
     if isEOF then return () else mkColumns c tmpFiles inputHandle
