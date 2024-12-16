@@ -303,7 +303,7 @@ applyAtIndex i columnName f df = case columnName `MS.lookup` DI.columnIndices df
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
-take n d = d {columns = V.map take' (columns d), dataframeDimensions = (min n r, c)}
+take n d = d {columns = V.map take' (columns d), dataframeDimensions = (min (max n 0) r, c)}
   where
     (r, c) = DI.dataframeDimensions d
     take' Nothing = Nothing
