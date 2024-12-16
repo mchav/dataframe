@@ -50,11 +50,11 @@ initialColumnSize = 128
 data Column where
   BoxedColumn :: (Typeable a, Show a, Ord a) => Vector a -> Column
   UnboxedColumn :: (Typeable a, Show a, Ord a, Unbox a) => VU.Vector a -> Column
-  MutableColumn :: (Typeable a, Show a, Ord a) => VM.MVector s a -> Column
 
 instance Show Column where
   show :: Column -> String
   show (BoxedColumn column) = show column
+  show (UnboxedColumn column) = show column
 
 data DataFrame = DataFrame
   { -- | Our main data structure stores a dataframe as
