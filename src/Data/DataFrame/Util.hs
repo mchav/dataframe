@@ -4,18 +4,19 @@
 
 module Data.DataFrame.Util where
 
+import qualified Data.Text as T
+import qualified Data.Vector as V
+import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
+
 import Control.Monad (foldM_)
 import Control.Monad.ST (runST)
 import Data.Array (Array, Ix (range), array, (!))
 import Data.List (groupBy, intercalate, sortBy, transpose)
 import Data.Maybe
-import qualified Data.Text as T
 import Data.Text.Read
 import Data.Typeable (cast)
-import qualified Data.Vector as V
-import qualified Data.Vector.Mutable as VM
-import qualified Data.Vector.Unboxed as VU
-import qualified Data.Vector.Unboxed.Mutable as VUM
 import GHC.Stack (HasCallStack)
 import Text.Read (readMaybe)
 import Type.Reflection (TypeRep)

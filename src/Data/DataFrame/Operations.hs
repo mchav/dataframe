@@ -35,33 +35,35 @@ module Data.DataFrame.Operations
   )
 where
 
-import Data.DataFrame.Internal (Column (..), DataFrame (..))
 import qualified Data.DataFrame.Internal as DI
-import Data.DataFrame.Util
-import Data.Function (on)
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Map.Strict as MS
-import Data.Maybe (fromMaybe, isJust, isNothing)
 import qualified Data.Set as S
 import qualified Data.Text as T
+import qualified Data.Typeable as Typeable
+import qualified Data.Vector as V
+import qualified Data.Vector.Generic as VG
+import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector.Unboxed as VU
+import qualified Prelude as P
+
+import Data.DataFrame.Internal (Column (..), DataFrame (..))
+import Data.DataFrame.Util
+import Data.Function (on)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Type.Equality
   ( TestEquality (testEquality),
     type (:~:) (Refl),
   )
 import Data.Typeable (Typeable)
-import qualified Data.Typeable as Typeable
 import Data.Vector (Vector)
-import qualified Data.Vector as V
-import qualified Data.Vector.Generic as VG
-import qualified Data.Vector.Unboxed as VU
 import GHC.Stack (HasCallStack)
+import Prelude hiding (drop, filter, sum, take)
 import Text.Read (readMaybe)
 import Type.Reflection (TypeRep, Typeable, typeOf, typeRep)
-import Prelude hiding (drop, filter, sum, take)
-import qualified Prelude as P
 
--- | /O(log n)/ Adds a vector to the dataframe.
+-- | /O(n)/ Adds a vector to the dataframe.
 addColumn ::
   forall a.
   (Typeable a, Show a, Ord a) =>
@@ -72,24 +74,28 @@ addColumn ::
   -- | DataFrame to add column to
   DataFrame ->
   DataFrame
-addColumn name xs d =
-  let (rows, _) = dimensions d
-      diff = rows - V.length xs
-      xs'
-        | diff == 0 = DI.toColumn xs
-        | diff > 0 = BoxedColumn (V.map Just xs <> V.replicate diff Nothing)
-        -- TODO: Consider doing the same fill-to-null logic from before to every
-        -- other column so we can accommodate this new column.
-        | otherwise = error "Newly added column has more rows than the current dataframe"
+addColumn name xs d
+  | M.member name (DI.columnIndices d) = let
+      i = (M.!) (DI.columnIndices d) name
+    in d { columns = columns d V.// [(i, Just xs')] }
+  | otherwise = let
+      (n:rest) = DI.freeIndices d
    in d
-        { columns = MS.insert name xs' (columns d),
-          _columnNames =
-            if name `elem` _columnNames d
-              then _columnNames d
-              else _columnNames d ++ [name]
+        { columns = columns d V.// [(n, Just xs')],
+          columnIndices = M.insert name n (DI.columnIndices d),
+          freeIndices = rest,
+          dataframeDimensions = (if r == 0 then V.length xs else r, c + 1)
         }
+        where diff = r - V.length xs
+              (r, c) = DI.dataframeDimensions d
+              xs'
+                | diff == 0 || DI.isEmpty d = DI.toColumn xs
+                | diff > 0 = BoxedColumn (V.map Just xs <> V.replicate diff Nothing)
+                -- TODO: Consider doing the same fill-to-null logic from before to every
+                -- other column so we can accommodate this new column.
+                | otherwise = error $ "Newly added column has more rows than the current dataframe. Diff is " ++ show diff
 
--- | /O(log n)/ Adds an unboxed vector to the dataframe.
+-- | /O(n)/ Adds an unboxed vector to the dataframe.
 addUnboxedColumn ::
   forall a.
   (Typeable a, Show a, Ord a, VU.Unbox a) =>
@@ -100,32 +106,51 @@ addUnboxedColumn ::
   -- | DataFrame to add to column
   DataFrame ->
   DataFrame
-addUnboxedColumn name xs d =
-  d
-    { columns = MS.insert name (DI.toColumnUnboxed xs) (columns d),
-      _columnNames =
-        if name `elem` _columnNames d
-          then _columnNames d
-          else _columnNames d ++ [name]
-    }
+addUnboxedColumn name xs d
+  | M.member name (DI.columnIndices d) = let
+      i = (M.!) (DI.columnIndices d) name
+    in d { columns = columns d V.// [(i, Just xs')] }
+  | otherwise = let
+      (n:rest) = DI.freeIndices d
+   in d
+        { columns = columns d V.// [(n, Just xs')],
+          columnIndices = M.insert name n (DI.columnIndices d),
+          freeIndices = rest,
+          dataframeDimensions = (if r == 0 then VG.length xs else r, c + 1)
+        }
+        where diff = r - VG.length xs
+              (r, c) = DI.dataframeDimensions d
+              xs'
+                | diff == 0 || DI.isEmpty d = DI.toColumnUnboxed xs
+                | diff > 0 = BoxedColumn (V.map Just (V.convert xs) <> V.replicate diff Nothing)
+                -- TODO: Consider doing the same fill-to-null logic from before to every
+                -- other column so we can accommodate this new column.
+                | otherwise = error $ "Newly added column has more rows than the current dataframe. Diff is " ++ show diff
 
--- | /O(log n)/ Add a column to the dataframe. Not meant for external use.
+-- -- | /O(log n)/ Add a column to the dataframe. Not meant for external use.
 addColumn' ::
   -- | Column Name
   T.Text ->
   -- | Column to add
-  Column ->
+  Maybe Column ->
   -- | DataFrame to add to column
   DataFrame ->
   DataFrame
-addColumn' name xs d =
-  d
-    { columns = MS.insert name xs (columns d),
-      _columnNames =
-        if name `elem` _columnNames d
-          then _columnNames d
-          else _columnNames d ++ [name]
-    }
+addColumn' name xs d
+    | M.member name (DI.columnIndices d) = let
+      i = (M.!) (DI.columnIndices d) name
+    in d { columns = columns d V.// [(i, xs)] }
+  | otherwise = let
+      (n:rest) = DI.freeIndices d
+   in d
+        { columns = columns d V.// [(n, xs)],
+          columnIndices = M.insert name n (DI.columnIndices d),
+          freeIndices = rest,
+          dataframeDimensions = (if r == 0 then l else r, c + 1)
+        }
+        where diff = r - l
+              l = maybe 0 DI.columnLength xs
+              (r, c) = DI.dataframeDimensions d
 
 -- | /O(k)/ Add a column to the dataframe providing a default.
 -- This constructs a new vector and also may convert it
@@ -144,9 +169,9 @@ addColumnWithDefault ::
   DataFrame ->
   DataFrame
 addColumnWithDefault defaultValue name xs d =
-  let (rows, _) = dimensions d
+  let (rows, _) = DI.dataframeDimensions d
       values = xs V.++ V.fromList (repeat defaultValue)
-   in addColumn' name (DI.toColumn $ V.take rows values) d
+   in addColumn' name (Just $ DI.toColumn $ V.take rows values) d
 
 -- | O(k) Apply a function to a given column in a dataframe.
 apply ::
@@ -159,22 +184,25 @@ apply ::
   -- | DataFrame to apply operation to
   DataFrame ->
   DataFrame
-apply columnName f d = case columnName `MS.lookup` columns d of
-  Nothing -> error $ columnNotFound columnName "apply" (columnNames d)
-  Just ((BoxedColumn (column :: V.Vector a))) ->
-    let
-     in case testEquality (typeRep @a) (typeRep @b) of
-          Just Refl -> addColumn' columnName (DI.toColumn (V.map f column)) d
-          Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @b))
-  Just ((UnboxedColumn (column :: VU.Vector a))) ->
-    let
-     in case testEquality (typeRep @a) (typeRep @b) of
-          Just Refl -> case testEquality (typeRep @c) (typeRep @Double) of
-            Just Refl -> addUnboxedColumn columnName (VU.map f column) d
-            Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
-              Just Refl -> addUnboxedColumn columnName (VU.map f column) d
-              Nothing -> addColumn' columnName (DI.toColumn (V.map f (V.convert column))) d
-          Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @b))
+apply columnName f d = case columnName `MS.lookup` DI.columnIndices d of
+  Nothing -> error $ columnNotFound columnName "apply" (map fst $ M.toList $ DI.columnIndices d)
+  Just i -> case DI.columns d V.!? i of
+    Nothing -> error "Internal error: Column is empty" 
+    Just c -> case c of
+      Just ((BoxedColumn (column :: V.Vector a))) ->
+        let
+        in case testEquality (typeRep @a) (typeRep @b) of
+              Just Refl -> addColumn' columnName (Just $ DI.toColumn (V.map f column)) d
+              Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @b))
+      Just ((UnboxedColumn (column :: VU.Vector a))) ->
+        let
+        in case testEquality (typeRep @a) (typeRep @b) of
+              Just Refl -> case testEquality (typeRep @c) (typeRep @Double) of
+                Just Refl -> addUnboxedColumn columnName (VU.map f column) d
+                Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
+                  Just Refl -> addUnboxedColumn columnName (VU.map f column) d
+                  Nothing -> addColumn' columnName (Just $ DI.toColumn (V.map f (V.convert column))) d
+              Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @b))
 
 -- | O(k * n) Apply a function to given column names in a dataframe.
 applyMany ::
@@ -222,24 +250,27 @@ applyWhere ::
   (b -> b) -> -- function to apply
   DataFrame -> -- DataFrame to apply operation to
   DataFrame
-applyWhere filterColumnName condition columnName f df = case filterColumnName `M.lookup` columns df of
-  Nothing -> error $ columnNotFound columnName "apply" (columnNames df)
-  Just (BoxedColumn (column :: Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
-    Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
-    Just Refl ->
-      let filterColumn = V.indexed column
-          indexes = V.map fst $ V.filter (condition . snd) filterColumn
-       in if V.null indexes
-            then df
-            else L.foldl' (\d i -> applyAtIndex i columnName f d) df indexes
-  Just (UnboxedColumn (column :: VU.Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
-    Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
-    Just Refl ->
-      let filterColumn = VU.indexed column
-          indexes = VU.map fst $ VU.filter (condition . snd) filterColumn
-       in if VU.null indexes
-            then df
-            else VU.foldl' (\d i -> applyAtIndex i columnName f d) df indexes
+applyWhere filterColumnName condition columnName f df = case columnName `MS.lookup` DI.columnIndices df of
+  Nothing -> error $ columnNotFound columnName "applyWhere" (map fst $ M.toList $ DI.columnIndices df)
+  Just i -> case DI.columns df V.!? i of
+    Nothing -> error "Internal error: Column is empty" 
+    Just c -> case c of
+      Just (BoxedColumn (column :: Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
+        Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
+        Just Refl ->
+          let filterColumn = V.indexed column
+              indexes = V.map fst $ V.filter (condition . snd) filterColumn
+          in if V.null indexes
+                then df
+                else L.foldl' (\d i -> applyAtIndex i columnName f d) df indexes
+      Just (UnboxedColumn (column :: VU.Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
+        Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
+        Just Refl ->
+          let filterColumn = VU.indexed column
+              indexes = VU.map fst $ VU.filter (condition . snd) filterColumn
+          in if VU.null indexes
+                then df
+                else VU.foldl' (\d i -> applyAtIndex i columnName f d) df indexes
 
 -- | O(k) Apply a function to the column at a given index.
 applyAtIndex ::
@@ -254,38 +285,38 @@ applyAtIndex ::
   -- | DataFrame to apply operation to
   DataFrame ->
   DataFrame
-applyAtIndex i columnName f df = case columnName `M.lookup` columns df of
-  Nothing -> error $ columnNotFound columnName "apply" (columnNames df)
-  Just (BoxedColumn (column :: Vector b)) -> case (typeRep @a) `testEquality` (typeRep @b) of
-    Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
-    Just Refl ->
-      let updated = V.imap (\index value -> if index == i then f value else value) column
-       in addColumn columnName updated df
-  Just (UnboxedColumn (column :: VU.Vector b)) -> case (typeRep @a) `testEquality` (typeRep @b) of
-    Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
-    Just Refl ->
-      let updated = VU.imap (\index value -> if index == i then f value else value) column
-       in addUnboxedColumn columnName updated df
+applyAtIndex i columnName f df = case columnName `MS.lookup` DI.columnIndices df of
+  Nothing -> error $ columnNotFound columnName "applyAtIndex" (map fst $ M.toList $ DI.columnIndices df)
+  Just i -> case DI.columns df V.!? i of
+    Nothing -> error "Internal error: Column is empty" 
+    Just c -> case c of
+      Just (BoxedColumn (column :: Vector b)) -> case (typeRep @a) `testEquality` (typeRep @b) of
+        Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
+        Just Refl ->
+          let updated = V.imap (\index value -> if index == i then f value else value) column
+          in addColumn columnName updated df
+      Just (UnboxedColumn (column :: VU.Vector b)) -> case (typeRep @a) `testEquality` (typeRep @b) of
+        Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
+        Just Refl ->
+          let updated = VU.imap (\index value -> if index == i then f value else value) column
+          in addUnboxedColumn columnName updated df
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
-take n d = d {columns = MS.map take' (columns d)}
+take n d = d {columns = V.map take' (columns d), dataframeDimensions = (min n r, c)}
   where
-    take' (BoxedColumn column) = BoxedColumn (V.take n column)
-    take' (UnboxedColumn column) = UnboxedColumn (VU.take n column)
+    (r, c) = DI.dataframeDimensions d
+    take' Nothing = Nothing
+    take' (Just (BoxedColumn column)) = Just (BoxedColumn (V.take n column))
+    take' (Just (UnboxedColumn column)) = Just (UnboxedColumn (VU.take n column))
 
--- | O(k) Get DataFrame dimensions i.e. (rows, columns)
+-- | O(1) Get DataFrame dimensions i.e. (rows, columns)
 dimensions :: DataFrame -> (Int, Int)
-dimensions d = (numRows, numColumns)
-  where
-    columnSize (BoxedColumn column') = V.length column'
-    columnSize (UnboxedColumn column') = VU.length column'
-    numRows = M.foldr (\c acc -> max acc (columnSize c)) 0 (columns d)
-    numColumns = MS.size $ columns d
+dimensions = DI.dataframeDimensions
 
--- | O(1) Get column names of the DataFrame in order of insertion.
+-- | O(k) Get column names of the DataFrame in order of insertion.
 columnNames :: DataFrame -> [T.Text]
-columnNames = _columnNames
+columnNames = map fst . L.sortBy (compare `on` snd). M.toList . DI.columnIndices
 
 -- | O(n * k) Filter rows by a given condition.
 filter ::
@@ -299,25 +330,30 @@ filter ::
   DataFrame ->
   DataFrame
 filter filterColumnName condition df =
-  let pick indexes c@(BoxedColumn column) = BoxedColumn $ V.ifilter (\i v -> i `S.member` indexes) column
-      pick indexes c@(UnboxedColumn column) = UnboxedColumn $ VU.ifilter (\i v -> i `S.member` indexes) column
-   in case filterColumnName `M.lookup` columns df of
-        Nothing -> error $ columnNotFound filterColumnName "filter" (columnNames df)
-        Just (BoxedColumn (column :: Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
-          Nothing -> error $ addCallPointInfo filterColumnName (Just "filter") (typeMismatchError (typeRep @a) (typeRep @c))
-          Just Refl ->
-            let indexes = V.ifoldl' (\s i v -> if condition v then S.insert i s else s) S.empty column
-             in df {columns = MS.map (pick indexes) (columns df)}
-        Just (UnboxedColumn (column :: VU.Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
-          Nothing -> error $ addCallPointInfo filterColumnName (Just "filter") (typeMismatchError (typeRep @a) (typeRep @c))
-          Just Refl ->
-            let indexes = VU.ifoldl' (\s i v -> if condition v then S.insert i s else s) S.empty column
-             in df {columns = MS.map (pick indexes) (columns df)}
+  let pick _ Nothing = Nothing
+      pick indexes (Just c@(BoxedColumn column)) = Just $ BoxedColumn $ V.ifilter (\i v -> i `S.member` indexes) column
+      pick indexes (Just c@(UnboxedColumn column)) = Just $ UnboxedColumn $ VU.ifilter (\i v -> i `S.member` indexes) column
+      (r', c') = DI.dataframeDimensions df
+   in case filterColumnName `MS.lookup` DI.columnIndices df of
+      Nothing -> error $ columnNotFound filterColumnName "filter" (map fst $ M.toList $ DI.columnIndices df)
+      Just i -> case DI.columns df V.!? i of
+        Nothing -> error "Internal error: Column is empty" 
+        Just c -> case c of
+          Just (BoxedColumn (column :: Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
+            Nothing -> error $ addCallPointInfo filterColumnName (Just "filter") (typeMismatchError (typeRep @a) (typeRep @c))
+            Just Refl ->
+              let indexes = V.ifoldl' (\s i v -> if condition v then S.insert i s else s) S.empty column
+              in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
+          Just (UnboxedColumn (column :: VU.Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
+            Nothing -> error $ addCallPointInfo filterColumnName (Just "filter") (typeMismatchError (typeRep @a) (typeRep @c))
+            Just Refl ->
+              let indexes = VU.ifoldl' (\s i v -> if condition v then S.insert i s else s) S.empty column
+              in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
 
 -- | Sort order taken as a parameter by the sortby function.
 data SortOrder = Ascending | Descending deriving (Eq)
 
--- | O(k ^ 2) Sorts the dataframe by a given row. Currently uses insertion sort
+-- | O(k log n) Sorts the dataframe by a given row. Currently uses insertion sort
 -- under the hood so can be very inefficient for large data.
 --
 -- > sortBy "Age" df
@@ -327,42 +363,50 @@ sortBy ::
   DataFrame ->
   DataFrame
 sortBy sortColumnName order df =
-  let pick indexes c@(BoxedColumn column) = BoxedColumn $ indexes `getIndices` column
-      pick indexes c@(UnboxedColumn column) = UnboxedColumn $ indexes `getIndicesUnboxed` column
-   in case sortColumnName `M.lookup` columns df of
-        Nothing -> error $ columnNotFound sortColumnName "valueCounts" (columnNames df)
-        Just (BoxedColumn (column :: V.Vector c)) ->
-          let indexes = map snd . (if order == Ascending then S.toAscList else S.toDescList) $ VG.ifoldr (\i e acc -> S.insert (e, i) acc) S.empty column
-           in df {columns = MS.map (pick indexes) (columns df)}
-        Just (UnboxedColumn (column :: VU.Vector c)) ->
-          let indexes = map snd $ (if order == Ascending then S.toAscList else S.toDescList) $ VU.ifoldr (\i e acc -> S.insert (e, i) acc) S.empty column
-           in df {columns = MS.map (pick indexes) (columns df)}
+  let pick _ Nothing = Nothing
+      pick indexes (Just c@(BoxedColumn column)) = Just $ BoxedColumn $ indexes `getIndices` column
+      pick indexes (Just c@(UnboxedColumn column)) = Just $ UnboxedColumn $ indexes `getIndicesUnboxed` column
+   in case sortColumnName `MS.lookup` DI.columnIndices df of
+      Nothing -> error $ columnNotFound sortColumnName "sortBy" (map fst $ M.toList $ DI.columnIndices df)
+      Just i -> case DI.columns df V.!? i of
+        Nothing -> error "Internal error: Column is empty" 
+        Just c -> case c of
+          Just (BoxedColumn (column :: V.Vector c)) ->
+            let indexes = map snd . (if order == Ascending then S.toAscList else S.toDescList) $ VG.ifoldr (\i e acc -> S.insert (e, i) acc) S.empty column
+            in df {columns = V.map (pick indexes) (columns df)}
+          Just (UnboxedColumn (column :: VU.Vector c)) ->
+            let indexes = map snd $ (if order == Ascending then S.toAscList else S.toDescList) $ VU.ifoldr (\i e acc -> S.insert (e, i) acc) S.empty column
+            in df {columns = V.map (pick indexes) (columns df)}
 
--- | O(log n) Get the number of elements in a given column.
-columnSize :: T.Text -> DataFrame -> Int
-columnSize name df = case name `MS.lookup` columns df of
-  Nothing -> error $ columnNotFound name "apply" (columnNames df)
-  Just (BoxedColumn column') -> V.length column'
-  Just (UnboxedColumn column') -> VU.length column'
+-- | O(1) Get the number of elements in a given column.
+columnSize :: T.Text -> DataFrame -> Maybe Int
+columnSize name df = case name `MS.lookup` DI.columnIndices df of
+  Nothing -> error $ columnNotFound name "columnSize" (columnNames df)
+  Just i -> case DI.columns df V.!? i of
+    Nothing -> Nothing
+    Just c -> DI.columnLength <$> c
 
--- | O (k log n) Counts the occurences of each value in a given column.
+-- | O (k * n) Counts the occurences of each value in a given column.
 valueCounts :: forall a. (Typeable a, Show a, Ord a) => T.Text -> DataFrame -> [(a, Integer)]
 valueCounts columnName df =
   let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
-   in case columnName `MS.lookup` columns df of
-        Nothing -> error $ columnNotFound columnName "valueCounts" (columnNames df)
-        Just (BoxedColumn (column' :: V.Vector c)) ->
-          let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
-              column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) column'
-           in case repa `testEquality` repc of
-                Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @c))
-                Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
-        Just (UnboxedColumn (column' :: VU.Vector c)) ->
-          let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
-              column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) (VU.convert column')
-           in case repa `testEquality` repc of
-                Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @c))
-                Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
+   in case columnName `MS.lookup` DI.columnIndices df of
+      Nothing -> error $ columnNotFound columnName "sortBy" (map fst $ M.toList $ DI.columnIndices df)
+      Just i -> case DI.columns df V.!? i of
+        Nothing -> error "Internal error: Column is empty" 
+        Just c -> case c of
+          Just (BoxedColumn (column' :: V.Vector c)) ->
+            let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
+                column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) column'
+            in case repa `testEquality` repc of
+                  Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @c))
+                  Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
+          Just (UnboxedColumn (column' :: VU.Vector c)) ->
+            let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
+                column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) (VU.convert column')
+            in case repa `testEquality` repc of
+                  Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @c))
+                  Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
 
 -- | O(n) Selects a number of columns in a given dataframe.
 --
@@ -375,10 +419,17 @@ select cs df
   | not $ any (`elem` columnNames df) cs = error $ columnNotFound (T.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
   | otherwise = L.foldl' addKeyValue DI.empty cs
   where
+    cIndexAssoc = M.toList $ DI.columnIndices df
+    remaining = L.filter (\(c, i) -> c `elem` cs) cIndexAssoc
+    removed = cIndexAssoc L.\\ remaining
+    indexes = map snd remaining
+    (r, c) = DI.dataframeDimensions df
     addKeyValue d k =
       d
-        { columns = MS.insert k (columns df MS.! k) (columns d),
-          _columnNames = _columnNames d ++ [k]
+        { columns = V.imap (\i v -> if i `notElem` indexes then Nothing else v) (columns df),
+          columnIndices = M.fromList remaining,
+          freeIndices = map snd removed ++ DI.freeIndices df,
+          dataframeDimensions = (r, L.length remaining)
         }
 
 -- | O(n) inverse of select
@@ -403,7 +454,7 @@ groupBy names df
   | otherwise = L.foldl' addColumns initDf groupingColumns
   where
     -- Create a string representation of each row.
-    values = V.map (mkRowRep df (S.fromList names)) (V.generate (fst (dimensions df) - 1) id)
+    values = V.map (mkRowRep df (S.fromList names)) (V.generate (fst (dimensions df)) id)
     -- Create a mapping from the row representation to the list of indices that
     -- have that row representation. This will allow us to combine the indexes
     -- where the rows are the same.
@@ -430,48 +481,54 @@ groupBy names df
     groupingColumns = columnNames df L.\\ names
 
 mkRowRep :: DataFrame -> S.Set T.Text -> Int -> String
-mkRowRep df names i = MS.foldlWithKey go "" (columns df)
+mkRowRep df names i = V.ifoldl' go "" (columns df)
   where
-    go acc k (BoxedColumn c) =
-      if S.notMember k names
+    indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (DI.columnIndices df))
+    go acc k Nothing = acc
+    go acc k (Just (BoxedColumn c)) =
+      if S.notMember (indexMap M.! k) names
         then acc
         else case c V.!? i of
           Just e -> acc ++ show e
           Nothing ->
             error $
               "Column "
-                ++ T.unpack k
+                ++ T.unpack (indexMap M.! k)
                 ++ " has less items than "
-                ++ "the other columns."
-    go acc k (UnboxedColumn c) =
-      if S.notMember k names
+                ++ "the other columns at index "
+                ++ show i
+    go acc k (Just (UnboxedColumn c)) =
+      if S.notMember (indexMap M.! k) names
         then acc
         else case c VU.!? i of
           Just e -> acc ++ show e
           Nothing ->
             error $
               "Column "
-                ++ T.unpack k
+                ++ T.unpack (indexMap M.! k)
                 ++ " has less items than "
-                ++ "the other columns."
+                ++ "the other columns at index "
+                ++ show i
 
 mkGroupedColumns :: [Int] -> DataFrame -> DataFrame -> T.Text -> DataFrame
 mkGroupedColumns indices df acc name =
-  case (MS.!) (columns df) name of
-    (BoxedColumn column) ->
+  case (V.!) (DI.columns df) (DI.columnIndices df M.! name) of
+    Nothing -> error "Unexpected"
+    (Just (BoxedColumn column)) ->
       let vs = indices `getIndices` column
        in addColumn name vs acc
-    (UnboxedColumn column) ->
+    (Just (UnboxedColumn column)) ->
       let vs = indices `getIndicesUnboxed` column
        in addUnboxedColumn name vs acc
 
 groupColumns :: [[Int]] -> DataFrame -> DataFrame -> T.Text -> DataFrame
 groupColumns indices df acc name =
-  case (MS.!) (columns df) name of
-    (BoxedColumn column) ->
+  case (V.!) (DI.columns df) (DI.columnIndices df M.! name) of
+    Nothing -> df
+    (Just (BoxedColumn column)) ->
       let vs = V.fromList $ map (`getIndices` column) indices
        in addColumn name vs acc
-    (UnboxedColumn column) ->
+    (Just (UnboxedColumn column)) ->
       let vs = V.fromList $ map (`getIndicesUnboxed` column) indices
        in addColumn name vs acc
 
@@ -502,15 +559,18 @@ combine ::
   DataFrame ->
   DataFrame
 combine targetColumn func firstColumn secondColumn df =
-  if all isJust [M.lookup firstColumn (columns df), M.lookup secondColumn (columns df)]
-    then case ((M.!) (columns df) firstColumn, (M.!) (columns df) secondColumn) of
-      (BoxedColumn (f :: Vector d), BoxedColumn (g :: Vector e)) ->
+  if all isJust [M.lookup firstColumn (DI.columnIndices df), M.lookup secondColumn (DI.columnIndices df)]
+    then case ((V.!) (columns df) (DI.columnIndices df M.! firstColumn), (V.!) (columns df) (DI.columnIndices df M.! secondColumn)) of
+      (Nothing, Nothing) -> df
+      (Nothing, _) -> df
+      (_, Nothing) -> df
+      (Just (BoxedColumn (f :: Vector d)), Just (BoxedColumn (g :: Vector e))) ->
         case testEquality (typeRep @a) (typeRep @d) of
           Nothing -> error $ addCallPointInfo firstColumn (Just "combine") (typeMismatchError (typeRep @a) (typeRep @d))
           Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
             Nothing -> error $ addCallPointInfo secondColumn (Just "combine") (typeMismatchError (typeRep @b) (typeRep @e))
             Just Refl -> addColumn targetColumn (V.zipWith func f g) df
-      (UnboxedColumn (f :: VU.Vector d), UnboxedColumn (g :: VU.Vector e)) ->
+      (Just (UnboxedColumn (f :: VU.Vector d)), Just (UnboxedColumn (g :: VU.Vector e))) ->
         case testEquality (typeRep @a) (typeRep @d) of
           Nothing -> error $ addCallPointInfo firstColumn (Just "combine") (typeMismatchError (typeRep @a) (typeRep @d))
           Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
@@ -520,7 +580,7 @@ combine targetColumn func firstColumn secondColumn df =
               Nothing -> case testEquality (typeRep @c) (typeRep @Double) of
                 Just Refl -> addUnboxedColumn targetColumn (VU.zipWith func f g) df
                 Nothing -> addColumn targetColumn (V.zipWith func (V.convert f) (V.convert g)) df
-      (UnboxedColumn (f :: VU.Vector d), BoxedColumn (g :: Vector e)) ->
+      (Just (UnboxedColumn (f :: VU.Vector d)), Just (BoxedColumn (g :: Vector e))) ->
         case testEquality (typeRep @a) (typeRep @d) of
           Nothing -> error $ addCallPointInfo firstColumn (Just "combine") (typeMismatchError (typeRep @a) (typeRep @d))
           Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
@@ -530,7 +590,7 @@ combine targetColumn func firstColumn secondColumn df =
               Nothing -> case testEquality (typeRep @c) (typeRep @Double) of
                 Just Refl -> addUnboxedColumn targetColumn (VU.convert $ V.zipWith func (V.convert f) g) df
                 Nothing -> addColumn targetColumn (V.zipWith func (V.convert f) g) df
-      (BoxedColumn (f :: V.Vector d), UnboxedColumn (g :: VU.Vector e)) ->
+      (Just (BoxedColumn (f :: V.Vector d)), Just (UnboxedColumn (g :: VU.Vector e))) ->
         case testEquality (typeRep @a) (typeRep @d) of
           Nothing -> error $ addCallPointInfo firstColumn (Just "combine") (typeMismatchError (typeRep @a) (typeRep @d))
           Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
@@ -543,14 +603,15 @@ combine targetColumn func firstColumn secondColumn df =
     else error $ columnNotFound (T.pack $ show $ [targetColumn, firstColumn, secondColumn] L.\\ columnNames df) "combine" (columnNames df)
 
 parseDefaults :: Bool -> DataFrame -> DataFrame
-parseDefaults safeRead df = df {columns = MS.map (parseDefault safeRead) (columns df)}
+parseDefaults safeRead df = df {columns = V.map (parseDefault safeRead) (columns df)}
 
-parseDefault :: Bool -> Column -> Column
-parseDefault safeRead (BoxedColumn (c :: V.Vector a)) =
+parseDefault :: Bool -> Maybe Column -> Maybe Column
+parseDefault _ Nothing = Nothing
+parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
   let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
       repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
    in case repa `testEquality` repText of
-        Nothing -> BoxedColumn c
+        Nothing -> Just $ BoxedColumn c
         Just Refl ->
           let example = T.strip (V.head c)
               nullish = S.fromList ["nan", "NULL", "null", "", " "]
@@ -559,23 +620,25 @@ parseDefault safeRead (BoxedColumn (c :: V.Vector a)) =
                 Just _ ->
                   let safeVector = V.map ((=<<) readInt . emptyToNothing) c
                       hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
-                   in (if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fromMaybe 0 . readInt) c))
+                   in Just (if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fromMaybe 0 . readInt) c))
                 Nothing -> case readDouble example of
                   Just _ ->
                     let safeVector = V.map ((=<<) readDouble . emptyToNothing) c
                         hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
-                     in if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fromMaybe 0 . readDouble) c)
+                     in Just $ if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fromMaybe 0 . readDouble) c)
                   Nothing ->
                     let safeVector = V.map emptyToNothing c
                         hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
-                     in if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+                     in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
 
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
 columnInfo :: DataFrame -> [(String, Int, String)]
-columnInfo df = L.sortBy (compare `on` snd') (MS.foldlWithKey go [] (columns df))
+columnInfo df = L.sortBy (compare `on` snd') (V.ifoldl' go [] (columns df))
   where
-    go acc k (BoxedColumn (c :: Vector a)) = (T.unpack k, V.length $ V.filter (flip S.member nullish . show) c, show $ typeRep @a) : acc
-    go acc k (UnboxedColumn (c :: VU.Vector a)) = (T.unpack k, V.length $ V.filter (flip S.member nullish . show) (V.convert c), show $ typeRep @a) : acc
+    indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (DI.columnIndices df))
+    go acc i Nothing = acc
+    go acc i (Just (BoxedColumn (c :: Vector a))) = (T.unpack (indexMap M.! i), V.length $ V.filter (flip S.member nullish . show) c, show $ typeRep @a) : acc
+    go acc i (Just (UnboxedColumn (c :: VU.Vector a))) = (T.unpack (indexMap M.! i), V.length $ V.filter (flip S.member nullish . show) (V.convert c), show $ typeRep @a) : acc
     nullish = S.fromList ["Nothing", "NULL", "", " ", "nan"]
     snd' (_, x, _) = x

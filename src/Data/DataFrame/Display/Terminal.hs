@@ -13,6 +13,7 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
+import qualified Type.Reflection as Ref
 
 import Control.Monad ( forM_, forM )
 import Data.Bifunctor ( first )
@@ -24,7 +25,6 @@ import Data.Type.Equality
     ( type (:~:)(Refl), TestEquality(testEquality) )
 import GHC.Stack (HasCallStack)
 import Text.Printf
-import qualified Type.Reflection
 import Type.Reflection (typeRep)
 
 data HistogramOrientation = VerticalHistogram | HorizontalHistogram
@@ -32,15 +32,16 @@ data HistogramOrientation = VerticalHistogram | HorizontalHistogram
 plotHistograms :: HasCallStack => HistogramOrientation -> DI.DataFrame -> IO ()
 plotHistograms orientation df = do
     forM_ (Ops.columnNames df) $ \cname -> do
-        plotForColumn cname ((M.!) (DI.columns df) cname) orientation df
+        plotForColumn cname ((V.!) (DI.columns df) (DI.columnIndices df M.! cname)) orientation df
 
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
-plotForColumn :: HasCallStack => T.Text -> DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
-plotForColumn cname (DI.BoxedColumn (column :: V.Vector a)) orientation df = do
-    let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
-        repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
-        repString :: Type.Reflection.TypeRep String = Type.Reflection.typeRep @String
+plotForColumn :: HasCallStack => T.Text -> Maybe DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
+plotForColumn _ Nothing _ _ = return ()
+plotForColumn cname (Just (DI.BoxedColumn (column :: V.Vector a))) orientation df = do
+    let repa :: Ref.TypeRep a = Ref.typeRep @a
+        repText :: Ref.TypeRep T.Text = Ref.typeRep @T.Text
+        repString :: Ref.TypeRep String = Ref.typeRep @String
     let counts = case repa `testEquality` repText of
             Just Refl -> map (first show) $ Ops.valueCounts @T.Text cname df
             Nothing -> case repa `testEquality` repString of
@@ -52,10 +53,10 @@ plotForColumn cname (DI.BoxedColumn (column :: V.Vector a)) orientation df = do
     else case orientation of
         VerticalHistogram -> plotVerticalGivenCounts cname counts
         HorizontalHistogram -> plotGivenCounts cname counts
-plotForColumn cname (DI.UnboxedColumn (column :: VU.Vector a)) orientation df = do
-    let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
-        repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
-        repString :: Type.Reflection.TypeRep String = Type.Reflection.typeRep @String
+plotForColumn cname (Just (DI.UnboxedColumn (column :: VU.Vector a))) orientation df = do
+    let repa :: Ref.TypeRep a = Ref.typeRep @a
+        repText :: Ref.TypeRep T.Text = Ref.typeRep @T.Text
+        repString :: Ref.TypeRep String = Ref.typeRep @String
     let counts = case repa `testEquality` repText of
             Just Refl -> map (first show) $ Ops.valueCounts @T.Text cname df
             Nothing -> case repa `testEquality` repString of
