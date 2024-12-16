@@ -20,6 +20,7 @@ module Data.DataFrame
     Operations.applyWhere,
     Operations.applyMany,
     Operations.applyInt,
+    Operations.applyWithAlias,
     Operations.applyAtIndex,
     Operations.applyDouble,
     Operations.take,

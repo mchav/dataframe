@@ -15,6 +15,7 @@ module Data.DataFrame.Operations
     apply,
     applyMany,
     applyWhere,
+    applyWithAlias,
     applyAtIndex,
     applyInt,
     applyDouble,
@@ -202,6 +203,41 @@ apply columnName f d = case columnName `MS.lookup` DI.columnIndices d of
                 Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
                   Just Refl -> addUnboxedColumn columnName (VU.map f column) d
                   Nothing -> addColumn' columnName (Just $ DI.toColumn (V.map f (V.convert column))) d
+              Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @b))
+
+-- | O(k) Apply a function to a given column in a dataframe and
+-- add the result into alias column. This function is useful for
+
+applyWithAlias ::
+  forall b c.
+  (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c) =>
+  -- | New name
+  T.Text ->
+  -- | function to apply
+  (b -> c) ->
+  -- | Derivative column name
+  T.Text ->
+  -- | DataFrame to apply operation to
+  DataFrame ->
+  DataFrame
+applyWithAlias alias f columnName d = case columnName `MS.lookup` DI.columnIndices d of
+  Nothing -> error $ columnNotFound columnName "applyAt" (map fst $ M.toList $ DI.columnIndices d)
+  Just i -> case DI.columns d V.!? i of
+    Nothing -> error "Internal error: Column is empty" 
+    Just c -> case c of
+      Just ((BoxedColumn (column :: V.Vector a))) ->
+        let
+        in case testEquality (typeRep @a) (typeRep @b) of
+              Just Refl -> addColumn' alias (Just $ DI.toColumn (V.map f column)) d
+              Nothing -> error $ addCallPointInfo columnName (Just "applyAt") (typeMismatchError (typeRep @a) (typeRep @b))
+      Just ((UnboxedColumn (column :: VU.Vector a))) ->
+        let
+        in case testEquality (typeRep @a) (typeRep @b) of
+              Just Refl -> case testEquality (typeRep @c) (typeRep @Double) of
+                Just Refl -> addUnboxedColumn columnName (VU.map f column) d
+                Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
+                  Just Refl -> addUnboxedColumn columnName (VU.map f column) d
+                  Nothing -> addColumn' alias (Just $ DI.toColumn (V.map f (V.convert column))) d
               Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @b))
 
 -- | O(k * n) Apply a function to given column names in a dataframe.
