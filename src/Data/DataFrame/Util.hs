@@ -63,13 +63,14 @@ right = fillRight ' '
 center :: Int -> T.Text -> T.Text
 center = fillCenter ' '
 
-showTable :: [T.Text] -> [[T.Text]] -> T.Text
-showTable header rows =
+showTable :: [T.Text] -> [T.Text] -> [[T.Text]] -> T.Text
+showTable header types rows =
   let cs = map (\h -> ColDesc center h left) header
-      widths = [maximum $ map T.length col | col <- transpose $ header : rows]
+      widths = [maximum $ map T.length col | col <- transpose $ header : types : rows]
+      border = T.intercalate "---" [T.replicate width (T.singleton '-') | width <- widths]
       separator = T.intercalate "-|-" [T.replicate width (T.singleton '-') | width <- widths]
       fillCols fill cols = T.intercalate " | " [fill c width col | (c, width, col) <- zip3 cs widths cols]
-   in T.unlines $ fillCols colTitleFill header : separator : map (fillCols colValueFill) rows
+   in T.unlines $ border : fillCols colTitleFill header : separator : fillCols colTitleFill types : separator : map (fillCols colValueFill) rows
 
 headOr :: a -> [a] -> a
 headOr v [] = v

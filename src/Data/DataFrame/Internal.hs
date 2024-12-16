@@ -105,6 +105,10 @@ instance Show DataFrame where
 asText :: DataFrame -> T.Text
 asText d =
   let header = "index" : map fst (sortBy (compare `on` snd) $ M.toList (columnIndices d))
+      types = V.toList $ V.filter (/= "") $ V.map getType (columns d)
+      getType Nothing = ""
+      getType (Just (BoxedColumn (column :: Vector a))) = T.pack $ show (Type.Reflection.typeRep @a)
+      getType (Just (UnboxedColumn (column :: VU.Vector a))) = T.pack $ show (Type.Reflection.typeRep @a)
       -- Separate out cases dynamically so we don't end up making round trip string
       -- copies.
       get (Just (BoxedColumn (column :: Vector a))) =
@@ -123,7 +127,7 @@ asText d =
       rows =
         transpose $
           zipWith (curry (V.toList . getTextColumnFromFrame d)) [0..] header
-   in showTable header rows
+   in showTable header ("Int":types) rows
 
 metadata :: DataFrame -> String
 metadata df = show (columnIndices df) ++ "\n" ++
