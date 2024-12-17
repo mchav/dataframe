@@ -1,15 +1,19 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
 import qualified Data.DataFrame as D
 import qualified Data.DataFrame.Internal as DI
+import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified System.Exit as Exit
 
+import Control.Exception
 import Test.HUnit
+import GHC.IO (unsafePerformIO)
 
 testData :: D.DataFrame
 testData = D.addColumn "test1" (V.fromList ([1..26] :: [Int]))
@@ -61,6 +65,53 @@ addUnboxedColumn = TestCase (assertEqual "Value should be boxed"
                             (Just $ DI.UnboxedColumn (VU.fromList [1 :: Int, 2, 3]))
                             (DI.getColumn "new" $ D.addColumn "new" (V.fromList [1 :: Int, 2, 3]) D.empty))
 
+-- Adding a column with less values than the current DF dimensions adds column with optionals.
+addSmallerColumnBoxed :: Test
+addSmallerColumnBoxed = TestCase (
+    assertEqual "Missing values should be replaced with Nothing"
+    (Just $ DI.BoxedColumn (V.fromList [Just "a" :: Maybe T.Text, Just "b",  Just "c", Nothing, Nothing]))
+    (DI.getColumn "newer" $ D.addColumn "newer" (V.fromList ["a" :: T.Text, "b", "c"]) $ D.addColumn "new" (V.fromList ["a" :: T.Text, "b", "c", "d", "e"]) D.empty)
+  )
+
+addSmallerColumnUnboxed :: Test
+addSmallerColumnUnboxed = TestCase (
+    assertEqual "Missing values should be replaced with Nothing"
+    (Just $ DI.BoxedColumn (V.fromList [Just 1 :: Maybe Int, Just 2,  Just 3, Nothing, Nothing]))
+    (DI.getColumn "newer" $ D.addColumn "newer" (V.fromList [1 :: Int, 2, 3]) $ D.addColumn "new" (V.fromList [1 :: Int, 2, 3, 4, 5]) D.empty)
+  )
+
+-- Adapted from: https://github.com/BartMassey/chunk/blob/1ee4bd6545e0db6b8b5f4935d97e7606708eacc9/hunit.hs#L29
+assertExpectException :: String -> String ->
+                         IO a -> Assertion
+assertExpectException preface expected action = do
+  r <- catch
+    (action >> (return . Just) "no exception thrown")
+    (\(e::SomeException) ->
+               return (checkForExpectedException e))
+  case r of
+    Nothing  -> return ()
+    Just msg -> assertFailure $ preface ++ ": " ++ msg
+  where
+    checkForExpectedException :: SomeException -> Maybe String
+    checkForExpectedException e
+        | expected `L.isInfixOf` show e = Nothing
+        | otherwise =
+            Just $ "wrong exception detail, expected " ++
+                   expected ++ ", got: " ++ show e
+
+addLargerColumnBoxed :: Test
+addLargerColumnBoxed =
+  TestCase (assertExpectException "[Error Case]"
+                    "Column is too large to add"
+                    (print $ D.addColumn "new" (V.fromList ["a" :: T.Text, "b", "c", "d", "e"])
+                            $ D.addColumn "newer" (V.fromList ["a" :: T.Text, "b", "c"]) D.empty))
+addLargerColumnUnboxed :: Test
+addLargerColumnUnboxed =
+    TestCase (assertExpectException "[Error Case]"
+                    "Column is too large to add"
+                    (print $ D.addColumn "new" (V.fromList [1 :: Int, 2, 3, 4, 5])
+                     $ D.addColumn "newer" (V.fromList [1 :: Int, 2, 3]) D.empty))
+
 dimensionsChangeAfterAdd :: Test
 dimensionsChangeAfterAdd = TestCase (assertEqual "should be (26, 3)"
                                      (26, 3)
@@ -74,11 +125,15 @@ dimensionsNotChangedAfterDuplicate = TestCase (assertEqual "should be (26, 3)"
 
 
 addColumnTest :: [Test]
-addColumnTest = [ 
+addColumnTest = [
              TestLabel "dimensionsChangeAfterAdd" dimensionsChangeAfterAdd
            , TestLabel "dimensionsNotChangedAfterDuplicate" dimensionsNotChangedAfterDuplicate
            , TestLabel "addBoxedColunmToEmpty" addBoxedColumn
            , TestLabel "addBoxedColumnAutoUnboxes" addBoxedColumn
+           , TestLabel "addSmallerColumnBoxed" addSmallerColumnBoxed
+           , TestLabel "addSmallerColumnUnboxed" addSmallerColumnUnboxed
+           , TestLabel "addLargerColumnBoxed" addLargerColumnBoxed
+           , TestLabel "addLargerColumnUnboxed" addLargerColumnUnboxed
            ]
 
 tests :: Test
@@ -89,4 +144,4 @@ tests = TestList $  dimensionsTest
 main :: IO ()
 main = do
     result <- runTestTT tests
-    if failures result > 0 then Exit.exitFailure else Exit.exitSuccess
+    if failures result > 0 || errors result > 0 then Exit.exitFailure else Exit.exitSuccess

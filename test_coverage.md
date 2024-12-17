@@ -14,8 +14,8 @@
   - Adding columns > initial vector size gracefully adds a column that we can retrieve.
   - Adding columns > initial vector size gracefully adds a column updates dimentions.
   - Adding a column with the same name as an existing column overwrites the contents.
-  - Adding a column with more values than the current DF dimensions throws an exception.
-  - Adding a column with less values than the current DF dimensions adds column with optionals.
+  - Adding a column with more values than the current DF dimensions throws an exception. DONE
+  - Adding a column with less values than the current DF dimensions adds column with optionals. DONE
 
 * addColumnWithDefault
   - Adding a column with less values than the current DF dimensions adds column with optionals.

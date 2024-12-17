@@ -116,6 +116,7 @@ addColumn' name xs d
             Nothing -> xs
             Just (BoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
             Just (UnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+        | diff < 0 = error "Column is too large to add"
    in d
         { columns = columns' V.// [(n, xs')],
           columnIndices = M.insert name n (DI.columnIndices d),
