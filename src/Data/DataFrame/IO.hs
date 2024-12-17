@@ -29,7 +29,7 @@ import Control.Monad (foldM_, forM_, replicateM_, foldM, when, zipWithM_, unless
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST ( ST, runST )
 import Data.Char (intToDigit)
-import Data.DataFrame.Internal ( empty, DataFrame, Column(..) )
+import Data.DataFrame.Internal
 import Data.DataFrame.Operations (addColumn, addColumn', columnNames, parseDefaults, parseDefault)
 import Data.DataFrame.Util
 import Data.List (transpose, foldl')
@@ -86,9 +86,13 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
     fillColumns c mutableCols rowCounts handle
 
     -- Freeze the mutable vectors into immutable ones
-    cols <- mapM (freezeColumn rowCounts mutableCols) [0..(numColumns - 1)]
-    let dfColumns = zipWith (mkColumn opts) columnNames cols
-    return $ foldl (\df (name, col) -> addColumn' name col df) empty dfColumns
+    cols <- V.mapM (freezeColumn rowCounts mutableCols) (V.generate numColumns id)
+    return $ DataFrame {
+            columns = V.map (mkColumn opts) cols,
+            freeIndices = [],
+            columnIndices = M.fromList (zip columnNames [0..]),
+            dataframeDimensions = (V.length $ cols V.! 0, V.length $ cols)
+        }
 
 -- | Reads rows from the handle and stores values in mutable vectors.
 fillColumns :: Char -> VM.IOVector (VM.IOVector T.Text) -> VM.IOVector Int -> Handle -> IO ()
@@ -124,10 +128,10 @@ freezeColumn rowCounts mutableCols colIndex = do
     V.freeze (VM.slice 0 count col)
 
 -- | Constructs a dataframe column, optionally inferring types.
-mkColumn :: ReadOptions -> T.Text -> V.Vector T.Text -> (T.Text, Maybe Column)
-mkColumn opts name colData =
+mkColumn :: ReadOptions -> V.Vector T.Text -> Maybe Column
+mkColumn opts colData =
     let col = Just $ BoxedColumn colData
-    in (name, if inferTypes opts then parseDefault (safeRead opts) col else col)
+    in if inferTypes opts then parseDefault (safeRead opts) col else col
 
 
 -- | A naive splitting algorithm. If there are no quotes in the string

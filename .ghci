@@ -3,5 +3,5 @@
 
 import qualified Data.Text as Str
 
-default (Int, Str.Text)
+default (Int, Str.Text, Double)
 

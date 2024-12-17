@@ -110,8 +110,14 @@ addColumn' name xs d
       columns' = if null (DI.freeIndices d)
                  then columns d V.++ V.replicate (VG.length (columns d)) Nothing
                  else columns d
+      xs'
+        | diff == 0 || DI.isEmpty d = xs
+        | diff > 0 = case xs of
+            Nothing -> xs
+            Just (BoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
+            Just (UnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
    in d
-        { columns = columns' V.// [(n, xs)],
+        { columns = columns' V.// [(n, xs')],
           columnIndices = M.insert name n (DI.columnIndices d),
           freeIndices = rest,
           dataframeDimensions = (if r == 0 then l else r, c + 1)
