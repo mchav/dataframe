@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cabal repl --repl-options=-fobject-code -O2
+cabal repl dataframe-lib --repl-options=-fobject-code -O2

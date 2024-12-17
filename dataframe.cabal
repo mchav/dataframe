@@ -37,6 +37,22 @@ library dataframe-lib
     hs-source-dirs:   src
     default-language: Haskell2010
 
+library dataframe-lib-dev
+    exposed-modules: Data.DataFrame,
+                     Data.DataFrame.IO,
+                     Data.DataFrame.Internal,
+                     Data.DataFrame.Operations,
+                     Data.DataFrame.Util,
+                     Data.DataFrame.Display.Terminal
+    build-depends:    base >= 4.17.2.0 && < 4.21,
+                      array ^>= 0.5,
+                      containers >= 0.6.7 && < 0.8,
+                      directory >= 1.3.0.0,
+                      text >= 2.0,
+                      vector ^>= 0.13
+    hs-source-dirs:   src
+    default-language: Haskell2010
+
 executable dataframe
     main-is:       Main.hs
     other-modules: Data.DataFrame,
@@ -61,7 +77,8 @@ test-suite tests
     main-is: DataFrameTests.hs
     build-depends: base >= 4.17.2.0 && < 4.21,
                    HUnit ^>= 1.6,
+                   text >= 2.0,
                    vector ^>= 0.13,
-                   dataframe-lib
+                   dataframe-lib-dev
     hs-source-dirs: tests
     default-language: Haskell2010
