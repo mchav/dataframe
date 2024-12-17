@@ -3,7 +3,10 @@
 module Main where
 
 import qualified Data.DataFrame as D
+import qualified Data.DataFrame.Internal as DI
+import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 import qualified System.Exit as Exit
 
 import Test.HUnit
@@ -46,6 +49,18 @@ takeTest = [ TestLabel "lengthEqualsTakeParam" lengthEqualsTakeParam
            ]
 
 -- addColumn
+-- Adding a boxed vector to an empty dataframe creates a new column boxed containing the vector elements.
+addBoxedColumn :: Test
+addBoxedColumn = TestCase (assertEqual "Two columns should be equal"
+                            (Just $ DI.BoxedColumn (V.fromList ["Thuba" :: T.Text, "Zodwa", "Themba"]))
+                            (DI.getColumn "new" $ D.addColumn "new" (V.fromList ["Thuba" :: T.Text, "Zodwa", "Themba"]) D.empty))
+
+-- Adding an boxed vector with an unboxable type (Int/Double) to an empty dataframe creates a new column boxed containing the vector elements.
+addUnboxedColumn :: Test
+addUnboxedColumn = TestCase (assertEqual "Value should be boxed"
+                            (Just $ DI.UnboxedColumn (VU.fromList [1 :: Int, 2, 3]))
+                            (DI.getColumn "new" $ D.addColumn "new" (V.fromList [1 :: Int, 2, 3]) D.empty))
+
 dimensionsChangeAfterAdd :: Test
 dimensionsChangeAfterAdd = TestCase (assertEqual "should be (26, 3)"
                                      (26, 3)
@@ -59,8 +74,11 @@ dimensionsNotChangedAfterDuplicate = TestCase (assertEqual "should be (26, 3)"
 
 
 addColumnTest :: [Test]
-addColumnTest = [ TestLabel "dimensionsChangeAfterAdd" dimensionsChangeAfterAdd
+addColumnTest = [ 
+             TestLabel "dimensionsChangeAfterAdd" dimensionsChangeAfterAdd
            , TestLabel "dimensionsNotChangedAfterDuplicate" dimensionsNotChangedAfterDuplicate
+           , TestLabel "addBoxedColunmToEmpty" addBoxedColumn
+           , TestLabel "addBoxedColumnAutoUnboxes" addBoxedColumn
            ]
 
 tests :: Test

@@ -15,7 +15,8 @@ module Data.DataFrame.Internal
     asText,
     isEmpty,
     columnLength,
-    metadata
+    metadata,
+    getColumn
   )
 where
 
@@ -43,7 +44,7 @@ import GHC.Stack (HasCallStack)
 import Type.Reflection (TypeRep, Typeable, typeRep)
 
 initialColumnSize :: Int
-initialColumnSize = 128
+initialColumnSize = 8
 
 -- | Our representation of a column is a GADT that can store data in either
 -- a vector with boxed elements or
@@ -56,6 +57,18 @@ instance Show Column where
   show (BoxedColumn column) = show column
   show (UnboxedColumn column) = show column
 
+instance Eq Column where
+  (==) :: Column -> Column -> Bool
+  (==) (BoxedColumn (a :: V.Vector t1)) (BoxedColumn (b :: V.Vector t2)) =
+    case testEquality (typeRep @t1) (typeRep @t2) of
+      Nothing -> False
+      Just Refl -> a == b 
+  (==) (UnboxedColumn (a :: VU.Vector t1)) (UnboxedColumn (b :: VU.Vector t2)) =
+    case testEquality (typeRep @t1) (typeRep @t2) of
+      Nothing -> False
+      Just Refl -> a == b 
+  (==) _ _ = False
+
 data DataFrame = DataFrame
   { -- | Our main data structure stores a dataframe as
     -- a vector of columns. This improv
@@ -66,6 +79,11 @@ data DataFrame = DataFrame
     freeIndices :: [Int],
     dataframeDimensions :: (Int, Int)
   }
+
+getColumn :: T.Text -> DataFrame -> Maybe Column
+getColumn name df = do
+  i <- columnIndices df M.!? name
+  columns df V.! i
 
 isEmpty :: DataFrame -> Bool
 isEmpty df = dataframeDimensions df == (0, 0)
