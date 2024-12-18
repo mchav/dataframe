@@ -50,6 +50,8 @@ import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 import qualified Prelude as P
 
+import Control.Exception
+import Data.DataFrame.Errors (DataFrameException(..))
 import Data.DataFrame.Internal (Column (..), DataFrame (..))
 import Data.DataFrame.Util
 import Data.Function (on)
@@ -161,7 +163,7 @@ apply ::
   DataFrame ->
   DataFrame
 apply columnName f d = case columnName `MS.lookup` DI.columnIndices d of
-  Nothing -> error $ columnNotFound columnName "apply" (map fst $ M.toList $ DI.columnIndices d)
+  Nothing -> throw $ ColumnNotFoundException columnName "apply" (map fst $ M.toList $ DI.columnIndices d)
   Just i -> case DI.columns d V.!? i of
     Nothing -> error "Internal error: Column is empty"
     Just c -> case c of
@@ -196,7 +198,7 @@ applyWithAlias ::
   DataFrame ->
   DataFrame
 applyWithAlias alias f columnName d = case columnName `MS.lookup` DI.columnIndices d of
-  Nothing -> error $ columnNotFound columnName "applyAt" (map fst $ M.toList $ DI.columnIndices d)
+  Nothing -> throw $ ColumnNotFoundException columnName "applyAt" (map fst $ M.toList $ DI.columnIndices d)
   Just i -> case DI.columns d V.!? i of
     Nothing -> error "Internal error: Column is empty"
     Just c -> case c of
@@ -262,7 +264,7 @@ applyWhere ::
   DataFrame -> -- DataFrame to apply operation to
   DataFrame
 applyWhere filterColumnName condition columnName f df = case filterColumnName `MS.lookup` DI.columnIndices df of
-  Nothing -> error $ columnNotFound filterColumnName "applyWhere" (map fst $ M.toList $ DI.columnIndices df)
+  Nothing -> throw $ ColumnNotFoundException filterColumnName "applyWhere" (map fst $ M.toList $ DI.columnIndices df)
   Just i -> case DI.columns df V.!? i of
     Nothing -> error "Internal error: Column is empty"
     Just c -> case c of
@@ -297,7 +299,7 @@ applyAtIndex ::
   DataFrame ->
   DataFrame
 applyAtIndex i columnName f df = case columnName `MS.lookup` DI.columnIndices df of
-  Nothing -> error $ columnNotFound columnName "applyAtIndex" (map fst $ M.toList $ DI.columnIndices df)
+  Nothing -> throw $ ColumnNotFoundException columnName "applyAtIndex" (map fst $ M.toList $ DI.columnIndices df)
   Just i -> case DI.columns df V.!? i of
     Nothing -> error "Internal error: Column is empty"
     Just c -> case c of
@@ -346,7 +348,7 @@ filter filterColumnName condition df =
       pick indexes (Just c@(UnboxedColumn column)) = Just $ UnboxedColumn $ VU.ifilter (\i v -> i `S.member` indexes) column
       (r', c') = DI.dataframeDimensions df
    in case filterColumnName `MS.lookup` DI.columnIndices df of
-      Nothing -> error $ columnNotFound filterColumnName "filter" (map fst $ M.toList $ DI.columnIndices df)
+      Nothing -> throw $ ColumnNotFoundException filterColumnName "filter" (map fst $ M.toList $ DI.columnIndices df)
       Just i -> case DI.columns df V.!? i of
         Nothing -> error "Internal error: Column is empty"
         Just c -> case c of
@@ -378,7 +380,7 @@ sortBy sortColumnName order df =
       pick indexes (Just c@(BoxedColumn column)) = Just $ BoxedColumn $ indexes `getIndices` column
       pick indexes (Just c@(UnboxedColumn column)) = Just $ UnboxedColumn $ indexes `getIndicesUnboxed` column
    in case sortColumnName `MS.lookup` DI.columnIndices df of
-      Nothing -> error $ columnNotFound sortColumnName "sortBy" (map fst $ M.toList $ DI.columnIndices df)
+      Nothing -> throw $ ColumnNotFoundException sortColumnName "sortBy" (map fst $ M.toList $ DI.columnIndices df)
       Just i -> case DI.columns df V.!? i of
         Nothing -> error "Internal error: Column is empty"
         Just c -> case c of
@@ -392,7 +394,7 @@ sortBy sortColumnName order df =
 -- | O(1) Get the number of elements in a given column.
 columnSize :: T.Text -> DataFrame -> Maybe Int
 columnSize name df = case name `MS.lookup` DI.columnIndices df of
-  Nothing -> error $ columnNotFound name "columnSize" (columnNames df)
+  Nothing -> throw $ ColumnNotFoundException name "columnSize" (columnNames df)
   Just i -> case DI.columns df V.!? i of
     Nothing -> Nothing
     Just c -> DI.columnLength <$> c
@@ -402,7 +404,7 @@ valueCounts :: forall a. (Typeable a, Show a, Ord a) => T.Text -> DataFrame -> [
 valueCounts columnName df =
   let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
    in case columnName `MS.lookup` DI.columnIndices df of
-      Nothing -> error $ columnNotFound columnName "sortBy" (map fst $ M.toList $ DI.columnIndices df)
+      Nothing -> throw $ ColumnNotFoundException columnName "sortBy" (map fst $ M.toList $ DI.columnIndices df)
       Just i -> case DI.columns df V.!? i of
         Nothing -> error "Internal error: Column is empty"
         Just c -> case c of
@@ -427,7 +429,7 @@ select ::
   DataFrame ->
   DataFrame
 select cs df
-  | not $ any (`elem` columnNames df) cs = error $ columnNotFound (T.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
+  | not $ any (`elem` columnNames df) cs = throw $ ColumnNotFoundException (T.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
   | otherwise = L.foldl' addKeyValue DI.empty cs
   where
     cIndexAssoc = M.toList $ DI.columnIndices df
@@ -461,7 +463,7 @@ groupBy ::
   DataFrame ->
   DataFrame
 groupBy names df
-  | not $ any (`elem` columnNames df) names = error $ columnNotFound (T.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
+  | not $ any (`elem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
   | otherwise = L.foldl' addColumns initDf groupingColumns
   where
     -- Create a string representation of each row.
@@ -611,7 +613,7 @@ combine targetColumn func firstColumn secondColumn df =
               Nothing -> case testEquality (typeRep @c) (typeRep @Double) of
                 Just Refl -> addUnboxedColumn targetColumn (VU.convert $ V.zipWith func f (V.convert g)) df
                 Nothing -> addColumn targetColumn (V.zipWith func f (V.convert g)) df
-    else error $ columnNotFound (T.pack $ show $ [targetColumn, firstColumn, secondColumn] L.\\ columnNames df) "combine" (columnNames df)
+    else throw $ ColumnNotFoundException (T.pack $ show $ [targetColumn, firstColumn, secondColumn] L.\\ columnNames df) "combine" (columnNames df)
 
 parseDefaults :: Bool -> DataFrame -> DataFrame
 parseDefaults safeRead df = df {columns = V.map (parseDefault safeRead) (columns df)}
