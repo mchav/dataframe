@@ -10,6 +10,7 @@ module Data.DataFrame.Internal
   ( DataFrame (..),
     Column (..),
     toColumn,
+    toColumn',
     toColumnUnboxed,
     empty,
     asText,
@@ -88,15 +89,18 @@ getColumn name df = do
 isEmpty :: DataFrame -> Bool
 isEmpty df = dataframeDimensions df == (0, 0)
 
--- | Converts a an unboxed vector to a column making sure to put
+-- | Converts a boxed vector to a column making sure to put
 -- the vector into an appropriate column type by reflection on the
 -- vector's type parameter.
-toColumn :: forall a. (Typeable a, Show a, Ord a) => Vector a -> Column
-toColumn xs = case testEquality (typeRep @a) (typeRep @Int) of
+toColumn' :: forall a. (Typeable a, Show a, Ord a) => Vector a -> Column
+toColumn' xs = case testEquality (typeRep @a) (typeRep @Int) of
   Just Refl -> UnboxedColumn (VU.convert xs)
   Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
     Just Refl -> UnboxedColumn (VU.convert xs)
     Nothing -> BoxedColumn xs
+
+toColumn :: forall a. (Typeable a, Show a, Ord a) => [a] -> Column
+toColumn = toColumn' . V.fromList
 
 -- | O(1) Gets the number of elements in the column.
 columnLength :: Column -> Int

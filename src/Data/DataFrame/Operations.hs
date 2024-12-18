@@ -33,6 +33,7 @@ module Data.DataFrame.Operations
     sortBy,
     SortOrder (..),
     columnInfo,
+    fromList
   )
 where
 
@@ -75,7 +76,7 @@ addColumn ::
   -- | DataFrame to add column to
   DataFrame ->
   DataFrame
-addColumn name xs = addColumn' name (Just (DI.toColumn xs))
+addColumn name xs = addColumn' name (Just (DI.toColumn' xs))
 
 -- | /O(n)/ Adds an unboxed vector to the dataframe.
 addUnboxedColumn ::
@@ -145,8 +146,8 @@ addColumnWithDefault ::
   DataFrame
 addColumnWithDefault defaultValue name xs d =
   let (rows, _) = DI.dataframeDimensions d
-      values = xs V.++ V.fromList (repeat defaultValue)
-   in addColumn' name (Just $ DI.toColumn $ V.take rows values) d
+      values = xs V.++ V.replicate (rows - (V.length xs)) defaultValue
+   in addColumn' name (Just $ DI.toColumn' values) d
 
 -- | O(k) Apply a function to a given column in a dataframe.
 apply ::
@@ -167,7 +168,7 @@ apply columnName f d = case columnName `MS.lookup` DI.columnIndices d of
       Just ((BoxedColumn (column :: V.Vector a))) ->
         let
         in case testEquality (typeRep @a) (typeRep @b) of
-              Just Refl -> addColumn' columnName (Just $ DI.toColumn (V.map f column)) d
+              Just Refl -> addColumn' columnName (Just $ DI.toColumn' (V.map f column)) d
               Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @b) (typeRep @a))
       Just ((UnboxedColumn (column :: VU.Vector a))) ->
         let
@@ -176,7 +177,7 @@ apply columnName f d = case columnName `MS.lookup` DI.columnIndices d of
                 Just Refl -> addUnboxedColumn columnName (VU.map f column) d
                 Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
                   Just Refl -> addUnboxedColumn columnName (VU.map f column) d
-                  Nothing -> addColumn' columnName (Just $ DI.toColumn (V.map f (V.convert column))) d
+                  Nothing -> addColumn' columnName (Just $ DI.toColumn' (V.map f (V.convert column))) d
               Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @b) (typeRep @a))
 
 -- | O(k) Apply a function to a given column in a dataframe and
@@ -202,7 +203,7 @@ applyWithAlias alias f columnName d = case columnName `MS.lookup` DI.columnIndic
       Just ((BoxedColumn (column :: V.Vector a))) ->
         let
         in case testEquality (typeRep @a) (typeRep @b) of
-              Just Refl -> addColumn' alias (Just $ DI.toColumn (V.map f column)) d
+              Just Refl -> addColumn' alias (Just $ DI.toColumn' (V.map f column)) d
               Nothing -> error $ addCallPointInfo columnName (Just "applyAt") (typeMismatchError (typeRep @a) (typeRep @b))
       Just ((UnboxedColumn (column :: VU.Vector a))) ->
         let
@@ -211,7 +212,7 @@ applyWithAlias alias f columnName d = case columnName `MS.lookup` DI.columnIndic
                 Just Refl -> addUnboxedColumn columnName (VU.map f column) d
                 Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
                   Just Refl -> addUnboxedColumn columnName (VU.map f column) d
-                  Nothing -> addColumn' alias (Just $ DI.toColumn (V.map f (V.convert column))) d
+                  Nothing -> addColumn' alias (Just $ DI.toColumn' (V.map f (V.convert column))) d
               Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @b))
 
 -- | O(k * n) Apply a function to given column names in a dataframe.
@@ -652,3 +653,6 @@ columnInfo df = L.sortBy (compare `on` snd') (V.ifoldl' go [] (columns df))
     go acc i (Just (UnboxedColumn (c :: VU.Vector a))) = (T.unpack (indexMap M.! i), V.length $ V.filter (flip S.member nullish . show) (V.convert c), show $ typeRep @a) : acc
     nullish = S.fromList ["Nothing", "NULL", "", " ", "nan"]
     snd' (_, x, _) = x
+
+fromList :: [(T.Text, Column)] -> DataFrame
+fromList = L.foldl' (\df (name, column) -> addColumn' name (Just column) df) DI.empty

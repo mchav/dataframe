@@ -2,6 +2,8 @@ module Data.DataFrame
   ( Internal.DataFrame,
     Internal.empty,
     Internal.asText,
+    Internal.toColumn,
+    Internal.toColumn',
     IO.readCsv,
     IO.readTsv,
     IO.readValue,
@@ -37,6 +39,7 @@ module Data.DataFrame
     Operations.sortBy,
     Operations.SortOrder (..),
     Operations.columnInfo,
+    Operations.fromList,
     Display.plotHistograms,
     Display.HistogramOrientation (..),
   )
