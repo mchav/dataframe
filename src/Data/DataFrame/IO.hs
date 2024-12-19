@@ -3,10 +3,15 @@
 {-# LANGUAGE Strict #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE GADTs #-}
 
 module Data.DataFrame.IO (
     readSeparated,
+    writeSeparated,
     readCsv,
+    writeCsv,
     readTsv,
     splitIgnoring,
     readValue,
@@ -18,11 +23,13 @@ module Data.DataFrame.IO (
     defaultOptions,
     ReadOptions(..)) where
 
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Mutable as VM
 
 import Control.Monad (foldM_, forM_, replicateM_, foldM, when, zipWithM_, unless)
@@ -33,15 +40,22 @@ import Data.DataFrame.Internal
 import Data.DataFrame.Operations (addColumn, addColumn', columnNames, parseDefaults, parseDefault)
 import Data.DataFrame.Util
 import Data.List (transpose, foldl')
-import Data.Maybe ( fromMaybe )
+import Data.Maybe ( fromMaybe, isJust )
+import Data.Type.Equality
+  ( TestEquality (testEquality),
+    type (:~:) (Refl)
+  )
 import GHC.IO (unsafePerformIO)
 import GHC.IO.Handle
     ( hClose, hSeek, SeekMode(AbsoluteSeek), hIsEOF )
 import GHC.IO.Handle.Types (Handle)
 import GHC.Stack (HasCallStack)
-import Text.Read (readMaybe)
 import System.Directory ( removeFile, getTemporaryDirectory )
-import System.IO ( withFile, IOMode(ReadMode), openTempFile )
+import System.IO ( withFile, IOMode(ReadMode, WriteMode), openTempFile )
+import Type.Reflection
+import Text.Read (readMaybe)
+import Data.Function (on)
+import Unsafe.Coerce (unsafeCoerce)
 
 -- | Record for CSV read options.
 data ReadOptions = ReadOptions {
@@ -94,12 +108,61 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
             dataframeDimensions = (V.length $ cols V.! 0, V.length $ cols)
         }
 
+writeCsv :: String -> DataFrame -> IO ()
+writeCsv = writeSeparated ','
+
+writeSeparated :: Char      -- ^ Separator
+               -> String    -- ^ Path to write to
+               -> DataFrame
+               -> IO ()
+writeSeparated c filepath df = withFile filepath WriteMode $ \handle ->do
+    let (rows, columns) = dataframeDimensions df
+    let headers = map fst (L.sortBy (compare `on` snd) (M.toList (columnIndices df)))
+    TIO.hPutStrLn handle (T.intercalate ", " headers)
+    forM_ [0..(rows - 1)] $ \i -> do
+        let row = getRowAsText df i
+        TIO.hPutStrLn handle (T.intercalate ", " row)
+
+getRowAsText :: DataFrame -> Int -> [T.Text]
+getRowAsText df i = V.ifoldr go [] (columns df)
+  where
+    indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
+    go k Nothing acc = acc
+    go k (Just (BoxedColumn (c :: V.Vector a))) acc = case c V.!? i of
+        Just e -> textRep : acc
+            where textRep = case testEquality (typeRep @a) (typeRep @T.Text) of
+                    Just Refl -> e
+                    -- TODO: Find out how to match on type constructor.
+                    Nothing   -> case testEquality (typeRep @a) (typeRep @(Maybe T.Text)) of
+                        Just Refl -> fromMaybe "null" e
+                        Nothing -> fromOptional (T.pack (show e))
+                  fromOptional "Nothing" = "null"
+                  fromOptional s
+                    | T.isPrefixOf "Just " s = T.drop (T.length "Just ") s
+                    | otherwise = s 
+        Nothing ->
+            error $
+                "Column "
+                ++ T.unpack (indexMap M.! k)
+                ++ " has less items than "
+                ++ "the other columns at index "
+                ++ show i
+    go k (Just (UnboxedColumn c)) acc = case c VU.!? i of
+        Just e -> T.pack (show e) : acc
+        Nothing ->
+            error $
+                "Column "
+                ++ T.unpack (indexMap M.! k)
+                ++ " has less items than "
+                ++ "the other columns at index "
+                ++ show i
+
 -- | Reads rows from the handle and stores values in mutable vectors.
 fillColumns :: Char -> VM.IOVector (VM.IOVector T.Text) -> VM.IOVector Int -> Handle -> IO ()
 fillColumns c mutableCols rowCounts handle = do
     isEOF <- hIsEOF handle
     unless isEOF $ do
-        row <- split c <$> TIO.hGetLine handle
+        row <- map T.strip . split c <$> TIO.hGetLine handle
         zipWithM_ (writeValue mutableCols rowCounts) [0..] row
         fillColumns c mutableCols rowCounts handle
 
@@ -114,7 +177,7 @@ writeValue mutableCols rowCounts colIndex value = do
         let newCapacity = capacity * 2
         newCol <- VM.grow col newCapacity
         VM.write mutableCols colIndex newCol
-    
+
     -- In case we resized we need to get the column again.
     col' <- VM.read mutableCols colIndex
     VM.write col' count value
