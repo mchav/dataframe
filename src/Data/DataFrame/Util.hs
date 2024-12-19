@@ -125,7 +125,8 @@ readValue s = case readMaybe (T.unpack s) of
 readInteger :: (HasCallStack) => T.Text -> Maybe Integer
 readInteger s = case signed decimal (T.strip s) of
   Left _ -> Nothing
-  Right (value, _) -> Just value
+  Right (value, "") -> Just value
+  Right (value, _) -> Nothing
 
 readInt :: (HasCallStack) => T.Text -> Maybe Int
 readInt s = case signed decimal (T.strip s) of
@@ -137,7 +138,8 @@ readDouble :: (HasCallStack) => T.Text -> Maybe Double
 readDouble s =
   case signed double s of
     Left _ -> Nothing
-    Right (value, _) -> Just value
+    Right (value, "") -> Just value
+    Right (value, _) -> Nothing
 
 safeReadValue :: (Read a) => T.Text -> Maybe a
 safeReadValue s = readMaybe (T.unpack s)
