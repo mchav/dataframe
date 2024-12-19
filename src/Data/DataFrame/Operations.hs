@@ -91,7 +91,7 @@ addUnboxedColumn ::
   -- | DataFrame to add to column
   DataFrame ->
   DataFrame
-addUnboxedColumn name xs = addColumn' name (Just (UnboxedColumn xs)) 
+addUnboxedColumn name xs = addColumn' name (Just (UnboxedColumn xs))
 
 -- -- | /O(n)/ Add a column to the dataframe. Not meant for external use.
 addColumn' ::
@@ -211,9 +211,9 @@ applyWithAlias alias f columnName d = case columnName `MS.lookup` DI.columnIndic
         let
         in case testEquality (typeRep @a) (typeRep @b) of
               Just Refl -> case testEquality (typeRep @c) (typeRep @Double) of
-                Just Refl -> addUnboxedColumn columnName (VU.map f column) d
+                Just Refl -> addUnboxedColumn alias (VU.map f column) d
                 Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
-                  Just Refl -> addUnboxedColumn columnName (VU.map f column) d
+                  Just Refl -> addUnboxedColumn alias (VU.map f column) d
                   Nothing -> addColumn' alias (Just $ DI.toColumn' (V.map f (V.convert column))) d
               Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @b) columnName "applyWithAlias"
 
@@ -650,9 +650,11 @@ columnInfo :: DataFrame -> [(String, Int, String)]
 columnInfo df = L.sortBy (compare `on` snd') (V.ifoldl' go [] (columns df))
   where
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (DI.columnIndices df))
+    columnName i = T.unpack (indexMap M.! i)
+    numNulls c = VG.length $ VG.filter (`S.member` nullish) c
     go acc i Nothing = acc
-    go acc i (Just (BoxedColumn (c :: Vector a))) = (T.unpack (indexMap M.! i), V.length $ V.filter (flip S.member nullish . show) c, show $ typeRep @a) : acc
-    go acc i (Just (UnboxedColumn (c :: VU.Vector a))) = (T.unpack (indexMap M.! i), V.length $ V.filter (flip S.member nullish . show) (V.convert c), show $ typeRep @a) : acc
+    go acc i (Just (BoxedColumn (c :: Vector a))) = (columnName i, numNulls (V.map show c), show $ typeRep @a) : acc
+    go acc i (Just (UnboxedColumn (c :: VU.Vector a))) = (columnName i, numNulls (VG.map show (V.convert c)), show $ typeRep @a) : acc
     nullish = S.fromList ["Nothing", "NULL", "", " ", "nan"]
     snd' (_, x, _) = x
 
