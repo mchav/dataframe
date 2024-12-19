@@ -2,12 +2,8 @@
 
 An intuitive, dynamically-typed DataFrame library.
 
-Goals:
-* Exploratory data analysis
-* Shallow learning curve
-
-Non-goals:
-* Static types/strong type-safety
+Familiar with another dataframe library? Get started:
+* [Coming from Polars](./docs/coming_from_polars.md)
 
 Example usage
 
