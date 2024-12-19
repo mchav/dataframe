@@ -212,7 +212,7 @@ index |      name      | birthdate  | weight | height
 2     | Daniel Donovan | 1981-04-30 | 83.1   | 1.75
 ```
 
-The sligh difference is that we parse the data directly from a string since we don't have a `try_parse_date` option. Otherwise single column filtering is intutive.
+The slight difference is that we parse the data directly from a string since we don't have a `try_parse_date` option. Otherwise single column filtering is intutive.
 
 For multiple filter conditions we again make all the filter statements separate. Filtering by m
 
