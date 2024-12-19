@@ -10,11 +10,17 @@ import qualified Data.Text as T
 
 import Control.Exception
 import Data.Array
+import Data.DataFrame.Colours
 import Data.Typeable (Typeable)
 import Type.Reflection (TypeRep)
 
 data DataFrameException where
-    TypeMismatchException :: forall a b. (Typeable a, Typeable b) => TypeRep a -> TypeRep b -> T.Text -> T.Text -> DataFrameException
+    TypeMismatchException :: forall a b. (Typeable a, Typeable b)
+                          => TypeRep a -- ^ given type
+                          -> TypeRep b -- ^ expected type
+                          -> T.Text    -- ^ column name
+                          -> T.Text    -- ^ call point
+                          -> DataFrameException
     ColumnNotFoundException :: T.Text -> T.Text -> [T.Text] -> DataFrameException
     deriving (Exception)
 
@@ -22,20 +28,6 @@ instance Show DataFrameException where
     show :: DataFrameException -> String
     show (TypeMismatchException a b columnName callPoint) = addCallPointInfo columnName (Just callPoint) (typeMismatchError a b)
     show (ColumnNotFoundException columnName callPoint availableColumns) = columnNotFound columnName callPoint availableColumns
-
-
--- terminal color functions
-red :: String -> String
-red s = "\ESC[31m" ++ s ++ "\ESC[0m"
-
-green :: String -> String
-green s = "\ESC[32m" ++ s ++ "\ESC[0m"
-
-brightGreen :: String -> String
-brightGreen s = "\ESC[92m" ++ s ++ "\ESC[0m"
-
-brightBlue :: String -> String
-brightBlue s = "\ESC[94m" ++ s ++ "\ESC[0m"
 
 columnNotFound :: T.Text -> T.Text -> [T.Text] -> String
 columnNotFound name callPoint columns =

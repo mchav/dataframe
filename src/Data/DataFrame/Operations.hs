@@ -171,7 +171,7 @@ apply columnName f d = case columnName `MS.lookup` DI.columnIndices d of
         let
         in case testEquality (typeRep @a) (typeRep @b) of
               Just Refl -> addColumn' columnName (Just $ DI.toColumn' (V.map f column)) d
-              Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @b) (typeRep @a))
+              Nothing -> throw $ TypeMismatchException (typeRep @b) (typeRep @a) columnName "apply"
       Just ((UnboxedColumn (column :: VU.Vector a))) ->
         let
         in case testEquality (typeRep @a) (typeRep @b) of
@@ -180,7 +180,7 @@ apply columnName f d = case columnName `MS.lookup` DI.columnIndices d of
                 Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
                   Just Refl -> addUnboxedColumn columnName (VU.map f column) d
                   Nothing -> addColumn' columnName (Just $ DI.toColumn' (V.map f (V.convert column))) d
-              Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @b) (typeRep @a))
+              Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @b) columnName "apply"
 
 -- | O(k) Apply a function to a given column in a dataframe and
 -- add the result into alias column. This function is useful for
@@ -206,7 +206,7 @@ applyWithAlias alias f columnName d = case columnName `MS.lookup` DI.columnIndic
         let
         in case testEquality (typeRep @a) (typeRep @b) of
               Just Refl -> addColumn' alias (Just $ DI.toColumn' (V.map f column)) d
-              Nothing -> error $ addCallPointInfo columnName (Just "applyAt") (typeMismatchError (typeRep @a) (typeRep @b))
+              Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @b) columnName "applyWithAlias"
       Just ((UnboxedColumn (column :: VU.Vector a))) ->
         let
         in case testEquality (typeRep @a) (typeRep @b) of
@@ -215,7 +215,7 @@ applyWithAlias alias f columnName d = case columnName `MS.lookup` DI.columnIndic
                 Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
                   Just Refl -> addUnboxedColumn columnName (VU.map f column) d
                   Nothing -> addColumn' alias (Just $ DI.toColumn' (V.map f (V.convert column))) d
-              Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @b))
+              Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @b) columnName "applyWithAlias"
 
 -- | O(k * n) Apply a function to given column names in a dataframe.
 applyMany ::
@@ -269,7 +269,7 @@ applyWhere filterColumnName condition columnName f df = case filterColumnName `M
     Nothing -> error "Internal error: Column is empty"
     Just c -> case c of
       Just (BoxedColumn (column :: Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
-        Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
+        Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "applyWhere"
         Just Refl ->
           let filterColumn = V.indexed column
               indexes = V.map fst $ V.filter (condition . snd) filterColumn
@@ -277,7 +277,7 @@ applyWhere filterColumnName condition columnName f df = case filterColumnName `M
                 then df
                 else L.foldl' (\d i -> applyAtIndex i columnName f d) df indexes
       Just (UnboxedColumn (column :: VU.Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
-        Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
+        Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "applyWhere"
         Just Refl ->
           let filterColumn = VU.indexed column
               indexes = VU.map fst $ VU.filter (condition . snd) filterColumn
@@ -304,12 +304,12 @@ applyAtIndex i columnName f df = case columnName `MS.lookup` DI.columnIndices df
     Nothing -> error "Internal error: Column is empty"
     Just c -> case c of
       Just (BoxedColumn (column :: Vector b)) -> case (typeRep @a) `testEquality` (typeRep @b) of
-        Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
+        Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @b) columnName "applyAtIndex"
         Just Refl ->
           let updated = V.imap (\index value -> if index == i then f value else value) column
           in addColumn columnName updated df
       Just (UnboxedColumn (column :: VU.Vector b)) -> case (typeRep @a) `testEquality` (typeRep @b) of
-        Nothing -> error $ addCallPointInfo columnName (Just "applyWhere") (typeMismatchError (typeRep @a) (typeRep @b))
+        Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @b) columnName "applyAtIndex"
         Just Refl ->
           let updated = VU.imap (\index value -> if index == i then f value else value) column
           in addUnboxedColumn columnName updated df
@@ -353,12 +353,12 @@ filter filterColumnName condition df =
         Nothing -> error "Internal error: Column is empty"
         Just c -> case c of
           Just (BoxedColumn (column :: Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
-            Nothing -> error $ addCallPointInfo filterColumnName (Just "filter") (typeMismatchError (typeRep @a) (typeRep @c))
+            Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) filterColumnName "filter"
             Just Refl ->
               let indexes = V.ifoldl' (\s i v -> if condition v then S.insert i s else s) S.empty column
               in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
           Just (UnboxedColumn (column :: VU.Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
-            Nothing -> error $ addCallPointInfo filterColumnName (Just "filter") (typeMismatchError (typeRep @a) (typeRep @c))
+            Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) filterColumnName "filter"
             Just Refl ->
               let indexes = VU.ifoldl' (\s i v -> if condition v then S.insert i s else s) S.empty column
               in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
@@ -412,13 +412,13 @@ valueCounts columnName df =
             let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
                 column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) column'
             in case repa `testEquality` repc of
-                  Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @c))
+                  Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "combine"
                   Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
           Just (UnboxedColumn (column' :: VU.Vector c)) ->
             let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
                 column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) (VU.convert column')
             in case repa `testEquality` repc of
-                  Nothing -> error $ addCallPointInfo columnName (Just "apply") (typeMismatchError (typeRep @a) (typeRep @c))
+                  Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
                   Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
 
 -- | O(n) Selects a number of columns in a given dataframe.
@@ -579,15 +579,15 @@ combine targetColumn func firstColumn secondColumn df =
       (_, Nothing) -> df
       (Just (BoxedColumn (f :: Vector d)), Just (BoxedColumn (g :: Vector e))) ->
         case testEquality (typeRep @a) (typeRep @d) of
-          Nothing -> error $ addCallPointInfo firstColumn (Just "combine") (typeMismatchError (typeRep @a) (typeRep @d))
+          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @d) firstColumn "combine"
           Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
-            Nothing -> error $ addCallPointInfo secondColumn (Just "combine") (typeMismatchError (typeRep @b) (typeRep @e))
+            Nothing -> throw $ TypeMismatchException (typeRep @b) (typeRep @e) secondColumn "combine"
             Just Refl -> addColumn targetColumn (V.zipWith func f g) df
       (Just (UnboxedColumn (f :: VU.Vector d)), Just (UnboxedColumn (g :: VU.Vector e))) ->
         case testEquality (typeRep @a) (typeRep @d) of
-          Nothing -> error $ addCallPointInfo firstColumn (Just "combine") (typeMismatchError (typeRep @a) (typeRep @d))
+          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @d) firstColumn "combine"
           Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
-            Nothing -> error $ addCallPointInfo secondColumn (Just "combine") (typeMismatchError (typeRep @b) (typeRep @e))
+            Nothing -> throw $ TypeMismatchException (typeRep @b) (typeRep @e) secondColumn "combine"
             Just Refl -> case testEquality (typeRep @c) (typeRep @Int) of
               Just Refl -> addUnboxedColumn targetColumn (VU.zipWith func f g) df
               Nothing -> case testEquality (typeRep @c) (typeRep @Double) of
@@ -595,9 +595,9 @@ combine targetColumn func firstColumn secondColumn df =
                 Nothing -> addColumn targetColumn (V.zipWith func (V.convert f) (V.convert g)) df
       (Just (UnboxedColumn (f :: VU.Vector d)), Just (BoxedColumn (g :: Vector e))) ->
         case testEquality (typeRep @a) (typeRep @d) of
-          Nothing -> error $ addCallPointInfo firstColumn (Just "combine") (typeMismatchError (typeRep @a) (typeRep @d))
+          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @d) firstColumn "combine"
           Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
-            Nothing -> error $ addCallPointInfo secondColumn (Just "combine") (typeMismatchError (typeRep @b) (typeRep @e))
+            Nothing -> throw $ TypeMismatchException (typeRep @b) (typeRep @e) secondColumn "combine"
             Just Refl -> case testEquality (typeRep @c) (typeRep @Int) of
               Just Refl -> addUnboxedColumn targetColumn (VU.convert $ V.zipWith func (V.convert f) g) df
               Nothing -> case testEquality (typeRep @c) (typeRep @Double) of
@@ -605,9 +605,9 @@ combine targetColumn func firstColumn secondColumn df =
                 Nothing -> addColumn targetColumn (V.zipWith func (V.convert f) g) df
       (Just (BoxedColumn (f :: V.Vector d)), Just (UnboxedColumn (g :: VU.Vector e))) ->
         case testEquality (typeRep @a) (typeRep @d) of
-          Nothing -> error $ addCallPointInfo firstColumn (Just "combine") (typeMismatchError (typeRep @a) (typeRep @d))
+          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @d) firstColumn "combine"
           Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
-            Nothing -> error $ addCallPointInfo secondColumn (Just "combine") (typeMismatchError (typeRep @b) (typeRep @e))
+            Nothing -> throw $ TypeMismatchException (typeRep @b) (typeRep @e) secondColumn "combine"
             Just Refl -> case testEquality (typeRep @c) (typeRep @Int) of
               Just Refl -> addUnboxedColumn targetColumn (VU.convert $ V.zipWith func f (V.convert g)) df
               Nothing -> case testEquality (typeRep @c) (typeRep @Double) of

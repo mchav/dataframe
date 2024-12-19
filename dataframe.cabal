@@ -28,7 +28,8 @@ library dataframe-lib
                    Data.DataFrame.Operations,
                    Data.DataFrame.Util,
                    Data.DataFrame.Display.Terminal,
-                   Data.DataFrame.Errors
+                   Data.DataFrame.Errors,
+                   Data.DataFrame.Colours
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
                       containers >= 0.6.7 && < 0.8,
@@ -45,7 +46,8 @@ library dataframe-lib-dev
                      Data.DataFrame.Operations,
                      Data.DataFrame.Util,
                      Data.DataFrame.Display.Terminal,
-                     Data.DataFrame.Errors
+                     Data.DataFrame.Errors,
+                     Data.DataFrame.Colours
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
                       containers >= 0.6.7 && < 0.8,
@@ -63,7 +65,8 @@ executable dataframe
                    Data.DataFrame.Operations,
                    Data.DataFrame.Util,
                    Data.DataFrame.Display.Terminal,
-                   Data.DataFrame.Errors
+                   Data.DataFrame.Errors,
+                   Data.DataFrame.Colours
 
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,

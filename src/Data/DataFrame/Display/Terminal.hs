@@ -19,7 +19,7 @@ import Control.Monad ( forM_, forM )
 import Data.Bifunctor ( first )
 import Data.Char ( ord, chr )
 import Data.List (intercalate)
-import Data.DataFrame.Util
+import Data.DataFrame.Colours
 import Data.Typeable (Typeable)
 import Data.Type.Equality
     ( type (:~:)(Refl), TestEquality(testEquality) )

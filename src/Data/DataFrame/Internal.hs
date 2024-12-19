@@ -29,7 +29,7 @@ import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 
-import Data.DataFrame.Util (applySnd, showTable, typeMismatchError, readInt)
+import Data.DataFrame.Util (applySnd, showTable, readInt)
 import Data.Function (on)
 import Data.List (elemIndex, groupBy, sortBy, transpose)
 import Data.Map (Map)
