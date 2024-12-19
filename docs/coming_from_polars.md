@@ -357,6 +357,7 @@ print(result)
 ```haskell
 mean xs = VU.sum xs / (fromIntegral (VU.length xs))
 frame
+    & D.apply "name" (head . T.split (' ' ==))
     & D.applyWithAlias "decade"
                        ((*10) . flip div 10 . year)
                        "birthdate"
@@ -382,6 +383,6 @@ index | decade |                     name                      | sampleSize |   
 ------|--------|-----------------------------------------------|------------|-------------------|-------------------
  Int  |  Int   |                  Vector Text                  |    Int     |      Double       |       Double      
 ------|--------|-----------------------------------------------|------------|-------------------|-------------------
-0     | 1990   | ["Alice Archer"]                              | 1          | 57.9              | 1.56              
-1     | 1980   | ["Ben Brown","Daniel Donovan","Chloe Cooper"] | 3          | 69.73333333333333 | 1.7233333333333334
+0     | 1990   | ["Alice"]                                     | 1          | 57.9              | 1.56              
+1     | 1980   | ["Ben","Daniel","Chloe"]                      | 3          | 69.73333333333333 | 1.7233333333333334
 ```
