@@ -75,7 +75,7 @@ index |      name      | birthdate  | weight | height
 ------|----------------|------------|--------|-------
  Int  |      Text      |    Text    | Double | Double
 ------|----------------|------------|--------|-------
-0     | Alice Archer   | 1997-01-10         | 57.9   | 1.56  
+0     | Alice Archer   | 1997-01-10 | 57.9   | 1.56  
 1     | Ben Brown      | 1985-02-15 | 72.5   | 1.77  
 2     | Chloe Cooper   | 1983-03-22 | 53.6   | 1.65  
 3     | Daniel Donovan | 1981-04-30 | 83.1   | 1.75  
