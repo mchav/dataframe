@@ -38,8 +38,9 @@ main = do
   covid
   putStrLn $ replicate 100 '-'
 
-mean :: VU.Vector Double -> Double
-mean xs = VU.sum xs / fromIntegral (VU.length xs)
+
+mean :: (Fractional a, VG.Vector v a) => v a -> a
+mean xs = VG.sum xs / fromIntegral (VG.length xs)
 
 oneBillingRowChallenge :: IO ()
 oneBillingRowChallenge = do
@@ -47,7 +48,7 @@ oneBillingRowChallenge = do
   print $
     parsed
       & D.groupBy ["City"]
-      & D.reduceBy "Measurement" (\v -> (VU.minimum v, mean v, VU.maximum v))
+      & D.reduceBy "Measurement" (\v -> (VG.minimum v, mean @Double v, VG.maximum v))
 
 housing :: IO ()
 housing = do
@@ -74,7 +75,7 @@ covid = do
       & D.filter "Direction" (== "Exports")
       & D.select ["Direction", "Year", "Country", "Value"]
       & D.groupBy ["Direction", "Year", "Country"]
-      & D.reduceBy "Value" VU.sum
+      & D.reduceBy "Value" VG.sum
 
 chipotle :: IO ()
 chipotle = do
@@ -123,7 +124,7 @@ chipotle = do
       -- It's more efficient to filter before grouping.
       & D.filter "item_name" (searchTerm ==)
       & D.groupBy ["item_name"]
-      & D.reduceBy "quantity" VU.sum
+      & D.reduceBy "quantity" VG.sum
       & D.sortBy "quantity" D.Descending
 
   -- Similarly, we can aggregate quantities by all rows.
@@ -131,7 +132,7 @@ chipotle = do
     f
       & D.select ["item_name", "quantity"]
       & D.groupBy ["item_name"]
-      & D.reduceBy "quantity" VU.sum
+      & D.reduceBy "quantity" VG.sum
       & D.sortBy "quantity" D.Descending
       & D.take 10
 

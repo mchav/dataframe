@@ -112,9 +112,10 @@ main :: IO ()
 main = do
     ...
     print $ df_csv
-          & D.applyWithAlias "birth_year"
-                             (T.take 4)
-                             "birthdate"
+          & D.as "birth_year"
+                D.apply "birth_year"
+                    (T.take 4)
+                    "birthdate"
           & D.combine "bmi"
                       (\w h -> w / h ** 2)
                       "weight"
@@ -156,8 +157,8 @@ We instead write this two `applyWithAlias` calls:
 
 ```haskell
 df_csv
-    & D.applyWithAlias "weight-5%" (*0.95) "weight"
-    & D.applyWithAlias "height-5%" (*0.95) "height"
+    & D.as "weight-5%" D.apply "weight" (*0.95) "weight"
+    & D.as "height-5%" D.apply "height" (*0.95) "height"
     & D.select ["name", "weight-5%", "height-5%"]
 ```
 
@@ -176,7 +177,7 @@ index |      name      |     height-5%      |     weight-5%
 However we can make our program shorter by using regular Haskell and folding over the dataframe.
 
 ```haskell
-let reduce n df = D.applyWithAlias (n <> "-5%") (*0.95) n df
+let reduce name = D.as (name <> "-5%") D.apply name (*0.95)
 df_csv
     & flip (foldr reduce) ["weight", "height"]
     & D.select ["name", "weight-5%", "height-5%"]
@@ -193,12 +194,12 @@ print(result)
 Versus
 
 ```haskell
+bornAfter1990 = fromMaybe False
+              . fmap (1990 >)
+              . D.readInt
+              . T.take 4 
 frame &
-    D.filter "birthdate"
-             (fromMaybe False
-             . fmap (1990 >)
-             . D.readInt
-             . T.take 4)
+    D.filter "birthdate" bornAfter1990
 ```
 
 ```
@@ -255,25 +256,22 @@ print(result)
 Polars's `groupBy` does an implicit select. In dataframe the select is written explcitly.
 
 ```haskell
-frame & D.applyWithAlias "decade"
-                         ((*10) . flip div 10 . year)
-                         "birthdate"
+frame & D.as "decade"
+            D.apply "birthdate"
+                ((*10) . flip div 10 . year)
      & D.valueCounts @Int "decade"
 ```
 
 dataframe also has a general groupBy operation but it aggregates the remaining columns. To get the exact same behaviour as in Polars we'd have to create a new row to aggregate by.
 
 ```haskell
-import qualified Data.Vector.Unboxed as VU
 
 frame
-    & D.applyWithAlias "decade"
-                       ((*10) . flip div 10 . year)
-                       "birthdate"
-    & D.addColumnWithDefault (1 :: Int) "len" V.empty
-    & D.select ["decade", "len"]
-    & D.groupBy ["decade"]
-    & D.reduceBy @Int "len" VU.length
+    & D.as "decade"
+            D.apply "birthdate"
+                ((*10) . flip div 10 . year)
+    & D.select ["decade"]
+    & D.groupByAgg ["decade"] D.Count
 ```
 
 ```
@@ -301,25 +299,13 @@ print(result)
 ```
 
 ```haskell
-import qualified Data.Vector.Unboxed as VU
-
-mean xs = VU.sum xs / (fromIntegral (VU.length xs))
+decade = (*10) . flip div 10 . year
 frame
-    & D.applyWithAlias "decade"
-                       ((*10) . flip div 10 . year)
-                       "birthdate"
-    & D.addColumnWithDefault (1 :: Int) "sampleSize" V.empty
-    & D.applyWithAlias @Double "avg_weight"
-                               id
-                               "weight"
-    & D.applyWithAlias @Double "tallest"
-                               id
-                               "height"
+    & D.as "decade" D.apply "birthdate" decade
+    & D.as "sampleSize" D.groupByAgg "decade" D.Count
+    & D.as "avg_weight "D.reduceByAgg "weight" D.Mean
+    & D.as "tallest" D.reduceByAgg "height" D.Maximum
     & D.select ["decade", "sampleSize", "avg_weight", "tallest"]
-    & D.groupBy ["decade"]
-    & D.reduceBy @Int "sampleSize" VU.length
-    & D.reduceBy @Double "avg_weight" mean
-    & D.reduceBy @Double "tallest" VU.maximum
 ```
 
 ```
@@ -355,34 +341,22 @@ print(result)
 ```
 
 ```haskell
-mean xs = VU.sum xs / (fromIntegral (VU.length xs))
 frame
     & D.apply "name" (head . T.split (' ' ==))
-    & D.applyWithAlias "decade"
+    & D.as "decade" D.apply "birthdate"
                        ((*10) . flip div 10 . year)
-                       "birthdate"
-    & D.addColumnWithDefault (1 :: Int) "sampleSize" V.empty
-    -- Copy target columns for aggregation.
-    & D.applyWithAlias @Double "avg_weight"
-                               id
-                               "weight"
-    & D.applyWithAlias @Double "avg_height"
-                               id
-                               "height"
-            
-    & D.drop ["birthdate", "weight", "height"]
-    & D.groupBy ["decade"]
-    & D.reduceBy @Int "sampleSize" VU.length
-    & D.reduceBy @Double "avg_weight" mean
-    & D.reduceBy @Double "avg_height" mean
+    & D.drop ["birthdate"]
+    & D.groupByAgg ["decade"] D.Count
+    & D.as "avg_weight" D.reduceByAgg "weight" D.Mean
+    & D.as "avg_height" D.reduceByAgg "height" D.Mean
 ```
 
 ```
---------------------------------------------------------------------------------------------------------------------
-index | decade |                     name                      | sampleSize |    avg_weight     |     avg_height    
-------|--------|-----------------------------------------------|------------|-------------------|-------------------
- Int  |  Int   |                  Vector Text                  |    Int     |      Double       |       Double      
-------|--------|-----------------------------------------------|------------|-------------------|-------------------
-0     | 1990   | ["Alice"]                                     | 1          | 57.9              | 1.56              
-1     | 1980   | ["Ben","Daniel","Chloe"]                      | 3          | 69.73333333333333 | 1.7233333333333334
+------------------------------------------------------------------------------------------
+index | decade |           name           |    avg_weight     |     avg_height     | Count
+------|--------|--------------------------|-------------------|--------------------|------
+ Int  |  Int   |       Vector Text        |      Double       |       Double       |  Int 
+------|--------|--------------------------|-------------------|--------------------|------
+0     | 1990   | ["Alice"]                | 57.9              | 1.56               | 1    
+1     | 1980   | ["Ben","Daniel","Chloe"] | 69.73333333333333 | 1.7233333333333334 | 3   
 ```

@@ -25,15 +25,19 @@ module Data.DataFrame.Operations
     select,
     drop,
     groupBy,
+    groupByAgg,
     reduceBy,
+    reduceByAgg,
     columnSize,
     combine,
     parseDefaults,
     parseDefault,
     sortBy,
     SortOrder (..),
+    Aggregation(..),
     columnInfo,
-    fromList
+    fromList,
+    as
   )
 where
 
@@ -54,7 +58,7 @@ import Control.Exception
 import Data.DataFrame.Errors (DataFrameException(..))
 import Data.DataFrame.Internal (Column (..), DataFrame (..))
 import Data.DataFrame.Util
-import Data.Function (on)
+import Data.Function (on, (&))
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Type.Equality
   ( TestEquality (testEquality),
@@ -150,6 +154,22 @@ addColumnWithDefault defaultValue name xs d =
   let (rows, _) = DI.dataframeDimensions d
       values = xs V.++ V.replicate (rows - (V.length xs)) defaultValue
    in addColumn' name (Just $ DI.toColumn' values) d
+
+rename :: T.Text -> T.Text -> DataFrame -> DataFrame
+rename orig new df = let
+    columnIndex = (M.!) (DI.columnIndices df) orig
+    newColumnIndices = M.insert new columnIndex (M.delete orig (DI.columnIndices df))
+  in df { columnIndices = newColumnIndices}
+
+
+as :: forall a b c. (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c)
+   => T.Text
+   -> (T.Text -> a -> DataFrame -> DataFrame)
+   -> T.Text
+   -> a
+   -> DataFrame
+   -> DataFrame
+as alias func name f = rename name alias . func name f
 
 -- | O(k) Apply a function to a given column in a dataframe.
 apply ::
@@ -540,19 +560,94 @@ groupColumns indices df acc name =
     Nothing -> df
     (Just (BoxedColumn column)) ->
       let vs = V.fromList $ map (`getIndices` column) indices
-       in addColumn name vs acc
+       in addColumn' name (Just $ GroupedBoxedColumn vs) acc
     (Just (UnboxedColumn column)) ->
       let vs = V.fromList $ map (`getIndicesUnboxed` column) indices
-       in addColumn name vs acc
+       in addColumn' name (Just $ GroupedUnboxedColumn vs) acc
+
+data Aggregation = Count
+                 | Mean
+                 | Minimum
+                 | Median
+                 | Maximum deriving (Show, Eq)
+
+groupByAgg :: [T.Text] -> Aggregation -> DataFrame -> DataFrame
+groupByAgg columnNames agg df = let
+  in case agg of
+    Count -> addColumnWithDefault @Int 1 (T.pack (show agg)) V.empty df
+           & groupBy columnNames
+           & reduceBy @Int "Count" VG.length
+    _ -> error "Unimplemented"
 
 -- O (k * n) Reduces a vector valued volumn with a given function.
 reduceBy ::
-  (Typeable a, Show a, Ord a, Typeable b, Show b, Ord b, Typeable (v a), Show (v a), Ord (v a), VG.Vector v a) =>
+  forall a b . (Typeable a, Typeable b, Show b, Ord b) =>
   T.Text ->
-  (v a -> b) ->
+  (forall v . (VG.Vector v a) => v a -> b) ->
   DataFrame ->
   DataFrame
-reduceBy = apply
+reduceBy name f df = case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a) (typeRep @a') of
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map f column)) df
+          Nothing -> error "Type error"
+        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a) (typeRep @a') of
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map f column)) df
+          Nothing -> error "Type error"
+        Nothing -> error "Column is ungrouped"
+
+reduceByAgg :: T.Text
+            -> Aggregation
+            -> DataFrame
+            -> DataFrame
+reduceByAgg name agg df = case agg of
+  Count   -> case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.length column)) df
+        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.length column)) df
+  Mean    -> case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
+          Just Refl -> let
+              mean v = fromIntegral (VG.sum v) / fromIntegral (VG.length v) :: Double
+            in addColumn' name (Just $ DI.toColumn' (VG.map mean column)) df
+          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+            Just Refl -> let
+                mean v = VG.sum v / fromIntegral (VG.length v)
+              in addColumn' name (Just $ DI.toColumn' (VG.map mean column)) df
+            Nothing -> error $ "Cannot get mean of non-numeric column: " ++ (T.unpack name) -- Not sure what to do with no numeric - return nothing???
+        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
+          Just Refl -> let
+              mean v = fromIntegral (VG.sum v) / fromIntegral (VG.length v) :: Double
+            in addColumn' name (Just $ DI.toColumn' (VG.map mean column)) df
+          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+            Just Refl -> let
+                mean v = VG.sum v / fromIntegral (VG.length v)
+              in addColumn' name (Just $ DI.toColumn' (VG.map mean column)) df
+  Minimum -> case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.minimum column)) df
+        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.minimum column)) df
+  Maximum -> case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.maximum column)) df
+        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.maximum column)) df
+  _ -> error "UNIMPLEMENTED"
 
 -- O (k) combines two columns into a single column using a given function similar to zipWith.
 --

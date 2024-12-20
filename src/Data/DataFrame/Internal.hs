@@ -52,22 +52,33 @@ initialColumnSize = 8
 data Column where
   BoxedColumn :: (Typeable a, Show a, Ord a) => Vector a -> Column
   UnboxedColumn :: (Typeable a, Show a, Ord a, Unbox a) => VU.Vector a -> Column
+  GroupedBoxedColumn :: (Typeable a, Show a, Ord a) => Vector (Vector a) -> Column
+  GroupedUnboxedColumn :: (Typeable a, Show a, Ord a, Unbox a) => Vector (VU.Vector a) -> Column
 
 instance Show Column where
   show :: Column -> String
   show (BoxedColumn column) = show column
   show (UnboxedColumn column) = show column
+  show (GroupedBoxedColumn column) = show column
 
 instance Eq Column where
   (==) :: Column -> Column -> Bool
   (==) (BoxedColumn (a :: V.Vector t1)) (BoxedColumn (b :: V.Vector t2)) =
     case testEquality (typeRep @t1) (typeRep @t2) of
       Nothing -> False
-      Just Refl -> a == b 
+      Just Refl -> a == b
   (==) (UnboxedColumn (a :: VU.Vector t1)) (UnboxedColumn (b :: VU.Vector t2)) =
     case testEquality (typeRep @t1) (typeRep @t2) of
       Nothing -> False
-      Just Refl -> a == b 
+      Just Refl -> a == b
+  (==) (GroupedBoxedColumn (a :: V.Vector t1)) (GroupedBoxedColumn (b :: V.Vector t2)) =
+    case testEquality (typeRep @t1) (typeRep @t2) of
+      Nothing -> False
+      Just Refl -> a == b
+  (==) (GroupedUnboxedColumn (a :: V.Vector t1)) (GroupedUnboxedColumn (b :: V.Vector t2)) =
+    case testEquality (typeRep @t1) (typeRep @t2) of
+      Nothing -> False
+      Just Refl -> a == b
   (==) _ _ = False
 
 data DataFrame = DataFrame
@@ -106,6 +117,8 @@ toColumn = toColumn' . V.fromList
 columnLength :: Column -> Int
 columnLength (BoxedColumn xs) = VG.length xs
 columnLength (UnboxedColumn xs) = VG.length xs
+columnLength (GroupedBoxedColumn xs) = VG.length xs
+columnLength (GroupedUnboxedColumn xs) = VG.length xs
 
 -- | Converts a an unboxed vector to a column making sure to put
 -- the vector into an appropriate column type by reflection on the
@@ -131,6 +144,8 @@ asText d =
       getType Nothing = ""
       getType (Just (BoxedColumn (column :: Vector a))) = T.pack $ show (Type.Reflection.typeRep @a)
       getType (Just (UnboxedColumn (column :: VU.Vector a))) = T.pack $ show (Type.Reflection.typeRep @a)
+      getType (Just (GroupedBoxedColumn (column :: V.Vector a))) = T.pack $ show (Type.Reflection.typeRep @a)
+      getType (Just (GroupedUnboxedColumn (column :: V.Vector a))) = T.pack $ show (Type.Reflection.typeRep @a)
       -- Separate out cases dynamically so we don't end up making round trip string
       -- copies.
       get (Just (BoxedColumn (column :: Vector a))) =
@@ -143,6 +158,8 @@ asText d =
                 Just Refl -> V.map T.pack column
                 Nothing -> V.map (T.pack . show) column
       get (Just (UnboxedColumn column)) = V.map (T.pack . show) (V.convert column)
+      get (Just (GroupedBoxedColumn column)) = V.map (T.pack . show) (V.convert column)
+      get (Just (GroupedUnboxedColumn column)) = V.map (T.pack . show) (V.convert column)
       getTextColumnFromFrame df (i, name) = if i == 0
                                             then V.fromList (map (T.pack . show) [0..(fst (dataframeDimensions df) - 1)])
                                             else get $ (V.!) (columns d) ((M.!) (columnIndices d) name)
