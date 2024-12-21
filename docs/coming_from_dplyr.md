@@ -1,3 +1,7 @@
+# Coming from dplyr
+
+This tutorial will walk through the examples in dplyr's [mini tutorial](https://dplyr.tidyverse.org/) showing how concepts in dplyr map to dataframe.
+
 TODO: Add notes about implementations
 
 ```r
@@ -152,6 +156,7 @@ starwars %>%
 ```
 
 ```haskell
+-- We define a custom mean function since the column contains optionals.
 sum' xs = VG.foldr (\n acc -> acc + (fromMaybe 0 n)) 0 xs
 mean xs = (fromIntegral $ sum' xs) / (fromIntegral (VG.length (VG.filter isJust xs))) :: Double
 starwars & D.select ["species", "mass"]
