@@ -597,7 +597,7 @@ reduceBy name f df = case name `MS.lookup` DI.columnIndices df of
         Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a) (typeRep @a') of
           Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map f column)) df
           Nothing -> error "Type error"
-        Nothing -> error "Column is ungrouped"
+        _ -> error "Column is ungrouped"
 
 reduceByAgg :: T.Text
             -> Aggregation
