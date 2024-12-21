@@ -20,6 +20,26 @@ starwars %>%
 #> #   vehicles <list>, starships <list>
 ```
 
+```haskell
+starwars & D.filter "species" (("Droid" :: Str.Text) ==)
+         & D.take 10
+```
+
+```
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+index |  name  |  height   |   mass    | hair_color | skin_color  | eye_color | birth_year | sex  |  gender   | homeworld | species |                                                                   films                                                                   |  vehicles  | starships 
+------|--------|-----------|-----------|------------|-------------|-----------|------------|------|-----------|-----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------|------------|-----------
+ Int  |  Text  | Maybe Int | Maybe Int |    Text    |    Text     |   Text    | Maybe Int  | Text |   Text    |   Text    |  Text   |                                                                   Text                                                                    | Maybe Text | Maybe Text
+------|--------|-----------|-----------|------------|-------------|-----------|------------|------|-----------|-----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------|------------|-----------
+0     | C-3PO  | Just 167  | Just 75   | NA         | gold        | yellow    | Just 112   | none | masculine | Tatooine  | Droid   | A New Hope, The Empire Strikes Back, Return of the Jedi, The Phantom Menace, Attack of the Clones, Revenge of the Sith                    | Nothing    | Nothing   
+1     | R2-D2  | Just 96   | Just 32   | NA         | white, blue | red       | Just 33    | none | masculine | Naboo     | Droid   | A New Hope, The Empire Strikes Back, Return of the Jedi, The Phantom Menace, Attack of the Clones, Revenge of the Sith, The Force Awakens | Nothing    | Nothing   
+2     | R5-D4  | Just 97   | Just 32   | NA         | white, red  | red       | Nothing    | none | masculine | Tatooine  | Droid   | A New Hope                                                                                                                                | Nothing    | Nothing   
+3     | IG-88  | Just 200  | Just 140  | none       | metal       | red       | Just 15    | none | masculine | NA        | Droid   | The Empire Strikes Back                                                                                                                   | Nothing    | Nothing   
+4     | R4-P17 | Just 96   | Nothing   | none       | silver, red | red, blue | Nothing    | none | feminine  | NA        | Droid   | Attack of the Clones, Revenge of the Sith                                                                                                 | Nothing    | Nothing   
+5     | BB8    | Nothing   | Nothing   | none       | none        | black     | Nothing    | none | masculine | NA        | Droid   | The Force Awakens                                                                                                                         | Nothing    | Nothing
+```
+
+
 ```r
 starwars %>% 
   select(name, ends_with("color"))
@@ -35,7 +55,11 @@ starwars %>%
 ```
 
 ```haskell
-starwars & D.select ("name":[cols | cols <- Prelude.filter (Str.isSuffixOf  "color") (D.columnNames starwars)]) &
+columns = (D.columnNames starwars)
+isColorColumn = Prelude.filter (Str.isSuffixOf  "color")
+colorColumns = [cols | cols <- isColorColumn columns]
+starwars & D.select ("name":colorColumns)
+         & D.take 10
 ```
 
 
@@ -77,6 +101,8 @@ bmi w h = (fromIntegral w) / (fromIntegral h / 100) ** 2 :: Double
 targetColumns = Prelude.takeWhile ("mass" /=) (D.columnNames starwars) ++ ["mass", "bmi"]
 
 starwars &
+    -- mass and height are optionals so we combine them with
+    -- Haskell's Applicative operators.
     D.combine @(Maybe Int) "bmi" (\w h -> bmi <$> w <*> h) "mass" "height" &
     D.select targetColumns &
     D.take 10
@@ -162,6 +188,9 @@ mean xs = (fromIntegral $ sum' xs) / (fromIntegral (VG.length (VG.filter isJust 
 starwars & D.select ["species", "mass"]
          & D.groupByAgg ["species"] D.Count
          & D.reduceBy "mass" mean
+         -- Always better to be explcit about types for
+         -- numbers but you can also turn on defaults
+         -- to save keystrokes.
          & D.filter "Count" ((1::Int)<)
          & D.filter "mass" ((50 ::Double)<)
 ```
