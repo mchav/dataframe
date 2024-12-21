@@ -4,6 +4,7 @@ An intuitive, dynamically-typed DataFrame library.
 
 Familiar with another dataframe library? Get started:
 * [Coming from Polars](./docs/coming_from_polars.md)
+* [Coming from dplyr](./docs/coming_from_dplyr.md)
 
 Example usage
 
