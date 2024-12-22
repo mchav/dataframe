@@ -116,7 +116,7 @@ main = do
     print $ df_csv
           & D.as "birth_year"
                 D.apply "birthdate"
-                    ((\(year, _, _) ->  year) . toGregorian)
+                    (\(YearMonthDay y _ _) -> y)
           & D.combine "bmi"
                       (\w h -> w / h ** 2)
                       "weight"
@@ -196,8 +196,7 @@ Versus
 
 ```haskell
 bornAfter1990 = ( (< 1990)
-                . (\(year, _, _) -> year)
-                . toGregorian)
+                . (\(YearMonthDay y _ _) -> y))
 df &
     D.filter "birthdate" bornAfter1990
 ```
@@ -224,8 +223,7 @@ print(result)
 ```
 
 ```haskell
-year = ( (\(year, _, _) -> year)
-       . toGregorian)
+year (YearMonthDay y _ _) = y
 between a b y = y >= a && y <= b 
 df
   & D.filter "birthdate"
