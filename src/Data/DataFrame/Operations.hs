@@ -60,6 +60,7 @@ import Data.DataFrame.Internal (Column (..), DataFrame (..))
 import Data.DataFrame.Util
 import Data.Function (on, (&))
 import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Time
 import Data.Type.Equality
   ( TestEquality (testEquality),
     type (:~:) (Refl),
@@ -718,6 +719,8 @@ parseDefault _ Nothing = Nothing
 parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
   let repa :: Type.Reflection.TypeRep a = Type.Reflection.typeRep @a
       repText :: Type.Reflection.TypeRep T.Text = Type.Reflection.typeRep @T.Text
+      parseTimeOpt s = parseTimeM {- Accept leading/trailing whitespace -} True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Maybe Day
+      unsafeParseTime s = parseTimeOrError {- Accept leading/trailing whitespace -} True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Day
    in case repa `testEquality` repText of
         Nothing -> Just $ BoxedColumn c
         Just Refl ->
@@ -734,10 +737,15 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
                     let safeVector = V.map ((=<<) readDouble . emptyToNothing) c
                         hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
                      in Just $ if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fromMaybe 0 . readDouble) c)
-                  Nothing ->
-                    let safeVector = V.map emptyToNothing c
+                  Nothing -> case parseTimeOpt example of
+                    Just d -> let
+                        safeVector = V.map ((=<<) parseTimeOpt . emptyToNothing) c
                         hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
-                     in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+                      in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn (V.map unsafeParseTime c)
+                    Nothing -> let
+                        safeVector = V.map emptyToNothing c
+                        hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
+                      in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
 
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
