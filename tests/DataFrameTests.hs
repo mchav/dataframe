@@ -5,6 +5,7 @@ module Main where
 
 import qualified Data.DataFrame as D
 import qualified Data.DataFrame.Internal as DI
+import qualified Data.DataFrame.Operations as DO
 import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Vector as V
@@ -12,8 +13,11 @@ import qualified Data.Vector.Unboxed as VU
 import qualified System.Exit as Exit
 
 import Control.Exception
+import Data.Time
 import Test.HUnit
-import GHC.IO (unsafePerformIO)
+
+import Assertions
+import qualified Data.DataFrame.Operations as DO
 
 testData :: D.DataFrame
 testData = D.addColumn "test1" (V.fromList ([1..26] :: [Int]))
@@ -80,25 +84,6 @@ addSmallerColumnUnboxed = TestCase (
     (DI.getColumn "newer" $ D.addColumn "newer" (V.fromList [1 :: Int, 2, 3]) $ D.addColumn "new" (V.fromList [1 :: Int, 2, 3, 4, 5]) D.empty)
   )
 
--- Adapted from: https://github.com/BartMassey/chunk/blob/1ee4bd6545e0db6b8b5f4935d97e7606708eacc9/hunit.hs#L29
-assertExpectException :: String -> String ->
-                         IO a -> Assertion
-assertExpectException preface expected action = do
-  r <- catch
-    (action >> (return . Just) "no exception thrown")
-    (\(e::SomeException) ->
-               return (checkForExpectedException e))
-  case r of
-    Nothing  -> return ()
-    Just msg -> assertFailure $ preface ++ ": " ++ msg
-  where
-    checkForExpectedException :: SomeException -> Maybe String
-    checkForExpectedException e
-        | expected `L.isInfixOf` show e = Nothing
-        | otherwise =
-            Just $ "wrong exception detail, expected " ++
-                   expected ++ ", got: " ++ show e
-
 addLargerColumnBoxed :: Test
 addLargerColumnBoxed =
   TestCase (assertExpectException "[Error Case]"
@@ -136,10 +121,30 @@ addColumnTest = [
            , TestLabel "addLargerColumnUnboxed" addLargerColumnUnboxed
            ]
 
+-- parsing.
+parseDate :: Test
+parseDate = let
+    expected = Just $ DI.BoxedColumn (V.fromList [fromGregorian 2020 02 14, fromGregorian 2021 02 14, fromGregorian 2022 02 14])
+    actual = DO.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "2021-02-14", "2022-02-14"])
+  in TestCase (assertEqual "Correctly parses gregorian date" expected actual)
+
+incompleteDataParseMaybe :: Test
+incompleteDataParseMaybe = let
+    expected = Just $ DI.BoxedColumn (V.fromList [Just $ fromGregorian 2020 02 14, Nothing, Just $ fromGregorian 2022 02 14])
+    actual = DO.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"])
+  in TestCase (assertEqual "Parses optional for gregorian date" expected actual)
+
+parseTests :: [Test]
+parseTests = [
+             TestLabel "parseDate" parseDate,
+             TestLabel "incompleteDataParseMaybe" incompleteDataParseMaybe
+           ]
+
 tests :: Test
 tests = TestList $  dimensionsTest
                 ++ takeTest
                 ++ addColumnTest
+                ++ parseTests
 
 main :: IO ()
 main = do
