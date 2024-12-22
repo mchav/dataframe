@@ -197,7 +197,7 @@ Versus
 ```haskell
 bornAfter1990 = ( (< 1990)
                 . (\(YearMonthDay y _ _) -> y))
-df &
+df_csv &
     D.filter "birthdate" bornAfter1990
 ```
 
@@ -225,7 +225,7 @@ print(result)
 ```haskell
 year (YearMonthDay y _ _) = y
 between a b y = y >= a && y <= b 
-df
+df_csv
   & D.filter "birthdate"
              (between 1982 1996 . year)
   & D.filter "height" (1.7 <)
@@ -250,7 +250,7 @@ print(result)
 Polars's `groupBy` does an implicit select. In dataframe the select is written explcitly.
 
 ```haskell
-frame & D.as "decade"
+df_csv & D.as "decade"
             D.apply "birthdate"
                 ((*10) . flip div 10 . year)
      & D.valueCounts @Int "decade"
@@ -260,7 +260,7 @@ dataframe also has a general groupBy operation but it aggregates the remaining c
 
 ```haskell
 
-frame
+df_csv
     & D.as "decade"
             D.apply "birthdate"
                 ((*10) . flip div 10 . year)
@@ -294,7 +294,7 @@ print(result)
 
 ```haskell
 decade = (*10) . flip div 10 . year
-frame
+df_csv
     & D.as "decade" D.apply "birthdate" decade
     & D.as "sampleSize" D.groupByAgg "decade" D.Count
     & D.as "avg_weight "D.reduceByAgg "weight" D.Mean
@@ -335,7 +335,7 @@ print(result)
 ```
 
 ```haskell
-frame
+df_csv
     & D.apply "name" (head . T.split (' ' ==))
     & D.as "decade" D.apply "birthdate"
                        ((*10) . flip div 10 . year)
