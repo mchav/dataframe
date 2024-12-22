@@ -1,6 +1,6 @@
 # Coming from Polars
 
-This tutorial will walk through the examples in Polars' getting started guide showing how concepts in Polars map to dataframe.
+This tutorial will walk through the examples in Polars' [getting started guide](https://docs.pola.rs/user-guide/getting-started/) showing how concepts in Polars map to dataframe.
 
 ## Reading and writing CSV
 
@@ -37,6 +37,7 @@ As a standalone dataframe script this would look like.
 
 ```haskell
 import qualified Data.DataFrame as D
+import Data.Time.Calendar
 
 main :: IO
 main = do
@@ -45,15 +46,15 @@ main = do
                             , "Ben Brown"
                             , "Chloe Cooper"
                             , "Daniel Donovan"])
-        , ("birthdate", D.toColumn [ "1997-01-10"
-                                   , "1985-02-15"
-                                   , "1983-03-22"
-                                   , "1981-04-30"])
+        , ("birthdate", D.toColumn [ fromGregorian 1997 01 10
+                                   , fromGregorian 1985 02 15
+                                   , fromGregorian 1983 03 22
+                                   , fromGregorian 1981 04 30])
         , ("weight", D.toColumn [57.9, 72.5, 53.6, 83.1])
         , ("height", D.toColumn [1.56, 1.77, 1.65, 1.75])]
     print df
-    D.writeCsv "./docs/assets/data/output.csv" df
-    let df_csv = D.readCsv "./docs/assets/data/output.csv"
+    D.writeCsv "./data/output.csv" df
+    let df_csv = D.readCsv "./data/output.csv"
     print df_csv
 ```
 
@@ -63,17 +64,17 @@ This round trip prints the following tables:
 -----------------------------------------------------
 index |      name      | birthdate  | weight | height
 ------|----------------|------------|--------|-------
- Int  |     [Char]     |   [Char]   | Double | Double
+ Int  |     [Char]     |    Day     | Double | Double
 ------|----------------|------------|--------|-------
 0     | Alice Archer   | 1997-01-10 | 57.9   | 1.56  
 1     | Ben Brown      | 1985-02-15 | 72.5   | 1.77  
 2     | Chloe Cooper   | 1983-03-22 | 53.6   | 1.65  
-3     | Daniel Donovan | 1981-04-30 | 83.1   | 1.75  
+3     | Daniel Donovan | 1981-04-30 | 83.1   | 1.75
 
 -----------------------------------------------------
 index |      name      | birthdate  | weight | height
 ------|----------------|------------|--------|-------
- Int  |      Text      |    Text    | Double | Double
+ Int  |      Text      |    Day     | Double | Double
 ------|----------------|------------|--------|-------
 0     | Alice Archer   | 1997-01-10 | 57.9   | 1.56  
 1     | Ben Brown      | 1985-02-15 | 72.5   | 1.77  
@@ -107,15 +108,15 @@ import qualified Data.DataFrame as D
 import qualified Data.Text as T
 
 import Data.Function ( (&) )
+import Data.Time.Calendar
 
 main :: IO ()
 main = do
     ...
     print $ df_csv
           & D.as "birth_year"
-                D.apply "birth_year"
-                    (T.take 4)
-                    "birthdate"
+                D.apply "birthdate"
+                    ((\(year, _, _) ->  year) . toGregorian)
           & D.combine "bmi"
                       (\w h -> w / h ** 2)
                       "weight"
@@ -129,7 +130,7 @@ Resulting in:
 --------------------------------------------------------
 index |      name      | birth_year |        bmi        
 ------|----------------|------------|-------------------
- Int  |      Text      |    Text    |       Double      
+ Int  |      Text      |  Integer   |       Double      
 ------|----------------|------------|-------------------
 0     | Alice Archer   | 1997       | 23.791913214990135
 1     | Ben Brown      | 1985       | 23.14149829231702 
@@ -194,11 +195,10 @@ print(result)
 Versus
 
 ```haskell
-bornAfter1990 = fromMaybe False
-              . fmap (1990 >)
-              . D.readInt
-              . T.take 4 
-frame &
+bornAfter1990 = ( (< 1990)
+                . (\(year, _, _) -> year)
+                . toGregorian)
+df &
     D.filter "birthdate" bornAfter1990
 ```
 
@@ -206,14 +206,12 @@ frame &
 -----------------------------------------------------
 index |      name      | birthdate  | weight | height
 ------|----------------|------------|--------|-------
- Int  |      Text      |    Text    | Double | Double
+ Int  |      Text      |    Day     | Double | Double
 ------|----------------|------------|--------|-------
 0     | Ben Brown      | 1985-02-15 | 72.5   | 1.77  
 1     | Chloe Cooper   | 1983-03-22 | 53.6   | 1.65  
 2     | Daniel Donovan | 1981-04-30 | 83.1   | 1.75
 ```
-
-The slight difference is that we parse the data directly from a string since we don't have a `try_parse_date` option. Otherwise single column filtering is intutive.
 
 For multiple filter conditions we again make all the filter statements separate. Filtering by m
 
@@ -226,10 +224,9 @@ print(result)
 ```
 
 ```haskell
-year = fromMaybe 0
-     . D.readInt
-     . T.take 4
-between a b y = y >= a && y <= b  
+year = ( (\(year, _, _) -> year)
+       . toGregorian)
+between a b y = y >= a && y <= b 
 df
   & D.filter "birthdate"
              (between 1982 1996 . year)
@@ -239,10 +236,9 @@ df
 ```
 ------------------------------------------------
 index |   name    | birthdate  | weight | height
+ Int  |   Text    |    Day     | Double | Double
 ------|-----------|------------|--------|-------
- Int  |   Text    |    Text    | Double | Double
-------|-----------|------------|--------|-------
-0     | Ben Brown | 1985-02-15 | 72.5   | 1.77 
+0     | Ben Brown | 1985-02-15 | 72.5   | 1.77
 ```
 
 ```python
