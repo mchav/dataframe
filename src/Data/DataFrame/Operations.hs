@@ -749,17 +749,25 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
 
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
-columnInfo :: DataFrame -> [(String, Int, String)]
-columnInfo df = L.sortBy (compare `on` snd') (V.ifoldl' go [] (columns df))
+columnInfo :: DataFrame -> DataFrame
+columnInfo df = DI.empty & addColumn' "Column Name" (Just $ DI.toColumn (map fst' triples))
+                         & addColumn' "# Values" (Just $ DI.toColumn (map snd' triples))
+                         & addColumn' "# Null Values" (Just $ DI.toColumn (map thd' triples))
+                         & addColumn' "Type" (Just $ DI.toColumn (map fth' triples))
   where
+    triples = L.sortBy (compare `on` snd') (V.ifoldl' go [] (columns df)) :: [(String, Int,  Int, String)]
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (DI.columnIndices df))
     columnName i = T.unpack (indexMap M.! i)
     numNulls c = VG.length $ VG.filter (`S.member` nullish) c
     go acc i Nothing = acc
-    go acc i (Just (BoxedColumn (c :: Vector a))) = (columnName i, numNulls (V.map show c), show $ typeRep @a) : acc
-    go acc i (Just (UnboxedColumn (c :: VU.Vector a))) = (columnName i, numNulls (VG.map show (V.convert c)), show $ typeRep @a) : acc
+    go acc i (Just (BoxedColumn (c :: Vector a))) = (columnName i, VG.length c - numNulls (V.map show c), numNulls (V.map show c), show $ typeRep @a) : acc
+    go acc i (Just (UnboxedColumn (c :: VU.Vector a))) = (columnName i, VG.length c - numNulls (VG.map show (V.convert c)), numNulls (VG.map show (V.convert c)), show $ typeRep @a) : acc
     nullish = S.fromList ["Nothing", "NULL", "", " ", "nan"]
-    snd' (_, x, _) = x
+    fst' (x, _, _, _) = x
+    snd' (_, x, _, _) = x
+    thd' (_, _, x, _) = x
+    fth' (_, _, _, x) = x
+
 
 fromList :: [(T.Text, Column)] -> DataFrame
 fromList = L.foldl' (\df (name, column) -> addColumn' name (Just column) df) DI.empty
