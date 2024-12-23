@@ -47,6 +47,8 @@ module Data.DataFrame
     Operations.fromList,
     Operations.as,
     Display.plotHistograms,
+    Display.plotHistogramsBy,
+    Display.PlotColumns(..),
     Display.HistogramOrientation (..),
   )
 where

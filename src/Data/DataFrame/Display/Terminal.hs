@@ -5,13 +5,16 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE TupleSections #-}
 module Data.DataFrame.Display.Terminal where
 
 import qualified Data.DataFrame.Internal as DI
 import qualified Data.DataFrame.Operations as Ops
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Type.Reflection as Ref
 
@@ -29,11 +32,62 @@ import Type.Reflection (typeRep)
 
 data HistogramOrientation = VerticalHistogram | HorizontalHistogram
 
-plotHistograms :: HasCallStack => HistogramOrientation -> DI.DataFrame -> IO ()
-plotHistograms orientation df = do
-    forM_ (Ops.columnNames df) $ \cname -> do
+data PlotColumns = PlotAll | PlotSubset [T.Text]
+
+plotHistograms :: HasCallStack => PlotColumns -> HistogramOrientation -> DI.DataFrame -> IO ()
+plotHistograms columns orientation df = do
+    let cs = case columns of
+            PlotAll       -> Ops.columnNames df
+            PlotSubset xs -> Ops.columnNames df `L.intersect` xs
+    forM_ cs $ \cname -> do
         plotForColumn cname ((V.!) (DI.columns df) (DI.columnIndices df M.! cname)) orientation df
 
+
+plotHistogramsBy :: HasCallStack => T.Text -> PlotColumns -> HistogramOrientation -> DI.DataFrame -> IO ()
+plotHistogramsBy col columns orientation df = do
+    let cs = case columns of
+            PlotAll       -> Ops.columnNames df
+            PlotSubset xs -> Ops.columnNames df `L.intersect` xs
+    forM_ cs $ \cname -> do
+        let plotColumn = (V.!) (DI.columns df) (DI.columnIndices df M.! cname)
+        let byColumn = (V.!) (DI.columns df) (DI.columnIndices df M.! col)
+        plotForColumnBy col cname byColumn plotColumn orientation df
+
+-- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
+plotForColumnBy :: HasCallStack => T.Text -> T.Text -> Maybe DI.Column -> Maybe DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
+plotForColumnBy _ _ Nothing _ _ _ = return ()
+plotForColumnBy byCol cname (Just (DI.BoxedColumn (byColumn :: V.Vector a))) (Just (DI.BoxedColumn (plotColumn :: V.Vector b))) orientation df = do
+    let zipped = VG.zipWith (\left right -> (show left, show right)) plotColumn byColumn
+    let counts = countOccurrences zipped
+    if null counts
+    then pure ()
+    else case orientation of
+        VerticalHistogram -> error "Vertical histograms aren't yet supported"
+        HorizontalHistogram -> plotGivenCounts' cname counts
+plotForColumnBy byCol cname (Just (DI.UnboxedColumn byColumn)) (Just (DI.BoxedColumn plotColumn)) orientation df = do
+    let zipped = VG.zipWith (\left right -> (show left, show right)) plotColumn (V.convert byColumn)
+    let counts = countOccurrences zipped
+    if null counts
+    then pure ()
+    else case orientation of
+        VerticalHistogram -> error "Vertical histograms aren't yet supported"
+        HorizontalHistogram -> plotGivenCounts' cname counts
+plotForColumnBy byCol cname (Just (DI.BoxedColumn byColumn)) (Just (DI.UnboxedColumn plotColumn)) orientation df = do
+    let zipped = VG.zipWith (\left right -> (show left, show right)) (V.convert plotColumn) (V.convert byColumn)
+    let counts = countOccurrences zipped
+    if null counts
+    then pure ()
+    else case orientation of
+        -- VerticalHistogram -> plotVerticalGivenCounts cname counts
+        HorizontalHistogram -> plotGivenCounts' cname counts
+plotForColumnBy byCol cname (Just (DI.UnboxedColumn byColumn)) (Just (DI.UnboxedColumn plotColumn)) orientation df = do
+    let zipped = VG.zipWith (\left right -> (show left, show right)) (V.convert plotColumn) (V.convert byColumn)
+    let counts = countOccurrences zipped
+    if null counts
+    then pure ()
+    else case orientation of
+        VerticalHistogram -> error "Vertical histograms aren't yet supported"
+        HorizontalHistogram -> plotGivenCounts' cname counts
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
 plotForColumn :: HasCallStack => T.Text -> Maybe DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
@@ -135,6 +189,37 @@ leftJustify :: String -> Int -> String
 leftJustify s n = s ++ replicate (max 0 (n - length s)) ' '
 
 
+plotGivenCounts' :: HasCallStack => T.Text -> [((String, String), Integer)] -> IO ()
+plotGivenCounts' cname counts = do
+    putStrLn $ "\nHistogram for " ++ show cname ++ "\n"
+    let n = 8 :: Int
+    let maxValue = maximum $ map snd counts
+    let increment = max 1 (maxValue `div` 50)
+    let longestLabelLength = maximum $ map (length. (\(a, b) -> a ++ " " ++ b) . fst) counts
+    let longestBar = fromIntegral $ (maxValue * fromIntegral n `div` increment) `div` fromIntegral n + 1
+    let border = "|" ++ replicate (longestLabelLength + length (show maxValue) + longestBar + 6) '-' ++ "|"
+    body <- forM counts $ \((plotCol, byCol), count) -> do
+        let barChunks = fromIntegral $ (count * fromIntegral n `div` increment) `div` fromIntegral n
+        let remainder = fromIntegral $ (count * fromIntegral n `div` increment) `rem` fromIntegral n
+        
+#       ifdef mingw32_HOST_OS
+        -- Windows doesn't deal well with the fractional unicode types.
+        -- They may use a different encoding.
+        let fractional = []
+#       else
+        let fractional = ([chr (ord '█' + n - remainder - 1) | remainder > 0])
+#       endif
+
+        let bar = replicate barChunks '█' ++ fractional
+        let disp = if null bar then "| " else bar
+        let label = plotCol ++ " " ++ byCol
+        let hist=  "|" ++ brightGreen (leftJustify label longestLabelLength) ++ " | " ++
+                    leftJustify (show count) (length (show maxValue)) ++ " |" ++
+                    " " ++ brightBlue bar
+        return $ hist ++ "\n" ++ border
+    mapM_ putStrLn (border : body)
+    putChar '\n'
+
 rangedNumericValueCounts :: forall a . (HasCallStack, Typeable a, Show a)
                          => V.Vector a
                          -> [(String, Integer)]
@@ -183,3 +268,9 @@ rotate [] = []
 rotate xs
     | head xs == "" = []
     | otherwise = map last xs : rotate (map init xs)
+
+
+countOccurrences :: Ord a => V.Vector a -> [(a, Integer)]
+countOccurrences xs = M.toList $ VG.foldr count initMap xs
+    where initMap = M.fromList (map (, 0) (V.toList xs))
+          count k = M.insertWith (+) k 1
