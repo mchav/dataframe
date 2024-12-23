@@ -6,6 +6,7 @@
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Data.DataFrame.IO (
     readSeparated,
@@ -132,14 +133,16 @@ getRowAsText df i = V.ifoldr go [] (columns df)
         Just e -> textRep : acc
             where textRep = case testEquality (typeRep @a) (typeRep @T.Text) of
                     Just Refl -> e
-                    -- TODO: Find out how to match on type constructor.
-                    Nothing   -> case testEquality (typeRep @a) (typeRep @(Maybe T.Text)) of
-                        Just Refl -> fromMaybe "null" e
-                        Nothing -> fromOptional (T.pack (show e))
-                  fromOptional "Nothing" = "null"
-                  fromOptional s
-                    | T.isPrefixOf "Just " s = T.drop (T.length "Just ") s
-                    | otherwise = s 
+                    Nothing   -> case typeRep @a of
+                        App t1 t2 -> case eqTypeRep t1 (typeRep @Maybe) of
+                            Just HRefl -> case testEquality t2 (typeRep @T.Text) of
+                                Just Refl -> fromMaybe "null" e
+                                Nothing -> (fromOptional . (T.pack . show)) e
+                                            where fromOptional s
+                                                    | T.isPrefixOf "Just " s = T.drop (T.length "Just ") s
+                                                    | otherwise = "null"
+                            Nothing -> (T.pack . show) e
+                        _ -> (T.pack . show) e
         Nothing ->
             error $
                 "Column "
