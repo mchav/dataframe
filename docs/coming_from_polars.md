@@ -138,11 +138,11 @@ index |      name      | birth_year |        bmi
 3     | Daniel Donovan | 1981       | 27.13469387755102 
 ```
 
-The dataframe implementation can be read top down. apply the function `T.take 4` to all `birthdate` values, storing the result in the `birth_year` column; combine `weight` and `height` into the bmi column using the formula `w / h ** 2`; then select the `name`, `birth_year` and `bmi` fields.
+The dataframe implementation can be read top down. `apply` a function that gets the year to the `birthdate`; store the result in the `birth_year` column; combine `weight` and `height` into the bmi column using the formula `w / h ** 2`; then select the `name`, `birth_year` and `bmi` fields.
 
 Dataframe focuses on splitting transformations into transformations on the whole dataframe so it's easily usable in a repl-like environment.
 
-This means we also do not do expression expansion. We prefer each expression to roughly mimick functional programming concepts. In the previous example `applyWithAlias` is a map over `birthdate` and `combine` zips `weight` and `height` with the bmi function.
+This means we also do not do expression expansion. We prefer each expression to roughly mimick functional programming concepts. In the previous example `apply` is a map over `birthdate` and `combine` zips `weight` and `height` with the bmi function.
 
 So in the example Polars expression expansion example:
 
@@ -180,11 +180,19 @@ However we can make our program shorter by using regular Haskell and folding ove
 ```haskell
 let reduce name = D.as (name <> "-5%") D.apply name (*0.95)
 df_csv
-    & flip (foldr reduce) ["weight", "height"]
+    & D.fold reduce ["weight", "height"]
     & D.select ["name", "weight-5%", "height-5%"]
 ```
 
-Although the shorter program is less readable it demonstrates that we generally prefer piece-wise composition so we can fall back to vanilla Haskell.
+Or alternatively,
+
+```haskell
+addSuffix suffix name = D.rename name (name <> suffix)
+df_csv
+  & D.applyMany ["weight", "height"] (*0.95)
+  & D.fold (addSuffix "-5%")
+  & D.select ["name", "weight-5%", "height-5%"]
+```
 
 Filtering looks much the same:
 
@@ -249,14 +257,7 @@ print(result)
 
 Polars's `groupBy` does an implicit select. In dataframe the select is written explcitly.
 
-```haskell
-df_csv & D.as "decade"
-            D.apply "birthdate"
-                ((*10) . flip div 10 . year)
-     & D.valueCounts @Int "decade"
-```
-
-dataframe also has a general groupBy operation but it aggregates the remaining columns. To get the exact same behaviour as in Polars we'd have to create a new row to aggregate by.
+We implicitly create a `Count` variable as the result of grouping by an aggregate. In general when for a `groupByAgg` we create a variable with the same name as the aggregation to store the aggregation in. 
 
 ```haskell
 
@@ -269,11 +270,11 @@ df_csv
 ```
 
 ```
---------------------
-index | decade | len
-------|--------|----
+----------------------
+index | decade | Count
+------|--------|------
  Int  |  Int   | Int
-------|--------|----
+------|--------|------
 0     | 1990   | 1  
 1     | 1980   | 3 
 ```
@@ -296,20 +297,20 @@ print(result)
 decade = (*10) . flip div 10 . year
 df_csv
     & D.as "decade" D.apply "birthdate" decade
-    & D.as "sampleSize" D.groupByAgg "decade" D.Count
+    & D.groupByAgg ["decade"] D.Count
     & D.as "avg_weight "D.reduceByAgg "weight" D.Mean
     & D.as "tallest" D.reduceByAgg "height" D.Maximum
     & D.select ["decade", "sampleSize", "avg_weight", "tallest"]
 ```
 
 ```
----------------------------------------------------------
-index | decade | sampleSize |    avg_weight     | tallest
-------|--------|------------|-------------------|--------
- Int  |  Int   |    Int     |      Double       | Double 
-------|--------|------------|-------------------|--------
-0     | 1990   | 1          | 57.9              | 1.56   
-1     | 1980   | 3          | 69.73333333333333 | 1.77
+-----------------------------------------------------
+index | decade | Count |    avg_weight     | tallest
+------|--------|-------|-------------------|---------
+ Int  |  Int   | Int   |      Double       | Double 
+------|--------|-------|-------------------|---------
+0     | 1990   | 1     | 57.9              | 1.56   
+1     | 1980   | 3     | 69.73333333333333 | 1.77
 ```
 
 
