@@ -27,8 +27,10 @@ import Data.Typeable (Typeable)
 import Data.Type.Equality
     ( type (:~:)(Refl), TestEquality(testEquality) )
 import GHC.Stack (HasCallStack)
-import Text.Printf
+import Text.Printf ( printf )
 import Type.Reflection (typeRep)
+import Data.List (intercalate, group, sort)
+import Data.Maybe (fromMaybe)
 
 data HistogramOrientation = VerticalHistogram | HorizontalHistogram
 
@@ -59,7 +61,7 @@ plotForColumnBy _ _ Nothing _ _ _ = return ()
 plotForColumnBy byCol cname (Just (DI.BoxedColumn (byColumn :: V.Vector a))) (Just (DI.BoxedColumn (plotColumn :: V.Vector b))) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) plotColumn byColumn
     let counts = countOccurrences zipped
-    if null counts
+    if null counts || length counts > 20
     then pure ()
     else case orientation of
         VerticalHistogram -> error "Vertical histograms aren't yet supported"
@@ -67,7 +69,7 @@ plotForColumnBy byCol cname (Just (DI.BoxedColumn (byColumn :: V.Vector a))) (Ju
 plotForColumnBy byCol cname (Just (DI.UnboxedColumn byColumn)) (Just (DI.BoxedColumn plotColumn)) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) plotColumn (V.convert byColumn)
     let counts = countOccurrences zipped
-    if null counts
+    if null counts || length counts > 20
     then pure ()
     else case orientation of
         VerticalHistogram -> error "Vertical histograms aren't yet supported"
@@ -75,7 +77,7 @@ plotForColumnBy byCol cname (Just (DI.UnboxedColumn byColumn)) (Just (DI.BoxedCo
 plotForColumnBy byCol cname (Just (DI.BoxedColumn byColumn)) (Just (DI.UnboxedColumn plotColumn)) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) (V.convert plotColumn) (V.convert byColumn)
     let counts = countOccurrences zipped
-    if null counts
+    if null counts || length counts > 20
     then pure ()
     else case orientation of
         -- VerticalHistogram -> plotVerticalGivenCounts cname counts
@@ -83,7 +85,7 @@ plotForColumnBy byCol cname (Just (DI.BoxedColumn byColumn)) (Just (DI.UnboxedCo
 plotForColumnBy byCol cname (Just (DI.UnboxedColumn byColumn)) (Just (DI.UnboxedColumn plotColumn)) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) (V.convert plotColumn) (V.convert byColumn)
     let counts = countOccurrences zipped
-    if null counts
+    if null counts || length counts > 20
     then pure ()
     else case orientation of
         VerticalHistogram -> error "Vertical histograms aren't yet supported"
@@ -101,9 +103,9 @@ plotForColumn cname (Just (DI.BoxedColumn (column :: V.Vector a))) orientation d
             Nothing -> case repa `testEquality` repString of
                 Just Refl -> Ops.valueCounts @String cname df
                 -- Support other scalar types.
-                Nothing -> rangedNumericValueCounts column
-    if null counts
-    then pure ()
+                Nothing -> [] -- numericHistogram column
+    if null counts || length counts > 20
+    then putStrLn $ numericHistogram cname (V.convert column)
     else case orientation of
         VerticalHistogram -> plotVerticalGivenCounts cname counts
         HorizontalHistogram -> plotGivenCounts cname counts
@@ -116,9 +118,9 @@ plotForColumn cname (Just (DI.UnboxedColumn (column :: VU.Vector a))) orientatio
             Nothing -> case repa `testEquality` repString of
                 Just Refl -> Ops.valueCounts @String cname df
                 -- Support other scalar types.
-                Nothing -> rangedNumericValueCounts (V.convert column)
-    if null counts
-    then pure ()
+                Nothing -> []
+    if null counts || length counts > 20
+    then putStrLn $ numericHistogram cname (V.convert column)
     else case orientation of
         VerticalHistogram -> plotVerticalGivenCounts cname counts
         HorizontalHistogram -> plotGivenCounts cname counts
@@ -220,22 +222,33 @@ plotGivenCounts' cname counts = do
     mapM_ putStrLn (border : body)
     putChar '\n'
 
-rangedNumericValueCounts :: forall a . (HasCallStack, Typeable a, Show a)
-                         => V.Vector a
-                         -> [(String, Integer)]
-rangedNumericValueCounts xs =
+numericHistogram :: forall a . (HasCallStack, Typeable a, Show a)
+                         => T.Text
+                         -> V.Vector a
+                         -> String
+numericHistogram name xs =
     case testEquality (typeRep @a) (typeRep @Double) of
-        Just Refl -> doubleToValueCounts xs
-        Nothing -> []
-
-doubleToValueCounts :: HasCallStack => V.Vector Double -> [(String, Integer)]
-doubleToValueCounts xs = let
-        minValue = V.minimum xs
-        maxValue = V.maximum xs
-        partitions = smallestPartition ((maxValue - minValue) / 20.0) plotRanges
-        f n = (fromIntegral (round (n * 20) `div` round (partitions * 20)) * (partitions * 20)) / 20.0
-        frequencies = V.foldl' (\m n -> M.insertWith (+) (f n) 1 m) M.empty xs
-    in map (first (\n -> if n >= 1_000 then printf "%e" n else printf "%.2f" n)) $ M.toList frequencies
+        Just Refl -> let config = defaultConfig {
+                    title = Just (T.unpack name),
+                    width = 30,
+                    height = 10
+                }
+            in createHistogram config (V.toList xs)
+        Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
+            Just Refl -> let config = defaultConfig {
+                        title = Just (T.unpack name),
+                        width = 30,
+                        height = 10
+                    }
+                in createHistogram config (map fromIntegral $ V.toList xs)
+            Nothing -> case testEquality (typeRep @a) (typeRep @Integer) of
+                Just Refl -> let config = defaultConfig {
+                            title = Just (T.unpack name),
+                            width = 30,
+                            height = 10
+                        }
+                    in createHistogram config (map fromIntegral $ V.toList xs)
+                Nothing -> []
 
 smallestPartition :: (Ord a) => a -> [a] -> a
 -- TODO: Find a more graceful way to handle this.
@@ -243,9 +256,27 @@ smallestPartition p [] = error "Data range too large to plot"
 smallestPartition p (x:y:rest)
     | p < y = x
     | otherwise = smallestPartition p (y:rest)
+smallestPartition p (x:rest)
+    | p < x = x
+    | otherwise = error ""
+
+largestPartition :: (Ord a) => a -> [a] -> a
+-- TODO: Find a more graceful way to handle this.
+largestPartition p [] = error "Data range too large to plot"
+largestPartition p (x:rest)
+    | p < x = x
+    | otherwise = largestPartition p rest
 
 plotRanges :: [Double]
-plotRanges = [0.1, 0.5,
+plotRanges = reverse [-0.1, -0.5,
+              -1, -5,
+              -10, -50,
+              -100, -500,
+              -1_000, -5_000,
+              -10_000, -50_000,
+              -100_000, -500_000,
+              -1_000_000, -5_000_000] ++
+            [0, 0.1, 0.5,
               1, 5,
               10, 50,
               100, 500,
@@ -274,3 +305,75 @@ countOccurrences :: Ord a => V.Vector a -> [(a, Integer)]
 countOccurrences xs = M.toList $ VG.foldr count initMap xs
     where initMap = M.fromList (map (, 0) (V.toList xs))
           count k = M.insertWith (+) k 1
+
+data HistogramConfig = HistogramConfig {
+    width :: Int,          -- Width of the histogram in characters
+    height :: Int,         -- Height of the histogram in rows
+    barChar :: Char,       -- Character to use for bars
+    title :: Maybe String  -- Optional title for the histogram
+}
+
+defaultConfig :: HistogramConfig
+defaultConfig = HistogramConfig {
+    width = 40,
+    height = 15,
+    barChar = '█',
+    title = Nothing
+}
+
+-- Calculate the histogram bins and counts
+calculateBins :: [Double] -> Int -> [(Double, Int)]
+calculateBins values numBins =
+    let minVal = minimum values
+        maxVal = maximum values
+        binWidth = (maxVal - minVal) / fromIntegral numBins
+        toBin x = floor ((x - minVal) / binWidth)
+        bins = map toBin values
+        counts = map length . group . sort $ bins
+        binValues = [minVal + (fromIntegral i * binWidth) | i <- [0..numBins-1]]
+    in zip binValues (counts ++ repeat 0)
+
+-- Format a number with appropriate scaling (k, M, B, etc.)
+formatNumber :: Double -> String
+formatNumber n
+    | n >= 1e9  = printf "%.1fB" (n / 1e9)
+    | n >= 1e6  = printf "%.1fM" (n / 1e6)
+    | n >= 1e3  = printf "%.1fk" (n / 1e3)
+    | otherwise = printf "%.1f" n
+
+-- Create the ASCII histogram
+createHistogram :: HistogramConfig -> [Double] -> String
+createHistogram config values =
+    let bins = calculateBins values (width config)
+        maxCount = maximum $ map snd bins
+        scaleY = fromIntegral maxCount / fromIntegral (height config)
+
+        -- Create Y-axis labels
+        yLabels = [formatNumber (fromIntegral i * scaleY) | i <- [height config, height config-1..0]]
+        maxYLabelWidth = maximum $ map length yLabels
+
+        -- Create X-axis labels
+        xValues = map fst bins
+        xLabels = map formatNumber [head xValues, last xValues]
+
+        -- Create histogram rows
+        makeRow :: Int -> String
+        makeRow row =
+            let threshold = fromIntegral (height config - row) * scaleY
+                barLine = map (\(_, count) ->
+                    if fromIntegral count >= threshold
+                    then barChar config
+                    else ' ') bins
+            in printf "%*s |%s" maxYLabelWidth (yLabels !! row) (brightBlue $ L.foldl' (\acc c -> c:'|':acc) "" barLine)
+
+        -- Build the complete histogram
+        histogramRows = map makeRow [0..height config - 1]
+        xAxis = replicate maxYLabelWidth ' ' ++ " " ++
+                intercalate (replicate (2 * (width config - length xLabels)) ' ') xLabels
+
+        -- Add title if provided
+        titleLine = case title config of
+            Just t  -> t ++ "\n\n"
+            Nothing -> ""
+
+    in titleLine ++ unlines (histogramRows ++ [xAxis])

@@ -5,6 +5,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Data.DataFrame.Operations
   ( addColumn,
@@ -12,6 +13,7 @@ module Data.DataFrame.Operations
     addColumnWithDefault,
     dimensions,
     columnNames,
+    rename,
     apply,
     applyMany,
     applyWhere,
@@ -24,6 +26,7 @@ module Data.DataFrame.Operations
     valueCounts,
     select,
     drop,
+    fold,
     groupBy,
     groupByAgg,
     reduceBy,
@@ -37,7 +40,16 @@ module Data.DataFrame.Operations
     Aggregation(..),
     columnInfo,
     fromList,
-    as
+    as,
+    frequencies,
+    mean,
+    median,
+    standardDeviation,
+    variance,
+    interQuartileRange,
+    sum,
+    skewness,
+    summarize
   )
 where
 
@@ -53,8 +65,11 @@ import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 import qualified Prelude as P
+import qualified Statistics.Quantile as SS
+import qualified Statistics.Sample as SS
 
 import Control.Exception
+import Control.DeepSeq
 import Data.DataFrame.Errors (DataFrameException(..))
 import Data.DataFrame.Internal (Column (..), DataFrame (..))
 import Data.DataFrame.Util
@@ -71,6 +86,7 @@ import GHC.Stack (HasCallStack)
 import Prelude hiding (drop, filter, sum, take)
 import Text.Read (readMaybe)
 import Type.Reflection (TypeRep, Typeable, typeOf, typeRep)
+import GHC.IO.Unsafe (unsafePerformIO)
 
 -- | /O(n)/ Adds a vector to the dataframe.
 addColumn ::
@@ -566,6 +582,9 @@ groupColumns indices df acc name =
       let vs = V.fromList $ map (`getIndicesUnboxed` column) indices
        in addColumn' name (Just $ GroupedUnboxedColumn vs) acc
 
+fold :: Foldable t => (a -> DataFrame -> DataFrame) -> t a -> DataFrame -> DataFrame
+fold f = flip (foldr f)
+
 data Aggregation = Count
                  | Mean
                  | Minimum
@@ -578,7 +597,7 @@ groupByAgg columnNames agg df = let
     Count -> addColumnWithDefault @Int 1 (T.pack (show agg)) V.empty df
            & groupBy columnNames
            & reduceBy @Int "Count" VG.length
-    _ -> error "Unimplemented"
+    _ -> error "UNIMPLEMENTED"
 
 -- O (k * n) Reduces a vector valued volumn with a given function.
 reduceBy ::
@@ -722,7 +741,14 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
       parseTimeOpt s = parseTimeM {- Accept leading/trailing whitespace -} True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Maybe Day
       unsafeParseTime s = parseTimeOrError {- Accept leading/trailing whitespace -} True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Day
    in case repa `testEquality` repText of
-        Nothing -> Just $ BoxedColumn c
+        Nothing -> case repa `testEquality` (typeRep @String) of
+            Just Refl -> let
+                nullish = S.fromList ["nan", "NULL", "null", "", " "]
+                emptyToNothing v = if S.member v nullish then Nothing else Just v
+                safeVector = V.map emptyToNothing c
+                hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
+              in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+            Nothing -> Just $ BoxedColumn c
         Just Refl ->
           let example = T.strip (V.head c)
               nullish = S.fromList ["nan", "NULL", "null", "", " "]
@@ -751,7 +777,7 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
 -- with each column.
 columnInfo :: DataFrame -> DataFrame
 columnInfo df = DI.empty & addColumn' "Column Name" (Just $ DI.toColumn (map fst' triples))
-                         & addColumn' "# Values" (Just $ DI.toColumn (map snd' triples))
+                         & addColumn' "# Non-null Values" (Just $ DI.toColumn (map snd' triples))
                          & addColumn' "# Null Values" (Just $ DI.toColumn (map thd' triples))
                          & addColumn' "Type" (Just $ DI.toColumn (map fth' triples))
   where
@@ -771,3 +797,96 @@ columnInfo df = DI.empty & addColumn' "Column Name" (Just $ DI.toColumn (map fst
 
 fromList :: [(T.Text, Column)] -> DataFrame
 fromList = L.foldl' (\df (name, column) -> addColumn' name (Just column) df) DI.empty
+
+frequencies :: T.Text -> DataFrame -> DataFrame
+frequencies name df = case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((BoxedColumn (column :: V.Vector a))) -> let
+            counts = valueCounts @a name df
+            total = P.sum $ map snd counts
+            vText :: forall a . (Typeable a, Ord a, Show a) => a -> T.Text
+            vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
+              Just Refl -> c'
+              Nothing -> case testEquality (typeRep @a) (typeRep @String) of
+                Just Refl -> T.pack c'
+                Nothing -> (T.pack . show) c'
+            initDf = DI.empty & addColumn "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
+          in L.foldl' (\df (col, k) -> addColumn (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+        Just ((UnboxedColumn (column :: VU.Vector a))) -> let
+            counts = valueCounts @a name df
+            total = P.sum $ map snd counts
+            vText :: forall a . (Typeable a, Ord a, Show a) => a -> T.Text
+            vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
+              Just Refl -> c'
+              Nothing -> case testEquality (typeRep @a) (typeRep @String) of
+                Just Refl -> T.pack c'
+                Nothing -> (T.pack . show) c'
+            initDf = DI.empty & addColumn "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
+          in L.foldl' (\df (col, k) -> addColumn (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+
+mean :: T.Text -> DataFrame -> Double
+mean = applyStatistic SS.mean
+
+median :: T.Text -> DataFrame -> Double
+median = applyStatistic (SS.median SS.medianUnbiased)
+
+standardDeviation :: T.Text -> DataFrame -> Double
+standardDeviation = applyStatistic SS.stdDev
+
+skewness :: T.Text -> DataFrame -> Double
+skewness = applyStatistic SS.skewness
+
+variance :: T.Text -> DataFrame -> Double
+variance = applyStatistic SS.variance
+
+interQuartileRange :: T.Text -> DataFrame -> Double
+interQuartileRange = applyStatistic (SS.midspread SS.medianUnbiased 4)
+
+sum :: T.Text -> DataFrame -> Double
+sum name df = case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
+          Just Refl -> VG.sum (VU.map fromIntegral column)
+          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+            Just Refl -> VG.sum column
+            Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+        Nothing -> error $ "Cannot get mean of non numeric column" ++ T.unpack name
+
+applyStatistic :: (forall v . (VG.Vector v Double)
+               => v Double -> Double) -> T.Text -> DataFrame -> Double
+applyStatistic f name df = case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
+          Just Refl -> f (VU.map fromIntegral column)
+          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+            Just Refl -> f column
+            Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+        _ -> error $ "Cannot get mean of non numeric column: " ++ T.unpack name
+
+summarize :: DataFrame -> DataFrame
+summarize df = fold columnStats (columnNames df) (fromList [("Statistic", DI.toColumn ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
+  where columnStats name d = if all isJust (stats name) then addColumn name (V.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
+        stats name = [valueOrNothing $! mean name,
+                      valueOrNothing $! applyStatistic VG.minimum name,
+                      valueOrNothing $! applyStatistic (SS.quantile SS.medianUnbiased 1 4) name,
+                      valueOrNothing $! median name,
+                      valueOrNothing $! applyStatistic (SS.quantile SS.medianUnbiased 3 4) name,
+                      valueOrNothing $! applyStatistic VG.maximum name,
+                      valueOrNothing $! standardDeviation name,
+                      valueOrNothing $! applyStatistic (SS.midspread SS.medianUnbiased 4) name,
+                      valueOrNothing $! skewness name]
+        valueOrNothing f = unsafePerformIO $ catch
+            (deepseq (Just $ f df) (return $ Just $ f df))
+            (\(e::SomeException) ->
+                      return Nothing)
+        roundTo :: Int -> Double -> Double
+        roundTo n x = fromInteger (round $ x * (10^n)) / (10.0^^n)
