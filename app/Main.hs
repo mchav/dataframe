@@ -49,14 +49,15 @@ oneBillingRowChallenge = do
     parsed
       & D.groupBy ["City"]
       & D.reduceBy "Measurement" (\v -> (VG.minimum v, mean @Double v, VG.maximum v))
+      & D.sortBy "City" D.Ascending
 
 housing :: IO ()
 housing = do
   parsed <- D.readCsv "./data/housing.csv"
 
-  -- Sample.
-  mapM_ (print . (\name -> (name, D.columnSize name parsed))) (D.columnNames parsed)
+  print $ D.columnInfo parsed
 
+  -- Sample.
   print $ D.take 5 parsed
 
   D.plotHistograms D.PlotAll D.VerticalHistogram parsed
