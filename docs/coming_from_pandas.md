@@ -10,10 +10,7 @@ A `DataFrame` maps to a `DataFrame` as expected. Our dataframes are essentially 
 
 ## Creating our structures
 
-```haskell
-ghci> D.toColumn [1..10]
-[1,2,3,4,5,6,7,8,9,10]
-```
+Creaing a series.
 
 ```python
 python> s = pd.Series([1, 3, 5, np.nan, 6, 8])
@@ -40,11 +37,13 @@ DatetimeIndex(['2013-01-01', '2013-01-02', '2013-01-03', '2013-01-04',
               dtype='datetime64[ns]', freq='D')
 ```
 
-``haskell
+```haskell
 ghci> dates = D.toColumn $ Prelude.take 6 $ [fromGregorian 2013 01 01..]
 ghci> dates
 [2013-01-01,2013-01-02,2013-01-03,2013-01-04,2013-01-05,2013-01-06]
 ```
+
+Use the series to create a dataframe.
 
 ```python
 python> df = pd.DataFrame(np.random.randn(6, 4), index=dates, columns=list("ABCD"))
@@ -87,21 +86,13 @@ As hinted in the previous example we can create a dataframe with `fromList`. Thi
 ```python
 df2 = pd.DataFrame(
     {
-
         "A": 1.0,
-
         "B": pd.Timestamp("20130102"),
-
         "C": pd.Series(1, index=list(range(4)), dtype="float32"),
-
         "D": np.array([3] * 4, dtype="int32"),
-
         "E": pd.Categorical(["test", "train", "test", "train"]),
-
         "F": "foo",
-
     }
-
 )
 
 # Result
