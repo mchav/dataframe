@@ -23,6 +23,7 @@ import Data.DataFrame ((|>))
 
 main :: IO ()
     df <- D.readTsv "./data/chipotle.tsv"
+    let searchTerm = "Chicken Burrito" :: T.Text
     print $ df
       |> D.select ["item_name", "quantity"]
       |> D.filter "item_name" (searchTerm ==)
