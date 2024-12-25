@@ -221,7 +221,9 @@ apply f columnName d = case columnName `MS.lookup` DI.columnIndices d of
                 Just Refl -> addUnboxedColumn columnName (VU.map f column) d
                 Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
                   Just Refl -> addUnboxedColumn columnName (VU.map f column) d
-                  Nothing -> addColumn' columnName (Just $ DI.toColumn' (V.map f (V.convert column))) d
+                  Nothing -> case testEquality (typeRep @c) (typeRep @Float) of
+                    Just Refl -> addUnboxedColumn columnName (VU.map f column) d
+                    Nothing -> addColumn' columnName (Just $ DI.toColumn' (V.map f (V.convert column))) d
               Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @b) columnName "apply"
 
 -- | O(k) Apply a function to a given column in a dataframe and
@@ -256,7 +258,9 @@ derive alias f columnName d = case columnName `MS.lookup` DI.columnIndices d of
                 Just Refl -> addUnboxedColumn alias (VU.map f column) d
                 Nothing -> case testEquality (typeRep @c) (typeRep @Int) of
                   Just Refl -> addUnboxedColumn alias (VU.map f column) d
-                  Nothing -> addColumn' alias (Just $ DI.toColumn' (V.map f (V.convert column))) d
+                  Nothing -> case testEquality (typeRep @c) (typeRep @Float) of
+                    Just Refl -> addUnboxedColumn alias (VU.map f column) d
+                    Nothing -> addColumn' alias (Just $ DI.toColumn' (V.map f (V.convert column))) d
               Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @b) columnName "applyWithAlias"
 
 -- | O(k * n) Apply a function to given column names in a dataframe.
@@ -266,7 +270,7 @@ applyMany ::
   [T.Text] ->
   DataFrame ->
   DataFrame
-applyMany f names df = L.foldl' (\d name -> apply f name d) df names
+applyMany f names df = L.foldl' (flip (apply f)) df names
 
 -- | O(k) Convenience function that applies to an int column.
 applyInt ::
@@ -653,20 +657,28 @@ reduceByAgg agg name df = case agg of
           Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map fromIntegral) column)) df
           Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
             Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map SS.mean column)) df
-            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
-              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
-              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
-                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
-                Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+            Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
+              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map realToFrac) column)) df
+              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
+                Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+                  Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+                  Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Float)) of
+                    Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (realToFrac . fromMaybe 0) . VG.filter isJust) column)) df
+                    Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
         Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
           Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map fromIntegral) column)) df
           Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
             Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map SS.mean column)) df
-            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
-              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
-              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
-                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
-                Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+            Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
+              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map realToFrac) column)) df
+              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
+                Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+                  Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+                  Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Float)) of
+                    Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (realToFrac . fromMaybe 0) . VG.filter isJust) column)) df
+                    Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
   Minimum -> case name `MS.lookup` DI.columnIndices df of
     Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
     Just i -> case DI.columns df V.!? i of
@@ -713,7 +725,7 @@ aggregate :: [(T.Text, Aggregation)] -> DataFrame -> DataFrame
 aggregate aggs df = fold (\(name, agg) df -> let
     alias = (T.pack . show) agg <> "_" <> name
   in cloneColumn name alias df |> reduceByAgg agg alias) aggs df
-  |> fold (\name df -> drop [name] df) (map fst aggs) 
+  |> fold (\name df -> drop [name] df) (map fst aggs)
 
 -- O (k) combines two columns into a single column using a given function similar to zipWith.
 --
@@ -915,7 +927,9 @@ applyStatistic f name df = case name `MS.lookup` DI.columnIndices df of
           Just Refl -> f (VU.map fromIntegral column)
           Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
             Just Refl -> f column
-            Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+            Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
+              Just Refl -> f (VG.map realToFrac column)
+              Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
         _ -> error $ "Cannot get mean of non numeric column: " ++ T.unpack name
 
 summarize :: DataFrame -> DataFrame

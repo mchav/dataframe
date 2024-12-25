@@ -9,6 +9,7 @@ We provide a primer [here](./docs/exploratory_data_analysis_primer.md) and show 
 
 ## Coming from other dataframe libraries
 Familiar with another dataframe library? Get started:
+* [Coming from Pandas](./docs/coming_from_pandas.md)
 * [Coming from Polars](./docs/coming_from_polars.md)
 * [Coming from dplyr](./docs/coming_from_dplyr.md)
 

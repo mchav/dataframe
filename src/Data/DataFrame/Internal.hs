@@ -108,7 +108,9 @@ toColumn' xs = case testEquality (typeRep @a) (typeRep @Int) of
   Just Refl -> UnboxedColumn (VU.convert xs)
   Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
     Just Refl -> UnboxedColumn (VU.convert xs)
-    Nothing -> BoxedColumn xs
+    Nothing -> case testEquality (typeRep @a) (typeRep @Float) of
+      Just Refl -> UnboxedColumn (VU.convert xs)
+      Nothing -> BoxedColumn xs
 
 toColumn :: forall a. (Typeable a, Show a, Ord a) => [a] -> Column
 toColumn = toColumn' . V.fromList
