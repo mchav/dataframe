@@ -98,7 +98,7 @@ In the housing dataset it'll tell how "typical" our typical home price is.
 ```haskell
 ghci> m = D.mean "median_house_value" df
 206855.81690891474
-ghci> df & D.applyWithAlias "deviation" (\v -> abs (v - m)) "median_house_value" & D.select ["median_house_value", "deviation"] & D.take 10
+ghci> df |> D.derive "deviation" (\v -> abs (v - m)) "median_house_value" |> D.select ["median_house_value", "deviation"] |> D.take 10
 -----------------------------------------------
 index | median_house_value |     deviation     
 ------|--------------------|-------------------
@@ -116,12 +116,12 @@ index | median_house_value |     deviation
 9     | 261100.0           | 54244.18309108526
 ```
 
-Read left to right, we begin by calling `applyWithAlias` which applies a function to a given column and stores the result in a target column. The order of arguments is `applyWithAlias <target column> <function> <deriving column> <dataframe>`. We then select only the two columns we want and take the first 10 rows.
+Read left to right, we begin by calling `derive` which applies a function to a given column and stores the result in a target column. The order of arguments is `derive <target column> <function> <deriving column> <dataframe>`. We then select only the two columns we want and take the first 10 rows.
 
 This gives us a list of the deviations. From the small sample it does seem like there are some wild deviations. The first one is greater than the mean! How typical is this? Well to answer that we take the average of all these values.
 
 ```haskell
-ghci> withDeviation = df & D.applyWithAlias "deviation" (\v -> abs (v - m)) "median_house_value" & D.select ["median_house_value", "deviation"]
+ghci> withDeviation = df |> D.derive "deviation" (\v -> abs (v - m)) "median_house_value" |> D.select ["median_house_value", "deviation"]
 ghci> D.mean "deviation" withDeviation
 91170.43994367732
 ```

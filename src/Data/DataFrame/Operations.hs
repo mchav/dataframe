@@ -17,12 +17,13 @@ module Data.DataFrame.Operations
     apply,
     applyMany,
     applyWhere,
-    applyWithAlias,
+    derive,
     applyAtIndex,
     applyInt,
     applyDouble,
     take,
     filter,
+    filterBy,
     valueCounts,
     select,
     drop,
@@ -31,6 +32,7 @@ module Data.DataFrame.Operations
     groupByAgg,
     reduceBy,
     reduceByAgg,
+    aggregate,
     columnSize,
     combine,
     parseDefaults,
@@ -49,7 +51,8 @@ module Data.DataFrame.Operations
     interQuartileRange,
     sum,
     skewness,
-    summarize
+    summarize,
+    (|>)
   )
 where
 
@@ -100,6 +103,9 @@ addColumn ::
   DataFrame ->
   DataFrame
 addColumn name xs = addColumn' name (Just (DI.toColumn' xs))
+
+cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
+cloneColumn original new df = addColumn' new (columns df V.! (columnIndices df M.! original)) df
 
 -- | /O(n)/ Adds an unboxed vector to the dataframe.
 addUnboxedColumn ::
@@ -169,7 +175,7 @@ addColumnWithDefault ::
   DataFrame
 addColumnWithDefault defaultValue name xs d =
   let (rows, _) = DI.dataframeDimensions d
-      values = xs V.++ V.replicate (rows - (V.length xs)) defaultValue
+      values = xs V.++ V.replicate (rows - V.length xs) defaultValue
    in addColumn' name (Just $ DI.toColumn' values) d
 
 rename :: T.Text -> T.Text -> DataFrame -> DataFrame
@@ -179,27 +185,26 @@ rename orig new df = let
   in df { columnIndices = newColumnIndices}
 
 
-as :: forall a b c. (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c)
-   => T.Text
-   -> (T.Text -> a -> DataFrame -> DataFrame)
-   -> T.Text
+as :: T.Text
+   -> (a -> T.Text -> DataFrame -> DataFrame)
    -> a
+   -> T.Text
    -> DataFrame
    -> DataFrame
-as alias func name f = rename name alias . func name f
+as alias func f name = rename name alias . func f name
 
 -- | O(k) Apply a function to a given column in a dataframe.
 apply ::
   forall b c.
   (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c) =>
-  -- | Column name
-  T.Text ->
   -- | function to apply
   (b -> c) ->
+  -- | Column name
+  T.Text ->
   -- | DataFrame to apply operation to
   DataFrame ->
   DataFrame
-apply columnName f d = case columnName `MS.lookup` DI.columnIndices d of
+apply f columnName d = case columnName `MS.lookup` DI.columnIndices d of
   Nothing -> throw $ ColumnNotFoundException columnName "apply" (map fst $ M.toList $ DI.columnIndices d)
   Just i -> case DI.columns d V.!? i of
     Nothing -> error "Internal error: Column is empty"
@@ -222,7 +227,7 @@ apply columnName f d = case columnName `MS.lookup` DI.columnIndices d of
 -- | O(k) Apply a function to a given column in a dataframe and
 -- add the result into alias column. This function is useful for
 
-applyWithAlias ::
+derive ::
   forall b c.
   (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c) =>
   -- | New name
@@ -234,7 +239,7 @@ applyWithAlias ::
   -- | DataFrame to apply operation to
   DataFrame ->
   DataFrame
-applyWithAlias alias f columnName d = case columnName `MS.lookup` DI.columnIndices d of
+derive alias f columnName d = case columnName `MS.lookup` DI.columnIndices d of
   Nothing -> throw $ ColumnNotFoundException columnName "applyAt" (map fst $ M.toList $ DI.columnIndices d)
   Just i -> case DI.columns d V.!? i of
     Nothing -> error "Internal error: Column is empty"
@@ -257,19 +262,19 @@ applyWithAlias alias f columnName d = case columnName `MS.lookup` DI.columnIndic
 -- | O(k * n) Apply a function to given column names in a dataframe.
 applyMany ::
   (Typeable b, Typeable c, Show b, Show c, Ord b, Ord c) =>
-  [T.Text] ->
   (b -> c) ->
+  [T.Text] ->
   DataFrame ->
   DataFrame
-applyMany names f df = L.foldl' (\d name -> apply name f d) df names
+applyMany f names df = L.foldl' (\d name -> apply f name d) df names
 
 -- | O(k) Convenience function that applies to an int column.
 applyInt ::
   (Typeable b, Show b, Ord b) =>
   -- | Column name
-  T.Text ->
   -- | function to apply
   (Int -> b) ->
+  T.Text ->
   -- | DataFrame to apply operation to
   DataFrame ->
   DataFrame
@@ -279,9 +284,9 @@ applyInt = apply
 applyDouble ::
   (Typeable b, Show b, Ord b) =>
   -- | Column name
-  T.Text ->
   -- | function to apply
   (Double -> b) ->
+  T.Text ->
   -- | DataFrame to apply operation to
   DataFrame ->
   DataFrame
@@ -294,13 +299,13 @@ applyDouble = apply
 applyWhere ::
   forall a b.
   (Typeable a, Typeable b, Show a, Show b, Ord a, Ord b) =>
-  T.Text -> -- Criterion Column
   (a -> Bool) -> -- Filter condition
-  T.Text -> -- Column name
+  T.Text -> -- Criterion Column
   (b -> b) -> -- function to apply
+  T.Text -> -- Column name
   DataFrame -> -- DataFrame to apply operation to
   DataFrame
-applyWhere filterColumnName condition columnName f df = case filterColumnName `MS.lookup` DI.columnIndices df of
+applyWhere condition filterColumnName f columnName df = case filterColumnName `MS.lookup` DI.columnIndices df of
   Nothing -> throw $ ColumnNotFoundException filterColumnName "applyWhere" (map fst $ M.toList $ DI.columnIndices df)
   Just i -> case DI.columns df V.!? i of
     Nothing -> error "Internal error: Column is empty"
@@ -312,7 +317,7 @@ applyWhere filterColumnName condition columnName f df = case filterColumnName `M
               indexes = V.map fst $ V.filter (condition . snd) filterColumn
           in if V.null indexes
                 then df
-                else L.foldl' (\d i -> applyAtIndex i columnName f d) df indexes
+                else L.foldl' (\d i -> applyAtIndex i f columnName d) df indexes
       Just (UnboxedColumn (column :: VU.Vector c)) -> case (typeRep @a) `testEquality` (typeRep @c) of
         Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "applyWhere"
         Just Refl ->
@@ -320,7 +325,7 @@ applyWhere filterColumnName condition columnName f df = case filterColumnName `M
               indexes = VU.map fst $ VU.filter (condition . snd) filterColumn
           in if VU.null indexes
                 then df
-                else VU.foldl' (\d i -> applyAtIndex i columnName f d) df indexes
+                else VU.foldl' (\d i -> applyAtIndex i f columnName d) df indexes
 
 -- | O(k) Apply a function to the column at a given index.
 applyAtIndex ::
@@ -328,14 +333,14 @@ applyAtIndex ::
   (Typeable a, Show a, Ord a) =>
   -- | Index
   Int ->
-  -- | Column name
-  T.Text ->
   -- | function to apply
   (a -> a) ->
+  -- | Column name
+  T.Text ->
   -- | DataFrame to apply operation to
   DataFrame ->
   DataFrame
-applyAtIndex i columnName f df = case columnName `MS.lookup` DI.columnIndices df of
+applyAtIndex i f columnName df = case columnName `MS.lookup` DI.columnIndices df of
   Nothing -> throw $ ColumnNotFoundException columnName "applyAtIndex" (map fst $ M.toList $ DI.columnIndices df)
   Just i -> case DI.columns df V.!? i of
     Nothing -> error "Internal error: Column is empty"
@@ -383,6 +388,8 @@ filter filterColumnName condition df =
   let pick _ Nothing = Nothing
       pick indexes (Just c@(BoxedColumn column)) = Just $ BoxedColumn $ V.ifilter (\i v -> i `S.member` indexes) column
       pick indexes (Just c@(UnboxedColumn column)) = Just $ UnboxedColumn $ VU.ifilter (\i v -> i `S.member` indexes) column
+      pick indexes (Just c@(GroupedBoxedColumn column)) = Just $ GroupedBoxedColumn $ V.ifilter (\i v -> i `S.member` indexes) column
+      pick indexes (Just c@(GroupedUnboxedColumn column)) = Just $ GroupedUnboxedColumn $ V.ifilter (\i v -> i `S.member` indexes) column
       (r', c') = DI.dataframeDimensions df
    in case filterColumnName `MS.lookup` DI.columnIndices df of
       Nothing -> throw $ ColumnNotFoundException filterColumnName "filter" (map fst $ M.toList $ DI.columnIndices df)
@@ -400,6 +407,9 @@ filter filterColumnName condition df =
               let indexes = VU.ifoldl' (\s i v -> if condition v then S.insert i s else s) S.empty column
               in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
 
+filterBy :: (Typeable a, Show a, Ord a) => (a -> Bool) -> T.Text -> DataFrame -> DataFrame
+filterBy = flip filter
+
 -- | Sort order taken as a parameter by the sortby function.
 data SortOrder = Ascending | Descending deriving (Eq)
 
@@ -408,14 +418,16 @@ data SortOrder = Ascending | Descending deriving (Eq)
 --
 -- > sortBy "Age" df
 sortBy ::
-  T.Text ->
   SortOrder ->
+  T.Text ->
   DataFrame ->
   DataFrame
-sortBy sortColumnName order df =
+sortBy order sortColumnName df =
   let pick _ Nothing = Nothing
       pick indexes (Just c@(BoxedColumn column)) = Just $ BoxedColumn $ indexes `getIndices` column
       pick indexes (Just c@(UnboxedColumn column)) = Just $ UnboxedColumn $ indexes `getIndicesUnboxed` column
+      pick indexes (Just c@(GroupedBoxedColumn column)) = Just $ GroupedBoxedColumn $ indexes `getIndices` column
+      pick indexes (Just c@(GroupedUnboxedColumn column)) = Just $ GroupedUnboxedColumn $ indexes `getIndices` column
    in case sortColumnName `MS.lookup` DI.columnIndices df of
       Nothing -> throw $ ColumnNotFoundException sortColumnName "sortBy" (map fst $ M.toList $ DI.columnIndices df)
       Just i -> case DI.columns df V.!? i of
@@ -589,24 +601,25 @@ data Aggregation = Count
                  | Mean
                  | Minimum
                  | Median
-                 | Maximum deriving (Show, Eq)
+                 | Maximum
+                 | Sum deriving (Show, Eq)
 
-groupByAgg :: [T.Text] -> Aggregation -> DataFrame -> DataFrame
-groupByAgg columnNames agg df = let
+groupByAgg :: Aggregation -> [T.Text] -> DataFrame -> DataFrame
+groupByAgg agg columnNames df = let
   in case agg of
     Count -> addColumnWithDefault @Int 1 (T.pack (show agg)) V.empty df
            & groupBy columnNames
-           & reduceBy @Int "Count" VG.length
+           & reduceBy @Int VG.length "Count"
     _ -> error "UNIMPLEMENTED"
 
 -- O (k * n) Reduces a vector valued volumn with a given function.
 reduceBy ::
   forall a b . (Typeable a, Typeable b, Show b, Ord b) =>
-  T.Text ->
   (forall v . (VG.Vector v a) => v a -> b) ->
+  T.Text ->
   DataFrame ->
   DataFrame
-reduceBy name f df = case name `MS.lookup` DI.columnIndices df of
+reduceBy f name df = case name `MS.lookup` DI.columnIndices df of
     Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
     Just i -> case DI.columns df V.!? i of
       Nothing -> error "Internal error: Column is empty"
@@ -619,11 +632,11 @@ reduceBy name f df = case name `MS.lookup` DI.columnIndices df of
           Nothing -> error "Type error"
         _ -> error "Column is ungrouped"
 
-reduceByAgg :: T.Text
-            -> Aggregation
+reduceByAgg :: Aggregation
+            -> T.Text
             -> DataFrame
             -> DataFrame
-reduceByAgg name agg df = case agg of
+reduceByAgg agg name df = case agg of
   Count   -> case name `MS.lookup` DI.columnIndices df of
     Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
     Just i -> case DI.columns df V.!? i of
@@ -637,22 +650,23 @@ reduceByAgg name agg df = case agg of
       Nothing -> error "Internal error: Column is empty"
       Just c -> case c of
         Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-          Just Refl -> let
-              mean v = fromIntegral (VG.sum v) / fromIntegral (VG.length v) :: Double
-            in addColumn' name (Just $ DI.toColumn' (VG.map mean column)) df
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map fromIntegral) column)) df
           Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> let
-                mean v = VG.sum v / fromIntegral (VG.length v)
-              in addColumn' name (Just $ DI.toColumn' (VG.map mean column)) df
-            Nothing -> error $ "Cannot get mean of non-numeric column: " ++ (T.unpack name) -- Not sure what to do with no numeric - return nothing???
+            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map SS.mean column)) df
+            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
+              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+                Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
         Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-          Just Refl -> let
-              mean v = fromIntegral (VG.sum v) / fromIntegral (VG.length v) :: Double
-            in addColumn' name (Just $ DI.toColumn' (VG.map mean column)) df
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map fromIntegral) column)) df
           Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> let
-                mean v = VG.sum v / fromIntegral (VG.length v)
-              in addColumn' name (Just $ DI.toColumn' (VG.map mean column)) df
+            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map SS.mean column)) df
+            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
+              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+                Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
   Minimum -> case name `MS.lookup` DI.columnIndices df of
     Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
     Just i -> case DI.columns df V.!? i of
@@ -667,7 +681,39 @@ reduceByAgg name agg df = case agg of
       Just c -> case c of
         Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.maximum column)) df
         Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.maximum column)) df
+  Sum -> case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
+          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
+            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+                Nothing -> error $ "Cannot get sum of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
+          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
+            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+                Nothing -> error $ "Cannot get sum of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
   _ -> error "UNIMPLEMENTED"
+
+-- & D.as "avg_weight "D.reduceByAgg "weight" D.Mean
+--     & D.as "tallest" D.reduceByAgg "height" D.Maximum
+
+aggregate :: [(T.Text, Aggregation)] -> DataFrame -> DataFrame
+aggregate aggs df = fold (\(name, agg) df -> let
+    alias = (T.pack . show) agg <> "_" <> name
+  in cloneColumn name alias df |> reduceByAgg agg alias) aggs df
+  |> fold (\name df -> drop [name] df) (map fst aggs) 
 
 -- O (k) combines two columns into a single column using a given function similar to zipWith.
 --
@@ -890,3 +936,6 @@ summarize df = fold columnStats (columnNames df) (fromList [("Statistic", DI.toC
                       return Nothing)
         roundTo :: Int -> Double -> Double
         roundTo n x = fromInteger (round $ x * (10^n)) / (10.0^^n)
+
+(|>) :: a -> (a -> b) -> b
+(|>) = (&)

@@ -6,8 +6,7 @@
 module Main where
 
 import qualified Data.DataFrame as D
-import Data.DataFrame.Operations (dimensions)
-import Data.Function ((&))
+import Data.DataFrame (dimensions, (|>))
 import Data.List (delete)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import qualified Data.Text as T
@@ -47,9 +46,9 @@ oneBillingRowChallenge = do
   parsed <- D.readSeparated ';' D.defaultOptions "./data/measurements.txt"
   print $
     parsed
-      & D.groupBy ["City"]
-      & D.reduceBy "Measurement" (\v -> (VG.minimum v, mean @Double v, VG.maximum v))
-      & D.sortBy "City" D.Ascending
+      |> D.groupBy ["City"]
+      |> D.reduceBy (\v -> (VG.minimum v, mean @Double v, VG.maximum v)) "Measurement"
+      |> D.sortBy D.Ascending "City"
 
 housing :: IO ()
 housing = do
@@ -73,10 +72,10 @@ covid = do
   -- value of all exports from 2015
   print $
     rawFrame
-      & D.filter "Direction" (== "Exports")
-      & D.select ["Direction", "Year", "Country", "Value"]
-      & D.groupBy ["Direction", "Year", "Country"]
-      & D.reduceBy "Value" VG.sum
+      |> D.filter "Direction" (== "Exports")
+      |> D.select ["Direction", "Year", "Country", "Value"]
+      |> D.groupBy ["Direction", "Year", "Country"]
+      |> D.reduceBy VG.sum "Value"
 
 chipotle :: IO ()
 chipotle = do
@@ -91,13 +90,13 @@ chipotle = do
   let f =
         rawFrame
           -- Change a specfic order ID
-          & D.applyWhere "order_id" (== 1) "quantity" (+ 2)
+          |> D.applyWhere (== 1) "order_id" (+ 2) "quantity"
           -- Index based change.
-          & D.applyAtIndex 0 "quantity" (flip (-) 2)
+          |> D.applyAtIndex 0 (flip (-) 2) "quantity"
           -- drop dollar sign and parse price as double
-          & D.apply "item_price" (D.readValue @Double . T.drop 1)
+          |> D.apply (D.readValue @Double . T.drop 1)"item_price"
           -- Custom parsing
-          & D.apply "choice_description" toIngredientList
+          |> D.apply toIngredientList "choice_description"
 
   -- sample the dataframe.
   print $ D.take 10 f
@@ -110,9 +109,9 @@ chipotle = do
   putStrLn "Sample dataframe"
   print $
     withTotalPrice
-      & D.select ["quantity", "item_name", "item_price", "total_price"]
-      & D.filter "total_price" ((<) @Double 100)
-      & D.take 10
+      |> D.select ["quantity", "item_name", "item_price", "total_price"]
+      |> D.filter "total_price" ((<) @Double 100)
+      |> D.take 10
 
   -- Check how many chicken burritos were ordered.
   -- There are two ways to checking how many chicken burritos
@@ -121,26 +120,25 @@ chipotle = do
 
   print $
     f
-      & D.select ["item_name", "quantity"]
+      |> D.select ["item_name", "quantity"]
       -- It's more efficient to filter before grouping.
-      & D.filter "item_name" (searchTerm ==)
-      & D.groupBy ["item_name"]
-      & D.reduceBy "quantity" VG.sum
-      & D.sortBy "quantity" D.Descending
+      |> D.filter "item_name" (searchTerm ==)
+      |> D.groupBy ["item_name"]
+      |> D.aggregate (zip (repeat "quantity") [D.Maximum, D.Mean, D.Sum])
+      |> D.sortBy D.Descending "Sum_quantity"
 
   -- Similarly, we can aggregate quantities by all rows.
   print $
     f
-      & D.select ["item_name", "quantity"]
-      & D.groupBy ["item_name"]
-      & D.reduceBy "quantity" VG.sum
-      & D.sortBy "quantity" D.Descending
-      & D.take 10
+      |> D.select ["item_name", "quantity"]
+      |> D.groupBy ["item_name"]
+      |> D.aggregate (zip (repeat "quantity") [D.Maximum, D.Mean, D.Sum])
+      |> D.take 10
 
   let firstOrder =
         withTotalPrice
-          & D.filter "choice_description" (any (T.isInfixOf "Guacamole") . fromMaybe [])
-          & D.filter "item_name" (("Chicken Bowl" :: T.Text) ==)
+          |> D.filterBy (any (T.isInfixOf "Guacamole") . fromMaybe []) "choice_description"
+          |> D.filterBy (("Chicken Bowl" :: T.Text) ==) "item_name"
 
   print $ D.take 10 firstOrder
 

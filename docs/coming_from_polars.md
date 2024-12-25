@@ -107,21 +107,20 @@ Would be written as:
 import qualified Data.DataFrame as D
 import qualified Data.Text as T
 
-import Data.Function ( (&) )
+import Data.DataFrame.Operations ( (|>) )
 import Data.Time.Calendar
 
 main :: IO ()
 main = do
     ...
+    let year = (\(YearMonthDay y _ _) -> y)
     print $ df_csv
-          & D.as "birth_year"
-                D.apply "birthdate"
-                    (\(YearMonthDay y _ _) -> y)
-          & D.combine "bmi"
+          |> D.derive "birth_year" year "birthdate"
+          |> D.combine "bmi"
                       (\w h -> w / h ** 2)
                       "weight"
                       "height"
-          & D.select ["name", "birth_year", "bmi"]
+          |> D.select ["name", "birth_year", "bmi"]
 ```
 
 Resulting in:
@@ -158,9 +157,10 @@ We instead write this two `applyWithAlias` calls:
 
 ```haskell
 df_csv
-    & D.as "weight-5%" D.apply "weight" (*0.95) "weight"
-    & D.as "height-5%" D.apply "height" (*0.95) "height"
-    & D.select ["name", "weight-5%", "height-5%"]
+    |> D.derive "weight-5%" (*0.95) "weight"
+    -- Alternatively we can use the `as` function.
+    |> D.as "height-5%" D.apply (*0.95) "height"
+    |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
 ```
@@ -178,10 +178,10 @@ index |      name      |     height-5%      |     weight-5%
 However we can make our program shorter by using regular Haskell and folding over the dataframe.
 
 ```haskell
-let reduce name = D.as (name <> "-5%") D.apply name (*0.95)
+let reduce name = D.derive (name <> "-5%") (*0.95) name
 df_csv
-    & D.fold reduce ["weight", "height"]
-    & D.select ["name", "weight-5%", "height-5%"]
+    |> D.fold reduce ["weight", "height"]
+    |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
 Or alternatively,
@@ -189,9 +189,9 @@ Or alternatively,
 ```haskell
 addSuffix suffix name = D.rename name (name <> suffix)
 df_csv
-  & D.applyMany ["weight", "height"] (*0.95)
-  & D.fold (addSuffix "-5%")
-  & D.select ["name", "weight-5%", "height-5%"]
+  |> D.applyMany ["weight", "height"] (*0.95)
+  |> D.fold (addSuffix "-5%")
+  |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
 Filtering looks much the same:
@@ -232,11 +232,11 @@ print(result)
 
 ```haskell
 year (YearMonthDay y _ _) = y
-between a b y = y >= a && y <= b 
+between a b y = y >= a &|> y <= b 
 df_csv
-  & D.filter "birthdate"
+  |> D.filter "birthdate"
              (between 1982 1996 . year)
-  & D.filter "height" (1.7 <)
+  |> D.filter "height" (1.7 <)
 ```
 
 ```
@@ -260,13 +260,11 @@ Polars's `groupBy` does an implicit select. In dataframe the select is written e
 We implicitly create a `Count` variable as the result of grouping by an aggregate. In general when for a `groupByAgg` we create a variable with the same name as the aggregation to store the aggregation in. 
 
 ```haskell
-
+let decade = (*10) . flip div 10 . year
 df_csv
-    & D.as "decade"
-            D.apply "birthdate"
-                ((*10) . flip div 10 . year)
-    & D.select ["decade"]
-    & D.groupByAgg ["decade"] D.Count
+    |> D.derive "decade" decade "birthdate"
+    |> D.select ["decade"]
+    |> D.groupByAgg D.Count ["decade"]
 ```
 
 ```
@@ -296,21 +294,20 @@ print(result)
 ```haskell
 decade = (*10) . flip div 10 . year
 df_csv
-    & D.as "decade" D.apply "birthdate" decade
-    & D.groupByAgg ["decade"] D.Count
-    & D.as "avg_weight "D.reduceByAgg "weight" D.Mean
-    & D.as "tallest" D.reduceByAgg "height" D.Maximum
-    & D.select ["decade", "sampleSize", "avg_weight", "tallest"]
+    |> D.derive "decade" decade "birthdate"
+    |> D.groupByAgg D.Count ["decade"]
+    |> D.aggregate [("height", D.Maximum), ("weight", D.Mean)]
+    |> D.select ["decade", "sampleSize", "Mean_weight", "Maximum_height"]
 ```
 
 ```
------------------------------------------------------
-index | decade | Count |    avg_weight     | tallest
-------|--------|-------|-------------------|---------
- Int  |  Int   | Int   |      Double       | Double 
-------|--------|-------|-------------------|---------
-0     | 1990   | 1     | 57.9              | 1.56   
-1     | 1980   | 3     | 69.73333333333333 | 1.77
+----------------------------------------------------
+index | decade  |    Mean_weight    | Maximum_height
+------|---------|-------------------|---------------
+ Int  | Integer |      Double       |     Double    
+------|---------|-------------------|---------------
+0     | 1990    | 57.9              | 1.56          
+1     | 1980    | 69.73333333333333 | 1.77
 ```
 
 
@@ -336,22 +333,21 @@ print(result)
 ```
 
 ```haskell
+let firstWord = head . T.split (' ' ==)
 df_csv
-    & D.apply "name" (head . T.split (' ' ==))
-    & D.as "decade" D.apply "birthdate"
-                       ((*10) . flip div 10 . year)
-    & D.drop ["birthdate"]
-    & D.groupByAgg ["decade"] D.Count
-    & D.as "avg_weight" D.reduceByAgg "weight" D.Mean
-    & D.as "avg_height" D.reduceByAgg "height" D.Mean
+    |> D.apply firstWord "name"
+    |> D.derive "decade" decade "birthdate"
+    |> D.drop ["birthdate"]
+    |> D.groupByAgg D.Count ["decade"]
+    |> D.aggregate [("weight",  D.Mean), ("height", D.Mean)]
 ```
 
 ```
-------------------------------------------------------------------------------------------
-index | decade |           name           |    avg_weight     |     avg_height     | Count
-------|--------|--------------------------|-------------------|--------------------|------
- Int  |  Int   |       Vector Text        |      Double       |       Double       |  Int 
-------|--------|--------------------------|-------------------|--------------------|------
-0     | 1990   | ["Alice"]                | 57.9              | 1.56               | 1    
-1     | 1980   | ["Ben","Daniel","Chloe"] | 69.73333333333333 | 1.7233333333333334 | 3   
+-------------------------------------------------------------------------------------------
+index | decade  |           name           | Count |    Mean_height     |    Mean_weight   
+------|---------|--------------------------|-------|--------------------|------------------
+ Int  | Integer |       Vector Text        |  Int  |       Double       |      Double      
+------|---------|--------------------------|-------|--------------------|------------------
+0     | 1990    | ["Alice"]                | 1     | 1.56               | 57.9             
+1     | 1980    | ["Ben","Daniel","Chloe"] | 3     | 1.7233333333333334 | 69.73333333333333
 ```

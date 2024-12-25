@@ -24,7 +24,7 @@ module Data.DataFrame
     Operations.applyWhere,
     Operations.applyMany,
     Operations.applyInt,
-    Operations.applyWithAlias,
+    Operations.derive,
     Operations.applyAtIndex,
     Operations.applyDouble,
     Operations.take,
@@ -32,6 +32,7 @@ module Data.DataFrame
     Operations.columnNames,
     Operations.rename,
     Operations.filter,
+    Operations.filterBy,
     Operations.valueCounts,
     Operations.select,
     Operations.drop,
@@ -40,6 +41,7 @@ module Data.DataFrame
     Operations.groupByAgg,
     Operations.reduceBy,
     Operations.reduceByAgg,
+    Operations.aggregate,
     Operations.columnSize,
     Operations.combine,
     Operations.sortBy,
@@ -57,6 +59,7 @@ module Data.DataFrame
     Operations.sum,
     Operations.skewness,
     Operations.summarize,
+    (|>),
     Display.plotHistograms,
     Display.plotHistogramsBy,
     Display.PlotColumns(..),
@@ -68,3 +71,5 @@ import qualified Data.DataFrame.Display.Terminal as Display
 import qualified Data.DataFrame.IO as IO
 import qualified Data.DataFrame.Internal as Internal
 import qualified Data.DataFrame.Operations as Operations
+
+import Data.DataFrame.Operations ( (|>))

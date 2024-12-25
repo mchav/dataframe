@@ -21,8 +21,8 @@ starwars %>%
 ```
 
 ```haskell
-starwars & D.filter "species" (("Droid" :: Str.Text) ==)
-         & D.take 10
+starwars |> D.filter "species" (("Droid" :: Str.Text) ==)
+         |> D.take 10
 ```
 
 ```
@@ -58,8 +58,8 @@ starwars %>%
 columns = (D.columnNames starwars)
 isColorColumn = Prelude.filter (Str.isSuffixOf  "color")
 colorColumns = [cols | cols <- isColorColumn columns]
-starwars & D.select ("name":colorColumns)
-         & D.take 10
+starwars |> D.select ("name":colorColumns)
+         |> D.take 10
 ```
 
 
@@ -143,7 +143,7 @@ starwars %>%
 ```
 
 ```haskell
-starwars & D.sortBy "mass" D.Descending & D.take 5
+starwars |> D.sortBy "mass" D.Descending |> D.take 5
 ```
 
 ```
@@ -182,17 +182,14 @@ starwars %>%
 ```
 
 ```haskell
--- We define a custom mean function since the column contains optionals.
-sum' xs = VG.foldr (\n acc -> acc + (fromMaybe 0 n)) 0 xs
-mean xs = (fromIntegral $ sum' xs) / (fromIntegral (VG.length (VG.filter isJust xs))) :: Double
-starwars & D.select ["species", "mass"]
-         & D.groupByAgg ["species"] D.Count
-         & D.reduceBy "mass" mean
+starwars |> D.select ["species", "mass"]
+         |> D.groupByAgg D.Count ["species"]
+         |> D.reduceByAgg D.Mean "mass"
          -- Always better to be explcit about types for
          -- numbers but you can also turn on defaults
          -- to save keystrokes.
-         & D.filter "Count" ((1::Int)<)
-         & D.filter "mass" ((50 ::Double)<)
+         |> D.filter "Count" ((1::Int)<)
+         |> D.filter "mass" ((50 ::Double)<)
 ```
 
 ```
