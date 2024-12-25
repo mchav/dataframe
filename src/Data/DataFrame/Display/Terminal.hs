@@ -99,7 +99,7 @@ plotForColumn cname (Just (DI.BoxedColumn (column :: V.Vector a))) orientation d
         repText :: Ref.TypeRep T.Text = Ref.typeRep @T.Text
         repString :: Ref.TypeRep String = Ref.typeRep @String
     let counts = case repa `testEquality` repText of
-            Just Refl -> map (first show) $ Ops.valueCounts @T.Text cname df
+            Just Refl -> map (first T.unpack) $ Ops.valueCounts @T.Text cname df
             Nothing -> case repa `testEquality` repString of
                 Just Refl -> Ops.valueCounts @String cname df
                 -- Support other scalar types.
@@ -156,9 +156,11 @@ plotGivenCounts cname counts = do
     putChar '\n'
 
 plotVerticalGivenCounts :: HasCallStack => T.Text -> [(String, Integer)] -> IO ()
-plotVerticalGivenCounts cname counts = do
+plotVerticalGivenCounts cname counts' = do
     putStrLn $ "\nHistogram for " ++ show cname ++ "\n"
     let n = 8 :: Int
+    let clip s = if length s > n then take n s ++ ".." else s
+    let counts = map (first clip) counts'
     let maxValue = maximum $ map snd counts
     let increment = max 1 (maxValue `div` 10)
     let longestLabelLength = 2 + maximum (map (length . fst) counts)
