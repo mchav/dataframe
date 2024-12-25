@@ -465,7 +465,7 @@ valueCounts columnName df =
             let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
                 column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) column'
             in case repa `testEquality` repc of
-                  Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "combine"
+                  Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
                   Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
           Just (UnboxedColumn (column' :: VU.Vector c)) ->
             let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
