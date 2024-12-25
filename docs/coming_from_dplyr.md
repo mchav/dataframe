@@ -2,7 +2,8 @@
 
 This tutorial will walk through the examples in dplyr's [mini tutorial](https://dplyr.tidyverse.org/) showing how concepts in dplyr map to dataframe.
 
-TODO: Add notes about implementations
+## Filtering
+Filtering looks similar in both libraries.
 
 ```r
 starwars %>% 
@@ -39,6 +40,8 @@ index |  name  |  height   |   mass    | hair_color | skin_color  | eye_color | 
 5     | BB8    | Nothing   | Nothing   | none       | none        | black     | Nothing    | none | masculine | NA        | Droid   | The Force Awakens                                                                                                                         | Nothing    | Nothing
 ```
 
+## Selecting columns
+Select looks similar except in Haskell we take as argument a list of strings instead of a mix of predicates and strings.
 
 ```r
 starwars %>% 
@@ -53,6 +56,8 @@ starwars %>%
 #> 5 Leia Organa    brown      light       brown    
 #> # ℹ 82 more rows
 ```
+
+To get the same predicate-like functionality we define our own functions on the column names.
 
 ```haskell
 columns = (D.columnNames starwars)
@@ -81,6 +86,10 @@ index |        name        |  hair_color   | skin_color  | eye_color
 9     | Obi-Wan Kenobi     | auburn, white | fair        | blue-gray
 ```
 
+## Transforming columns
+
+R has a general mutate function that takes in a mix of expressions and column names.
+
 ```r
 starwars %>% 
   mutate(name, bmi = mass / ((height / 100)  ^ 2)) %>%
@@ -95,6 +104,8 @@ starwars %>%
 #> 5 Leia Organa       150    49  21.8
 #> # ℹ 82 more rows
 ```
+
+Our logic is more explicit about what's going on. Because both our fields are nullable/optional we have to specify the type.
 
 ```haskell
 bmi w h = (fromIntegral w) / (fromIntegral h / 100) ** 2 :: Double
@@ -125,6 +136,8 @@ index |         name          |  height   |   mass    |           bmi
 8     | Biggs Darklighter     | Just 183  | Just 84   | Just 25.082863029651524
 9     | Obi-Wan Kenobi        | Just 182  | Just 77   | Just 23.24598478444632 
 ```
+
+## Sorting
 
 ```r
 starwars %>% 
@@ -159,6 +172,8 @@ index |         name          |  height   |   mass    | hair_color |    skin_col
 4     | Darth Vader           | Just 202  | Just 136  | none       | white            | yellow        | Nothing    | male           | masculine | Tatooine  | Human   | A New Hope, The Empire Strikes Back, Return of the Jedi, Revenge of the Sith | Nothing                            | Just "TIE Advanced x1"
 ```
 
+## Grouping and aggregating
+
 ```r
 starwars %>%
   group_by(species) %>%
@@ -189,12 +204,12 @@ starwars |> D.select ["species", "mass"]
          -- numbers but you can also turn on defaults
          -- to save keystrokes.
          |> D.filter "Count" ((1::Int)<)
-         |> D.filter "mass" ((50 ::Double)<)
+         |> D.filter "Mean_mass" ((50 ::Double)<)
 ```
 
 ```
 --------------------------------------------
-index | species  |       mass        | Count
+index | species  |     Mean_mass     | Count
 ------|----------|-------------------|------
  Int  |   Text   |      Double       |  Int 
 ------|----------|-------------------|------
