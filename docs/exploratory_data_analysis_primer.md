@@ -21,7 +21,7 @@ We will look at each type of EDA and describe how we can use dataframe for each 
 
 ## Univariate non-graphical analysis
 
-Univariate non-graphical analysis should give us a sense of the distribution of our datasets variables. In the real world our variables are measurable characteristics. How they are distributed (the "sample distribution") and this may often help us estimate the overall distribution ("population distribution") of the variable. For example, if our variable was finishing times for a race, our analysis should be able to answer questions like what was the slowest time, what time did people tend to run, who was the fastest etc.
+Univariate non-graphical analysis should give us a sense of the distribution of our datasets variables. In the real world our variables are measurable characteristics. How they are distributed (the "sample distribution") and this may often help us estimate the overall distribution ("population distribution") of the variable. For example, if our variable was finishing times for a race, our analysis should be able to answer questions like what was the slowest time, what time did people tend to run, who was the fastest, were all times recorded etc.
 
 For categorical data the best univariate non-graphical analysis is a tabulation of the frequency of each category.
 
@@ -42,6 +42,7 @@ We can also plot similar tables for non-categorical data with a small value set 
 
 For quantitative data our goal is to understand the population distribution through our sample distribution. For a given quantitative variable we typically care about its:
 
+* presence (how much data is missing from each charateristic/variable)
 * center (what a "typical" value looks like for some definition of typical),
 * spread (how far values are from the "typical" value),
 * modality (what are the most popular ranges of values),
@@ -50,6 +51,29 @@ For quantitative data our goal is to understand the population distribution thro
 
 We can calculate sample statistics from the data such as the sample mean, sample variance etc. Although it's most often useful to use graphs to visualize the data's distribution, univariate non-graphical EDA describes aspects of the data's histogram. 
 
+### Missing data
+Arguably the first thing to do when presented with a datset is check for null values.
+
+```haskell
+ghci> D.columnInfo df
+-----------------------------------------------------------------------------
+index |    Column Name     | # Non-null Values | # Null Values |     Type    
+------|--------------------|-------------------|---------------|-------------
+ Int  |       [Char]       |        Int        |      Int      |    [Char]   
+------|--------------------|-------------------|---------------|-------------
+0     | total_bedrooms     | 20433             | 207           | Maybe Double
+1     | ocean_proximity    | 20640             | 0             | Text        
+2     | median_house_value | 20640             | 0             | Double      
+3     | median_income      | 20640             | 0             | Double      
+4     | households         | 20640             | 0             | Double      
+5     | population         | 20640             | 0             | Double      
+6     | total_rooms        | 20640             | 0             | Double      
+7     | housing_median_age | 20640             | 0             | Double      
+8     | latitude           | 20640             | 0             | Double      
+9     | longitude          | 20640             | 0             | Double
+```
+
+It seems we have most of the data except some missing total bedrooms. Dealing with nulls is a separate topic that requires a lot of and intimate knowledge of the data. So for this initial pass we'll leave out the total_bedrooms variable.
 
 ### Central tendency
 The central tendency of a distribution describes a "typical" value of that distribution. The most common statistical measures of central tendency are arithmetic mean and median. For symmetric distributions the mean and the median are the same. But for a skewed distribution the mean is pulled towards the "heavier" side wherease the median is more robust to these changes.
