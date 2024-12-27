@@ -1,39 +1,33 @@
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE KindSignatures #-}
 
-module Data.DataFrame.Internal
-  ( DataFrame (..),
-    Column (..),
-    toColumn,
-    toColumn',
-    toColumnUnboxed,
-    empty,
-    asText,
-    isEmpty,
-    columnLength,
-    metadata,
-    getColumn
-  )
-where
+module Data.DataFrame.Internal where
 
 import qualified Data.Map as M
 import qualified Data.Map.Strict as MS
+import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 
+import Data.DataFrame.Function
 import Data.DataFrame.Util (applySnd, showTable, readInt)
 import Data.Function (on)
+import Data.Int
 import Data.List (elemIndex, groupBy, sortBy, transpose)
 import Data.Map (Map)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Type.Equality
   ( TestEquality (testEquality),
     type (:~:) (Refl),
@@ -41,19 +35,134 @@ import Data.Type.Equality
 import Data.Typeable (Typeable)
 import Data.Vector (Vector)
 import Data.Vector.Unboxed (Unbox)
+import Data.Word
 import GHC.Stack (HasCallStack)
 import Type.Reflection (TypeRep, Typeable, typeRep)
+import Data.Kind (Type)
+import Control.Monad.ST (runST)
+import Control.Monad (foldM_)
 
 initialColumnSize :: Int
 initialColumnSize = 8
 
+type ColumnValue a = (Typeable a, Show a, Ord a)
+
 -- | Our representation of a column is a GADT that can store data in either
 -- a vector with boxed elements or
 data Column where
-  BoxedColumn :: (Typeable a, Show a, Ord a) => Vector a -> Column
-  UnboxedColumn :: (Typeable a, Show a, Ord a, Unbox a) => VU.Vector a -> Column
-  GroupedBoxedColumn :: (Typeable a, Show a, Ord a) => Vector (Vector a) -> Column
-  GroupedUnboxedColumn :: (Typeable a, Show a, Ord a, Unbox a) => Vector (VU.Vector a) -> Column
+  BoxedColumn :: ColumnValue a => Vector a -> Column
+  UnboxedColumn :: (ColumnValue a, Unbox a) => VU.Vector a -> Column
+  GroupedBoxedColumn :: ColumnValue a => Vector (Vector a) -> Column
+  GroupedUnboxedColumn :: (ColumnValue a, Unbox a) => Vector (VU.Vector a) -> Column
+
+unboxableTypes :: TypeRepList '[Int, Int8, Int16, Int32, Int64,
+                                Word, Word8, Word16, Word32, Word64,
+                                Char, Double, Float, Bool]
+unboxableTypes = Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep Nil)))))))))))))
+
+numericTypes :: TypeRepList '[Int, Int8, Int16, Int32, Int64, Double, Float]
+numericTypes = Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep (Cons typeRep Nil))))))
+
+data TypeRepList (xs :: [Type]) where
+  Nil  :: TypeRepList '[]
+  Cons :: Typeable x => TypeRep x -> TypeRepList xs -> TypeRepList (x ': xs)
+
+matchesAnyType :: forall a xs. (Typeable a) => TypeRepList xs -> TypeRep a -> Bool
+matchesAnyType Nil _ = False
+matchesAnyType (Cons ty tys) rep =
+  case testEquality ty rep of
+    Just Refl -> True
+    Nothing   -> matchesAnyType tys rep
+
+testUnboxable :: forall a . Typeable a => TypeRep a -> Bool
+testUnboxable x = matchesAnyType unboxableTypes (typeRep @a)
+
+testNumeric :: forall a . Typeable a => TypeRep a -> Bool
+testNumeric x = matchesAnyType numericTypes (typeRep @a)
+
+transformUnboxed :: forall a b . (ColumnValue a, Unbox a, ColumnValue b) => (a -> b) -> VU.Vector a -> Column
+transformUnboxed f column = case testEquality (typeRep @b) (typeRep @Int) of
+  Just Refl -> UnboxedColumn $ VG.map f column
+  Nothing -> case testEquality (typeRep @b) (typeRep @Int8) of
+    Just Refl -> UnboxedColumn $ VG.map f column
+    Nothing -> case testEquality (typeRep @b) (typeRep @Int16) of
+      Just Refl -> UnboxedColumn $ VG.map f column
+      Nothing -> case testEquality (typeRep @b) (typeRep @Int16) of
+        Just Refl -> UnboxedColumn $ VG.map f column
+        Nothing -> case testEquality (typeRep @b) (typeRep @Int32) of
+          Just Refl -> UnboxedColumn $ VG.map f column
+          Nothing -> case testEquality (typeRep @b) (typeRep @Int64) of
+            Just Refl -> UnboxedColumn $ VG.map f column
+            Nothing -> case testEquality (typeRep @b) (typeRep @Word8) of
+              Just Refl -> UnboxedColumn $ VG.map f column
+              Nothing-> case testEquality (typeRep @b) (typeRep @Word16) of
+                Just Refl -> UnboxedColumn $ VG.map f column
+                Nothing -> case testEquality (typeRep @b) (typeRep @Word32) of
+                  Just Refl -> UnboxedColumn $ VG.map f column
+                  Nothing -> case testEquality (typeRep @b) (typeRep @Word64) of
+                    Just Refl -> UnboxedColumn $ VG.map f column
+                    Nothing -> case testEquality (typeRep @b) (typeRep @Char) of
+                      Just Refl -> UnboxedColumn $ VG.map f column
+                      Nothing -> case testEquality (typeRep @b) (typeRep @Bool) of
+                        Just Refl -> UnboxedColumn $ VG.map f column
+                        Nothing -> case testEquality (typeRep @b) (typeRep @Float) of
+                          Just Refl -> UnboxedColumn $ VG.map f column
+                          Nothing -> case testEquality (typeRep @b) (typeRep @Double) of
+                            Just Refl -> UnboxedColumn $ VG.map f column
+                            Nothing -> case testEquality (typeRep @b) (typeRep @Word) of
+                              Just Refl -> UnboxedColumn $ VG.map f column
+                              Nothing -> error "Result type is unboxed" -- since we only call this after confirming 
+
+itransformUnboxed :: forall a b . (ColumnValue a, Unbox a, ColumnValue b) => (Int -> a -> b) -> VU.Vector a -> Column
+itransformUnboxed f column = case testEquality (typeRep @b) (typeRep @Int) of
+  Just Refl -> UnboxedColumn $ VG.imap f column
+  Nothing -> case testEquality (typeRep @b) (typeRep @Int8) of
+    Just Refl -> UnboxedColumn $ VG.imap f column
+    Nothing -> case testEquality (typeRep @b) (typeRep @Int16) of
+      Just Refl -> UnboxedColumn $ VG.imap f column
+      Nothing -> case testEquality (typeRep @b) (typeRep @Int16) of
+        Just Refl -> UnboxedColumn $ VG.imap f column
+        Nothing -> case testEquality (typeRep @b) (typeRep @Int32) of
+          Just Refl -> UnboxedColumn $ VG.imap f column
+          Nothing -> case testEquality (typeRep @b) (typeRep @Int64) of
+            Just Refl -> UnboxedColumn $ VG.imap f column
+            Nothing -> case testEquality (typeRep @b) (typeRep @Word8) of
+              Just Refl -> UnboxedColumn $ VG.imap f column
+              Nothing-> case testEquality (typeRep @b) (typeRep @Word16) of
+                Just Refl -> UnboxedColumn $ VG.imap f column
+                Nothing -> case testEquality (typeRep @b) (typeRep @Word32) of
+                  Just Refl -> UnboxedColumn $ VG.imap f column
+                  Nothing -> case testEquality (typeRep @b) (typeRep @Word64) of
+                    Just Refl -> UnboxedColumn $ VG.imap f column
+                    Nothing -> case testEquality (typeRep @b) (typeRep @Char) of
+                      Just Refl -> UnboxedColumn $ VG.imap f column
+                      Nothing -> case testEquality (typeRep @b) (typeRep @Bool) of
+                        Just Refl -> UnboxedColumn $ VG.imap f column
+                        Nothing -> case testEquality (typeRep @b) (typeRep @Float) of
+                          Just Refl -> UnboxedColumn $ VG.imap f column
+                          Nothing -> case testEquality (typeRep @b) (typeRep @Double) of
+                            Just Refl -> UnboxedColumn $ VG.imap f column
+                            Nothing -> case testEquality (typeRep @b) (typeRep @Word) of
+                              Just Refl -> UnboxedColumn $ VG.imap f column
+                              Nothing -> error "Result type is unboxed" -- since we only call this after confirming 
+
+class Transformable a where
+  transform :: forall b c . (ColumnValue b, ColumnValue c) => (b -> c) -> a -> Maybe a
+
+instance Transformable Column where
+  transform :: forall b c . (ColumnValue b, ColumnValue c) => (b -> c) -> Column -> Maybe Column
+  transform f (BoxedColumn (column :: V.Vector a)) = do
+    Refl <- testEquality (typeRep @a) (typeRep @b)
+    return (toColumn' (VG.map f column))
+  transform f (UnboxedColumn (column :: VU.Vector a)) = do
+    Refl <- testEquality (typeRep @a) (typeRep @b)
+    return $ if testUnboxable (typeRep @c) then transformUnboxed f column else toColumn' (VG.map f (V.convert column))
+  transform f (GroupedBoxedColumn (column :: Vector (Vector a))) = do
+    Refl <- testEquality (typeRep @(Vector a)) (typeRep @b)
+    return (toColumn' (VG.map f column))
+  transform f (GroupedUnboxedColumn (column :: Vector (VU.Vector a))) = do
+    Refl <- testEquality (typeRep @(VU.Vector a)) (typeRep @b)
+    return (toColumn' (VG.map f column))
 
 instance Show Column where
   show :: Column -> String
@@ -81,6 +190,125 @@ instance Eq Column where
       Just Refl -> a == b
   (==) _ _ = False
 
+-- Traversing columns.
+itransform :: forall b c. (ColumnValue b, ColumnValue c) => (Int -> b -> c) -> Column -> Maybe Column
+itransform f (BoxedColumn (column :: V.Vector a)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return (toColumn' (VG.imap f column))
+itransform f (UnboxedColumn (column :: VU.Vector a)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ if testUnboxable (typeRep @c) then itransformUnboxed f column else toColumn' (VG.imap f (V.convert column))
+itransform f (GroupedBoxedColumn (column :: Vector (Vector a))) = do
+  Refl <- testEquality (typeRep @(Vector a)) (typeRep @b)
+  return (toColumn' (VG.imap f column))
+itransform f (GroupedUnboxedColumn (column :: Vector (VU.Vector a))) = do
+  Refl <- testEquality (typeRep @(VU.Vector a)) (typeRep @b)
+  return (toColumn' (VG.imap f column))
+
+ifilterColumn :: forall a . (ColumnValue a) => (Int -> a -> Bool) -> Column -> Maybe Column
+ifilterColumn f c@(BoxedColumn (column :: V.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ BoxedColumn $ VG.ifilter f column
+ifilterColumn f c@(UnboxedColumn (column :: VU.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ UnboxedColumn $ VG.ifilter f column
+ifilterColumn f c@(GroupedBoxedColumn (column :: V.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ GroupedBoxedColumn $ VG.ifilter f column
+ifilterColumn f c@(GroupedUnboxedColumn (column :: V.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ GroupedUnboxedColumn $ VG.ifilter f column
+
+ifilterColumnF :: Function -> Column -> Maybe Column
+ifilterColumnF (ICond (f :: Int -> a -> Bool)) c@(BoxedColumn (column :: V.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ BoxedColumn $ VG.ifilter f column
+ifilterColumnF (ICond (f :: Int -> a -> Bool)) c@(UnboxedColumn (column :: VU.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ UnboxedColumn $ VG.ifilter f column
+ifilterColumnF (ICond (f :: Int -> a -> Bool)) c@(GroupedBoxedColumn (column :: V.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ GroupedBoxedColumn $ VG.ifilter f column
+ifilterColumnF (ICond (f :: Int -> a -> Bool)) c@(GroupedUnboxedColumn (column :: V.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ GroupedUnboxedColumn $ VG.ifilter f column
+
+-- We can probably generalize this to `applyVectorFunction`.
+atIndices :: S.Set Int -> Column -> Column
+atIndices indexes (BoxedColumn column) = BoxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
+atIndices indexes (UnboxedColumn column) = UnboxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
+atIndices indexes (GroupedBoxedColumn column) = GroupedBoxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
+atIndices indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
+
+atIndicesStable :: [Int] -> Column -> Column
+atIndicesStable indexes (BoxedColumn column) = BoxedColumn $ indexes `getIndices` column
+atIndicesStable indexes (UnboxedColumn column) = UnboxedColumn $ indexes `getIndicesUnboxed` column
+atIndicesStable indexes (GroupedBoxedColumn column) = GroupedBoxedColumn $ indexes `getIndices` column
+atIndicesStable indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ indexes `getIndices` column
+
+getIndices :: [Int] -> V.Vector a -> V.Vector a
+getIndices indices xs = runST $ do
+  xs' <- VM.new (length indices)
+  foldM_
+    ( \acc index -> case xs V.!? index of
+        Just v -> VM.write xs' acc v >> return (acc + 1)
+        Nothing -> error "A column has less entries than other rows"
+    )
+    0
+    indices
+  V.freeze xs'
+
+getIndicesUnboxed :: (VU.Unbox a) => [Int] -> VU.Vector a -> VU.Vector a
+getIndicesUnboxed indices xs = runST $ do
+  xs' <- VUM.new (length indices)
+  foldM_
+    ( \acc index -> case xs VU.!? index of
+        Just v -> VUM.write xs' acc v >> return (acc + 1)
+        Nothing -> error "A column has less entries than other rows"
+    )
+    0
+    indices
+  VU.freeze xs'
+
+ifoldrColumn :: forall a b. (ColumnValue a, ColumnValue b) => (Int -> a -> b -> b) -> b -> Column -> b
+ifoldrColumn f acc c@(BoxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+  Refl <- testEquality (typeRep @a) (typeRep @d)
+  return $ VG.ifoldr f acc column
+ifoldrColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = fromMaybe acc $ do
+  Refl <- testEquality (typeRep @a) (typeRep @d)
+  return $ VG.ifoldr f acc column
+ifoldrColumn f acc c@(GroupedBoxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+  Refl <- testEquality (typeRep @a) (typeRep @d)
+  return $ VG.ifoldr f acc column
+ifoldrColumn f acc c@(GroupedUnboxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+  Refl <- testEquality (typeRep @a) (typeRep @d)
+  return $ VG.ifoldr f acc column
+
+ifoldlColumn :: forall a b . (ColumnValue a, ColumnValue b) => (b -> Int -> a -> b) -> b -> Column -> b
+ifoldlColumn f acc c@(BoxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+  Refl <- testEquality (typeRep @a) (typeRep @d)
+  return $ VG.ifoldl' f acc column
+ifoldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = fromMaybe acc $ do
+  Refl <- testEquality (typeRep @a) (typeRep @d)
+  return $ VG.ifoldl' f acc column
+ifoldlColumn f acc c@(GroupedBoxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+  Refl <- testEquality (typeRep @a) (typeRep @d)
+  return $ VG.ifoldl' f acc column
+ifoldlColumn f acc c@(GroupedUnboxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+  Refl <- testEquality (typeRep @a) (typeRep @d)
+  return $ VG.ifoldl' f acc column
+
+sortedIndexes :: Bool -> Column -> [Int]
+sortedIndexes asc (BoxedColumn column ) = map snd . (if asc then S.toAscList else S.toDescList) $ VG.ifoldr (\i e -> S.insert (e, i)) S.empty column
+sortedIndexes asc (UnboxedColumn column) = map snd . (if asc then S.toAscList else S.toDescList) $ VG.ifoldr (\i e -> S.insert (e, i)) S.empty column
+sortedIndexes asc (GroupedBoxedColumn column) = map snd . (if asc then S.toAscList else S.toDescList) $ VG.ifoldr (\i e -> S.insert (e, i)) S.empty column
+sortedIndexes asc (GroupedUnboxedColumn column) = map snd . (if asc then S.toAscList else S.toDescList) $ VG.ifoldr (\i e -> S.insert (e, i)) S.empty column
+
+isGrouped :: Column -> Bool
+isGrouped (GroupedBoxedColumn column) = True
+isGrouped (GroupedUnboxedColumn column) = True
+isGrouped _ = False
+
 data DataFrame = DataFrame
   { -- | Our main data structure stores a dataframe as
     -- a vector of columns. This improv
@@ -96,6 +324,13 @@ getColumn :: T.Text -> DataFrame -> Maybe Column
 getColumn name df = do
   i <- columnIndices df M.!? name
   columns df V.! i
+
+columnTypeString :: T.Text -> DataFrame -> String
+columnTypeString name df = case getColumn name df of
+  Just (BoxedColumn (column :: V.Vector a)) -> show (typeRep @a)
+  Just (UnboxedColumn (column :: VU.Vector a)) -> show (typeRep @a)
+  Just (GroupedBoxedColumn (column :: V.Vector a)) -> show (typeRep @a)
+  Just (GroupedUnboxedColumn (column :: V.Vector a)) -> show (typeRep @a) 
 
 isEmpty :: DataFrame -> Bool
 isEmpty df = dataframeDimensions df == (0, 0)

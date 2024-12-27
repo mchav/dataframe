@@ -35,7 +35,7 @@ module Data.DataFrame
     Operations.filterBy,
     Operations.valueCounts,
     Operations.select,
-    Operations.drop,
+    Operations.exclude,
     Operations.fold,
     Operations.groupBy,
     Operations.groupByAgg,

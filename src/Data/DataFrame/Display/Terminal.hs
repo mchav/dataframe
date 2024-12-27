@@ -224,7 +224,7 @@ plotGivenCounts' cname counts = do
     mapM_ putStrLn (border : body)
     putChar '\n'
 
-numericHistogram :: forall a . (HasCallStack, Typeable a, Show a)
+numericHistogram :: forall a . (HasCallStack, DI.ColumnValue a)
                          => T.Text
                          -> V.Vector a
                          -> String

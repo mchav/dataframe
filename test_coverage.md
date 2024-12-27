@@ -64,11 +64,11 @@
   - Add new column to result of selected column
   - Updates free indices on select
 
-* drop
-  - Drops a subset of the columns on drop
-  - Check that dimensions update after drop
-  - Add new column to result of drop column
-  - Updates free indices on drop
+* exclude
+  - Drops a subset of the columns on exclude
+  - Check that dimensions update after exclude
+  - Add new column to result of exclude column
+  - Updates free indices on exclude
 
 * groupBy
   - Groups by a column if at exist and other columns are vectors of vectors
