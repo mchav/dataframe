@@ -232,7 +232,7 @@ print(result)
 
 ```haskell
 year (YearMonthDay y _ _) = y
-between a b y = y >= a &|> y <= b 
+between a b y = y >= a && y <= b 
 df_csv
   |> D.filter "birthdate"
              (between 1982 1996 . year)
@@ -337,7 +337,7 @@ let firstWord = head . T.split (' ' ==)
 df_csv
     |> D.apply firstWord "name"
     |> D.derive "decade" decade "birthdate"
-    |> D.drop ["birthdate"]
+    |> D.exclude ["birthdate"]
     |> D.groupByAgg D.Count ["decade"]
     |> D.aggregate [("weight",  D.Mean), ("height", D.Mean)]
 ```
