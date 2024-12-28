@@ -72,7 +72,6 @@ import qualified Statistics.Quantile as SS
 import qualified Statistics.Sample as SS
 
 import Control.Exception
-import Control.DeepSeq
 import Data.DataFrame.Errors (DataFrameException(..))
 import Data.DataFrame.Internal (Column (..), DataFrame (..), ColumnValue)
 import Data.DataFrame.Util
@@ -862,7 +861,7 @@ summarize df = fold columnStats (columnNames df) (fromList [("Statistic", DI.toC
                       valueOrNothing $! applyStatistic (SS.midspread SS.medianUnbiased 4) name,
                       valueOrNothing $! skewness name]
         valueOrNothing f = unsafePerformIO $ catch
-            (deepseq (Just $ f df) (return $ Just $ f df))
+            (seq (Just $! f df) (return $ Just $! f df))
             (\(e::SomeException) ->
                       return Nothing)
         roundTo :: Int -> Double -> Double
