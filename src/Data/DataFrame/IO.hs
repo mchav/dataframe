@@ -232,4 +232,6 @@ hasCommaInQuotes = snd . T.foldl' go (False, False)
             | otherwise = (inQuotes, hasComma)
 
 removeQuotes :: T.Text -> T.Text
-removeQuotes s = if T.head s == '\"' && T.last s == '\"' then T.init (T.tail s) else s
+removeQuotes s
+    | T.null s = s
+    | otherwise = if T.head s == '\"' && T.last s == '\"' then T.init (T.tail s) else s
