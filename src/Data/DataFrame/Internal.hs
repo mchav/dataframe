@@ -22,7 +22,7 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Data.DataFrame.Function
-import Data.DataFrame.Util (applySnd, showTable, readInt)
+import Data.DataFrame.Util (applySnd, showTable, readInt, inferValueType, readDouble, removeQuotes, isNullish)
 import Data.Function (on)
 import Data.Int
 import Data.List (elemIndex, groupBy, sortBy, transpose)
@@ -41,11 +41,12 @@ import Type.Reflection (TypeRep, Typeable, typeRep)
 import Data.Kind (Type)
 import Control.Monad.ST (runST)
 import Control.Monad (foldM_, join)
+import GHC.IO (unsafePerformIO)
 
 initialColumnSize :: Int
 initialColumnSize = 8
 
-type ColumnValue a = (Typeable a, Show a, Ord a)
+type ColumnValue a = (Typeable a, Show a, Ord a, Read a)
 
 -- | Our representation of a column is a GADT that can store data in either
 -- a vector with boxed elements or
@@ -54,6 +55,7 @@ data Column where
   UnboxedColumn :: (ColumnValue a, Unbox a) => VU.Vector a -> Column
   GroupedBoxedColumn :: ColumnValue a => Vector (Vector a) -> Column
   GroupedUnboxedColumn :: (ColumnValue a, Unbox a) => Vector (VU.Vector a) -> Column
+  MutableColumn :: (ColumnValue a) => VM.IOVector a -> Column
 
 unboxableTypes :: TypeRepList '[Int, Int8, Int16, Int32, Int64,
                                 Word, Word8, Word16, Word32, Word64,
@@ -338,7 +340,7 @@ isEmpty df = dataframeDimensions df == (0, 0)
 -- | Converts a boxed vector to a column making sure to put
 -- the vector into an appropriate column type by reflection on the
 -- vector's type parameter.
-toColumn' :: forall a. (Typeable a, Show a, Ord a) => Vector a -> Column
+toColumn' :: forall a. (Typeable a, Show a, Ord a, Read a) => Vector a -> Column
 toColumn' xs = case testEquality (typeRep @a) (typeRep @Int) of
   Just Refl -> UnboxedColumn (VU.convert xs)
   Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
@@ -347,7 +349,7 @@ toColumn' xs = case testEquality (typeRep @a) (typeRep @Int) of
       Just Refl -> UnboxedColumn (VU.convert xs)
       Nothing -> BoxedColumn xs
 
-toColumn :: forall a. (Typeable a, Show a, Ord a) => [a] -> Column
+toColumn :: forall a. (Typeable a, Show a, Ord a, Read a) => [a] -> Column
 toColumn = toColumn' . V.fromList
 
 -- | O(1) Gets the number of elements in the column.
@@ -356,11 +358,12 @@ columnLength (BoxedColumn xs) = VG.length xs
 columnLength (UnboxedColumn xs) = VG.length xs
 columnLength (GroupedBoxedColumn xs) = VG.length xs
 columnLength (GroupedUnboxedColumn xs) = VG.length xs
+columnLength (MutableColumn xs) = VM.length xs
 
 -- | Converts a an unboxed vector to a column making sure to put
 -- the vector into an appropriate column type by reflection on the
 -- vector's type parameter.
-toColumnUnboxed :: forall a. (Typeable a, Show a, Ord a, Unbox a) => VU.Vector a -> Column
+toColumnUnboxed :: forall a. (Typeable a, Show a, Ord a, Read a, Unbox a) => VU.Vector a -> Column
 toColumnUnboxed = UnboxedColumn
 
 -- | O(1) Creates an empty dataframe
@@ -404,6 +407,27 @@ asText d =
         transpose $
           zipWith (curry (V.toList . getTextColumnFromFrame d)) [0..] header
    in showTable header ("Int":types) rows
+
+appendToColumn :: T.Text -> Column -> Column
+appendToColumn v col = error ""
+
+growColumn :: Int -> Column -> IO Column
+growColumn n (MutableColumn col) = MutableColumn <$> VM.grow col n
+
+writeColumn :: Int -> T.Text -> Column -> IO ()
+writeColumn i value (MutableColumn (col :: VM.IOVector a)) = let
+    v = removeQuotes value
+  in case testEquality (typeRep @a) (typeRep @(Maybe Int)) of
+      Just Refl -> VM.write col i (readInt v)
+      Nothing -> case testEquality (typeRep @a) (typeRep @(Maybe Double)) of
+        Just Refl -> VM.write col i (readDouble v)
+        Nothing -> case testEquality (typeRep @a) (typeRep @(Maybe T.Text)) of
+          Just Refl -> VM.write col i (if isNullish v then Nothing else Just v)
+          Nothing -> error "Unknown type to writeColumn"
+
+
+freezeColumn' :: Column -> Int -> IO Column
+freezeColumn' (MutableColumn col) i = BoxedColumn <$> V.freeze (VM.slice 0 i col)
 
 metadata :: DataFrame -> String
 metadata df = show (columnIndices df) ++ "\n" ++

@@ -43,7 +43,7 @@ mean xs = VG.sum xs / fromIntegral (VG.length xs)
 
 oneBillingRowChallenge :: IO ()
 oneBillingRowChallenge = do
-  parsed <- D.readSeparated ';' D.defaultOptions "./data/measurements.txt"
+  parsed <- D.readSeparated ';' D.defaultOptions "../1brc/measurements.txt"
   print $
     parsed
       |> D.groupBy ["City"]

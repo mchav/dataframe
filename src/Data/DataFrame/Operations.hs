@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Data.DataFrame.Operations
   ( addColumn,
@@ -145,8 +146,8 @@ addColumn' name xs d
         | diff == 0 || DI.isEmpty d = xs
         | diff > 0 = case xs of
             Nothing -> xs
-            Just (BoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
-            Just (UnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+            Just (BoxedColumn col) -> Just $! BoxedColumn $! V.map Just col <> V.replicate diff Nothing
+            Just (UnboxedColumn col) -> Just $! BoxedColumn $! V.map Just (V.convert col) <> V.replicate diff Nothing
         | diff < 0 = error "Column is too large to add"
    in d
         { columns = columns' V.// [(n, xs')],
@@ -156,7 +157,7 @@ addColumn' name xs d
         }
         where diff = r - l
               l = maybe 0 DI.columnLength xs
-              (r, c) = DI.dataframeDimensions d
+              (!r, !c) = DI.dataframeDimensions d
 
 -- | /O(k)/ Add a column to the dataframe providing a default.
 -- This constructs a new vector and also may convert it
@@ -727,7 +728,7 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
           let example = T.strip (V.head c)
               nullish = S.fromList ["nan", "NULL", "null", "", " "]
               emptyToNothing v = if S.member v nullish then Nothing else Just v
-           in case readInt example of
+          in case readInt example of
                 Just _ ->
                   let safeVector = V.map ((=<<) readInt . emptyToNothing) c
                       hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
@@ -746,6 +747,7 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
                         safeVector = V.map emptyToNothing c
                         hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
                       in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+parseDefault _ c = c
 
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
@@ -849,8 +851,8 @@ applyStatistic f name df = case name `MS.lookup` DI.columnIndices df of
         _ -> error $ "Cannot get mean of non numeric column: " ++ T.unpack name
 
 summarize :: DataFrame -> DataFrame
-summarize df = fold columnStats (columnNames df) (fromList [("Statistic", DI.toColumn ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
-  where columnStats name d = if all isJust (stats name) then addColumn name (V.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
+summarize df = L.foldl' columnStats (fromList [("Statistic", DI.toColumn ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])]) (columnNames df)
+  where columnStats d name = if all isJust (stats name) then addColumn name (V.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
         stats name = [valueOrNothing $! mean name,
                       valueOrNothing $! applyStatistic VG.minimum name,
                       valueOrNothing $! applyStatistic (SS.quantile SS.medianUnbiased 1 4) name,

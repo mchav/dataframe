@@ -4,6 +4,7 @@
 
 module Data.DataFrame.Util where
 
+import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
@@ -89,6 +90,15 @@ inferType xs
             Just _ -> "Bool"
             Nothing -> "Text"
 
+inferValueType :: T.Text -> T.Text
+inferValueType s = let    
+        example = T.strip (removeQuotes s)
+    in case readInt example of
+        Just _ -> "Int"
+        Nothing -> case readDouble example of
+            Just _ -> "Double"
+            Nothing -> "Other"
+
 getIndices :: [Int] -> V.Vector a -> V.Vector a
 getIndices indices xs = runST $ do
   xs' <- VM.new (length indices)
@@ -146,3 +156,11 @@ safeReadValue s = readMaybe (T.unpack s)
 
 readWithDefault :: (HasCallStack, Read a) => a -> T.Text -> a
 readWithDefault v s = fromMaybe v (readMaybe (T.unpack s))
+
+removeQuotes :: T.Text -> T.Text
+removeQuotes s
+    | T.null s = s
+    | otherwise = if T.head s == '\"' && T.last s == '\"' then T.init (T.tail s) else s
+
+isNullish :: T.Text -> Bool
+isNullish s = s `S.member` S.fromList ["Nothing", "NULL", "", " ", "nan"]

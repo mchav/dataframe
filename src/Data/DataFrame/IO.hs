@@ -33,7 +33,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Mutable as VM
 
-import Control.Monad (foldM_, forM_, replicateM_, foldM, when, zipWithM_, unless)
+import Control.Monad (foldM_, forM_, replicateM_, foldM, when, zipWithM_, unless, join)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.ST ( ST, runST )
 import Data.Char (intToDigit)
@@ -57,6 +57,10 @@ import Type.Reflection
 import Text.Read (readMaybe)
 import Data.Function (on)
 import Unsafe.Coerce (unsafeCoerce)
+import Control.Concurrent (newMVar)
+import Control.Concurrent.MVar
+import Control.Concurrent.Async
+import Data.Typeable (cast)
 
 -- | Record for CSV read options.
 data ReadOptions = ReadOptions {
@@ -89,25 +93,41 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
     let columnNames = if hasHeader opts
                       then map (T.filter (/= '\"')) firstRow
                       else map (T.singleton . intToDigit) [0..(length firstRow - 1)]
+    let numColumns = length columnNames
     -- If there was no header rewind the file cursor.
     unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
 
+    -- Read the file from which we'll infer types.
+    dataRow <- map T.strip . T.split (c ==) <$> TIO.hGetLine handle
+    mCols' <- VM.new numColumns
+    getInitialDataVectors 0 mCols' dataRow
+
     -- Initialize mutable vectors for each column
-    let numColumns = length columnNames
-    mutableCols <- VM.replicateM numColumns (VM.new 1024)  -- Start with a capacity of 1024 rows per column
-    rowCounts <- VM.replicate numColumns 0  -- Keeps track of the row count for each column
+    mutableCols <- newMVar mCols'
+    rowCounts <- newMVar =<< VM.replicate numColumns 0
 
     -- Read rows into the mutable vectors
     fillColumns c mutableCols rowCounts handle
 
     -- Freeze the mutable vectors into immutable ones
-    cols <- V.mapM (freezeColumn rowCounts mutableCols) (V.generate numColumns id)
+    cols <- mapConcurrently (freezeColumn rowCounts mutableCols) (V.generate numColumns id)
     return $ DataFrame {
-            columns = V.map (mkColumn opts) cols,
+            columns = V.map (unJustColumn opts) cols,
             freeIndices = [],
             columnIndices = M.fromList (zip columnNames [0..]),
-            dataframeDimensions = (V.length $ cols V.! 0, V.length $ cols)
+            dataframeDimensions = (maybe 0 columnLength (cols V.!? 0), V.length cols)
         }
+
+getInitialDataVectors :: Int -> VM.IOVector Column -> [T.Text] -> IO ()
+getInitialDataVectors _ _ [] = return ()
+getInitialDataVectors i mCol (x:xs) = do
+    let x' = removeQuotes x
+    col <- case inferValueType x of
+            "Int" -> MutableColumn <$> ((VM.new 1024 :: IO (VM.IOVector (Maybe Int))) >>= \c -> VM.write c 0 (readInt x') >> return c)
+            "Double" -> MutableColumn <$> ((VM.new 1024 :: IO (VM.IOVector (Maybe Double))) >>= \c -> VM.write c 0 (readDouble x') >> return c)
+            _ -> MutableColumn <$> ((VM.new 1024 :: IO (VM.IOVector (Maybe T.Text))) >>= \c -> VM.write c 0 (if isNullish x' then Nothing else Just x') >> return c)
+    VM.write mCol i col
+    getInitialDataVectors (i + 1) mCol xs
 
 writeCsv :: String -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
@@ -161,37 +181,43 @@ getRowAsText df i = V.ifoldr go [] (columns df)
                 ++ show i
 
 -- | Reads rows from the handle and stores values in mutable vectors.
-fillColumns :: Char -> VM.IOVector (VM.IOVector T.Text) -> VM.IOVector Int -> Handle -> IO ()
+fillColumns :: Char -> MVar (VM.IOVector Column) -> MVar (VM.IOVector Int) -> Handle -> IO ()
 fillColumns c mutableCols rowCounts handle = do
     isEOF <- hIsEOF handle
     unless isEOF $ do
         row <- map T.strip . split c <$> TIO.hGetLine handle
-        zipWithM_ (writeValue mutableCols rowCounts) [0..] row
+        withAsync (zipWithM_ (writeValue mutableCols rowCounts) [0..] row) wait
         fillColumns c mutableCols rowCounts handle
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
-writeValue :: VM.IOVector (VM.IOVector T.Text) -> VM.IOVector Int -> Int -> T.Text -> IO ()
-writeValue mutableCols rowCounts colIndex value = do
+writeValue :: MVar (VM.IOVector Column) -> MVar (VM.IOVector Int) -> Int -> T.Text -> IO ()
+writeValue mutableColsVar rowCountsVar colIndex value = do
+    mutableCols <- takeMVar mutableColsVar
+    rowCounts <- takeMVar rowCountsVar
     col <- VM.read mutableCols colIndex
     count <- VM.read rowCounts colIndex
-    let capacity = VM.length col
+    let capacity = columnLength col
     when (count >= capacity) $ do
         -- Double the size of the vector if it's full
         let newCapacity = capacity * 2
-        newCol <- VM.grow col newCapacity
+        newCol <- growColumn newCapacity col
         VM.write mutableCols colIndex newCol
 
     -- In case we resized we need to get the column again.
     col' <- VM.read mutableCols colIndex
-    VM.write col' count value
+    writeColumn count value col'
     VM.write rowCounts colIndex (count + 1)
+    putMVar mutableColsVar mutableCols
+    putMVar rowCountsVar rowCounts
 
 -- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
-freezeColumn :: VM.IOVector Int -> VM.IOVector (VM.IOVector T.Text) -> Int -> IO (V.Vector T.Text)
-freezeColumn rowCounts mutableCols colIndex = do
+freezeColumn :: MVar (VM.IOVector Int) -> MVar (VM.IOVector Column) -> Int -> IO Column
+freezeColumn rowCountsVar mutableColsVar colIndex = do
+    rowCounts <- readMVar rowCountsVar
+    mutableCols <- readMVar mutableColsVar
     count <- VM.read rowCounts colIndex
     col <- VM.read mutableCols colIndex
-    V.freeze (VM.slice 0 count col)
+    freezeColumn' col count
 
 -- | Constructs a dataframe column, optionally inferring types.
 mkColumn :: ReadOptions -> V.Vector T.Text -> Maybe Column
@@ -199,6 +225,19 @@ mkColumn opts colData =
     let col = Just $ BoxedColumn colData
     in if inferTypes opts then parseDefault (safeRead opts) col else col
 
+unJustColumn :: ReadOptions -> Column -> Maybe Column
+unJustColumn opts c@(BoxedColumn (col :: V.Vector a)) = case typeRep @a of
+    App t1 t2 -> case eqTypeRep t1 (typeRep @Maybe) of
+        Just HRefl -> if not (V.all isJust col)
+                      then Just c
+                      else case testEquality (typeRep @a) (typeRep @(Maybe Int)) of
+                            Just Refl -> Just $ UnboxedColumn $ VU.convert (V.map (fromMaybe 0) col)
+                            Nothing -> case testEquality (typeRep @a) (typeRep @(Maybe Double)) of
+                                Just Refl -> Just $ UnboxedColumn $ VU.convert (V.map (fromMaybe 0) col)
+                                Nothing -> case testEquality (typeRep @a) (typeRep @(Maybe T.Text)) of
+                                    Just Refl -> Just $ BoxedColumn $ V.map (fromMaybe "") col
+        Nothing -> Just c
+    _ -> Just c
 
 -- | A naive splitting algorithm. If there are no quotes in the string
 -- we split by the character. Otherwise we interate through the
@@ -230,8 +269,3 @@ hasCommaInQuotes = snd . T.foldl' go (False, False)
             | c == ',' && inQuotes = (inQuotes, True)
             | c == '\"' = (not inQuotes, hasComma)
             | otherwise = (inQuotes, hasComma)
-
-removeQuotes :: T.Text -> T.Text
-removeQuotes s
-    | T.null s = s
-    | otherwise = if T.head s == '\"' && T.last s == '\"' then T.init (T.tail s) else s

@@ -22,9 +22,9 @@ fi
 
 case "$PROF_TYPE" in
   "eventlog")
-    cabal v2-run --enable-profiling dataframe -- +RTS -hy -l-agu
+    cabal v2-run -O2 --with-ghc=ghc-9.4.8 --enable-profiling dataframe -- +RTS -hc -l-agu
     ;;
   "pprof")
-    cabal v2-run --enable-profiling dataframe -- +RTS -pj -RTS
+    cabal v2-run -O2 --with-ghc=ghc-9.4.8 --enable-profiling dataframe -- +RTS -pj -RTS
     ;;
 esac
