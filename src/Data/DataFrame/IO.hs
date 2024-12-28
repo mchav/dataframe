@@ -206,7 +206,7 @@ mkColumn opts colData =
 -- columns.
 split :: Char -> T.Text -> [T.Text]
 split c s
-    | not (T.elem '\"' s) = T.split (c ==) s
+    | not (hasCommaInQuotes s) = map removeQuotes $ T.split (c ==) s
     | otherwise           = splitIgnoring c '\"' s
 
 -- TODO: This currently doesn't handle anything except quotes. It should
@@ -223,3 +223,13 @@ splitIgnoring' c o curr (!inIgnore, !word, !res)
     | isTerminal && not inIgnore = (inIgnore, "", word:res)
     | otherwise                  = (inIgnore, T.singleton curr `T.append` word, res)
         where isTerminal = curr == c || (curr == '\r' && word /= "")
+
+hasCommaInQuotes :: T.Text -> Bool
+hasCommaInQuotes = snd . T.foldl' go (False, False)
+    where go (!inQuotes, !hasComma) c
+            | c == ',' && inQuotes = (inQuotes, True)
+            | c == '\"' = (not inQuotes, hasComma)
+            | otherwise = (inQuotes, hasComma)
+
+removeQuotes :: T.Text -> T.Text
+removeQuotes s = if T.head s == '\"' && T.last s == '\"' then T.init (T.tail s) else s
