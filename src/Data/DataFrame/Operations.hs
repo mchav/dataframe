@@ -278,7 +278,7 @@ applyWhere ::
   T.Text -> -- Column name
   DataFrame -> -- DataFrame to apply operation to
   DataFrame
-applyWhere condition filterColumnName f columnName df = case DI.getColumn columnName df of
+applyWhere condition filterColumnName f columnName df = case DI.getColumn filterColumnName df of
   Nothing -> throw $ ColumnNotFoundException columnName "applyWhere" (map fst $ M.toList $ DI.columnIndices df)
   Just column -> let
       indexes = DI.ifoldrColumn (\i val acc -> if condition val then V.cons i acc else acc) V.empty column
