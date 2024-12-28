@@ -40,7 +40,7 @@ import GHC.Stack (HasCallStack)
 import Type.Reflection (TypeRep, Typeable, typeRep)
 import Data.Kind (Type)
 import Control.Monad.ST (runST)
-import Control.Monad (foldM_)
+import Control.Monad (foldM_, join)
 
 initialColumnSize :: Int
 initialColumnSize = 8
@@ -323,14 +323,14 @@ data DataFrame = DataFrame
 getColumn :: T.Text -> DataFrame -> Maybe Column
 getColumn name df = do
   i <- columnIndices df M.!? name
-  columns df V.! i
+  join $ columns df V.!? i
 
 columnTypeString :: T.Text -> DataFrame -> String
 columnTypeString name df = case getColumn name df of
   Just (BoxedColumn (column :: V.Vector a)) -> show (typeRep @a)
   Just (UnboxedColumn (column :: VU.Vector a)) -> show (typeRep @a)
   Just (GroupedBoxedColumn (column :: V.Vector a)) -> show (typeRep @a)
-  Just (GroupedUnboxedColumn (column :: V.Vector a)) -> show (typeRep @a) 
+  Just (GroupedUnboxedColumn (column :: V.Vector a)) -> show (typeRep @a)
 
 isEmpty :: DataFrame -> Bool
 isEmpty df = dataframeDimensions df == (0, 0)
