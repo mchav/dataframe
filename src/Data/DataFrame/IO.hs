@@ -133,7 +133,7 @@ writeValue mutableCols count colIndex value = do
 freezeColumn :: VM.IOVector (VM.IOVector T.Text) -> ReadOptions -> Int -> IO (Maybe Column)
 freezeColumn mutableCols opts colIndex = do
     col <- VM.read mutableCols colIndex
-    mkColumn opts <$> V.freeze col
+    mkColumn opts <$> V.unsafeFreeze col
 
 -- | Constructs a dataframe column, optionally inferring types.
 mkColumn :: ReadOptions -> V.Vector T.Text -> Maybe Column
