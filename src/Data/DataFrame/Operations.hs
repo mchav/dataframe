@@ -720,7 +720,7 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
                 nullish = S.fromList ["nan", "NULL", "null", "", " "]
                 emptyToNothing v = if S.member v nullish then Nothing else Just v
                 safeVector = V.map emptyToNothing c
-                hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
+                hasNulls = isJust $ V.find (`S.member` nullish) c
               in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
             Nothing -> Just $ BoxedColumn c
         Just Refl ->
@@ -729,22 +729,21 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
               emptyToNothing v = if S.member v nullish then Nothing else Just v
            in case readInt example of
                 Just _ ->
-                  let safeVector = V.map ((=<<) readInt . emptyToNothing) c
-                      hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
-                   in Just (if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fromMaybe 0 . readInt) c))
+                  let
+                      hasNulls = isJust $ V.find (`S.member` nullish) c
+                   in Just (if safeRead && hasNulls then BoxedColumn (V.map ((=<<) readInt . emptyToNothing) c) else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . readInt . (c V.!))))
                 Nothing -> case readDouble example of
                   Just _ ->
-                    let safeVector = V.map ((=<<) readDouble . emptyToNothing) c
-                        hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
-                     in Just $ if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.convert $ V.map (fromMaybe 0 . readDouble) c)
+                    let
+                        hasNulls = isJust $ V.find (`S.member` nullish) c
+                     in Just $ if safeRead && hasNulls then BoxedColumn (V.map ((=<<) readDouble . emptyToNothing) c) else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . readDouble . (c V.!)))
                   Nothing -> case parseTimeOpt example of
                     Just d -> let
-                        safeVector = V.map ((=<<) parseTimeOpt . emptyToNothing) c
-                        hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
-                      in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn (V.map unsafeParseTime c)
+                        hasNulls = isJust $ V.find (`S.member` nullish) c
+                      in Just $ if safeRead && hasNulls then BoxedColumn (V.map ((=<<) parseTimeOpt . emptyToNothing) c) else BoxedColumn (V.map unsafeParseTime c)
                     Nothing -> let
                         safeVector = V.map emptyToNothing c
-                        hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
+                        hasNulls = isJust $ V.find (`S.member` nullish) c
                       in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
 
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
