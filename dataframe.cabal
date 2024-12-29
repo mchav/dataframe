@@ -33,6 +33,7 @@ library dataframe-lib
                    Data.DataFrame.Function
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
+                      bytestring,
                       containers >= 0.6.7 && < 0.8,
                       directory >= 1.3.0.0,
                       statistics >= 0.13,
@@ -54,6 +55,7 @@ library dataframe-lib-dev
                      Data.DataFrame.Function
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
+                      bytestring,
                       containers >= 0.6.7 && < 0.8,
                       directory >= 1.3.0.0,
                       statistics >= 0.13,
@@ -76,6 +78,7 @@ executable dataframe
                    Data.DataFrame.Function
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
+                      bytestring,
                       containers >= 0.6.7 && < 0.8,
                       directory >= 1.3.0.0,
                       statistics >= 0.13,

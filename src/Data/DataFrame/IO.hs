@@ -31,7 +31,11 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BLC
+import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified Data.Vector.Mutable as VM
+import qualified Data.Text.Encoding as TE
 
 import Control.Monad (foldM_, forM_, replicateM_, foldM, when, zipWithM_, unless)
 import Control.Monad.IO.Class (MonadIO(liftIO))
@@ -85,7 +89,7 @@ readTsv = readSeparated '\t' defaultOptions
 -- | Reads a character separated file into a dataframe using mutable vectors.
 readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
 readSeparated c opts path = withFile path ReadMode $ \handle -> do
-    firstRow <- map T.strip . T.split (c ==) <$> TIO.hGetLine handle
+    firstRow <- T.split (c ==) <$> TIO.hGetLine handle
     let columnNames = if hasHeader opts
                       then map (T.filter (/= '\"')) firstRow
                       else map (T.singleton . intToDigit) [0..(length firstRow - 1)]
@@ -94,20 +98,95 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
 
     -- Initialize mutable vectors for each column
     let numColumns = length columnNames
-    mutableCols <- VM.replicateM numColumns (VM.new 1024)  -- Start with a capacity of 1024 rows per column
+    totalRows <- countRows path
+    let actualRows = if hasHeader opts then totalRows - 1 else totalRows
+    mutableCols <- VM.replicateM numColumns (VM.new actualRows)  -- Start with a capacity of 1024 rows per column
     rowCounts <- VM.replicate numColumns 0  -- Keeps track of the row count for each column
 
     -- Read rows into the mutable vectors
-    fillColumns c mutableCols rowCounts handle
+    fillColumns 0 c mutableCols handle
 
     -- Freeze the mutable vectors into immutable ones
-    cols <- V.mapM (freezeColumn rowCounts mutableCols) (V.generate numColumns id)
+    cols <- V.mapM (freezeColumn mutableCols opts) (V.generate numColumns id)
     return $ DataFrame {
-            columns = V.map (mkColumn opts) cols,
+            columns = cols,
             freeIndices = [],
             columnIndices = M.fromList (zip columnNames [0..]),
-            dataframeDimensions = (V.length $ cols V.! 0, V.length $ cols)
+            dataframeDimensions = (maybe 0 columnLength (cols V.! 0), V.length cols)
         }
+
+-- | Reads rows from the handle and stores values in mutable vectors.
+fillColumns :: Int -> Char -> VM.IOVector (VM.IOVector T.Text) -> Handle -> IO ()
+fillColumns i c mutableCols handle = do
+    isEOF <- hIsEOF handle
+    unless isEOF $ do
+        row <- split c <$> TIO.hGetLine handle
+        zipWithM_ (writeValue mutableCols i) [0..] row
+        fillColumns (i + 1) c mutableCols handle
+
+-- | Writes a value into the appropriate column, resizing the vector if necessary.
+writeValue :: VM.IOVector (VM.IOVector T.Text) -> Int -> Int -> T.Text -> IO ()
+writeValue mutableCols count colIndex value = do
+    col <- VM.read mutableCols colIndex
+    VM.write col count value
+
+-- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
+freezeColumn :: VM.IOVector (VM.IOVector T.Text) -> ReadOptions -> Int -> IO (Maybe Column)
+freezeColumn mutableCols opts colIndex = do
+    col <- VM.read mutableCols colIndex
+    mkColumn opts <$> V.freeze col
+
+-- | Constructs a dataframe column, optionally inferring types.
+mkColumn :: ReadOptions -> V.Vector T.Text -> Maybe Column
+mkColumn opts colData =
+    let col = Just $ BoxedColumn colData
+    in if inferTypes opts then parseDefault (safeRead opts) col else col
+
+
+-- | A naive splitting algorithm. If there are no quotes in the string
+-- we split by the character. Otherwise we interate through the
+-- string to identify parts where the character is not used to separate
+-- columns.
+split :: Char -> T.Text -> [T.Text]
+split c s
+    | not (hasCommaInQuotes s) = map removeQuotes $ T.split (c ==) s
+    | otherwise           = splitIgnoring c '\"' s
+
+-- TODO: This currently doesn't handle anything except quotes. It should
+-- generalize to handle ther structures e.g braces and parens.
+-- This should probably use a stack.
+splitIgnoring :: Char -> Char -> T.Text -> [T.Text]
+splitIgnoring c o s = ret
+    where (_, acc, res) = T.foldr (splitIgnoring' c o) (False, "", []) s
+          ret = if acc == "" then res else acc : res
+
+splitIgnoring' :: Char -> Char -> Char -> (Bool, T.Text, [T.Text]) -> (Bool, T.Text, [T.Text])
+splitIgnoring' c o curr (!inIgnore, !word, !res)
+    | curr == o                  = (not inIgnore, word, res)
+    | isTerminal && not inIgnore = (inIgnore, "", word:res)
+    | otherwise                  = (inIgnore, T.singleton curr `T.append` word, res)
+        where isTerminal = curr == c || (curr == '\r' && word /= "")
+
+hasCommaInQuotes :: T.Text -> Bool
+hasCommaInQuotes = snd . T.foldl' go (False, False)
+    where go (!inQuotes, !hasComma) c
+            | c == ',' && inQuotes = (inQuotes, True)
+            | c == '\"' = (not inQuotes, hasComma)
+            | otherwise = (inQuotes, hasComma)
+
+removeQuotes :: T.Text -> T.Text
+removeQuotes s
+    | T.null s' = s'
+    | otherwise = if T.head s' == '\"' && T.last s' == '\"' then T.init (T.tail s') else s'
+        where s' = T.strip s
+
+
+-- | First pass to count rows for exact allocation
+countRows :: FilePath -> IO Int
+countRows path = do
+    contents <- BL.readFile path
+    return $ length $ BLC.lines contents
+
 
 writeCsv :: String -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
@@ -159,79 +238,3 @@ getRowAsText df i = V.ifoldr go [] (columns df)
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
-
--- | Reads rows from the handle and stores values in mutable vectors.
-fillColumns :: Char -> VM.IOVector (VM.IOVector T.Text) -> VM.IOVector Int -> Handle -> IO ()
-fillColumns c mutableCols rowCounts handle = do
-    isEOF <- hIsEOF handle
-    unless isEOF $ do
-        row <- map T.strip . split c <$> TIO.hGetLine handle
-        zipWithM_ (writeValue mutableCols rowCounts) [0..] row
-        fillColumns c mutableCols rowCounts handle
-
--- | Writes a value into the appropriate column, resizing the vector if necessary.
-writeValue :: VM.IOVector (VM.IOVector T.Text) -> VM.IOVector Int -> Int -> T.Text -> IO ()
-writeValue mutableCols rowCounts colIndex value = do
-    col <- VM.read mutableCols colIndex
-    count <- VM.read rowCounts colIndex
-    let capacity = VM.length col
-    when (count >= capacity) $ do
-        -- Double the size of the vector if it's full
-        let newCapacity = capacity * 2
-        newCol <- VM.grow col newCapacity
-        VM.write mutableCols colIndex newCol
-
-    -- In case we resized we need to get the column again.
-    col' <- VM.read mutableCols colIndex
-    VM.write col' count value
-    VM.write rowCounts colIndex (count + 1)
-
--- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
-freezeColumn :: VM.IOVector Int -> VM.IOVector (VM.IOVector T.Text) -> Int -> IO (V.Vector T.Text)
-freezeColumn rowCounts mutableCols colIndex = do
-    count <- VM.read rowCounts colIndex
-    col <- VM.read mutableCols colIndex
-    V.freeze (VM.slice 0 count col)
-
--- | Constructs a dataframe column, optionally inferring types.
-mkColumn :: ReadOptions -> V.Vector T.Text -> Maybe Column
-mkColumn opts colData =
-    let col = Just $ BoxedColumn colData
-    in if inferTypes opts then parseDefault (safeRead opts) col else col
-
-
--- | A naive splitting algorithm. If there are no quotes in the string
--- we split by the character. Otherwise we interate through the
--- string to identify parts where the character is not used to separate
--- columns.
-split :: Char -> T.Text -> [T.Text]
-split c s
-    | not (hasCommaInQuotes s) = map removeQuotes $ T.split (c ==) s
-    | otherwise           = splitIgnoring c '\"' s
-
--- TODO: This currently doesn't handle anything except quotes. It should
--- generalize to handle ther structures e.g braces and parens.
--- This should probably use a stack.
-splitIgnoring :: Char -> Char -> T.Text -> [T.Text]
-splitIgnoring c o s = ret
-    where (_, acc, res) = T.foldr (splitIgnoring' c o) (False, "", []) s
-          ret = if acc == "" then res else acc : res
-
-splitIgnoring' :: Char -> Char -> Char -> (Bool, T.Text, [T.Text]) -> (Bool, T.Text, [T.Text])
-splitIgnoring' c o curr (!inIgnore, !word, !res)
-    | curr == o                  = (not inIgnore, word, res)
-    | isTerminal && not inIgnore = (inIgnore, "", word:res)
-    | otherwise                  = (inIgnore, T.singleton curr `T.append` word, res)
-        where isTerminal = curr == c || (curr == '\r' && word /= "")
-
-hasCommaInQuotes :: T.Text -> Bool
-hasCommaInQuotes = snd . T.foldl' go (False, False)
-    where go (!inQuotes, !hasComma) c
-            | c == ',' && inQuotes = (inQuotes, True)
-            | c == '\"' = (not inQuotes, hasComma)
-            | otherwise = (inQuotes, hasComma)
-
-removeQuotes :: T.Text -> T.Text
-removeQuotes s
-    | T.null s = s
-    | otherwise = if T.head s == '\"' && T.last s == '\"' then T.init (T.tail s) else s
