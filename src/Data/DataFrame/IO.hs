@@ -100,8 +100,7 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
     let numColumns = length columnNames
     totalRows <- countRows path
     let actualRows = if hasHeader opts then totalRows - 1 else totalRows
-    mutableCols <- VM.replicateM numColumns (VM.new actualRows)  -- Start with a capacity of 1024 rows per column
-    rowCounts <- VM.replicate numColumns 0  -- Keeps track of the row count for each column
+    mutableCols <- VM.replicateM numColumns (VM.new actualRows)
 
     -- Read rows into the mutable vectors
     fillColumns 0 c mutableCols handle
