@@ -29,10 +29,10 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.IO as TLIO
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Text.Encoding as TE
@@ -183,8 +183,8 @@ removeQuotes s
 -- | First pass to count rows for exact allocation
 countRows :: FilePath -> IO Int
 countRows path = do
-    contents <- BL.readFile path
-    return $ length $ BLC.lines contents
+    contents <- TLIO.readFile path
+    return $ length $ TL.lines contents
 
 
 writeCsv :: String -> DataFrame -> IO ()
