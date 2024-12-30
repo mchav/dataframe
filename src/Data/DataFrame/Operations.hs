@@ -382,7 +382,7 @@ valueCounts columnName df =
                   Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
           Just (UnboxedColumn (column' :: VU.Vector c)) ->
             let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
-                column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) (VU.convert column')
+                column = L.sortBy (compare `on` snd) $ V.toList $ V.generate (VG.length column') (\i -> (column' VG.! i, show (column' VG.! i)))
             in case repa `testEquality` repc of
                   Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
                   Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
@@ -862,7 +862,7 @@ applyStatistics f name df = case name `MS.lookup` DI.columnIndices df of
 
 summarize :: DataFrame -> DataFrame
 summarize df = fold columnStats (columnNames df) (fromList [("Statistic", DI.toColumn ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
-  where columnStats name d = if all isJust (stats name) then addColumn name (V.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
+  where columnStats name d = if all isJust (stats name) then addUnboxedColumn name (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
         stats name = let
             quantiles = valuesOrNothing $! applyStatistics (SS.quantilesVec SS.medianUnbiased  (VU.fromList [0,1,2,3,4]) 4) name
             min' = flip (VG.!) 0 <$> quantiles
