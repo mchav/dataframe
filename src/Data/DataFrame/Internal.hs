@@ -357,6 +357,12 @@ columnLength (UnboxedColumn xs) = VG.length xs
 columnLength (GroupedBoxedColumn xs) = VG.length xs
 columnLength (GroupedUnboxedColumn xs) = VG.length xs
 
+takeColumn :: Int -> Column -> Column
+takeColumn n (BoxedColumn xs) = BoxedColumn $ VG.take n xs
+takeColumn n (UnboxedColumn xs) = UnboxedColumn $ VG.take n xs
+takeColumn n (GroupedBoxedColumn xs) = GroupedBoxedColumn $ VG.take n xs
+takeColumn n (GroupedUnboxedColumn xs) = GroupedUnboxedColumn $ VG.take n xs
+
 -- | Converts a an unboxed vector to a column making sure to put
 -- the vector into an appropriate column type by reflection on the
 -- vector's type parameter.

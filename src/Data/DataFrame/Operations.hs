@@ -307,12 +307,9 @@ applyAtIndex i f columnName df = case DI.getColumn columnName df of
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
-take n d = d {columns = V.map take' (columns d), dataframeDimensions = (min (max n 0) r, c)}
+take n d = d {columns = V.map (DI.takeColumn n <$>) (columns d), dataframeDimensions = (min (max n 0) r, c)}
   where
     (r, c) = DI.dataframeDimensions d
-    take' Nothing = Nothing
-    take' (Just (BoxedColumn column)) = Just (BoxedColumn (V.take n column))
-    take' (Just (UnboxedColumn column)) = Just (UnboxedColumn (VU.take n column))
 
 -- | O(1) Get DataFrame dimensions i.e. (rows, columns)
 dimensions :: DataFrame -> (Int, Int)
