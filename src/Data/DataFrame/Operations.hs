@@ -870,6 +870,7 @@ summarize df = fold columnStats (columnNames df) (fromList [("Statistic", DI.toC
             median' = flip (VG.!) 2 <$> quantiles
             quartile3 = flip (VG.!) 3 <$> quantiles
             max' = flip (VG.!) 4 <$> quantiles
+            iqr = (-) <$> quartile3 <*> quartile1
           in [valueOrNothing $! mean name,
               min',
               quartile1,
@@ -877,7 +878,7 @@ summarize df = fold columnStats (columnNames df) (fromList [("Statistic", DI.toC
               quartile3,
               max',
               valueOrNothing $! standardDeviation name,
-              (-) <$> quartile3 <*> quartile1,
+              iqr,
               valueOrNothing $! skewness name]
         -- 
         valueOrNothing f = unsafePerformIO $ catch
