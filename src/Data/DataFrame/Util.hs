@@ -4,6 +4,7 @@
 
 module Data.DataFrame.Util where
 
+import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
@@ -146,3 +147,15 @@ safeReadValue s = readMaybe (T.unpack s)
 
 readWithDefault :: (HasCallStack, Read a) => a -> T.Text -> a
 readWithDefault v s = fromMaybe v (readMaybe (T.unpack s))
+
+inferValueType :: T.Text -> T.Text
+inferValueType s = let    
+        example = s
+    in case readInt example of
+        Just _ -> "Int"
+        Nothing -> case readDouble example of
+            Just _ -> "Double"
+            Nothing -> "Other"
+
+isNullish :: T.Text -> Bool
+isNullish s = s `S.member` S.fromList ["Nothing", "NULL", "", " ", "nan"]

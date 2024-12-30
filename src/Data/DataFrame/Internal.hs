@@ -22,7 +22,7 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Data.DataFrame.Function
-import Data.DataFrame.Util (applySnd, showTable, readInt)
+import Data.DataFrame.Util (applySnd, showTable, readInt, isNullish, readDouble)
 import Data.Function (on)
 import Data.Int
 import Data.List (elemIndex, groupBy, sortBy, transpose)
@@ -54,6 +54,8 @@ data Column where
   UnboxedColumn :: (ColumnValue a, Unbox a) => VU.Vector a -> Column
   GroupedBoxedColumn :: ColumnValue a => Vector (Vector a) -> Column
   GroupedUnboxedColumn :: (ColumnValue a, Unbox a) => Vector (VU.Vector a) -> Column
+  MutableBoxedColumn :: ColumnValue a => VM.IOVector a -> Column
+  MutableUnboxedColumn :: (ColumnValue a, Unbox a) => VUM.IOVector a -> Column
 
 unboxableTypes :: TypeRepList '[Int, Int8, Int16, Int32, Int64,
                                 Word, Word8, Word16, Word32, Word64,
@@ -297,6 +299,33 @@ ifoldlColumn f acc c@(GroupedBoxedColumn (column :: V.Vector d)) = fromMaybe acc
 ifoldlColumn f acc c@(GroupedUnboxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldl' f acc column
+
+writeColumn :: Int -> T.Text -> Column -> IO Bool
+writeColumn i value (MutableBoxedColumn (col :: VM.IOVector a)) =
+  case testEquality (typeRep @a) (typeRep @T.Text) of
+      Just Refl -> (if isNullish value
+                    then VM.write col i "" >> return False
+                    else VM.write col i value >> return True)
+      Nothing -> return False
+writeColumn i value (MutableUnboxedColumn (col :: VUM.IOVector a)) =
+  case testEquality (typeRep @a) (typeRep @Int) of
+      Just Refl -> case readInt value of
+        Just v -> VUM.write col i v >> return True
+        Nothing -> VUM.write col i 0 >> return False
+      Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
+        Nothing -> return False
+        Just Refl -> case readDouble value of
+          Just v -> VUM.write col i v >> return True
+          Nothing -> VUM.write col i 0 >> return False
+
+freezeColumn' :: S.Set Int -> Column -> IO Column
+freezeColumn' nulls (MutableBoxedColumn col)
+  | null nulls = BoxedColumn <$> V.freeze col
+  | otherwise  = BoxedColumn . V.imap (\i v -> if i `S.member` nulls then Nothing else Just v) <$> V.freeze col
+freezeColumn' nulls (MutableUnboxedColumn col)
+  | null nulls = UnboxedColumn <$> VU.freeze col
+  | otherwise  = VU.freeze col >>= \c -> return $ BoxedColumn $ V.generate (VU.length c) (\i -> if i `S.member` nulls then Nothing else Just (c VU.! i))
+
 
 sortedIndexes :: Bool -> Column -> [Int]
 sortedIndexes asc (BoxedColumn column ) = map snd . (if asc then S.toAscList else S.toDescList) $ VG.ifoldr (\i e -> S.insert (e, i)) S.empty column

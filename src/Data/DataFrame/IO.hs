@@ -35,7 +35,6 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified Data.Vector.Mutable as VM
-import qualified Data.Text.Encoding as TE
 
 import Control.Monad (foldM_, forM_, replicateM_, foldM, when, zipWithM_, unless)
 import Control.Monad.IO.Class (MonadIO(liftIO))
@@ -89,7 +88,7 @@ readTsv = readSeparated '\t' defaultOptions
 -- | Reads a character separated file into a dataframe using mutable vectors.
 readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
 readSeparated c opts path = withFile path ReadMode $ \handle -> do
-    firstRow <- T.split (c ==) <$> TIO.hGetLine handle
+    firstRow <- split c <$> TIO.hGetLine handle
     let columnNames = if hasHeader opts
                       then map (T.filter (/= '\"')) firstRow
                       else map (T.singleton . intToDigit) [0..(length firstRow - 1)]
@@ -98,15 +97,20 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
 
     -- Initialize mutable vectors for each column
     let numColumns = length columnNames
+    dataRow <- split c <$> TIO.hGetLine handle
     totalRows <- countRows path
     let actualRows = if hasHeader opts then totalRows - 1 else totalRows
-    mutableCols <- VM.replicateM numColumns (VM.new actualRows)
+    nullIndices <- VM.new numColumns
+    VM.set nullIndices S.empty
+    mutableCols <- VM.new numColumns
+    getInitialDataVectors 0 actualRows mutableCols dataRow
 
     -- Read rows into the mutable vectors
-    fillColumns 0 c mutableCols handle
+    fillColumns 1 c mutableCols nullIndices handle
 
     -- Freeze the mutable vectors into immutable ones
-    cols <- V.mapM (freezeColumn mutableCols opts) (V.generate numColumns id)
+    nulls' <- V.unsafeFreeze nullIndices
+    cols <- V.mapM (freezeColumn mutableCols nulls' opts) (V.generate numColumns id)
     return $ DataFrame {
             columns = cols,
             freeIndices = [],
@@ -114,26 +118,39 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
             dataframeDimensions = (maybe 0 columnLength (cols V.! 0), V.length cols)
         }
 
+getInitialDataVectors :: Int -> Int -> VM.IOVector Column -> [T.Text] -> IO ()
+getInitialDataVectors _ _ _ [] = return ()
+getInitialDataVectors i n mCol (x:xs) = do
+    let x' = removeQuotes x
+    col <- case inferValueType x of
+            "Int" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Int)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readInt x') >> return c)
+            "Double" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Double)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readDouble x') >> return c)
+            _ -> MutableBoxedColumn <$> ((VM.new n :: IO (VM.IOVector T.Text)) >>= \c -> VM.write c 0 x' >> return c)
+    VM.write mCol i col
+    getInitialDataVectors (i + 1) n mCol xs
+
 -- | Reads rows from the handle and stores values in mutable vectors.
-fillColumns :: Int -> Char -> VM.IOVector (VM.IOVector T.Text) -> Handle -> IO ()
-fillColumns i c mutableCols handle = do
+fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector (S.Set Int) -> Handle -> IO ()
+fillColumns i c mutableCols nullIndices handle = do
     isEOF <- hIsEOF handle
     unless isEOF $ do
         row <- split c <$> TIO.hGetLine handle
-        zipWithM_ (writeValue mutableCols i) [0..] row
-        fillColumns (i + 1) c mutableCols handle
+        zipWithM_ (writeValue mutableCols nullIndices i) [0..] row
+        fillColumns (i + 1) c mutableCols nullIndices handle
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
-writeValue :: VM.IOVector (VM.IOVector T.Text) -> Int -> Int -> T.Text -> IO ()
-writeValue mutableCols count colIndex value = do
+writeValue :: VM.IOVector Column -> VM.IOVector (S.Set Int) -> Int -> Int -> T.Text -> IO ()
+writeValue mutableCols nullIndices count colIndex value = do
     col <- VM.read mutableCols colIndex
-    VM.write col count value
+    isWritten <- writeColumn count value col
+    unless isWritten $ do
+        VM.modify nullIndices (count `S.insert`) colIndex
 
 -- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
-freezeColumn :: VM.IOVector (VM.IOVector T.Text) -> ReadOptions -> Int -> IO (Maybe Column)
-freezeColumn mutableCols opts colIndex = do
+freezeColumn :: VM.IOVector Column -> V.Vector (S.Set Int) -> ReadOptions -> Int -> IO (Maybe Column)
+freezeColumn mutableCols nulls opts colIndex = do
     col <- VM.read mutableCols colIndex
-    mkColumn opts <$> V.unsafeFreeze col
+    Just <$> freezeColumn' (nulls V.! colIndex) col
 
 -- | Constructs a dataframe column, optionally inferring types.
 mkColumn :: ReadOptions -> V.Vector T.Text -> Maybe Column
@@ -148,7 +165,7 @@ mkColumn opts colData =
 -- columns.
 split :: Char -> T.Text -> [T.Text]
 split c s
-    | not (hasCommaInQuotes s) = map removeQuotes $ T.split (c ==) s
+    | not (hasCommaInQuotes s) = map (removeQuotes . T.strip) $ T.split (c ==) s
     | otherwise           = splitIgnoring c '\"' s
 
 -- TODO: This currently doesn't handle anything except quotes. It should
