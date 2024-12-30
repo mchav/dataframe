@@ -808,7 +808,7 @@ median :: T.Text -> DataFrame -> Double
 median = applyStatistic (SS.median SS.medianUnbiased)
 
 standardDeviation :: T.Text -> DataFrame -> Double
-standardDeviation = applyStatistic SS.stdDev
+standardDeviation = applyStatistic SS.fastStdDev
 
 skewness :: T.Text -> DataFrame -> Double
 skewness = applyStatistic SS.skewness
@@ -848,19 +848,46 @@ applyStatistic f name df = case name `MS.lookup` DI.columnIndices df of
               Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
         _ -> error $ "Cannot get mean of non numeric column: " ++ T.unpack name
 
+applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> VU.Vector Double
+applyStatistics f name df = case name `MS.lookup` DI.columnIndices df of
+    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
+    Just i -> case DI.columns df V.!? i of
+      Nothing -> error "Internal error: Column is empty"
+      Just c -> case c of
+        Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
+          Just Refl -> f (VU.map fromIntegral column)
+          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+            Just Refl -> f column
+            Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
+              Just Refl -> f (VG.map realToFrac column)
+              Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+        _ -> error $ "Cannot get mean of non numeric column: " ++ T.unpack name
+
 summarize :: DataFrame -> DataFrame
 summarize df = fold columnStats (columnNames df) (fromList [("Statistic", DI.toColumn ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
   where columnStats name d = if all isJust (stats name) then addColumn name (V.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
-        stats name = [valueOrNothing $! mean name,
-                      valueOrNothing $! applyStatistic VG.minimum name,
-                      valueOrNothing $! applyStatistic (SS.quantile SS.medianUnbiased 1 4) name,
-                      valueOrNothing $! median name,
-                      valueOrNothing $! applyStatistic (SS.quantile SS.medianUnbiased 3 4) name,
-                      valueOrNothing $! applyStatistic VG.maximum name,
-                      valueOrNothing $! standardDeviation name,
-                      valueOrNothing $! applyStatistic (SS.midspread SS.medianUnbiased 4) name,
-                      valueOrNothing $! skewness name]
+        stats name = let
+            quantiles = valuesOrNothing $! applyStatistics (SS.quantilesVec SS.medianUnbiased  (VU.fromList [0,1,2,3,4]) 4) name
+            min' = flip (VG.!) 0 <$> quantiles
+            quartile1 = flip (VG.!) 1 <$> quantiles
+            median' = flip (VG.!) 2 <$> quantiles
+            quartile3 = flip (VG.!) 3 <$> quantiles
+            max' = flip (VG.!) 4 <$> quantiles
+          in [valueOrNothing $! mean name,
+              min',
+              quartile1,
+              median',
+              quartile3,
+              max',
+              valueOrNothing $! standardDeviation name,
+              (-) <$> quartile3 <*> quartile1,
+              valueOrNothing $! skewness name]
+        -- 
         valueOrNothing f = unsafePerformIO $ catch
+            (seq (Just $! f df) (return $ Just $! f df))
+            (\(e::SomeException) ->
+                      return Nothing)
+        valuesOrNothing f = unsafePerformIO $ catch
             (seq (Just $! f df) (return $ Just $! f df))
             (\(e::SomeException) ->
                       return Nothing)
