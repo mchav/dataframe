@@ -90,33 +90,21 @@ inferType xs
             Just _ -> "Bool"
             Nothing -> "Text"
 
-getIndices :: [Int] -> V.Vector a -> V.Vector a
-getIndices indices xs = runST $ do
-  xs' <- VM.new (length indices)
-  foldM_
-    ( \acc index -> case xs V.!? index of
-        Just v -> VM.write xs' acc v >> return (acc + 1)
-        Nothing -> error "A column has less entries than other rows"
-    )
-    0
-    indices
-  V.freeze xs'
+getIndices :: VU.Vector Int -> V.Vector a -> V.Vector a
+getIndices indices xs = V.generate (VU.length indices) (\i -> xs V.! (indices VU.! i))
 
-getIndicesUnboxed :: (VU.Unbox a) => [Int] -> VU.Vector a -> VU.Vector a
-getIndicesUnboxed indices xs = runST $ do
-  xs' <- VUM.new (length indices)
-  foldM_
-    ( \acc index -> case xs VU.!? index of
-        Just v -> VUM.write xs' acc v >> return (acc + 1)
-        Nothing -> error "A column has less entries than other rows"
-    )
-    0
-    indices
-  VU.freeze xs'
+getIndicesUnboxed :: (VU.Unbox a) => VU.Vector Int -> VU.Vector a -> VU.Vector a
+getIndicesUnboxed indices xs = VU.generate (VU.length indices) (\i -> xs VU.! (indices VU.! i))
 
 appendWithFrontMin :: (Ord a) => a -> [a] -> [a]
 appendWithFrontMin x [] = [x]
 appendWithFrontMin x (y : ys) = if x < y then x : y : ys else y : x : ys
+
+appendWithFrontMin' :: Int -> VU.Vector Int -> VU.Vector Int
+appendWithFrontMin' x ys
+  | x < y = VU.cons x ys
+  | otherwise = VU.cons y (VU.cons x (VU.tail ys))
+    where y = VU.head ys
 
 readValue :: (HasCallStack, Read a) => T.Text -> a
 readValue s = case readMaybe (T.unpack s) of

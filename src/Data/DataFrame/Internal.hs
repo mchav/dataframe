@@ -16,13 +16,14 @@ import qualified Data.Map.Strict as MS
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Algorithms.Merge as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Data.DataFrame.Function
-import Data.DataFrame.Util (applySnd, showTable, readInt, isNullish, readDouble)
+import Data.DataFrame.Util (applySnd, showTable, readInt, isNullish, readDouble, getIndices, getIndicesUnboxed)
 import Data.Function (on)
 import Data.Int
 import Data.List (elemIndex, groupBy, sortBy, transpose)
@@ -242,35 +243,12 @@ atIndices indexes (UnboxedColumn column) = UnboxedColumn $ VG.ifilter (\i _ -> i
 atIndices indexes (GroupedBoxedColumn column) = GroupedBoxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
 atIndices indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
 
-atIndicesStable :: [Int] -> Column -> Column
+atIndicesStable :: VU.Vector Int -> Column -> Column
 atIndicesStable indexes (BoxedColumn column) = BoxedColumn $ indexes `getIndices` column
 atIndicesStable indexes (UnboxedColumn column) = UnboxedColumn $ indexes `getIndicesUnboxed` column
 atIndicesStable indexes (GroupedBoxedColumn column) = GroupedBoxedColumn $ indexes `getIndices` column
 atIndicesStable indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ indexes `getIndices` column
 
-getIndices :: [Int] -> V.Vector a -> V.Vector a
-getIndices indices xs = runST $ do
-  xs' <- VM.new (length indices)
-  foldM_
-    ( \acc index -> case xs V.!? index of
-        Just v -> VM.write xs' acc v >> return (acc + 1)
-        Nothing -> error "A column has less entries than other rows"
-    )
-    0
-    indices
-  V.freeze xs'
-
-getIndicesUnboxed :: (VU.Unbox a) => [Int] -> VU.Vector a -> VU.Vector a
-getIndicesUnboxed indices xs = runST $ do
-  xs' <- VUM.new (length indices)
-  foldM_
-    ( \acc index -> case xs VU.!? index of
-        Just v -> VUM.write xs' acc v >> return (acc + 1)
-        Nothing -> error "A column has less entries than other rows"
-    )
-    0
-    indices
-  VU.freeze xs'
 
 ifoldrColumn :: forall a b. (ColumnValue a, ColumnValue b) => (Int -> a -> b -> b) -> b -> Column -> b
 ifoldrColumn f acc c@(BoxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
@@ -326,12 +304,27 @@ freezeColumn' nulls (MutableUnboxedColumn col)
   | null nulls = UnboxedColumn <$> VU.unsafeFreeze col
   | otherwise  = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ V.generate (VU.length c) (\i -> if i `S.member` nulls then Nothing else Just (c VU.! i))
 
-
-sortedIndexes :: Bool -> Column -> [Int]
-sortedIndexes asc (BoxedColumn column ) = map snd . (if asc then S.toAscList else S.toDescList) $ VG.ifoldr (\i e -> S.insert (e, i)) S.empty column
-sortedIndexes asc (UnboxedColumn column) = map snd . (if asc then S.toAscList else S.toDescList) $ VG.ifoldr (\i e -> S.insert (e, i)) S.empty column
-sortedIndexes asc (GroupedBoxedColumn column) = map snd . (if asc then S.toAscList else S.toDescList) $ VG.ifoldr (\i e -> S.insert (e, i)) S.empty column
-sortedIndexes asc (GroupedUnboxedColumn column) = map snd . (if asc then S.toAscList else S.toDescList) $ VG.ifoldr (\i e -> S.insert (e, i)) S.empty column
+sortedIndexes :: Bool -> Column -> VU.Vector Int
+sortedIndexes asc (BoxedColumn column ) = runST $ do
+  withIndexes <- VG.thaw $ VG.indexed column
+  VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
+  sorted <- VG.unsafeFreeze withIndexes
+  return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
+sortedIndexes asc (UnboxedColumn column) = runST $ do
+  withIndexes <- VG.thaw $ VG.indexed column
+  VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
+  sorted <- VG.unsafeFreeze withIndexes
+  return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
+sortedIndexes asc (GroupedBoxedColumn column) = runST $ do
+  withIndexes <- VG.thaw $ VG.indexed column
+  VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
+  sorted <- VG.unsafeFreeze withIndexes
+  return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
+sortedIndexes asc (GroupedUnboxedColumn column) = runST $ do
+  withIndexes <- VG.thaw $ VG.indexed column
+  VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
+  sorted <- VG.unsafeFreeze withIndexes
+  return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
 
 isGrouped :: Column -> Bool
 isGrouped (GroupedBoxedColumn column) = True

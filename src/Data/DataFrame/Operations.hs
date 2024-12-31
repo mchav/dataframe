@@ -72,10 +72,12 @@ import qualified Statistics.Quantile as SS
 import qualified Statistics.Sample as SS
 
 import Control.Exception
+import Control.Monad.ST ( ST, runST )
 import Data.DataFrame.Errors (DataFrameException(..))
 import Data.DataFrame.Internal (Column (..), DataFrame (..), ColumnValue)
 import Data.DataFrame.Util
 import Data.Function (on, (&))
+import Data.Hashable
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Time
 import Data.Type.Equality
@@ -89,6 +91,7 @@ import Prelude hiding (drop, filter, sum, take)
 import Text.Read (readMaybe)
 import Type.Reflection
 import GHC.IO.Unsafe (unsafePerformIO)
+import Control.Monad (foldM_)
 
 -- | /O(n)/ Adds a vector to the dataframe.
 addColumn ::
@@ -376,16 +379,16 @@ valueCounts columnName df =
         Just c -> case c of
           Just (BoxedColumn (column' :: V.Vector c)) ->
             let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
-                column = L.sortBy (compare `on` snd) $ V.toList $ V.map (\v -> (v, show v)) column'
+                column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Integer) m) M.empty column'
             in case repa `testEquality` repc of
                   Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
-                  Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
+                  Just Refl -> M.toAscList column
           Just (UnboxedColumn (column' :: VU.Vector c)) ->
             let repc :: Type.Reflection.TypeRep c = Type.Reflection.typeRep @c
-                column = L.sortBy (compare `on` snd) $ V.toList $ V.generate (VG.length column') (\i -> (column' VG.! i, show (column' VG.! i)))
+                column = VU.foldl' (\m v -> MS.insertWith (+) v (1 :: Integer) m) M.empty column'
             in case repa `testEquality` repc of
                   Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
-                  Just Refl -> map (\xs -> (fst (head xs), fromIntegral $ length xs)) (L.groupBy ((==) `on` snd) column)
+                  Just Refl -> M.toAscList column
 
 -- | O(n) Selects a number of columns in a given dataframe.
 --
@@ -433,25 +436,27 @@ groupBy names df
   | otherwise = L.foldl' addColumns initDf groupingColumns
   where
     -- Create a string representation of each row.
-    values = V.map (mkRowRep df (S.fromList names)) (V.generate (fst (dimensions df)) id)
+    values = V.generate (fst (dimensions df)) (mkRowRep df (S.fromList names))
     -- Create a mapping from the row representation to the list of indices that
-    -- have that row representation. This will allow us to combine the indexes
+    -- have that row representation. This will allow us sortedIndexesto combine the indexes
     -- where the rows are the same.
     valueIndices = V.ifoldl' (\m index rowRep -> MS.insertWith (appendWithFrontMin . head) rowRep [index] m) M.empty values
     -- Since the min is at the head this allows us to get the min in constant time and sort by it
     -- That way we can recover the original order of the rows.
-    valueIndicesInitOrder = L.sortBy (compare `on` (head . snd)) $! MS.toList valueIndices
-    -- For the ungrouped columns these will be the indexes to get for each row.
-    -- We rely on this list being in the same order as the rows.
-    indices = map snd valueIndicesInitOrder
+    -- valueIndicesInitOrder = L.sortBy (compare `on` snd) $! MS.toList $ MS.map VU.head valueIndices
+    valueIndicesInitOrder = runST $ do
+      v <- VM.new (MS.size valueIndices)
+      foldM_ (\i idxs -> VM.write v i (VU.fromList idxs) >> return (i + 1)) 0 valueIndices
+      V.unsafeFreeze v
+
     -- These are the indexes of the grouping/key rows i.e the minimum elements
     -- of the list.
-    keyIndices = map (head . snd) valueIndicesInitOrder
+    keyIndices = VU.generate (VG.length valueIndicesInitOrder) (\i -> VG.head $ valueIndicesInitOrder VG.! i)
     -- this will be our main worker function in the fold that takes all
     -- indices and replaces each value in a column with a list of
     -- the elements with the indices where the grouped row
     -- values are the same.
-    addColumns = groupColumns indices df
+    addColumns = groupColumns valueIndicesInitOrder df
     -- Out initial DF will just be all the grouped rows added to an
     -- empty dataframe. The entries are dedued and are in their
     -- initial order.
@@ -459,8 +464,8 @@ groupBy names df
     -- All the rest of the columns that we are grouping by.
     groupingColumns = columnNames df L.\\ names
 
-mkRowRep :: DataFrame -> S.Set T.Text -> Int -> String
-mkRowRep df names i = V.ifoldl' go "" (columns df)
+mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Int
+mkRowRep df names i = hash $ V.ifoldl' go "" (columns df)
   where
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (DI.columnIndices df))
     go acc k Nothing = acc
@@ -468,7 +473,7 @@ mkRowRep df names i = V.ifoldl' go "" (columns df)
       if S.notMember (indexMap M.! k) names
         then acc
         else case c V.!? i of
-          Just e -> acc ++ show e
+          Just e -> acc <> (T.pack . show) e
           Nothing ->
             error $
               "Column "
@@ -480,7 +485,7 @@ mkRowRep df names i = V.ifoldl' go "" (columns df)
       if S.notMember (indexMap M.! k) names
         then acc
         else case c VU.!? i of
-          Just e -> acc ++ show e
+          Just e -> acc <> (T.pack . show) e
           Nothing ->
             error $
               "Column "
@@ -489,7 +494,7 @@ mkRowRep df names i = V.ifoldl' go "" (columns df)
                 ++ "the other columns at index "
                 ++ show i
 
-mkGroupedColumns :: [Int] -> DataFrame -> DataFrame -> T.Text -> DataFrame
+mkGroupedColumns :: VU.Vector Int -> DataFrame -> DataFrame -> T.Text -> DataFrame
 mkGroupedColumns indices df acc name =
   case (V.!) (DI.columns df) (DI.columnIndices df M.! name) of
     Nothing -> error "Unexpected"
@@ -500,15 +505,15 @@ mkGroupedColumns indices df acc name =
       let vs = indices `getIndicesUnboxed` column
        in addUnboxedColumn name vs acc
 
-groupColumns :: [[Int]] -> DataFrame -> DataFrame -> T.Text -> DataFrame
+groupColumns :: V.Vector (VU.Vector Int) -> DataFrame -> DataFrame -> T.Text -> DataFrame
 groupColumns indices df acc name =
   case (V.!) (DI.columns df) (DI.columnIndices df M.! name) of
     Nothing -> df
     (Just (BoxedColumn column)) ->
-      let vs = V.fromList $ map (`getIndices` column) indices
+      let vs = V.map (`getIndices` column) indices
        in addColumn' name (Just $ GroupedBoxedColumn vs) acc
     (Just (UnboxedColumn column)) ->
-      let vs = V.fromList $ map (`getIndicesUnboxed` column) indices
+      let vs = V.map (`getIndicesUnboxed` column) indices
        in addColumn' name (Just $ GroupedUnboxedColumn vs) acc
 
 fold :: Foldable t => (a -> DataFrame -> DataFrame) -> t a -> DataFrame -> DataFrame
