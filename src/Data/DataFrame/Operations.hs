@@ -748,6 +748,7 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
                         safeVector = V.map emptyToNothing c
                         hasNulls = isJust $ V.find (`S.member` nullish) c
                       in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+parseDefault safeRead column = column
 
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
