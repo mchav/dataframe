@@ -11,19 +11,20 @@
 * addColumn
   - Adding a boxed vector to an empty dataframe creates a new column boxed containing the vector elements. DONE
   - Adding a boxed vector with a boxed type (Int/Double) to an empty dataframe creates a new column unboxed containing the vector elements. DONE
-  - Adding columns > initial vector size gracefully adds a column that we can retrieve.
-  - Adding columns > initial vector size gracefully adds a column updates dimentions.
-  - Adding a column with the same name as an existing column overwrites the contents.
+  - Adding columns > initial vector size gracefully adds a column that we can retrieve. DONE
+  - Adding columns > initial vector size gracefully adds a column updates dimentions. DONE
+  - Adding a column with the same name as an existing column overwrites the contents. DONE
   - Adding a column with more values than the current DF dimensions throws an exception. DONE
   - Adding a column with less values than the current DF dimensions adds column with optionals. DONE
 
 * addColumnWithDefault
-  - Adding a column with less values than the current DF dimensions adds column with optionals.
+  - Adding a column with less values than the current DF dimensions adds column with optionals. DONE
+  - Adding a column with as many values is a no-op. DONE
 
 * apply
-  - Applying to an existing column maps function to all values.
-  - Applying to non-existent column throws column not found exception.
-  - Applying function of wrong type throws exception.
+  - Applying to an existing column maps function to all values. DONE
+  - Applying to non-existent column throws column not found exception. DONE
+  - Applying function of wrong type throws exception. DONE
 
 * applyMany
   - Applying many does same transformation to all columns.

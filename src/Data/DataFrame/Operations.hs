@@ -211,7 +211,7 @@ apply ::
 apply f columnName d = case DI.getColumn columnName d of
   Nothing -> throw $ ColumnNotFoundException columnName "apply" (map fst $ M.toList $ DI.columnIndices d)
   Just column -> case DI.transform f column of
-    Nothing -> throw $ TypeMismatchException (typeOf column) (typeRep @b) columnName "applyAtIndex"
+    Nothing -> throw $ TypeMismatchException' (typeRep @b) (DI.columnTypeString columnName d) columnName "apply"
     column' -> addColumn' columnName column' d
 
 -- | O(k) Apply a function to a given column in a dataframe and

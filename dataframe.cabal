@@ -95,7 +95,9 @@ executable dataframe
 test-suite tests
     type: exitcode-stdio-1.0
     main-is: DataFrameTests.hs
-    other-modules: Assertions
+    other-modules: Assertions,
+                   AddColumn,
+                   Apply
     build-depends: base >= 4.17.2.0 && < 4.21,
                    HUnit ^>= 1.6,
                    text >= 2.0,

@@ -21,12 +21,19 @@ data DataFrameException where
                           -> T.Text    -- ^ column name
                           -> T.Text    -- ^ call point
                           -> DataFrameException
+    TypeMismatchException' :: forall a . (Typeable a)
+                           => TypeRep a -- ^ expected type
+                           -> String    -- ^ given type
+                           -> T.Text    -- ^ column name
+                           -> T.Text    -- ^ call point
+                           -> DataFrameException
     ColumnNotFoundException :: T.Text -> T.Text -> [T.Text] -> DataFrameException
     deriving (Exception)
 
 instance Show DataFrameException where
     show :: DataFrameException -> String
     show (TypeMismatchException a b columnName callPoint) = addCallPointInfo columnName (Just callPoint) (typeMismatchError a b)
+    show (TypeMismatchException' a b columnName callPoint) = addCallPointInfo columnName (Just callPoint) (typeMismatchError' (show a) b)
     show (ColumnNotFoundException columnName callPoint availableColumns) = columnNotFound columnName callPoint availableColumns
 
 columnNotFound :: T.Text -> T.Text -> [T.Text] -> String
@@ -44,7 +51,10 @@ typeMismatchError ::
   Type.Reflection.TypeRep a ->
   Type.Reflection.TypeRep b ->
   String
-typeMismatchError givenType expectedType =
+typeMismatchError a b = typeMismatchError' (show a) (show b)
+
+typeMismatchError' :: String -> String -> String
+typeMismatchError' givenType expectedType =
   red $
     red "\n\n[Error]: Type Mismatch"
       ++ "\n\tWhile running your code I tried to "
