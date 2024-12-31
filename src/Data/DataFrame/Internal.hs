@@ -320,11 +320,11 @@ writeColumn i value (MutableUnboxedColumn (col :: VUM.IOVector a)) =
 
 freezeColumn' :: S.Set Int -> Column -> IO Column
 freezeColumn' nulls (MutableBoxedColumn col)
-  | null nulls = BoxedColumn <$> V.freeze col
-  | otherwise  = BoxedColumn . V.imap (\i v -> if i `S.member` nulls then Nothing else Just v) <$> V.freeze col
+  | null nulls = BoxedColumn <$> V.unsafeFreeze col
+  | otherwise  = BoxedColumn . V.imap (\i v -> if i `S.member` nulls then Nothing else Just v) <$> V.unsafeFreeze col
 freezeColumn' nulls (MutableUnboxedColumn col)
-  | null nulls = UnboxedColumn <$> VU.freeze col
-  | otherwise  = VU.freeze col >>= \c -> return $ BoxedColumn $ V.generate (VU.length c) (\i -> if i `S.member` nulls then Nothing else Just (c VU.! i))
+  | null nulls = UnboxedColumn <$> VU.unsafeFreeze col
+  | otherwise  = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ V.generate (VU.length c) (\i -> if i `S.member` nulls then Nothing else Just (c VU.! i))
 
 
 sortedIndexes :: Bool -> Column -> [Int]
