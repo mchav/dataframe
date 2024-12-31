@@ -23,14 +23,11 @@ The library is still in active development with a v0.1 launch planned for March 
 import qualified Data.DataFrame as D
 
 import Data.DataFrame ((|>))
-import Data.Text (Text)
 
 main :: IO ()
     df <- D.readTsv "./data/chipotle.tsv"
-    let searchTerm = "Chicken Burrito" :: Text
     print $ df
       |> D.select ["item_name", "quantity"]
-      |> D.filter "item_name" (searchTerm ==)
       |> D.groupBy ["item_name"]
       |> D.aggregate (zip (repeat "quantity") [D.Maximum, D.Mean, D.Sum])
       |> D.sortBy D.Descending "Sum_quantity"
