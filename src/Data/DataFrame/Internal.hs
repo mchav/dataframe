@@ -402,6 +402,11 @@ instance Show DataFrame where
   show :: DataFrame -> String
   show d = T.unpack (asText d)
 
+instance Eq DataFrame where
+  (==) :: DataFrame -> DataFrame -> Bool
+  a == b = map fst (M.toList $ columnIndices a) == map fst (M.toList $ columnIndices b) &&
+           foldr (\(name, index) acc -> acc && (columns a V.!? index == (columns b V.!? (columnIndices b M.! name)))) True (M.toList $ columnIndices a)
+
 asText :: DataFrame -> T.Text
 asText d =
   let header = "index" : map fst (sortBy (compare `on` snd) $ M.toList (columnIndices d))
