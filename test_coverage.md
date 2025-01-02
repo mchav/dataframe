@@ -27,9 +27,10 @@
   - Applying function of wrong type throws exception. DONE
 
 * applyMany
-  - Applying many does same transformation to all columns.
-  - Applying many fails if any of the columns are not found.
-  - Applying many throws exception when the function type doesn't equal 
+  - Applying many does same transformation to all columns. DONE
+  - Applying many doesn't change unrelated fields. DONE
+  - Applying many fails if any of the columns are not found. DONE
+  - Applying many throws exception when the function type doesn't equal. DONE
 
 * applyWhere
   - Applies function when target column criteria is met
@@ -37,7 +38,7 @@
   - When the type of the target column doesn't exit throw an error.
   - When the function has the wrong type throw an error. 
 
-* applyWithAlias
+* derive
   - Applies function to given column and adds it to alias.
   - When column doesn't exist throw an error.
 
