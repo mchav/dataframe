@@ -278,6 +278,26 @@ ifoldlColumn f acc c@(GroupedUnboxedColumn (column :: V.Vector d)) = fromMaybe a
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldl' f acc column
 
+reduceColumn :: forall a b. ColumnValue a => (a -> b) -> Column -> b
+reduceColumn f (BoxedColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
+  Just Refl -> f column
+  Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
+reduceColumn f (UnboxedColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
+  Just Refl -> f column
+  Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
+
+longZipColumns :: Column -> Column -> Column
+longZipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (V.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
+longZipColumns (BoxedColumn column) (UnboxedColumn other) = BoxedColumn (V.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
+longZipColumns (UnboxedColumn column) (BoxedColumn other) = BoxedColumn (V.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
+longZipColumns (UnboxedColumn column) (UnboxedColumn other) = BoxedColumn (V.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
+
+zipColumns :: Column -> Column -> Column
+zipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (V.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
+zipColumns (BoxedColumn column) (UnboxedColumn other) = BoxedColumn (V.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
+zipColumns (UnboxedColumn column) (BoxedColumn other) = BoxedColumn (V.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
+zipColumns (UnboxedColumn column) (UnboxedColumn other) = UnboxedColumn (VU.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
+
 writeColumn :: Int -> T.Text -> Column -> IO Bool
 writeColumn i value (MutableBoxedColumn (col :: VM.IOVector a)) =
   case testEquality (typeRep @a) (typeRep @T.Text) of

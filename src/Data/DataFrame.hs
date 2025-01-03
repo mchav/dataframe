@@ -59,6 +59,7 @@ module Data.DataFrame
     Operations.sum,
     Operations.skewness,
     Operations.summarize,
+    Operations.correlation,
     Operations.parseDefaults,
     (|>),
     Display.plotHistograms,

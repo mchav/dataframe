@@ -51,6 +51,7 @@ module Data.DataFrame.Operations
     interQuartileRange,
     sum,
     skewness,
+    correlation,
     summarize,
     (|>)
   )
@@ -821,6 +822,9 @@ variance = applyStatistic SS.variance
 
 interQuartileRange :: T.Text -> DataFrame -> Double
 interQuartileRange = applyStatistic (SS.midspread SS.medianUnbiased 4)
+
+correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
+correlation first second df = DI.reduceColumn @(VU.Vector (Double, Double)) SS.correlation <$> (DI.zipColumns <$> (DI.getColumn first df) <*> (DI.getColumn second df))
 
 sum :: T.Text -> DataFrame -> Double
 sum name df = case name `MS.lookup` DI.columnIndices df of
