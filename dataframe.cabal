@@ -87,10 +87,21 @@ executable dataframe
                       text >= 2.0,
                       time >= 1.12,
                       vector ^>= 0.13,
+                      random,
                       vector-algorithms >= 0.9
     hs-source-dirs:   app,
                       src
     default-language: Haskell2010
+
+benchmark dataframe-benchmark
+    type:       exitcode-stdio-1.0
+    main-is:    DataFrameBenchmark.hs
+    hs-source-dirs: benchmark
+    build-depends: base >= 4.17.2.0 && < 4.21,
+                   text >= 2.0,
+                   time >= 1.12,
+                   vector ^>= 0.13,
+                   dataframe-lib-dev
 
 test-suite tests
     type: exitcode-stdio-1.0
