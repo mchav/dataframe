@@ -87,7 +87,6 @@ executable dataframe
                       text >= 2.0,
                       time >= 1.12,
                       vector ^>= 0.13,
-                      random,
                       vector-algorithms >= 0.9
     hs-source-dirs:   app,
                       src
