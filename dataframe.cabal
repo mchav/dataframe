@@ -97,8 +97,9 @@ benchmark dataframe-benchmark
     main-is:    DataFrameBenchmark.hs
     hs-source-dirs: benchmark
     build-depends: base >= 4.17.2.0 && < 4.21,
+                   criterion >= 1,
                    text >= 2.0,
-                   time >= 1.12,
+                   random >= 1,
                    vector ^>= 0.13,
                    dataframe-lib-dev
     default-language: Haskell2010
