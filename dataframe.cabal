@@ -101,6 +101,7 @@ benchmark dataframe-benchmark
                    time >= 1.12,
                    vector ^>= 0.13,
                    dataframe-lib-dev
+    default-language: Haskell2010
 
 test-suite tests
     type: exitcode-stdio-1.0
