@@ -22,6 +22,7 @@ module Data.DataFrame.Operations
     applyInt,
     applyDouble,
     take,
+    range,
     filter,
     filterBy,
     valueCounts,
@@ -312,6 +313,12 @@ applyAtIndex i f columnName df = case DI.getColumn columnName df of
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
 take n d = d {columns = V.map (DI.takeColumn n <$>) (columns d), dataframeDimensions = (min (max n 0) r, c)}
+  where
+    (r, c) = DI.dataframeDimensions d
+
+-- | O(k * n) Take a range of rows of a DataFrame.
+range :: (Int, Int) -> DataFrame -> DataFrame
+range (start, end) d = d {columns = V.map (DI.sliceColumn start (end - start) <$>) (columns d), dataframeDimensions = (min (max (end - start) 0) r, c)}
   where
     (r, c) = DI.dataframeDimensions d
 

@@ -405,6 +405,12 @@ takeColumn n (UnboxedColumn xs) = UnboxedColumn $ VG.take n xs
 takeColumn n (GroupedBoxedColumn xs) = GroupedBoxedColumn $ VG.take n xs
 takeColumn n (GroupedUnboxedColumn xs) = GroupedUnboxedColumn $ VG.take n xs
 
+sliceColumn :: Int -> Int -> Column -> Column
+sliceColumn start n (BoxedColumn xs) = BoxedColumn $ VG.slice start n xs
+sliceColumn start n (UnboxedColumn xs) = UnboxedColumn $ VG.slice start n xs
+sliceColumn start n (GroupedBoxedColumn xs) = GroupedBoxedColumn $ VG.slice start n xs
+sliceColumn start n (GroupedUnboxedColumn xs) = GroupedUnboxedColumn $ VG.slice start n xs
+
 -- | Converts a an unboxed vector to a column making sure to put
 -- the vector into an appropriate column type by reflection on the
 -- vector's type parameter.
