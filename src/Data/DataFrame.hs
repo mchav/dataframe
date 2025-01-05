@@ -1,77 +1,11 @@
 module Data.DataFrame
-  ( Internal.DataFrame,
-    Internal.empty,
-    Internal.asText,
-    Internal.toColumn,
-    Internal.toColumn',
-    IO.readCsv,
-    IO.writeCsv,
-    IO.readTsv,
-    IO.readValue,
-    IO.readInteger,
-    IO.readInt,
-    IO.readDouble,
-    IO.readSeparated,
-    IO.writeSeparated,
-    IO.splitIgnoring,
-    IO.safeReadValue,
-    IO.readWithDefault,
-    IO.defaultOptions,
-    IO.ReadOptions (..),
-    Operations.addColumn,
-    Operations.addColumnWithDefault,
-    Operations.apply,
-    Operations.applyWhere,
-    Operations.applyMany,
-    Operations.applyInt,
-    Operations.derive,
-    Operations.applyAtIndex,
-    Operations.applyDouble,
-    Operations.take,
-    Operations.dimensions,
-    Operations.columnNames,
-    Operations.rename,
-    Operations.filter,
-    Operations.filterBy,
-    Operations.valueCounts,
-    Operations.select,
-    Operations.exclude,
-    Operations.fold,
-    Operations.groupBy,
-    Operations.groupByAgg,
-    Operations.reduceBy,
-    Operations.reduceByAgg,
-    Operations.aggregate,
-    Operations.columnSize,
-    Operations.combine,
-    Operations.sortBy,
-    Operations.SortOrder (..),
-    Operations.Aggregation (..),
-    Operations.columnInfo,
-    Operations.fromList,
-    Operations.as,
-    Operations.frequencies,
-    Operations.mean,
-    Operations.median,
-    Operations.standardDeviation,
-    Operations.variance,
-    Operations.interQuartileRange,
-    Operations.sum,
-    Operations.skewness,
-    Operations.summarize,
-    Operations.correlation,
-    Operations.parseDefaults,
-    (|>),
-    Display.plotHistograms,
-    Display.plotHistogramsBy,
-    Display.PlotColumns(..),
-    Display.HistogramOrientation (..),
+  ( module D
   )
 where
 
-import qualified Data.DataFrame.Display.Terminal as Display
-import qualified Data.DataFrame.IO as IO
-import qualified Data.DataFrame.Internal as Internal
-import qualified Data.DataFrame.Operations as Operations
+import Data.DataFrame.Display.Terminal as D
+import Data.DataFrame.IO as D
+import Data.DataFrame.Internal as D
+import Data.DataFrame.Operations as D
 
 import Data.DataFrame.Operations ( (|>))
