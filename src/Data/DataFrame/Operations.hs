@@ -94,6 +94,7 @@ import Text.Read (readMaybe)
 import Type.Reflection
 import GHC.IO.Unsafe (unsafePerformIO)
 import Control.Monad (foldM_)
+import Control.Applicative (asum)
 
 -- | /O(n)/ Adds a vector to the dataframe.
 addColumn ::
@@ -814,100 +815,75 @@ frequencies name df = case name `MS.lookup` DI.columnIndices df of
             initDf = DI.empty & addColumn "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
           in L.foldl' (\df (col, k) -> addColumn (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
 
-mean :: T.Text -> DataFrame -> Double
+mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic SS.mean
 
-median :: T.Text -> DataFrame -> Double
+median :: T.Text -> DataFrame -> Maybe Double
 median = applyStatistic (SS.median SS.medianUnbiased)
 
-standardDeviation :: T.Text -> DataFrame -> Double
+standardDeviation :: T.Text -> DataFrame -> Maybe Double
 standardDeviation = applyStatistic SS.fastStdDev
 
-skewness :: T.Text -> DataFrame -> Double
+skewness :: T.Text -> DataFrame -> Maybe Double
 skewness = applyStatistic SS.skewness
 
-variance :: T.Text -> DataFrame -> Double
+variance :: T.Text -> DataFrame -> Maybe Double
 variance = applyStatistic SS.variance
 
-interQuartileRange :: T.Text -> DataFrame -> Double
+interQuartileRange :: T.Text -> DataFrame -> Maybe Double
 interQuartileRange = applyStatistic (SS.midspread SS.medianUnbiased 4)
 
 correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
 correlation first second df = DI.reduceColumn @(VU.Vector (Double, Double)) SS.correlation <$> (DI.zipColumns <$> (DI.getColumn first df) <*> (DI.getColumn second df))
 
-sum :: T.Text -> DataFrame -> Double
-sum name df = case name `MS.lookup` DI.columnIndices df of
-    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
-    Just i -> case DI.columns df V.!? i of
-      Nothing -> error "Internal error: Column is empty"
-      Just c -> case c of
-        Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
-          Just Refl -> VG.sum (VU.map fromIntegral column)
-          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> VG.sum column
-            Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
-        Nothing -> error $ "Cannot get mean of non numeric column" ++ T.unpack name
+sum :: T.Text -> DataFrame -> Maybe Double
+sum name df = case DI.getColumn name df of
+  Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
+    Just Refl -> Just $ VG.sum (VU.map fromIntegral column)
+    Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+      Just Refl -> Just $ VG.sum column
+      Nothing -> Nothing
+  Nothing -> Nothing
 
-applyStatistic :: (forall v . (VG.Vector v Double)
-               => v Double -> Double) -> T.Text -> DataFrame -> Double
-applyStatistic f name df = case name `MS.lookup` DI.columnIndices df of
-    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
-    Just i -> case DI.columns df V.!? i of
-      Nothing -> error "Internal error: Column is empty"
-      Just c -> case c of
-        Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
-          Just Refl -> f (VU.map fromIntegral column)
-          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> f column
-            Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
-              Just Refl -> f (VG.map realToFrac column)
-              Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
-        _ -> error $ "Cannot get mean of non numeric column: " ++ T.unpack name
+applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
+applyStatistic f name df = do
+      column <- DI.getColumn name df
+      matching <- asum [ DI.transform (fromIntegral :: Int -> Double) column,
+                         DI.transform (realToFrac :: Float -> Double) column,
+                         Just column ]
+      DI.safeReduceColumn f matching
 
-applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> VU.Vector Double
-applyStatistics f name df = case name `MS.lookup` DI.columnIndices df of
-    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
-    Just i -> case DI.columns df V.!? i of
-      Nothing -> error "Internal error: Column is empty"
-      Just c -> case c of
-        Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
-          Just Refl -> f (VU.map fromIntegral column)
-          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> f column
-            Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
-              Just Refl -> f (VG.map realToFrac column)
-              Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
-        _ -> error $ "Cannot get mean of non numeric column: " ++ T.unpack name
+applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
+applyStatistics f name df = case DI.getColumn name df of
+  Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
+    Just Refl -> Just $ f (VU.map fromIntegral column)
+    Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+      Just Refl -> Just $ f column
+      Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
+        Just Refl -> Just $ f (VG.map realToFrac column)
+        Nothing -> Nothing
+  _ -> Nothing
 
 summarize :: DataFrame -> DataFrame
 summarize df = fold columnStats (columnNames df) (fromList [("Statistic", DI.toColumn ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
   where columnStats name d = if all isJust (stats name) then addUnboxedColumn name (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
         stats name = let
-            quantiles = valuesOrNothing $! applyStatistics (SS.quantilesVec SS.medianUnbiased  (VU.fromList [0,1,2,3,4]) 4) name
+            quantiles = applyStatistics (SS.quantilesVec SS.medianUnbiased (VU.fromList [0,1,2,3,4]) 4) name df
             min' = flip (VG.!) 0 <$> quantiles
             quartile1 = flip (VG.!) 1 <$> quantiles
             median' = flip (VG.!) 2 <$> quantiles
             quartile3 = flip (VG.!) 3 <$> quantiles
             max' = flip (VG.!) 4 <$> quantiles
             iqr = (-) <$> quartile3 <*> quartile1
-          in [valueOrNothing $! mean name,
+          in [mean name df,
               min',
               quartile1,
               median',
               quartile3,
               max',
-              valueOrNothing $! standardDeviation name,
+              standardDeviation name df,
               iqr,
-              valueOrNothing $! skewness name]
-        -- 
-        valueOrNothing f = unsafePerformIO $ catch
-            (seq (Just $! f df) (return $ Just $! f df))
-            (\(e::SomeException) ->
-                      return Nothing)
-        valuesOrNothing f = unsafePerformIO $ catch
-            (seq (Just $! f df) (return $ Just $! f df))
-            (\(e::SomeException) ->
-                      return Nothing)
+              skewness name df]
         roundTo :: Int -> Double -> Double
         roundTo n x = fromInteger (round $ x * (10^n)) / (10.0^^n)
 

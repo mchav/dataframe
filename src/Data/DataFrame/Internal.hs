@@ -286,6 +286,14 @@ reduceColumn f (UnboxedColumn (column :: c)) = case testEquality (typeRep @c) (t
   Just Refl -> f column
   Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
 
+safeReduceColumn :: forall a b. (Typeable a) => (a -> b) -> Column -> Maybe b
+safeReduceColumn f (BoxedColumn (column :: c)) = do
+  Refl <- testEquality (typeRep @c) (typeRep @a)
+  return $ f column
+safeReduceColumn f (UnboxedColumn (column :: c)) = do
+  Refl <- testEquality (typeRep @c) (typeRep @a)
+  return $ f column
+
 longZipColumns :: Column -> Column -> Column
 longZipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (V.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
 longZipColumns (BoxedColumn column) (UnboxedColumn other) = BoxedColumn (V.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
