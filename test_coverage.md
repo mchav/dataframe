@@ -101,8 +101,9 @@
   - Fallback to text.
 
 * sortBy
-  - Sorts by a given column.
-  - Throws an error if it doesn't exist.
+  - Sorts by a given column in ascending order. DONE
+  - Sorts by a given column in descending order. DONE
+  - Throws an error if it doesn't exist. DONE
 
 * columnInfo
   - Return correct types and lengths.

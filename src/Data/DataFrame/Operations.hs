@@ -366,9 +366,10 @@ sortBy ::
   DataFrame ->
   DataFrame
 sortBy order sortColumnName df = case DI.getColumn sortColumnName df of
-  Nothing -> error ""
+  Nothing -> throw $ ColumnNotFoundException sortColumnName "sortBy" (map fst $ M.toList $ DI.columnIndices df)
   Just column -> let
-      -- TODO: Remove the order defintion from operations so we don't have to do this Bool mapping. 
+      -- TODO: Remove the SortOrder defintion from operations so we can share it between here and internal and
+      -- we don't have to do this Bool mapping. 
       indexes = DI.sortedIndexes (order == Ascending) column
       pick idxs col = DI.atIndicesStable idxs <$> col
     in df {columns = V.map (pick indexes) (columns df)}

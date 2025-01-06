@@ -110,9 +110,12 @@ test-suite tests
     other-modules: Assertions,
                    AddColumn,
                    Apply,
-                   Filter
+                   Filter,
+                   Sort
     build-depends: base >= 4.17.2.0 && < 4.21,
                    HUnit ^>= 1.6,
+                   random >= 1,
+                   random-shuffle >= 0.0.4,
                    text >= 2.0,
                    time >= 1.12,
                    vector ^>= 0.13,
