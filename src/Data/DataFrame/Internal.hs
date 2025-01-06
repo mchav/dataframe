@@ -250,31 +250,31 @@ atIndicesStable indexes (GroupedBoxedColumn column) = GroupedBoxedColumn $ index
 atIndicesStable indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ indexes `getIndices` column
 
 
-ifoldrColumn :: forall a b. (ColumnValue a, ColumnValue b) => (Int -> a -> b -> b) -> b -> Column -> b
-ifoldrColumn f acc c@(BoxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+ifoldrColumn :: forall a b. (ColumnValue a, ColumnValue b) => (Int -> a -> b -> b) -> b -> Column -> Maybe b
+ifoldrColumn f acc c@(BoxedColumn (column :: V.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldr f acc column
-ifoldrColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = fromMaybe acc $ do
+ifoldrColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldr f acc column
-ifoldrColumn f acc c@(GroupedBoxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+ifoldrColumn f acc c@(GroupedBoxedColumn (column :: V.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldr f acc column
-ifoldrColumn f acc c@(GroupedUnboxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+ifoldrColumn f acc c@(GroupedUnboxedColumn (column :: V.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldr f acc column
 
-ifoldlColumn :: forall a b . (ColumnValue a, ColumnValue b) => (b -> Int -> a -> b) -> b -> Column -> b
-ifoldlColumn f acc c@(BoxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+ifoldlColumn :: forall a b . (ColumnValue a, ColumnValue b) => (b -> Int -> a -> b) -> b -> Column -> Maybe b
+ifoldlColumn f acc c@(BoxedColumn (column :: V.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldl' f acc column
-ifoldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = fromMaybe acc $ do
+ifoldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldl' f acc column
-ifoldlColumn f acc c@(GroupedBoxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+ifoldlColumn f acc c@(GroupedBoxedColumn (column :: V.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldl' f acc column
-ifoldlColumn f acc c@(GroupedUnboxedColumn (column :: V.Vector d)) = fromMaybe acc $ do
+ifoldlColumn f acc c@(GroupedUnboxedColumn (column :: V.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldl' f acc column
 
@@ -367,12 +367,12 @@ getColumn name df = do
   i <- columnIndices df M.!? name
   join $ columns df V.!? i
 
-columnTypeString :: T.Text -> DataFrame -> String
-columnTypeString name df = case getColumn name df of
-  Just (BoxedColumn (column :: V.Vector a)) -> show (typeRep @a)
-  Just (UnboxedColumn (column :: VU.Vector a)) -> show (typeRep @a)
-  Just (GroupedBoxedColumn (column :: V.Vector a)) -> show (typeRep @a)
-  Just (GroupedUnboxedColumn (column :: V.Vector a)) -> show (typeRep @a)
+columnTypeString :: Column -> String
+columnTypeString column = case column of
+  BoxedColumn (column :: V.Vector a) -> show (typeRep @a)
+  UnboxedColumn (column :: VU.Vector a) -> show (typeRep @a)
+  GroupedBoxedColumn (column :: V.Vector a) -> show (typeRep @a)
+  GroupedUnboxedColumn (column :: V.Vector a) -> show (typeRep @a)
 
 isEmpty :: DataFrame -> Bool
 isEmpty df = dataframeDimensions df == (0, 0)

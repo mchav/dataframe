@@ -35,8 +35,11 @@
 * applyWhere
   - Applies function when target column criteria is met
   - When criterion column doesn't exist throw an error.
-  - When the type of the target column doesn't exit throw an error.
-  - When the function has the wrong type throw an error. 
+  - When target column doesn't exist throw an error.
+  - When the type of the criterion column doesn't exist throw an error. DONE
+  - When the type of the target column doesn't exist throw an error. DONE
+  - When the criterion function has the wrong type throw an error. DONE
+  - When the target function has the wrong type throw an error. DONE
 
 * derive
   - Applies function to given column and adds it to alias.
@@ -53,8 +56,9 @@
   - If arg is negative then don't change the
 
 * filter
-  - Filters column as expected
-  - Filter on non existent values returns dataframe with (0,0) dimensions. 
+  - Filters column as expected. DONE
+  - Filter on non existent values returns dataframe with (0,0) dimensions. DONE
+  - Filter on non-existent type throws exception. DONE
 
 * valueCounts
   - Counts values as expected.

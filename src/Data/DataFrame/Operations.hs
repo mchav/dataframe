@@ -213,7 +213,7 @@ apply ::
 apply f columnName d = case DI.getColumn columnName d of
   Nothing -> throw $ ColumnNotFoundException columnName "apply" (map fst $ M.toList $ DI.columnIndices d)
   Just column -> case DI.transform f column of
-    Nothing -> throw $ TypeMismatchException' (typeRep @b) (DI.columnTypeString columnName d) columnName "apply"
+    Nothing -> throw $ TypeMismatchException' (typeRep @b) (DI.columnTypeString column) columnName "apply"
     column' -> addColumn' columnName column' d
 
 -- | O(k) Apply a function to a given column in a dataframe and
@@ -232,9 +232,9 @@ derive ::
   DataFrame ->
   DataFrame
 derive alias f columnName d = case DI.getColumn columnName d of
-  Nothing -> throw $ ColumnNotFoundException columnName "apply" (map fst $ M.toList $ DI.columnIndices d)
+  Nothing -> throw $ ColumnNotFoundException columnName "derive" (map fst $ M.toList $ DI.columnIndices d)
   Just column -> case DI.transform f column of
-    Nothing  -> throw $ TypeMismatchException (typeOf column) (typeRep @b) columnName "applyAtIndex"
+    Nothing  -> throw $ TypeMismatchException (typeOf column) (typeRep @b) columnName "derive"
     Just res -> addColumn' alias (Just res) d
 
 -- | O(k * n) Apply a function to given column names in a dataframe.
@@ -284,12 +284,12 @@ applyWhere ::
   DataFrame -> -- DataFrame to apply operation to
   DataFrame
 applyWhere condition filterColumnName f columnName df = case DI.getColumn filterColumnName df of
-  Nothing -> throw $ ColumnNotFoundException columnName "applyWhere" (map fst $ M.toList $ DI.columnIndices df)
-  Just column -> let
-      indexes = DI.ifoldrColumn (\i val acc -> if condition val then V.cons i acc else acc) V.empty column
-    in if V.null indexes
-       then df
-       else L.foldl' (\d i -> applyAtIndex i f columnName d) df indexes
+  Nothing -> throw $ ColumnNotFoundException filterColumnName "applyWhere" (map fst $ M.toList $ DI.columnIndices df)
+  Just column -> case DI.ifoldrColumn (\i val acc -> if condition val then V.cons i acc else acc) V.empty column of
+      Nothing -> throw $ TypeMismatchException' (typeRep @a) (DI.columnTypeString column) filterColumnName "applyWhere"
+      Just indexes -> if V.null indexes
+                      then df
+                      else L.foldl' (\d i -> applyAtIndex i f columnName d) df indexes
 
 -- | O(k) Apply a function to the column at a given index.
 applyAtIndex ::
@@ -305,9 +305,9 @@ applyAtIndex ::
   DataFrame ->
   DataFrame
 applyAtIndex i f columnName df = case DI.getColumn columnName df of
-  Nothing -> error ""
+  Nothing -> throw $ ColumnNotFoundException columnName "applyAtIndex" (map fst $ M.toList $ DI.columnIndices df)
   Just column -> case DI.itransform (\index value -> if index == i then f value else value) column of
-    Nothing -> error ""
+    Nothing -> throw $ TypeMismatchException' (typeRep @a) (DI.columnTypeString column) columnName "applyAtIndex"
     column' -> addColumn' columnName column' df
 
 -- | O(k * n) Take the first n rows of a DataFrame.
@@ -343,11 +343,12 @@ filter ::
   DataFrame
 filter filterColumnName condition df = case DI.getColumn filterColumnName df of
   Nothing -> throw $ ColumnNotFoundException filterColumnName "filter" (map fst $ M.toList $ DI.columnIndices df)
-  Just column -> let
-      indexes = DI.ifoldlColumn (\s i v -> if condition v then S.insert i s else s) S.empty column
-      c' = snd $ dimensions df
-      pick idxs col = DI.atIndices idxs <$> col
-    in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
+  Just column -> case DI.ifoldlColumn (\s i v -> if condition v then S.insert i s else s) S.empty column of
+    Nothing -> throw $ TypeMismatchException' (typeRep @a) (DI.columnTypeString column) filterColumnName "filter"
+    Just indexes -> let
+        c' = snd $ dimensions df
+        pick idxs col = DI.atIndices idxs <$> col
+      in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
 
 filterBy :: (ColumnValue a) => (a -> Bool) -> T.Text -> DataFrame -> DataFrame
 filterBy = flip filter

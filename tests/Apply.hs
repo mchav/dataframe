@@ -30,12 +30,12 @@ testData :: D.DataFrame
 testData = D.fromList values
 
 applyBoxedToUnboxed :: Test
-applyBoxedToUnboxed = TestCase (assertEqual "should be (26, 3)"
+applyBoxedToUnboxed = TestCase (assertEqual "Boxed apply unboxed when result is unboxed"
                                 (Just $ DI.UnboxedColumn (VU.fromList (replicate 26 (1 :: Int))))
                                 (DI.getColumn "test2" $ D.apply @String (const (1::Int)) "test2" testData))
 
 applyBoxedToBoxed :: Test
-applyBoxedToBoxed = TestCase (assertEqual "should be (26, 3)"
+applyBoxedToBoxed = TestCase (assertEqual "Boxed apply remains in boxed vector"
                                 (Just $ DI.BoxedColumn (V.fromList (replicate 26 (1 :: Integer))))
                                 (DI.getColumn "test2" $ D.apply @String (const (1::Integer)) "test2" testData))
 
@@ -80,6 +80,31 @@ applyManyWrongType = TestCase (assertExpectException "[Error Case]"
                                 (DE.typeMismatchError (typeRep @Char) (typeRep @[Char]))
                                 (print $ DI.getColumn "test2" $ D.applyMany @Char (const (1::Int)) ["test2"] testData))
 
+applyWhereWrongConditionType :: Test
+applyWhereWrongConditionType = TestCase (assertExpectException "[Error Case]"
+                                (DE.typeMismatchError (typeRep @Integer) (typeRep @Int))
+                                (print $ D.applyWhere (even @Integer) "test1" ((+1) :: Int -> Int) "test5" testData))
+
+applyWhereWrongTargetType :: Test
+applyWhereWrongTargetType = TestCase (assertExpectException "[Error Case]"
+                                (DE.typeMismatchError (typeRep @Float) (typeRep @Int))
+                                (print $ D.applyWhere (even @Int) "test1" ((+1) :: Float -> Float) "test5" testData))
+
+applyWhereConditionColumnNotFound :: Test
+applyWhereConditionColumnNotFound = TestCase (assertExpectException "[Error Case]"
+                                (DE.columnNotFound "test0" "applyWhere" (D.columnNames testData))
+                                (print $ D.applyWhere (even @Int) "test0" ((+1) :: Int -> Int) "test5" testData))
+
+applyWhereTargetColumnNotFound :: Test
+applyWhereTargetColumnNotFound = TestCase (assertExpectException "[Error Case]"
+                                (DE.columnNotFound "test0" "applyAtIndex" (D.columnNames testData))
+                                (print $ D.applyWhere (even @Int) "test1" ((+1) :: Int -> Int) "test0" testData))
+
+applyWhereWAI :: Test
+applyWhereWAI = TestCase (assertEqual "applyWhere works as intended"
+                                (Just $ DI.UnboxedColumn (VU.fromList (zipWith ($) (cycle [id, (+1)]) [(1 :: Int)..26])))
+                                (D.getColumn "test5" $ D.applyWhere (even @Int) "test1" ((+1) :: Int -> Int) "test5" testData))
+
 tests :: [Test]
 tests = [ TestLabel "applyBoxedToUnboxed" applyBoxedToUnboxed
         , TestLabel "applyWrongType" applyWrongType
@@ -90,4 +115,9 @@ tests = [ TestLabel "applyBoxedToUnboxed" applyBoxedToUnboxed
         , TestLabel "applyManyBoxedToUnboxed" applyManyBoxedToUnboxed
         , TestLabel "applyManyColumnNotFound" applyManyColumnNotFound
         , TestLabel "applyManyWrongType" applyManyWrongType
+        , TestLabel "applyWhereWrongConditionType" applyWhereWrongConditionType
+        , TestLabel "applyWhereWrongTargetType" applyWhereWrongTargetType
+        , TestLabel "applyWhereConditionColumnNotFound" applyWhereConditionColumnNotFound
+        , TestLabel "applyWhereTargetColumnNotFound" applyWhereTargetColumnNotFound
+        , TestLabel "applyWhereWAI" applyWhereWAI
         ]

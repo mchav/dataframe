@@ -109,7 +109,8 @@ test-suite tests
     main-is: DataFrameTests.hs
     other-modules: Assertions,
                    AddColumn,
-                   Apply
+                   Apply,
+                   Filter
     build-depends: base >= 4.17.2.0 && < 4.21,
                    HUnit ^>= 1.6,
                    text >= 2.0,

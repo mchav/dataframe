@@ -19,6 +19,7 @@ import Assertions
 
 import qualified AddColumn
 import qualified Apply
+import qualified Filter
 
 testData :: D.DataFrame
 testData = D.fromList [ ("test1", DI.toColumn ([1..26] :: [Int]))
@@ -81,6 +82,7 @@ tests = TestList $  dimensionsTest
                 ++ takeTest
                 ++ AddColumn.tests
                 ++ Apply.tests
+                ++ Filter.tests
                 ++ parseTests
 
 main :: IO ()
