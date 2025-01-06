@@ -87,6 +87,8 @@ ghci> D.median "housing_median_age" df
 Just 29.0
 ```
 
+Note: the values are displayed with a `Just` because they are optional values. Trying to get the mean or median of a non-numeric column would return `Nothing`.
+
 ### Spread
 Spread is a measure of how away from the center we are still likely to find data values. There are three main measures of spread: variance, mean absolute deviation, standard deviation, and interquartile range.
 
