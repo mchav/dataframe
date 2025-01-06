@@ -82,9 +82,9 @@ For a given column calulating the mean and median is fairly straightfoward and s
             
 ```haskell
 ghci> D.mean "housing_median_age" df
-28.63948643410852
+Just 28.63948643410852
 ghci> D.median "housing_median_age" df
-29.0
+Just 29.0
 ```
 
 ### Spread
@@ -96,7 +96,8 @@ We start by looking at mean absolute deviation since it's the simplest measure o
 In the housing dataset it'll tell how "typical" our typical home price is.
 
 ```haskell
-ghci> m = D.mean "median_house_value" df
+ghci> import Data.Maybe
+ghci> m = fromMaybe 0 $ D.mean "median_house_value" df
 206855.81690891474
 ghci> df |> D.derive "deviation" (\v -> abs (v - m)) "median_house_value" |> D.select ["median_house_value", "deviation"] |> D.take 10
 -----------------------------------------------
@@ -123,7 +124,7 @@ This gives us a list of the deviations. From the small sample it does seem like 
 ```haskell
 ghci> withDeviation = df |> D.derive "deviation" (\v -> abs (v - m)) "median_house_value" |> D.select ["median_house_value", "deviation"]
 ghci> D.mean "deviation" withDeviation
-91170.43994367732
+Just 91170.43994367732
 ```
 
 So the $200'000 deviation we saw in the sample isn't very typical but it raises a question about outliers.
@@ -134,7 +135,7 @@ What if we give more weight to the further deviations?
 That's what standard deviation aims to do. Standard deviation considers the spread of outliers. Instead of calculating the absolute difference of each observation from the mean we calculate the square of the difference. We still take the average and then finally we take the square root of the result.
 
 ```haskell
-ghci> sumOfSqureDifferences = D.sum "deviation" withDeviation 
+ghci> sumOfSqureDifferences = fromMaybe 0 $ D.sum "deviation" withDeviation 
 ghci> n = fromIntegral $ (fst $ D.dimensions df) - 1
 ghci> sqrt (sumOfSqureDifferences / n)
 115395.6158744
@@ -145,7 +146,7 @@ We can calculate the standard deviation in one line as follows:
 
 ```haskell
 ghci> D.standardDeviation "median_house_value" df
-115395.6158744
+Just 115395.6158744
 ```
 
 ## Interquartile range (IQR)
@@ -157,7 +158,7 @@ For our dataset:
 
 ```haskell
 ghci> D.interQuartileRange "median_house_value" df
-145158.3333333336
+Just 145158.3333333336
 ```
 
 This is larger than the standard deviation but not by much. This means that outliers don't have a significant influence on the distribution and most values are close to typical.
@@ -169,7 +170,7 @@ In our example it's a very large number:
 
 ``` haskell
 ghci> D.variance  "median_house_value" df
-1.3315503000818077e10
+Just 1.3315503000818077e10
 ```
 
 The variance is more useful when comparing different datasets. If the variance of house prices in Minnesota was lower than California this would mean there were much fewer really cheap and really expensive house in Minnesota.
@@ -185,7 +186,7 @@ A skewness score between -0.5 and 0.5 means the data has little skew. A score be
 
 ```haskell
 ghci> D.skewness "median_house_value" df
-0.9776922140978703
+Just 0.9776922140978703
 ```
 So the median house value is moderately skewed to the left. That is, there are more houses that are cheaper than the mean values and a tail of expensive outliers. Having lived in California, I can confirm that this data reflects reality.
 
@@ -219,6 +220,6 @@ As a recap we'll go over what this tells us about the data:
 * population: California is generally very sparsely populated (low skewness) with some REALLY densely populated areas (high max/ low IQR).
 * total_rooms: a lot of the blocks have few rooms (Again sparse population) but there are some very dense areas (high max).
 * housing_median_age: there are as many new houses as there are old (skewness close to 0) and not many extremes (low max, standard deviation lower than IQR)
-* latitude: the south has slightly more people than the north (moder    ate skew)
+* latitude: the south has slightly more people than the north (moderate skew)
 * longitude: most houses are in the west coast (moderate right skew)
 
