@@ -21,6 +21,7 @@ import qualified AddColumn
 import qualified Apply
 import qualified Filter
 import qualified Sort
+import qualified Take
 
 testData :: D.DataFrame
 testData = D.fromList [ ("test1", DI.toColumn ([1..26] :: [Int]))
@@ -38,26 +39,6 @@ dimensionsTest :: [Test]
 dimensionsTest = [ TestLabel "dimensions_correctDimensions" correctDimensions
                  , TestLabel "dimensions_emptyDataframeDimensions" emptyDataframeDimensions
                  ]
-
--- take
-lengthEqualsTakeParam :: Test
-lengthEqualsTakeParam = TestCase (assertEqual "should be (5, 2)" (5, 2) (D.dimensions $ D.take 5 testData))
-
-lengthGreaterThanTakeParam :: Test
-lengthGreaterThanTakeParam = TestCase (assertEqual "should be (26, 2)" (26, 2) (D.dimensions $ D.take 30 testData))
-
-emptyIsZero :: Test
-emptyIsZero = TestCase (assertEqual "should be (0, 0)" (0, 0) (D.dimensions $ D.take 5 D.empty))
-
-negativeIsZero :: Test
-negativeIsZero = TestCase (assertEqual "should be (0, 2)" (0, 2) (D.dimensions $ D.take (-1) testData))
-
-takeTest :: [Test]
-takeTest = [ TestLabel "lengthEqualsTakeParam" lengthEqualsTakeParam
-           , TestLabel "lengthGreaterThanTakeParam" lengthGreaterThanTakeParam
-           , TestLabel "emptyIsZero" emptyIsZero
-           , TestLabel "negativeIsZero" negativeIsZero
-           ]
 
 -- parsing.
 parseDate :: Test
@@ -80,11 +61,11 @@ parseTests = [
 
 tests :: Test
 tests = TestList $ dimensionsTest
-                ++ takeTest
                 ++ AddColumn.tests
                 ++ Apply.tests
                 ++ Filter.tests
                 ++ Sort.tests
+                ++ Take.tests
                 ++ parseTests
 
 main :: IO ()

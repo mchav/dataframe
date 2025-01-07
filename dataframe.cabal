@@ -111,7 +111,8 @@ test-suite tests
                    AddColumn,
                    Apply,
                    Filter,
-                   Sort
+                   Sort,
+                   Take
     build-depends: base >= 4.17.2.0 && < 4.21,
                    HUnit ^>= 1.6,
                    random >= 1,
