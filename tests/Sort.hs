@@ -14,11 +14,8 @@ import Assertions
 
 import Control.Monad
 import Data.Char
-import System.Random
 import System.Random.Shuffle (shuffle')
 import Test.HUnit
-import Type.Reflection (typeRep)
-import GHC.IO.Unsafe (unsafePerformIO)
 
 values :: [(T.Text, DI.Column)]
 values = let
