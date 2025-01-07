@@ -14,6 +14,7 @@ import Assertions
 
 import Control.Monad
 import Data.Char
+import System.Random
 import System.Random.Shuffle (shuffle')
 import Test.HUnit
 
