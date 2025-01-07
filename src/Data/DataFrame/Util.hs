@@ -130,6 +130,25 @@ readDouble s =
     Right (value, "") -> Just value
     Right (value, _) -> Nothing
 
+readIntegerEither :: (HasCallStack) => T.Text -> Either T.Text Integer
+readIntegerEither s = case signed decimal (T.strip s) of
+  Left _ -> Left s
+  Right (value, "") -> Right value
+  Right (value, _) -> Left s
+
+readIntEither :: (HasCallStack) => T.Text -> Either T.Text Int
+readIntEither s = case signed decimal (T.strip s) of
+  Left _ -> Left s
+  Right (value, "") -> Right value
+  Right (value, _) -> Left s
+
+readDoubleEither :: (HasCallStack) => T.Text -> Either T.Text Double
+readDoubleEither s =
+  case signed double s of
+    Left _ -> Left s
+    Right (value, "") -> Right value
+    Right (value, _) -> Left s
+
 safeReadValue :: (Read a) => T.Text -> Maybe a
 safeReadValue s = readMaybe (T.unpack s)
 

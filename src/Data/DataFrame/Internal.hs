@@ -306,31 +306,33 @@ zipColumns (BoxedColumn column) (UnboxedColumn other) = BoxedColumn (V.generate 
 zipColumns (UnboxedColumn column) (BoxedColumn other) = BoxedColumn (V.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
 zipColumns (UnboxedColumn column) (UnboxedColumn other) = UnboxedColumn (VU.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
 
-writeColumn :: Int -> T.Text -> Column -> IO Bool
+writeColumn :: Int -> T.Text -> Column -> IO (Either T.Text Bool)
 writeColumn i value (MutableBoxedColumn (col :: VM.IOVector a)) =
   case testEquality (typeRep @a) (typeRep @T.Text) of
       Just Refl -> (if isNullish value
-                    then VM.write col i "" >> return False
-                    else VM.write col i value >> return True)
-      Nothing -> return False
+                    then VM.write col i "" >> return (Left value)
+                    else VM.write col i value >> return (Right True))
+      Nothing -> return (Left (T.pack (show value)))
 writeColumn i value (MutableUnboxedColumn (col :: VUM.IOVector a)) =
   case testEquality (typeRep @a) (typeRep @Int) of
       Just Refl -> case readInt value of
-        Just v -> VUM.write col i v >> return True
-        Nothing -> VUM.write col i 0 >> return False
+        Just v -> VUM.write col i v >> return (Right True)
+        Nothing -> VUM.write col i 0 >> return (Left value)
       Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
-        Nothing -> return False
+        Nothing -> return (Left value)
         Just Refl -> case readDouble value of
-          Just v -> VUM.write col i v >> return True
-          Nothing -> VUM.write col i 0 >> return False
+          Just v -> VUM.write col i v >> return (Right True)
+          Nothing -> VUM.write col i 0 >> return (Left value)
 
-freezeColumn' :: S.Set Int -> Column -> IO Column
+freezeColumn' :: [(Int, T.Text)] -> Column -> IO Column
 freezeColumn' nulls (MutableBoxedColumn col)
   | null nulls = BoxedColumn <$> V.unsafeFreeze col
-  | otherwise  = BoxedColumn . V.imap (\i v -> if i `S.member` nulls then Nothing else Just v) <$> V.unsafeFreeze col
+  | all (isNullish . snd) nulls = BoxedColumn . V.imap (\i v -> if i `elem` map fst nulls then Nothing else Just v) <$> V.unsafeFreeze col
+  | otherwise  = BoxedColumn . V.imap (\i v -> if i `elem` map fst nulls then Left (fromMaybe (error "") (lookup i nulls)) else Right v) <$> V.unsafeFreeze col
 freezeColumn' nulls (MutableUnboxedColumn col)
   | null nulls = UnboxedColumn <$> VU.unsafeFreeze col
-  | otherwise  = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ V.generate (VU.length c) (\i -> if i `S.member` nulls then Nothing else Just (c VU.! i))
+  | all (isNullish . snd) nulls = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ V.generate (VU.length c) (\i -> if i `elem` map fst nulls then Nothing else Just (c VU.! i))
+  | otherwise  = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ V.generate (VU.length c) (\i -> if i `elem` map fst nulls then Left (fromMaybe (error "") (lookup i nulls)) else Right (c VU.! i))
 
 sortedIndexes :: Bool -> Column -> VU.Vector Int
 sortedIndexes asc (BoxedColumn column ) = runST $ do

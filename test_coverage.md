@@ -51,9 +51,9 @@
   - Throws an error if the column doesn't exist.
 
 * take
-  - Takes correct number of elements.
-  - If # elements is less n then don't change the column.
-  - If arg is negative then don't change the
+  - Takes correct number of elements. DONE
+  - If # elements is less n then don't change the column. DONE
+  - If arg is negative then don't change the dimensions of the frame. DONE
 
 * filter
   - Filters column as expected. DONE

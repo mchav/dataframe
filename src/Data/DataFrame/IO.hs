@@ -101,7 +101,7 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
     totalRows <- countRows path
     let actualRows = if hasHeader opts then totalRows - 1 else totalRows
     nullIndices <- VM.new numColumns
-    VM.set nullIndices S.empty
+    VM.set nullIndices []
     mutableCols <- VM.new numColumns
     getInitialDataVectors 0 actualRows mutableCols dataRow
 
@@ -130,7 +130,7 @@ getInitialDataVectors i n mCol (x:xs) = do
     getInitialDataVectors (i + 1) n mCol xs
 
 -- | Reads rows from the handle and stores values in mutable vectors.
-fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector (S.Set Int) -> Handle -> IO ()
+fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
 fillColumns i c mutableCols nullIndices handle = do
     isEOF <- hIsEOF handle
     unless isEOF $ do
@@ -139,15 +139,16 @@ fillColumns i c mutableCols nullIndices handle = do
         fillColumns (i + 1) c mutableCols nullIndices handle
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
-writeValue :: VM.IOVector Column -> VM.IOVector (S.Set Int) -> Int -> Int -> T.Text -> IO ()
+writeValue :: VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> T.Text -> IO ()
 writeValue mutableCols nullIndices count colIndex value = do
     col <- VM.read mutableCols colIndex
-    isWritten <- writeColumn count value col
-    unless isWritten $ do
-        VM.modify nullIndices (count `S.insert`) colIndex
+    res <- writeColumn count value col
+    case res of
+        Left value -> VM.modify nullIndices ((count, value) :) colIndex
+        Right _ -> return ()
 
 -- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
-freezeColumn :: VM.IOVector Column -> V.Vector (S.Set Int) -> ReadOptions -> Int -> IO (Maybe Column)
+freezeColumn :: VM.IOVector Column -> V.Vector [(Int, T.Text)] -> ReadOptions -> Int -> IO (Maybe Column)
 freezeColumn mutableCols nulls opts colIndex = do
     col <- VM.read mutableCols colIndex
     Just <$> freezeColumn' (nulls V.! colIndex) col

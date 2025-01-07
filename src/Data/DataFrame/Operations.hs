@@ -95,6 +95,7 @@ import Type.Reflection
 import GHC.IO.Unsafe (unsafePerformIO)
 import Control.Monad (foldM_)
 import Control.Applicative (asum)
+import Data.Either (isLeft, fromLeft)
 
 -- | /O(n)/ Adds a vector to the dataframe.
 addColumn ::
@@ -528,7 +529,7 @@ groupColumns indices df acc name =
        in addColumn' name (Just $ GroupedUnboxedColumn vs) acc
 
 fold :: Foldable t => (a -> DataFrame -> DataFrame) -> t a -> DataFrame -> DataFrame
-fold f = flip (foldr f)
+fold f = flip (L.foldl' (flip f))
 
 data Aggregation = Count
                  | Mean
@@ -752,9 +753,23 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) =
                      in Just $ if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
                   Nothing -> case parseTimeOpt example of
                     Just d -> let
-                        safeVector = V.map ((=<<) parseTimeOpt . emptyToNothing) c
-                        hasNulls = V.elem Nothing safeVector
-                      in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn (V.map unsafeParseTime c)
+                        -- failed parse should be Either, nullish should be Maybe
+                        emptyToNothing' v = if S.member v nullish then Left v else Right v
+                        parseTimeEither v = case parseTimeOpt v of
+                          Just v' -> Right v'
+                          Nothing -> Left v
+                        safeVector = V.map ((=<<) parseTimeEither . emptyToNothing') c
+                        toMaybe (Left _) = Nothing
+                        toMaybe (Right value) = Just value
+                        lefts = V.filter isLeft safeVector
+                        onlyNulls = (not (V.null lefts) && V.all ((`S.member` nullish) . fromLeft "non-null") lefts)
+                      in Just $ if safeRead
+                        then if onlyNulls
+                             then BoxedColumn (V.map toMaybe safeVector)
+                             else if V.any isLeft safeVector
+                              then BoxedColumn safeVector
+                              else BoxedColumn (V.map unsafeParseTime c)
+                        else BoxedColumn (V.map unsafeParseTime c)
                     Nothing -> let
                         safeVector = V.map emptyToNothing c
                         hasNulls = isJust $ V.find (`S.member` nullish) c

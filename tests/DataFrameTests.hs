@@ -47,16 +47,23 @@ parseDate = let
     actual = DO.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "2021-02-14", "2022-02-14"])
   in TestCase (assertEqual "Correctly parses gregorian date" expected actual)
 
+incompleteDataParseEither :: Test
+incompleteDataParseEither = let
+    expected = Just $ DI.BoxedColumn (V.fromList [Right $ fromGregorian 2020 02 14, Left ("2021-02-" :: T.Text), Right $ fromGregorian 2022 02 14])
+    actual = DO.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"])
+  in TestCase (assertEqual "Parses Either for gregorian date" expected actual)
+
 incompleteDataParseMaybe :: Test
 incompleteDataParseMaybe = let
     expected = Just $ DI.BoxedColumn (V.fromList [Just $ fromGregorian 2020 02 14, Nothing, Just $ fromGregorian 2022 02 14])
-    actual = DO.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"])
-  in TestCase (assertEqual "Parses optional for gregorian date" expected actual)
+    actual = DO.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "", "2022-02-14"])
+  in TestCase (assertEqual "Parses Maybe for gregorian date with null/empty" expected actual)
 
 parseTests :: [Test]
 parseTests = [
              TestLabel "parseDate" parseDate,
-             TestLabel "incompleteDataParseMaybe" incompleteDataParseMaybe
+             TestLabel "incompleteDataParseMaybe" incompleteDataParseMaybe,
+             TestLabel "incompleteDataParseEither" incompleteDataParseEither
            ]
 
 tests :: Test
