@@ -17,11 +17,12 @@ import Test.HUnit
 
 import Assertions
 
-import qualified AddColumn
-import qualified Apply
-import qualified Filter
-import qualified Sort
-import qualified Take
+import qualified Operations.AddColumn
+import qualified Operations.Apply
+import qualified Operations.Filter
+import qualified Operations.GroupBy
+import qualified Operations.Sort
+import qualified Operations.Take
 
 testData :: D.DataFrame
 testData = D.fromList [ ("test1", DI.toColumn ([1..26] :: [Int]))
@@ -68,11 +69,12 @@ parseTests = [
 
 tests :: Test
 tests = TestList $ dimensionsTest
-                ++ AddColumn.tests
-                ++ Apply.tests
-                ++ Filter.tests
-                ++ Sort.tests
-                ++ Take.tests
+                ++ Operations.AddColumn.tests
+                ++ Operations.Apply.tests
+                ++ Operations.Filter.tests
+                ++ Operations.GroupBy.tests
+                ++ Operations.Sort.tests
+                ++ Operations.Take.tests
                 ++ parseTests
 
 main :: IO ()

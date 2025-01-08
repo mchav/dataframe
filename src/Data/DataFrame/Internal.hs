@@ -11,6 +11,7 @@
 
 module Data.DataFrame.Internal where
 
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Map.Strict as MS
 import qualified Data.Set as S
@@ -183,14 +184,16 @@ instance Eq Column where
     case testEquality (typeRep @t1) (typeRep @t2) of
       Nothing -> False
       Just Refl -> a == b
+  -- Note: comparing grouped columns is expensive. We do this for stable tests
+  -- but also you should probably aggregate grouped columns soon after creating them.
   (==) (GroupedBoxedColumn (a :: V.Vector t1)) (GroupedBoxedColumn (b :: V.Vector t2)) =
     case testEquality (typeRep @t1) (typeRep @t2) of
       Nothing -> False
-      Just Refl -> a == b
+      Just Refl -> V.map (L.sort . VG.toList) a == V.map (L.sort . VG.toList) b
   (==) (GroupedUnboxedColumn (a :: V.Vector t1)) (GroupedUnboxedColumn (b :: V.Vector t2)) =
     case testEquality (typeRep @t1) (typeRep @t2) of
       Nothing -> False
-      Just Refl -> a == b
+      Just Refl -> V.map (L.sort . VG.toList) a == V.map (L.sort . VG.toList) b
   (==) _ _ = False
 
 -- Traversing columns.

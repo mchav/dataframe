@@ -1,6 +1,5 @@
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Sort where
+module Operations.Sort where
 
 import qualified Data.DataFrame as D
 import qualified Data.DataFrame.Internal as DI
@@ -11,7 +10,6 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
 import Assertions
-
 import Control.Monad
 import Data.Char
 import System.Random
@@ -29,13 +27,13 @@ testData :: D.DataFrame
 testData = D.fromList values
 
 sortByAscendingWAI :: Test
-sortByAscendingWAI = TestCase (assertEqual "Non existent filter value returns no rows"
+sortByAscendingWAI = TestCase (assertEqual "Sorting rows by ascending works as intended"
                     (D.fromList [("test1", DI.toColumn [(1::Int)..26]),
                                  ("test2", DI.toColumn ['a'..'z'])])
                     (D.sortBy D.Ascending "test1" testData))
 
 sortByDescendingWAI :: Test
-sortByDescendingWAI = TestCase (assertEqual "Non existent filter value returns no rows"
+sortByDescendingWAI = TestCase (assertEqual "Sorting rows by descending works as intended"
                     (D.fromList [("test1", DI.toColumn $ reverse [(1::Int)..26]),
                                  ("test2", DI.toColumn $ reverse ['a'..'z'])])
                     (D.sortBy D.Descending "test1" testData))

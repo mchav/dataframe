@@ -106,13 +106,14 @@ benchmark dataframe-benchmark
 
 test-suite tests
     type: exitcode-stdio-1.0
-    main-is: DataFrameTests.hs
+    main-is: Main.hs
     other-modules: Assertions,
-                   AddColumn,
-                   Apply,
-                   Filter,
-                   Sort,
-                   Take
+                   Operations.AddColumn,
+                   Operations.Apply,
+                   Operations.Filter,
+                   Operations.GroupBy,
+                   Operations.Sort,
+                   Operations.Take
     build-depends: base >= 4.17.2.0 && < 4.21,
                    HUnit ^>= 1.6,
                    random >= 1,

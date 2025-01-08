@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}
-module AddColumn where
+module Operations.AddColumn where
 
 import qualified Data.DataFrame as D
 import qualified Data.DataFrame.Internal as DI

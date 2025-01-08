@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Filter where
+module Operations.Filter where
 
 import qualified Data.DataFrame as D
 import qualified Data.DataFrame.Internal as DI

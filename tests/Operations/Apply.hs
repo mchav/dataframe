@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
-module Apply where
+module Operations.Apply where
 
 import qualified Data.DataFrame as D
 import qualified Data.DataFrame.Internal as DI

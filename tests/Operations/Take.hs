@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Take where
+module Operations.Take where
 
 import qualified Data.DataFrame as D
 import qualified Data.DataFrame.Internal as DI
