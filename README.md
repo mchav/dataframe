@@ -30,7 +30,7 @@ main :: IO ()
       |> D.select ["item_name", "quantity"]
       |> D.groupBy ["item_name"]
       |> D.aggregate (zip (repeat "quantity") [D.Maximum, D.Mean, D.Sum])
-      |> D.sortBy D.Descending "Sum_quantity"
+      |> D.sortBy D.Descending ["Sum_quantity"]
 ```
 
 Output:
