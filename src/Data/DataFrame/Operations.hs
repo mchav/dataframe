@@ -154,6 +154,8 @@ addColumn' name xs d
             Nothing -> xs
             Just (BoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
             Just (UnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+            Just (GroupedBoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
+            Just (GroupedUnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
         | diff < 0 = error "Column is too large to add"
    in d
         { columns = columns' V.// [(n, xs')],
@@ -364,15 +366,15 @@ data SortOrder = Ascending | Descending deriving (Eq)
 -- > sortBy "Age" df
 sortBy ::
   SortOrder ->
-  T.Text ->
+  [T.Text] ->
   DataFrame ->
   DataFrame
-sortBy order sortColumnName df = case DI.getColumn sortColumnName df of
-  Nothing -> throw $ ColumnNotFoundException sortColumnName "sortBy" (map fst $ M.toList $ DI.columnIndices df)
-  Just column -> let
+sortBy order names df
+  | not $ any (`elem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "sortBy" (columnNames df)
+  | otherwise = let
       -- TODO: Remove the SortOrder defintion from operations so we can share it between here and internal and
-      -- we don't have to do this Bool mapping. 
-      indexes = DI.sortedIndexes (order == Ascending) column
+      -- we don't have to do this Bool mapping.
+      indexes = DI.sortedIndexes' (order == Ascending) (DI.toRowList names df) 
       pick idxs col = DI.atIndicesStable idxs <$> col
     in df {columns = V.map (pick indexes) (columns df)}
 
@@ -822,7 +824,7 @@ interQuartileRange :: T.Text -> DataFrame -> Maybe Double
 interQuartileRange = applyStatistic (SS.midspread SS.medianUnbiased 4)
 
 correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
-correlation first second df = DI.reduceColumn @(VU.Vector (Double, Double)) SS.correlation <$> (DI.zipColumns <$> (DI.getColumn first df) <*> (DI.getColumn second df))
+correlation first second df = DI.reduceColumn @(VU.Vector (Double, Double)) SS.correlation <$> (DI.zipColumns <$> DI.getColumn first df <*> DI.getColumn second df)
 
 sum :: T.Text -> DataFrame -> Maybe Double
 sum name df = case DI.getColumn name df of

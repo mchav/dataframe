@@ -48,7 +48,7 @@ oneBillingRowChallenge = do
     parsed
       |> D.groupBy ["City"]
       |> D.reduceBy (\v -> (VG.minimum v, mean @Double v, VG.maximum v)) "Measurement"
-      |> D.sortBy D.Ascending "City"
+      |> D.sortBy D.Ascending ["City"]
 
 housing :: IO ()
 housing = do
@@ -125,7 +125,7 @@ chipotle = do
       |> D.filter "item_name" (searchTerm ==)
       |> D.groupBy ["item_name"]
       |> D.aggregate (zip (repeat "quantity") [D.Maximum, D.Mean, D.Sum])
-      |> D.sortBy D.Descending "Sum_quantity"
+      |> D.sortBy D.Descending ["Sum_quantity"]
 
   -- Similarly, we can aggregate quantities by all rows.
   print $

@@ -171,7 +171,7 @@ index | Statistic |     D     |     C     |     A
 Since we don't have indexes we only have one sort function that sorts by a column.
 
 ```haskell
-ghci> D.sortBy D.Ascending "E" df
+ghci> D.sortBy D.Ascending ["E"] df
 --------------------------------------------------------------
 index |   A    |     B      |   C   |  D  |     E     |   F   
 ------|--------|------------|-------|-----|-----------|-------

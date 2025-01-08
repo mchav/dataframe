@@ -47,7 +47,26 @@ import Control.Monad (foldM_, join)
 initialColumnSize :: Int
 initialColumnSize = 8
 
+-- We need an "Object" type so we can represent rows.
+
+-- TODO: Add more values.
+data Value = IntValue Int
+           | DoubleValue Double
+           -- Catchall
+           | TextValue T.Text deriving (Show, Eq, Ord)
+
+type Row = [Value]
+
 type ColumnValue a = (Typeable a, Show a, Ord a)
+
+toValue :: forall a . (ColumnValue a) => a -> Value
+toValue x = case testEquality (typeRep @a) (typeRep @Int) of
+  Just Refl -> IntValue x
+  Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
+    Just Refl -> DoubleValue x
+    Nothing -> case testEquality (typeRep @a) (typeRep @T.Text) of
+      Just Refl -> TextValue x
+      Nothing -> TextValue $ T.pack (show x)
 
 -- | Our representation of a column is a GADT that can store data in either
 -- a vector with boxed elements or
@@ -358,6 +377,70 @@ sortedIndexes asc (GroupedUnboxedColumn column) = runST $ do
   VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
   sorted <- VG.unsafeFreeze withIndexes
   return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
+
+sortedIndexes' :: Bool -> [Row] -> VU.Vector Int
+sortedIndexes' asc rows = VU.fromList
+                        $ map fst
+                        $ L.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') (zip [0..] rows)
+
+toRowList :: [T.Text] -> DataFrame -> [Row]
+toRowList names df = let
+    nameSet = S.fromList names
+  in map (mkRowRep df nameSet) [0..(fst (dataframeDimensions df) - 1)]
+
+mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Row
+mkRowRep df names i = reverse $ V.ifoldl' go [] (columns df)
+  where
+    indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
+    go acc k Nothing = acc
+    go acc k (Just (BoxedColumn c)) =
+      if S.notMember (indexMap M.! k) names
+        then acc
+        else case c V.!? i of
+          Just e -> toValue e : acc
+          Nothing ->
+            error $
+              "Column "
+                ++ T.unpack (indexMap M.! k)
+                ++ " has less items than "
+                ++ "the other columns at index "
+                ++ show i
+    go acc k (Just (UnboxedColumn c)) =
+      if S.notMember (indexMap M.! k) names
+        then acc
+        else case c VU.!? i of
+          Just e -> toValue e : acc
+          Nothing ->
+            error $
+              "Column "
+                ++ T.unpack (indexMap M.! k)
+                ++ " has less items than "
+                ++ "the other columns at index "
+                ++ show i
+    go acc k (Just (GroupedBoxedColumn c)) =
+      if S.notMember (indexMap M.! k) names
+        then acc
+        else case c V.!? i of
+          Just e -> toValue e : acc
+          Nothing ->
+            error $
+              "Column "
+                ++ T.unpack (indexMap M.! k)
+                ++ " has less items than "
+                ++ "the other columns at index "
+                ++ show i
+    go acc k (Just (GroupedUnboxedColumn c)) =
+      if S.notMember (indexMap M.! k) names
+        then acc
+        else case c V.!? i of
+          Just e -> toValue e : acc
+          Nothing ->
+            error $
+              "Column "
+                ++ T.unpack (indexMap M.! k)
+                ++ " has less items than "
+                ++ "the other columns at index "
+                ++ show i
 
 isGrouped :: Column -> Bool
 isGrouped (GroupedBoxedColumn column) = True

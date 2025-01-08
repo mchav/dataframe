@@ -156,7 +156,7 @@ starwars %>%
 ```
 
 ```haskell
-starwars |> D.sortBy "mass" D.Descending |> D.take 5
+starwars |> D.sortBy D.Descending ["mass"] |> D.take 5
 ```
 
 ```

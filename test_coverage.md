@@ -96,13 +96,15 @@
   - Throws type mismatch.
 
 * parseDefault
-  - unsigned integer defaults to int,
+  - unsigned integer defaults to int
   - decimal point number defaults to double.
   - Fallback to text.
 
 * sortBy
   - Sorts by a given column in ascending order. DONE
   - Sorts by a given column in descending order. DONE
+  - Sorts by multiple columns in ascending order.
+  - Sorts by multiple columns in descending order.
   - Throws an error if it doesn't exist. DONE
 
 * columnInfo

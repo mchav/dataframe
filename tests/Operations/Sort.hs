@@ -30,18 +30,18 @@ sortByAscendingWAI :: Test
 sortByAscendingWAI = TestCase (assertEqual "Sorting rows by ascending works as intended"
                     (D.fromList [("test1", DI.toColumn [(1::Int)..26]),
                                  ("test2", DI.toColumn ['a'..'z'])])
-                    (D.sortBy D.Ascending "test1" testData))
+                    (D.sortBy D.Ascending ["test1"] testData))
 
 sortByDescendingWAI :: Test
 sortByDescendingWAI = TestCase (assertEqual "Sorting rows by descending works as intended"
                     (D.fromList [("test1", DI.toColumn $ reverse [(1::Int)..26]),
                                  ("test2", DI.toColumn $ reverse ['a'..'z'])])
-                    (D.sortBy D.Descending "test1" testData))
+                    (D.sortBy D.Descending ["test1"] testData))
 
 sortByColumnDoesNotExist :: Test
 sortByColumnDoesNotExist = TestCase (assertExpectException "[Error Case]"
-                                (DE.columnNotFound "test0" "sortBy" (D.columnNames testData))
-                                (print $ D.sortBy D.Ascending "test0" testData))
+                                (DE.columnNotFound "[\"test0\"]" "sortBy" (D.columnNames testData))
+                                (print $ D.sortBy D.Ascending ["test0"] testData))
 
 tests :: [Test]
 tests = [ TestLabel "sortByAscendingWAI" sortByAscendingWAI
