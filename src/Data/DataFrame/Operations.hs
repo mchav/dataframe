@@ -553,103 +553,76 @@ reduceBy ::
   T.Text ->
   DataFrame ->
   DataFrame
-reduceBy f name df = case name `MS.lookup` DI.columnIndices df of
-    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
-    Just i -> case DI.columns df V.!? i of
-      Nothing -> error "Internal error: Column is empty"
-      Just c -> case c of
-        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a) (typeRep @a') of
-          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map f column)) df
-          Nothing -> error "Type error"
-        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a) (typeRep @a') of
-          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map f column)) df
-          Nothing -> error "Type error"
-        _ -> error "Column is ungrouped"
+reduceBy f name df = case DI.getColumn name df of
+    Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a) (typeRep @a') of
+      Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map f column)) df
+      Nothing -> error "Type error"
+    Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a) (typeRep @a') of
+      Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map f column)) df
+      Nothing -> error "Type error"
+    _ -> error "Column is ungrouped"
 
 reduceByAgg :: Aggregation
             -> T.Text
             -> DataFrame
             -> DataFrame
 reduceByAgg agg name df = case agg of
-  Count   -> case name `MS.lookup` DI.columnIndices df of
-    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
-    Just i -> case DI.columns df V.!? i of
-      Nothing -> error "Internal error: Column is empty"
-      Just c -> case c of
-        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.length column)) df
-        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.length column)) df
-  Mean    -> case name `MS.lookup` DI.columnIndices df of
-    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
-    Just i -> case DI.columns df V.!? i of
-      Nothing -> error "Internal error: Column is empty"
-      Just c -> case c of
-        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map fromIntegral) column)) df
-          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map SS.mean column)) df
-            Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
-              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map realToFrac) column)) df
-              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
-                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
-                Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
-                  Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
-                  Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Float)) of
-                    Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (realToFrac . fromMaybe 0) . VG.filter isJust) column)) df
-                    Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
-        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map fromIntegral) column)) df
-          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map SS.mean column)) df
-            Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
-              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map realToFrac) column)) df
-              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
-                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
-                Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
-                  Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
-                  Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Float)) of
-                    Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (realToFrac . fromMaybe 0) . VG.filter isJust) column)) df
-                    Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
-  Minimum -> case name `MS.lookup` DI.columnIndices df of
-    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
-    Just i -> case DI.columns df V.!? i of
-      Nothing -> error "Internal error: Column is empty"
-      Just c -> case c of
-        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.minimum column)) df
-        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.minimum column)) df
-  Maximum -> case name `MS.lookup` DI.columnIndices df of
-    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
-    Just i -> case DI.columns df V.!? i of
-      Nothing -> error "Internal error: Column is empty"
-      Just c -> case c of
-        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.maximum column)) df
-        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.maximum column)) df
-  Sum -> case name `MS.lookup` DI.columnIndices df of
-    Nothing -> throw $ ColumnNotFoundException name "apply" (map fst $ M.toList $ DI.columnIndices df)
-    Just i -> case DI.columns df V.!? i of
-      Nothing -> error "Internal error: Column is empty"
-      Just c -> case c of
-        Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
-          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
-            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
-              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
-              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
-                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
-                Nothing -> error $ "Cannot get sum of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
-        Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
-          Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
-            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
-              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
-              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
-                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
-                Nothing -> error $ "Cannot get sum of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+  Count   -> case DI.getColumn name df of
+    Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.length column)) df
+    Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.length column)) df
+  Mean    -> case DI.getColumn name df of
+    Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
+      Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map fromIntegral) column)) df
+      Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+        Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map SS.mean column)) df
+        Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map realToFrac) column)) df
+          Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
+            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Float)) of
+                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (realToFrac . fromMaybe 0) . VG.filter isJust) column)) df
+                Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+    Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
+      Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map fromIntegral) column)) df
+      Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+        Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map SS.mean column)) df
+        Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map realToFrac) column)) df
+          Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromIntegral . fromMaybe 0) . VG.filter isJust) column)) df
+            Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+              Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+              Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Float)) of
+                Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (SS.mean . VG.map (realToFrac . fromMaybe 0) . VG.filter isJust) column)) df
+                Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+  Minimum -> case DI.getColumn name df of
+    Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.minimum column)) df
+    Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.minimum column)) df
+  Maximum -> case DI.getColumn name df of
+    Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.maximum column)) df
+    Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) ->  addColumn' name (Just $ DI.toColumn' (VG.map VG.maximum column)) df
+  Sum -> case DI.getColumn name df of
+    Just ((GroupedBoxedColumn (column :: Vector (Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
+      Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
+      Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+        Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
+        Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+          Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+            Nothing -> error $ "Cannot get sum of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
+    Just ((GroupedUnboxedColumn (column :: Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
+      Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
+      Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
+        Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map VG.sum column)) df
+        Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Int)) of
+          Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+          Nothing -> case testEquality (typeRep @a') (typeRep @(Maybe Double)) of
+            Just Refl -> addColumn' name (Just $ DI.toColumn' (VG.map (VG.sum . VG.map (fromMaybe 0) . VG.filter isJust) column)) df
+            Nothing -> error $ "Cannot get sum of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
   _ -> error "UNIMPLEMENTED"
-
--- & D.as "avg_weight "D.reduceByAgg "weight" D.Mean
---     & D.as "tallest" D.reduceByAgg "height" D.Maximum
 
 aggregate :: [(T.Text, Aggregation)] -> DataFrame -> DataFrame
 aggregate aggs df = fold (\(name, agg) df -> let
