@@ -77,8 +77,8 @@
   - Updates free indices on exclude
 
 * groupBy
-  - Groups by a column if at exist and other columns are vectors of vectors
-  - Groups by a number of columns if they exist and other columns are vectors of vectors
+  - Groups by a column if at exist and other columns are vectors of vectors DONE
+  - Groups by a number of columns if they exist and other columns are vectors of vectors DONE
   - If any column doesn't exist throw an error.
 
 * reduceBy
