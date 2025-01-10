@@ -18,6 +18,7 @@ module Data.DataFrame.Operations
     applyMany,
     applyWhere,
     derive,
+    deriveF,
     applyAtIndex,
     applyInt,
     applyDouble,
@@ -35,7 +36,6 @@ module Data.DataFrame.Operations
     reduceByAgg,
     aggregate,
     columnSize,
-    combine,
     parseDefaults,
     parseDefault,
     sortBy,
@@ -73,11 +73,15 @@ import qualified Prelude as P
 import qualified Statistics.Quantile as SS
 import qualified Statistics.Sample as SS
 
+import Control.Applicative (asum)
 import Control.Exception
+import Control.Monad (foldM_)
 import Control.Monad.ST ( ST, runST )
 import Data.DataFrame.Errors (DataFrameException(..))
+import Data.DataFrame.Function
 import Data.DataFrame.Internal (Column (..), DataFrame (..), ColumnValue)
 import Data.DataFrame.Util
+import Data.Either (isLeft, fromLeft)
 import Data.Function (on, (&))
 import Data.Hashable
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -93,9 +97,6 @@ import Prelude hiding (drop, filter, sum, take)
 import Text.Read (readMaybe)
 import Type.Reflection
 import GHC.IO.Unsafe (unsafePerformIO)
-import Control.Monad (foldM_)
-import Control.Applicative (asum)
-import Data.Either (isLeft, fromLeft)
 
 -- | /O(n)/ Adds a vector to the dataframe.
 addColumn ::
@@ -220,8 +221,23 @@ apply f columnName d = case DI.getColumn columnName d of
     Nothing -> throw $ TypeMismatchException' (typeRep @b) (DI.columnTypeString column) columnName "apply"
     column' -> addColumn' columnName column' d
 
+-- | O(k) Apply a function to a combination of columns in a dataframe and
+-- add the result into `alias` column.
+deriveF :: forall a . (ColumnValue a) => ([T.Text], Function) -> T.Text -> DataFrame -> DataFrame
+deriveF (args, f) name df = addColumn name xs df
+  where
+    xs = VG.map (\row -> funcApply @a row f) $ V.generate (fst (dimensions df)) (mkFuncArgs df args)
+
+mkFuncArgs :: DataFrame -> [T.Text] -> Int -> [FuncArg]
+mkFuncArgs df names i = foldr go [] names
+  where
+    go name acc = case DI.getColumn name df of
+      Nothing -> throw $ ColumnNotFoundException name "applyF" (map fst $ M.toList $ DI.columnIndices df)
+      Just (BoxedColumn column) -> Arg (column V.! i) : acc
+      Just (UnboxedColumn column) -> Arg (column VU.! i) : acc
+
 -- | O(k) Apply a function to a given column in a dataframe and
--- add the result into alias column. This function is useful for
+-- add the result into alias column.
 
 derive ::
   forall b c.
@@ -374,7 +390,7 @@ sortBy order names df
   | otherwise = let
       -- TODO: Remove the SortOrder defintion from operations so we can share it between here and internal and
       -- we don't have to do this Bool mapping.
-      indexes = DI.sortedIndexes' (order == Ascending) (DI.toRowList names df) 
+      indexes = DI.sortedIndexes' (order == Ascending) (DI.toRowList names df)
       pick idxs col = DI.atIndicesStable idxs <$> col
     in df {columns = V.map (pick indexes) (columns df)}
 
@@ -631,67 +647,6 @@ aggregate aggs df = fold (\(name, agg) df -> let
     alias = (T.pack . show) agg <> "_" <> name
   in cloneColumn name alias df |> reduceByAgg agg alias) aggs df
   |> fold (\name df -> exclude [name] df) (map fst aggs)
-
--- O (k) combines two columns into a single column using a given function similar to zipWith.
---
--- > combine "total_price" (*) "unit_price" "quantity" df
-combine ::
-  forall a b c.
-  (ColumnValue a, ColumnValue b, ColumnValue c) =>
-  -- | the name of the column where the result will be materialized.
-  T.Text ->
-  -- | the function to zip the rows with.
-  (a -> b -> c) ->
-  -- | left-hand-side column
-  T.Text ->
-  -- | right hand side column
-  T.Text ->
-  -- | dataframe to apply the combination too.
-  DataFrame ->
-  DataFrame
-combine targetColumn func firstColumn secondColumn df =
-  if all isJust [M.lookup firstColumn (DI.columnIndices df), M.lookup secondColumn (DI.columnIndices df)]
-    then case ((V.!) (columns df) (DI.columnIndices df M.! firstColumn), (V.!) (columns df) (DI.columnIndices df M.! secondColumn)) of
-      (Nothing, Nothing) -> df
-      (Nothing, _) -> df
-      (_, Nothing) -> df
-      (Just (BoxedColumn (f :: Vector d)), Just (BoxedColumn (g :: Vector e))) ->
-        case testEquality (typeRep @a) (typeRep @d) of
-          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @d) firstColumn "combine"
-          Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
-            Nothing -> throw $ TypeMismatchException (typeRep @b) (typeRep @e) secondColumn "combine"
-            Just Refl -> addColumn targetColumn (V.zipWith func f g) df
-      (Just (UnboxedColumn (f :: VU.Vector d)), Just (UnboxedColumn (g :: VU.Vector e))) ->
-        case testEquality (typeRep @a) (typeRep @d) of
-          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @d) firstColumn "combine"
-          Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
-            Nothing -> throw $ TypeMismatchException (typeRep @b) (typeRep @e) secondColumn "combine"
-            Just Refl -> case testEquality (typeRep @c) (typeRep @Int) of
-              Just Refl -> addUnboxedColumn targetColumn (VU.zipWith func f g) df
-              Nothing -> case testEquality (typeRep @c) (typeRep @Double) of
-                Just Refl -> addUnboxedColumn targetColumn (VU.zipWith func f g) df
-                Nothing -> addColumn targetColumn (V.zipWith func (V.convert f) (V.convert g)) df
-      (Just (UnboxedColumn (f :: VU.Vector d)), Just (BoxedColumn (g :: Vector e))) ->
-        case testEquality (typeRep @a) (typeRep @d) of
-          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @d) firstColumn "combine"
-          Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
-            Nothing -> throw $ TypeMismatchException (typeRep @b) (typeRep @e) secondColumn "combine"
-            Just Refl -> case testEquality (typeRep @c) (typeRep @Int) of
-              Just Refl -> addUnboxedColumn targetColumn (VU.convert $ V.zipWith func (V.convert f) g) df
-              Nothing -> case testEquality (typeRep @c) (typeRep @Double) of
-                Just Refl -> addUnboxedColumn targetColumn (VU.convert $ V.zipWith func (V.convert f) g) df
-                Nothing -> addColumn targetColumn (V.zipWith func (V.convert f) g) df
-      (Just (BoxedColumn (f :: V.Vector d)), Just (UnboxedColumn (g :: VU.Vector e))) ->
-        case testEquality (typeRep @a) (typeRep @d) of
-          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @d) firstColumn "combine"
-          Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
-            Nothing -> throw $ TypeMismatchException (typeRep @b) (typeRep @e) secondColumn "combine"
-            Just Refl -> case testEquality (typeRep @c) (typeRep @Int) of
-              Just Refl -> addUnboxedColumn targetColumn (VU.convert $ V.zipWith func f (V.convert g)) df
-              Nothing -> case testEquality (typeRep @c) (typeRep @Double) of
-                Just Refl -> addUnboxedColumn targetColumn (VU.convert $ V.zipWith func f (V.convert g)) df
-                Nothing -> addColumn targetColumn (V.zipWith func f (V.convert g)) df
-    else throw $ ColumnNotFoundException (T.pack $ show $ [targetColumn, firstColumn, secondColumn] L.\\ columnNames df) "combine" (columnNames df)
 
 parseDefaults :: Bool -> DataFrame -> DataFrame
 parseDefaults safeRead df = df {columns = V.map (parseDefault safeRead) (columns df)}

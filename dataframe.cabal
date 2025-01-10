@@ -110,6 +110,7 @@ test-suite tests
     other-modules: Assertions,
                    Operations.AddColumn,
                    Operations.Apply,
+                   Operations.Derive,
                    Operations.Filter,
                    Operations.GroupBy,
                    Operations.Sort,

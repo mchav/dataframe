@@ -19,6 +19,7 @@ import Assertions
 
 import qualified Operations.AddColumn
 import qualified Operations.Apply
+import qualified Operations.Derive
 import qualified Operations.Filter
 import qualified Operations.GroupBy
 import qualified Operations.Sort
@@ -71,6 +72,7 @@ tests :: Test
 tests = TestList $ dimensionsTest
                 ++ Operations.AddColumn.tests
                 ++ Operations.Apply.tests
+                ++ Operations.Derive.tests
                 ++ Operations.Filter.tests
                 ++ Operations.GroupBy.tests
                 ++ Operations.Sort.tests
