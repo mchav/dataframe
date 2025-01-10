@@ -60,8 +60,14 @@ groupByMultipleRowsWAI = TestCase (assertEqual "Groups by single column"
                             ])
                 (D.groupBy ["test1", "test2"] testData D.|> D.sortBy D.Ascending ["test1", "test2"]))
 
+groupByColumnDoesNotExist :: Test
+groupByColumnDoesNotExist = TestCase (assertExpectException "[Error Case]"
+                                (DE.columnNotFound "[\"test0\"]" "groupBy" (D.columnNames testData))
+                                (print $ D.groupBy ["test0"] testData))
+
 tests :: [Test]
 tests = [ TestLabel "groupBySingleRowWAI" groupBySingleRowWAI
         , TestLabel "groupByMultipleRowsWAI" groupByMultipleRowsWAI
+        , TestLabel "groupByColumnDoesNotExist" groupByColumnDoesNotExist
         ]
 
