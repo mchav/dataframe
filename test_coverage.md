@@ -87,14 +87,6 @@
   - Throws an error when the wrong type is passed into the function
   - Throws an error when the vector is of the wrong type.
 
-* combine
-  - Combines two unboxed columns into an unboxed column if function returns unboxed type.
-  - Combines two unboxed columns into an boxed column if function returns boxed type.
-  - Combines two boxed columns into an unboxed column if function returns unboxed type.
-  - Combines two boxed columns into an boxed column if function returns boxed type.
-  - Throws error if any of the columns doesn't exist.
-  - Throws type mismatch.
-
 * parseDefault
   - unsigned integer defaults to int
   - decimal point number defaults to double.

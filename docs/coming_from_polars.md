@@ -104,6 +104,8 @@ print(result)
 Would be written as:
 
 ```haskell
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 import qualified Data.DataFrame as D
 import qualified Data.Text as T
 
@@ -116,10 +118,8 @@ main = do
     let year = (\(YearMonthDay y _ _) -> y)
     print $ df_csv
           |> D.derive "birth_year" year "birthdate"
-          |> D.combine "bmi"
-                      (\w h -> w / h ** 2)
-                      "weight"
-                      "height"
+          |> D.deriveF @Double (["weight", "height"], D.func (\(w :: Double) (h :: Double) -> w / h ** 2))
+                       "bmi"
           |> D.select ["name", "birth_year", "bmi"]
 ```
 
@@ -141,9 +141,7 @@ The dataframe implementation can be read top down. `apply` a function that gets 
 
 Dataframe focuses on splitting transformations into transformations on the whole dataframe so it's easily usable in a repl-like environment.
 
-This means we also do not do expression expansion. We prefer each expression to roughly mimick functional programming concepts. In the previous example `apply` is a map over `birthdate` and `combine` zips `weight` and `height` with the bmi function.
-
-So in the example Polars expression expansion example:
+In the example Polars expression expansion example:
 
 ```python
 result = df.select(
