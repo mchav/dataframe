@@ -88,7 +88,12 @@ Notice that the type of the string column changes from `[Char]` (Haskell's defau
 
 ## Expressions
 
-Rather than use expressions on columns like in Polars, dataframe uses a SQL-like API to transform the whole dataframe.
+Our equivalent to expressions is a tuple that contains a list of the column names followed by a
+function where the arguments correspond to the order of column names. We use a special function
+wrapper to make our dataframes accept functions with any number of arguments. This is done using
+the `func` function.
+
+This is a mouthful and is probably easier to see in action/comparison.
 
 For example:
 
@@ -123,6 +128,29 @@ main = do
           |> D.select ["name", "birth_year", "bmi"]
 ```
 
+Or, more clearly:
+
+```haskell
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+import qualified Data.DataFrame as D
+import qualified Data.Text as T
+
+import Data.DataFrame.Operations ( (|>) )
+import Data.Time.Calendar
+
+main :: IO ()
+main = do
+    ...
+    let year = (\(YearMonthDay y _ _) -> y)
+    let bmi :: Double -> Double -> Double
+        bmi w h = w / h ** 2
+    print $ df_csv
+          |> D.derive "birth_year" year "birthdate"
+          |> D.deriveF @Double (["weight", "height"], D.func bmi) "bmi"
+          |> D.select ["name", "birth_year", "bmi"]
+```
+
 Resulting in:
 
 ```
@@ -137,9 +165,12 @@ index |      name      | birth_year |        bmi
 3     | Daniel Donovan | 1981       | 27.13469387755102 
 ```
 
-The dataframe implementation can be read top down. `apply` a function that gets the year to the `birthdate`; store the result in the `birth_year` column; combine `weight` and `height` into the bmi column using the formula `w / h ** 2`; then select the `name`, `birth_year` and `bmi` fields.
+The dataframe implementation can be read top down. `apply` a function that gets the year to the `birthdate`;
+store the result in the `birth_year` column; combine `weight` and `height` into the bmi column using the
+formula `w / h ** 2`; then select the `name`, `birth_year` and `bmi` fields.
 
-Dataframe focuses on splitting transformations into transformations on the whole dataframe so it's easily usable in a repl-like environment.
+Dataframe focuses on splitting transformations into transformations on the whole dataframe so it's easily usable
+in a repl-like environment.
 
 In the example Polars expression expansion example:
 
@@ -198,6 +229,7 @@ Filtering looks much the same:
 result = df.filter(pl.col("birthdate").dt.year() < 1990)
 print(result)
 ```
+
 Versus
 
 ```haskell
