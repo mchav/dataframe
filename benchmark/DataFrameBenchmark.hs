@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import qualified Data.DataFrame as D
-import qualified Data.DataFrame.Internal as D
+import qualified Data.DataFrame.Internal.Column as D
 import qualified Data.Vector.Unboxed as VU
 
 import Control.Monad (replicateM)
@@ -21,7 +21,7 @@ stats n = do
   print $ D.mean "first" df
   print $ D.variance "second" df
   print $ D.correlation "second" "third" df
-  print $ D.select ["first"] df D.|> D.take 10 
+  print $ D.select ["first"] df D.|> D.take 1
 
 main = defaultMain [
   bgroup "stats" [ bench    "300_000" $ nfIO (stats 100_000)
