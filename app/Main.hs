@@ -102,7 +102,7 @@ chipotle = do
 
   -- Create a total_price column that is quantity * item_price
   let multiply (a :: Int) (b :: Double) = fromIntegral a * b
-  let withTotalPrice = D.deriveF (["quantity", "item_price"], D.func multiply) "total_price" f
+  let withTotalPrice = D.deriveFrom (["quantity", "item_price"], D.func multiply) "total_price" f
 
   -- sample a filtered subset of the dataframe
   putStrLn "Sample dataframe"

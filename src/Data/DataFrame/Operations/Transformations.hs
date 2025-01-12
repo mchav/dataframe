@@ -39,8 +39,8 @@ apply f columnName d = case getColumn columnName d of
 
 -- | O(k) Apply a function to a combination of columns in a dataframe and
 -- add the result into `alias` column.
-deriveF :: ([T.Text], Function) -> T.Text -> DataFrame -> DataFrame
-deriveF (args, f) name df = case f of
+deriveFrom :: ([T.Text], Function) -> T.Text -> DataFrame -> DataFrame
+deriveFrom (args, f) name df = case f of
   (F4 (f' :: a -> b -> c -> d -> e)) -> let
       xs = VG.map (\row -> funcApply @e row f) $ V.generate (fst (dimensions df)) (mkRow df args)
     in insertColumn name xs df

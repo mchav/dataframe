@@ -114,7 +114,7 @@ targetColumns = Prelude.takeWhile ("mass" /=) (D.columnNames starwars) ++ ["mass
 starwars &
     -- mass and height are optionals so we combine them with
     -- Haskell's Applicative operators.
-    D.deriveF (["mass", "height"], D.func (\(w :: Int) (h :: Int) -> bmi <$> w <*> h)) "bmi" &
+    D.deriveFrom (["mass", "height"], D.func (\(w :: Int) (h :: Int) -> bmi <$> w <*> h)) "bmi" &
     D.select targetColumns &
     D.take 10
 ```
