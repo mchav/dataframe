@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TupleSections #-}
 
 module Main where
 
@@ -92,11 +93,9 @@ chipotle = do
           -- Change a specfic order ID
           |> D.applyWhere (== 1) "order_id" (+ 2) "quantity"
           -- Index based change.
-          |> D.applyAtIndex 0 (flip (-) 2) "quantity"
-          -- drop dollar sign and parse price as double
-          |> D.apply (D.readValue @Double . T.drop 1)"item_price"
-          -- Custom parsing
-          |> D.apply toIngredientList "choice_description"
+          |> D.applyAtIndex 0 (\n -> n - 2) "quantity"
+          -- Custom parsing: drop dollar sign and parse price as double
+          |> D.apply (D.readValue @Double . T.drop 1) "item_price"
 
   -- sample the dataframe.
   print $ D.take 10 f
@@ -124,7 +123,10 @@ chipotle = do
       -- It's more efficient to filter before grouping.
       |> D.filter "item_name" (searchTerm ==)
       |> D.groupBy ["item_name"]
-      |> D.aggregate (zip (repeat "quantity") [D.Maximum, D.Mean, D.Sum])
+      -- can also be written as:
+      --    D.aggregate (zip (repeat "quantity") [D.Sum, D.Maximum, D.Mean])
+      |> D.aggregate (map ("quantity",) [D.Sum, D.Maximum, D.Mean])
+      -- Automatically create a variable called <Agg>_<variable>
       |> D.sortBy D.Descending ["Sum_quantity"]
 
   -- Similarly, we can aggregate quantities by all rows.
@@ -132,7 +134,10 @@ chipotle = do
     f
       |> D.select ["item_name", "quantity"]
       |> D.groupBy ["item_name"]
-      |> D.aggregate (zip (repeat "quantity") [D.Maximum, D.Mean, D.Sum])
+      -- Aggregate written more explicitly.
+      -- We have the full expressiveness of Haskell and we needn't fall
+      -- use a DSL.
+      |> D.aggregate [("quantity", D.Maximum), ("quantity", D.Mean), ("quantity", D.Sum)]
       |> D.take 10
 
   let firstOrder =
@@ -141,13 +146,3 @@ chipotle = do
           |> D.filterBy (("Chicken Bowl" :: T.Text) ==) "item_name"
 
   print $ D.take 10 firstOrder
-
--- An example of a parsing function.
-toIngredientList :: Maybe T.Text -> Maybe [T.Text]
-toIngredientList Nothing = Nothing
-toIngredientList (Just v)
-  | v == "" = Just []
-  | v == "NULL" = Nothing
-  | T.isPrefixOf "[" v = toIngredientList $ Just $ T.init (T.tail v)
-  | not (T.isInfixOf "," v) = Just [v]
-  | otherwise = foldl (\a b -> (++) <$> a <*> b) (Just []) (map (toIngredientList . Just . T.strip) (D.splitIgnoring ',' '[' v))
