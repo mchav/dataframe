@@ -12,7 +12,13 @@ testData = D.fromList [ ("test1", DI.toColumn ([1..26] :: [Int]))
                       , ("test2", DI.toColumn ['a'..'z'])
                       ]
 
--- take
+
+takeWAI :: Test
+takeWAI = TestCase (assertEqual "Gets first 10 numbers" (Just $ D.toColumn [(1 :: Int)..10]) (D.getColumn "test1" $ D.take 10 testData))
+
+takeLastWAI :: Test
+takeLastWAI = TestCase (assertEqual "Gets first 10 numbers" (Just $ D.toColumn [(17 :: Int)..26]) (D.getColumn "test1" $ D.takeLast 10 testData))
+
 lengthEqualsTakeParam :: Test
 lengthEqualsTakeParam = TestCase (assertEqual "should be (5, 2)" (5, 2) (D.dimensions $ D.take 5 testData))
 
@@ -25,9 +31,27 @@ emptyIsZero = TestCase (assertEqual "should be (0, 0)" (0, 0) (D.dimensions $ D.
 negativeIsZero :: Test
 negativeIsZero = TestCase (assertEqual "should be (0, 2)" (0, 2) (D.dimensions $ D.take (-1) testData))
 
+lengthEqualsTakeLastParam :: Test
+lengthEqualsTakeLastParam = TestCase (assertEqual "should be (5, 2)" (5, 2) (D.dimensions $ D.takeLast 5 testData))
+
+lengthGreaterThanTakeLastParam :: Test
+lengthGreaterThanTakeLastParam = TestCase (assertEqual "should be (26, 2)" (26, 2) (D.dimensions $ D.takeLast 30 testData))
+
+emptyIsZeroTakeLast :: Test
+emptyIsZeroTakeLast = TestCase (assertEqual "should be (0, 0)" (0, 0) (D.dimensions $ D.takeLast 5 D.empty))
+
+negativeIsZeroTakeLast :: Test
+negativeIsZeroTakeLast = TestCase (assertEqual "should be (0, 2)" (0, 2) (D.dimensions $ D.takeLast (-1) testData))
+
 tests :: [Test]
-tests = [ TestLabel "lengthEqualsTakeParam" lengthEqualsTakeParam
+tests = [ TestLabel "takeWAI" takeWAI
+        , TestLabel "takeLastWAI" takeLastWAI
+        , TestLabel "lengthEqualsTakeParam" lengthEqualsTakeParam
         , TestLabel "lengthGreaterThanTakeParam" lengthGreaterThanTakeParam
         , TestLabel "emptyIsZero" emptyIsZero
         , TestLabel "negativeIsZero" negativeIsZero
+        , TestLabel "lengthEqualsTakeLastParam" lengthEqualsTakeLastParam
+        , TestLabel "lengthGreaterThanTakeLastParam" lengthGreaterThanTakeLastParam
+        , TestLabel "emptyIsZeroTakeLast" emptyIsZeroTakeLast
+        , TestLabel "negativeIsZeroTakeLast" negativeIsZeroTakeLast
         ]

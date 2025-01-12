@@ -114,6 +114,17 @@ takeColumn n (UnboxedColumn xs) = UnboxedColumn $ VG.take n xs
 takeColumn n (GroupedBoxedColumn xs) = GroupedBoxedColumn $ VG.take n xs
 takeColumn n (GroupedUnboxedColumn xs) = GroupedUnboxedColumn $ VG.take n xs
 
+-- TODO: Maybe we can remvoe all this boilerplate and make
+-- transform take in a generic vector function.
+takeLastColumn :: Int -> Column -> Column
+takeLastColumn n column = let
+    slice n ys = VG.slice (VG.length ys - n) n ys
+  in case column of
+    (BoxedColumn xs) -> BoxedColumn $ slice n xs
+    (UnboxedColumn xs) -> UnboxedColumn $ slice n xs
+    (GroupedBoxedColumn xs) -> GroupedBoxedColumn $ slice n xs
+    (GroupedUnboxedColumn xs) -> GroupedUnboxedColumn $ slice n xs
+
 sliceColumn :: Int -> Int -> Column -> Column
 sliceColumn start n (BoxedColumn xs) = BoxedColumn $ VG.slice start n xs
 sliceColumn start n (UnboxedColumn xs) = UnboxedColumn $ VG.slice start n xs

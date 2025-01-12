@@ -9,6 +9,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Generic as VG
 
 import Control.Exception (throw)
 import Data.DataFrame.Errors (DataFrameException(..))
@@ -21,9 +22,19 @@ import Type.Reflection (typeRep)
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
-take n d = d {columns = V.map (takeColumn n <$>) (columns d), dataframeDimensions = (min (max n 0) r, c)}
+take n d = d {columns = V.map (takeColumn n' <$>) (columns d), dataframeDimensions = (n', c)}
   where
     (r, c) = dataframeDimensions d
+    n' = clip n 0 r
+
+takeLast :: Int -> DataFrame -> DataFrame
+takeLast n d = d {columns = V.map (takeLastColumn n' <$>) (columns d), dataframeDimensions = (n', c)}
+  where
+    (r, c) = dataframeDimensions d
+    n' = clip n 0 r
+
+clip :: Int -> Int -> Int -> Int
+clip n left right = min right $ max n left
 
 -- | O(k * n) Take a range of rows of a DataFrame.
 range :: (Int, Int) -> DataFrame -> DataFrame
