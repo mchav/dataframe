@@ -27,7 +27,7 @@ testData = D.fromList values
 deriveFWAI :: Test
 deriveFWAI = TestCase (assertEqual "DeriveF works when function args align"
                                 (Just $ DI.BoxedColumn (V.fromList (zipWith (\n c -> show n ++ [c]) [1..26] ['a'..'z'])))
-                                (DI.getColumn "test4" $ D.deriveF @String (
+                                (DI.getColumn "test4" $ D.deriveF (
                                     ["test1", "test3"],
                                     D.func (\(n :: Int) (c :: Char) -> show n ++ [c])) "test4" testData))
 

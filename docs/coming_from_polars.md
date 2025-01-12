@@ -123,7 +123,7 @@ main = do
     let year = (\(YearMonthDay y _ _) -> y)
     print $ df_csv
           |> D.derive "birth_year" year "birthdate"
-          |> D.deriveF @Double (["weight", "height"], D.func (\(w :: Double) (h :: Double) -> w / h ** 2))
+          |> D.deriveF (["weight", "height"], D.func (\(w :: Double) (h :: Double) -> w / h ** 2))
                        "bmi"
           |> D.select ["name", "birth_year", "bmi"]
 ```
@@ -147,7 +147,7 @@ main = do
         bmi w h = w / h ** 2
     print $ df_csv
           |> D.derive "birth_year" year "birthdate"
-          |> D.deriveF @Double (["weight", "height"], D.func bmi) "bmi"
+          |> D.deriveF (["weight", "height"], D.func bmi) "bmi"
           |> D.select ["name", "birth_year", "bmi"]
 ```
 

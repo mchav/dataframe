@@ -223,10 +223,20 @@ apply f columnName d = case DI.getColumn columnName d of
 
 -- | O(k) Apply a function to a combination of columns in a dataframe and
 -- add the result into `alias` column.
-deriveF :: forall a . (ColumnValue a) => ([T.Text], Function) -> T.Text -> DataFrame -> DataFrame
-deriveF (args, f) name df = addColumn name xs df
-  where
-    xs = VG.map (\row -> funcApply @a row f) $ V.generate (fst (dimensions df)) (mkFuncArgs df args)
+deriveF :: ([T.Text], Function) -> T.Text -> DataFrame -> DataFrame
+deriveF (args, f) name df = case f of
+  (F4 (f' :: a -> b -> c -> d -> e)) -> let
+      xs = VG.map (\row -> funcApply @e row f) $ V.generate (fst (dimensions df)) (mkFuncArgs df args)
+    in addColumn name xs df
+  (F3 (f' :: a -> b -> c -> d)) -> let
+      xs = VG.map (\row -> funcApply @d row f) $ V.generate (fst (dimensions df)) (mkFuncArgs df args)
+    in addColumn name xs df
+  (F2 (f' :: a -> b -> c)) -> let
+      xs = VG.map (\row -> funcApply @c row f) $ V.generate (fst (dimensions df)) (mkFuncArgs df args)
+    in addColumn name xs df
+  (F1 (f' :: a -> b)) -> let
+      xs = VG.map (\row -> funcApply @b row f) $ V.generate (fst (dimensions df)) (mkFuncArgs df args)
+    in addColumn name xs df
 
 mkFuncArgs :: DataFrame -> [T.Text] -> Int -> [FuncArg]
 mkFuncArgs df names i = foldr go [] names
