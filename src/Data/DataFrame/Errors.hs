@@ -10,7 +10,7 @@ import qualified Data.Text as T
 
 import Control.Exception
 import Data.Array
-import Data.DataFrame.Colours
+import Data.DataFrame.Display.Terminal.Colours
 import Data.Typeable (Typeable)
 import Type.Reflection (TypeRep)
 

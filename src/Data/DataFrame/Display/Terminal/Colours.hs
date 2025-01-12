@@ -1,4 +1,4 @@
-module Data.DataFrame.Colours where
+module Data.DataFrame.Display.Terminal.Colours where
 
 -- terminal color functions
 red :: String -> String

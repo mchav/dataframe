@@ -1,0 +1,192 @@
+{-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+module Data.DataFrame.Operations.Core where
+
+import qualified Data.List as L
+import qualified Data.Map as M
+import qualified Data.Map.Strict as MS
+import qualified Data.Set as S
+import qualified Data.Text as T
+import qualified Data.Vector.Generic as VG
+import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
+
+import Control.Exception ( throw )
+import Data.DataFrame.Errors
+import Data.DataFrame.Internal.Column ( Column(..), toColumn', toColumn, columnLength )
+import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn, null, empty)
+import Data.DataFrame.Internal.Parsing (isNullish)
+import Data.DataFrame.Internal.Types (Columnable)
+import Data.Function (on, (&))
+import Data.Maybe
+import Data.Type.Equality (type (:~:)(Refl), TestEquality(..))
+import Type.Reflection (typeRep)
+import Prelude hiding (null)
+
+-- | O(1) Get DataFrame dimensions i.e. (rows, columns)
+dimensions :: DataFrame -> (Int, Int)
+dimensions = dataframeDimensions
+
+-- | O(k) Get column names of the DataFrame in order of insertion.
+columnNames :: DataFrame -> [T.Text]
+columnNames = map fst . L.sortBy (compare `on` snd). M.toList . columnIndices
+
+-- | /O(n)/ Adds a vector to the dataframe.
+insertColumn ::
+  forall a.
+  (Columnable a) =>
+  -- | Column Name
+  T.Text ->
+  -- | Vector to add to column
+  V.Vector a ->
+  -- | DataFrame to add column to
+  DataFrame ->
+  DataFrame
+insertColumn name xs = insertColumn' name (Just (toColumn' xs))
+
+cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
+cloneColumn original new df = fromMaybe (throw $ ColumnNotFoundException original "cloneColumn" (map fst $ M.toList $ columnIndices df)) $ do
+  column <- getColumn original df
+  return $ insertColumn' new (Just column) df
+
+-- | /O(n)/ Adds an unboxed vector to the dataframe.
+addUnboxedColumn ::
+  forall a.
+  (Columnable a, VU.Unbox a) =>
+  -- | Column Name
+  T.Text ->
+  -- | Unboxed vector to add to column
+  VU.Vector a ->
+  -- | DataFrame to add to column
+  DataFrame ->
+  DataFrame
+addUnboxedColumn name xs = insertColumn' name (Just (UnboxedColumn xs))
+
+-- -- | /O(n)/ Add a column to the dataframe. Not meant for external use.
+insertColumn' ::
+  -- | Column Name
+  T.Text ->
+  -- | Column to add
+  Maybe Column ->
+  -- | DataFrame to add to column
+  DataFrame ->
+  DataFrame
+insertColumn' name xs d
+    | M.member name (columnIndices d) = let
+      i = (M.!) (columnIndices d) name
+    in d { columns = columns d V.// [(i, xs)] }
+  | otherwise = let
+      (n:rest) = case freeIndices d of
+        [] -> [VG.length (columns d)..(VG.length (columns d) * 2 - 1)]
+        lst -> lst
+      columns' = if L.null (freeIndices d)
+                 then columns d V.++ V.replicate (VG.length (columns d)) Nothing
+                 else columns d
+      xs'
+        | diff == 0 || null d = xs
+        | diff > 0 = case xs of
+            Nothing -> xs
+            Just (BoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
+            Just (UnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+            Just (GroupedBoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
+            Just (GroupedUnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+        | diff < 0 = error "Column is too large to add"
+   in d
+        { columns = columns' V.// [(n, xs')],
+          columnIndices = M.insert name n (columnIndices d),
+          freeIndices = rest,
+          dataframeDimensions = (if r == 0 then l else r, c + 1)
+        }
+        where diff = r - l
+              l = maybe 0 columnLength xs
+              (r, c) = dataframeDimensions d
+
+-- | /O(k)/ Add a column to the dataframe providing a default.
+-- This constructs a new vector and also may convert it
+-- to an unboxed vector if necessary. Since columns are usually
+-- large the runtime is dominated by the length of the list, k.
+insertColumnWithDefault ::
+  forall a.
+  (Columnable a) =>
+  -- | Default Value
+  a ->
+  -- | Column name
+  T.Text ->
+  -- | Data to add to column
+  V.Vector a ->
+  -- | DataFrame to add to column
+  DataFrame ->
+  DataFrame
+insertColumnWithDefault defaultValue name xs d =
+  let (rows, _) = dataframeDimensions d
+      values = xs V.++ V.replicate (rows - V.length xs) defaultValue
+   in insertColumn' name (Just $ toColumn' values) d
+
+rename :: T.Text -> T.Text -> DataFrame -> DataFrame
+rename orig new df = let
+    columnIndex = (M.!) (columnIndices df) orig
+    newColumnIndices = M.insert new columnIndex (M.delete orig (columnIndices df))
+  in df { columnIndices = newColumnIndices}
+
+-- | O(1) Get the number of elements in a given column.
+columnSize :: T.Text -> DataFrame -> Maybe Int
+columnSize name df = columnLength <$> getColumn name df
+
+-- | O(n) Returns the number of non-null columns in the dataframe and the type associated
+-- with each column.
+columnInfo :: DataFrame -> DataFrame
+columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map fst' triples))
+                      & insertColumn' "# Non-null Values" (Just $ toColumn (map snd' triples))
+                      & insertColumn' "# Null Values" (Just $ toColumn (map thd' triples))
+                      & insertColumn' "Type" (Just $ toColumn (map fth' triples))
+  where
+    triples = L.sortBy (compare `on` snd') (V.ifoldl' go [] (columns df)) :: [(T.Text, Int,  Int, T.Text)]
+    indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
+    columnName i = T.unpack (indexMap M.! i)
+    numNulls c = VG.length $ VG.filter isNullish c
+    go acc i Nothing = acc
+    go acc i (Just (BoxedColumn (c :: V.Vector a))) = let
+        cname = T.pack $ columnName i
+        countNulls = numNulls (VG.map (T.pack . show) c)
+        columnType = T.pack $ show $ typeRep @a
+      in (cname, VG.length c - countNulls, countNulls, columnType) : acc
+    go acc i (Just (UnboxedColumn (c :: VU.Vector a))) = let
+        cname = T.pack $ columnName i
+        countNulls = numNulls (V.map (T.pack . show) (V.convert c))
+        columnType = T.pack $ show $ typeRep @a
+      in (cname, VG.length c - countNulls, countNulls, columnType) : acc
+    fst' (x, _, _, _) = x
+    snd' (_, x, _, _) = x
+    thd' (_, _, x, _) = x
+    fth' (_, _, _, x) = x
+
+
+fromList :: [(T.Text, Column)] -> DataFrame
+fromList = L.foldl' (\df (name, column) -> insertColumn' name (Just column) df) empty
+
+-- | O (k * n) Counts the occurences of each value in a given column.
+valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Integer)]
+valueCounts columnName df = case getColumn columnName df of
+      Nothing -> throw $ ColumnNotFoundException columnName "sortBy" (map fst $ M.toList $ columnIndices df)
+      Just (BoxedColumn (column' :: V.Vector c)) ->
+        let
+          column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Integer) m) M.empty column'
+        in case (typeRep @a) `testEquality` (typeRep @c) of
+              Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
+              Just Refl -> M.toAscList column
+      Just (UnboxedColumn (column' :: VU.Vector c)) -> let
+          column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Integer) m) M.empty (V.convert column')
+        in case (typeRep @a) `testEquality` (typeRep @c) of
+          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
+          Just Refl -> M.toAscList column
+
+-- fold :: Foldable t => (a -> DataFrame -> DataFrame) -> DataFrame -> t a -> DataFrame
+-- fold f acc xs = foldr f acc xs
+
+fold :: (a -> DataFrame -> DataFrame) -> [a] -> DataFrame -> DataFrame
+fold f xs acc = L.foldl' (flip f) acc xs

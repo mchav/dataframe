@@ -2,7 +2,8 @@
 module Operations.Take where
 
 import qualified Data.DataFrame as D
-import qualified Data.DataFrame.Internal as DI
+import qualified Data.DataFrame.Internal.Column as DI
+import qualified Data.DataFrame.Internal.DataFrame as DI
 
 import Test.HUnit
 

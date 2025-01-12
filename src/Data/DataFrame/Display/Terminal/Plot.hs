@@ -6,10 +6,8 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TupleSections #-}
-module Data.DataFrame.Display.Terminal where
+module Data.DataFrame.Display.Terminal.Plot where
 
-import qualified Data.DataFrame.Internal as DI
-import qualified Data.DataFrame.Operations as Ops
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -21,44 +19,46 @@ import qualified Type.Reflection as Ref
 import Control.Monad ( forM_, forM )
 import Data.Bifunctor ( first )
 import Data.Char ( ord, chr )
-import Data.List (intercalate)
-import Data.DataFrame.Colours
+import Data.DataFrame.Display.Terminal.Colours
+import Data.DataFrame.Internal.Column (Column(..))
+import Data.DataFrame.Internal.DataFrame (DataFrame(..))
+import Data.DataFrame.Internal.Types (Columnable)
+import Data.DataFrame.Operations.Core
+import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import Data.Type.Equality
     ( type (:~:)(Refl), TestEquality(testEquality) )
 import GHC.Stack (HasCallStack)
 import Text.Printf ( printf )
 import Type.Reflection (typeRep)
-import Data.List (intercalate, group, sort)
-import Data.Maybe (fromMaybe)
 
 data HistogramOrientation = VerticalHistogram | HorizontalHistogram
 
 data PlotColumns = PlotAll | PlotSubset [T.Text]
 
-plotHistograms :: HasCallStack => PlotColumns -> HistogramOrientation -> DI.DataFrame -> IO ()
-plotHistograms columns orientation df = do
-    let cs = case columns of
-            PlotAll       -> Ops.columnNames df
-            PlotSubset xs -> Ops.columnNames df `L.intersect` xs
+plotHistograms :: HasCallStack => PlotColumns -> HistogramOrientation -> DataFrame -> IO ()
+plotHistograms plotSet orientation df = do
+    let cs = case plotSet of
+            PlotAll       -> columnNames df
+            PlotSubset xs -> columnNames df `L.intersect` xs
     forM_ cs $ \cname -> do
-        plotForColumn cname ((V.!) (DI.columns df) (DI.columnIndices df M.! cname)) orientation df
+        plotForColumn cname ((V.!) (columns df) (columnIndices df M.! cname)) orientation df
 
 
-plotHistogramsBy :: HasCallStack => T.Text -> PlotColumns -> HistogramOrientation -> DI.DataFrame -> IO ()
-plotHistogramsBy col columns orientation df = do
-    let cs = case columns of
-            PlotAll       -> Ops.columnNames df
-            PlotSubset xs -> Ops.columnNames df `L.intersect` xs
+plotHistogramsBy :: HasCallStack => T.Text -> PlotColumns -> HistogramOrientation -> DataFrame -> IO ()
+plotHistogramsBy col plotSet orientation df = do
+    let cs = case plotSet of
+            PlotAll       -> columnNames df
+            PlotSubset xs -> columnNames df `L.intersect` xs
     forM_ cs $ \cname -> do
-        let plotColumn = (V.!) (DI.columns df) (DI.columnIndices df M.! cname)
-        let byColumn = (V.!) (DI.columns df) (DI.columnIndices df M.! col)
+        let plotColumn = (V.!) (columns df) (columnIndices df M.! cname)
+        let byColumn = (V.!) (columns df) (columnIndices df M.! col)
         plotForColumnBy col cname byColumn plotColumn orientation df
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
-plotForColumnBy :: HasCallStack => T.Text -> T.Text -> Maybe DI.Column -> Maybe DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
+plotForColumnBy :: HasCallStack => T.Text -> T.Text -> Maybe Column -> Maybe Column -> HistogramOrientation -> DataFrame -> IO ()
 plotForColumnBy _ _ Nothing _ _ _ = return ()
-plotForColumnBy byCol cname (Just (DI.BoxedColumn (byColumn :: V.Vector a))) (Just (DI.BoxedColumn (plotColumn :: V.Vector b))) orientation df = do
+plotForColumnBy byCol cname (Just (BoxedColumn (byColumn :: V.Vector a))) (Just (BoxedColumn (plotColumn :: V.Vector b))) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) plotColumn byColumn
     let counts = countOccurrences zipped
     if null counts || length counts > 20
@@ -66,7 +66,7 @@ plotForColumnBy byCol cname (Just (DI.BoxedColumn (byColumn :: V.Vector a))) (Ju
     else case orientation of
         VerticalHistogram -> error "Vertical histograms aren't yet supported"
         HorizontalHistogram -> plotGivenCounts' cname counts
-plotForColumnBy byCol cname (Just (DI.UnboxedColumn byColumn)) (Just (DI.BoxedColumn plotColumn)) orientation df = do
+plotForColumnBy byCol cname (Just (UnboxedColumn byColumn)) (Just (BoxedColumn plotColumn)) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) plotColumn (V.convert byColumn)
     let counts = countOccurrences zipped
     if null counts || length counts > 20
@@ -74,7 +74,7 @@ plotForColumnBy byCol cname (Just (DI.UnboxedColumn byColumn)) (Just (DI.BoxedCo
     else case orientation of
         VerticalHistogram -> error "Vertical histograms aren't yet supported"
         HorizontalHistogram -> plotGivenCounts' cname counts
-plotForColumnBy byCol cname (Just (DI.BoxedColumn byColumn)) (Just (DI.UnboxedColumn plotColumn)) orientation df = do
+plotForColumnBy byCol cname (Just (BoxedColumn byColumn)) (Just (UnboxedColumn plotColumn)) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) (V.convert plotColumn) (V.convert byColumn)
     let counts = countOccurrences zipped
     if null counts || length counts > 20
@@ -82,7 +82,7 @@ plotForColumnBy byCol cname (Just (DI.BoxedColumn byColumn)) (Just (DI.UnboxedCo
     else case orientation of
         -- VerticalHistogram -> plotVerticalGivenCounts cname counts
         HorizontalHistogram -> plotGivenCounts' cname counts
-plotForColumnBy byCol cname (Just (DI.UnboxedColumn byColumn)) (Just (DI.UnboxedColumn plotColumn)) orientation df = do
+plotForColumnBy byCol cname (Just (UnboxedColumn byColumn)) (Just (UnboxedColumn plotColumn)) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) (V.convert plotColumn) (V.convert byColumn)
     let counts = countOccurrences zipped
     if null counts || length counts > 20
@@ -92,16 +92,16 @@ plotForColumnBy byCol cname (Just (DI.UnboxedColumn byColumn)) (Just (DI.Unboxed
         HorizontalHistogram -> plotGivenCounts' cname counts
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
-plotForColumn :: HasCallStack => T.Text -> Maybe DI.Column -> HistogramOrientation -> DI.DataFrame -> IO ()
+plotForColumn :: HasCallStack => T.Text -> Maybe Column -> HistogramOrientation -> DataFrame -> IO ()
 plotForColumn _ Nothing _ _ = return ()
-plotForColumn cname (Just (DI.BoxedColumn (column :: V.Vector a))) orientation df = do
+plotForColumn cname (Just (BoxedColumn (column :: V.Vector a))) orientation df = do
     let repa :: Ref.TypeRep a = Ref.typeRep @a
         repText :: Ref.TypeRep T.Text = Ref.typeRep @T.Text
         repString :: Ref.TypeRep String = Ref.typeRep @String
     let counts = case repa `testEquality` repText of
-            Just Refl -> map (first T.unpack) $ Ops.valueCounts @T.Text cname df
+            Just Refl -> map (first T.unpack) $ valueCounts @T.Text cname df
             Nothing -> case repa `testEquality` repString of
-                Just Refl -> Ops.valueCounts @String cname df
+                Just Refl -> valueCounts @String cname df
                 -- Support other scalar types.
                 Nothing -> [] -- numericHistogram column
     if null counts || length counts > 20
@@ -109,14 +109,14 @@ plotForColumn cname (Just (DI.BoxedColumn (column :: V.Vector a))) orientation d
     else case orientation of
         VerticalHistogram -> plotVerticalGivenCounts cname counts
         HorizontalHistogram -> plotGivenCounts cname counts
-plotForColumn cname (Just (DI.UnboxedColumn (column :: VU.Vector a))) orientation df = do
+plotForColumn cname (Just (UnboxedColumn (column :: VU.Vector a))) orientation df = do
     let repa :: Ref.TypeRep a = Ref.typeRep @a
         repText :: Ref.TypeRep T.Text = Ref.typeRep @T.Text
         repString :: Ref.TypeRep String = Ref.typeRep @String
     let counts = case repa `testEquality` repText of
-            Just Refl -> map (first show) $ Ops.valueCounts @T.Text cname df
+            Just Refl -> map (first show) $ valueCounts @T.Text cname df
             Nothing -> case repa `testEquality` repString of
-                Just Refl -> Ops.valueCounts @String cname df
+                Just Refl -> valueCounts @String cname df
                 -- Support other scalar types.
                 Nothing -> []
     if null counts || length counts > 20
@@ -224,7 +224,7 @@ plotGivenCounts' cname counts = do
     mapM_ putStrLn (border : body)
     putChar '\n'
 
-numericHistogram :: forall a . (HasCallStack, DI.ColumnValue a)
+numericHistogram :: forall a . (HasCallStack, Columnable a)
                          => T.Text
                          -> V.Vector a
                          -> String
@@ -331,7 +331,7 @@ calculateBins values numBins =
         binWidth = (maxVal - minVal) / fromIntegral numBins
         toBin x = floor ((x - minVal) / binWidth)
         bins = map toBin values
-        counts = map length . group . sort $ bins
+        counts = map length . L.group . L.sort $ bins
         binValues = [minVal + (fromIntegral i * binWidth) | i <- [0..numBins-1]]
     in zip binValues (counts ++ repeat 0)
 
@@ -371,7 +371,7 @@ createHistogram config values =
         -- Build the complete histogram
         histogramRows = map makeRow [0..height config - 1]
         xAxis = replicate maxYLabelWidth ' ' ++ " " ++
-                intercalate (replicate (2 * (width config - length xLabels)) ' ') xLabels
+                L.intercalate (replicate (2 * (width config - length xLabels)) ' ') xLabels
 
         -- Add title if provided
         titleLine = case title config of

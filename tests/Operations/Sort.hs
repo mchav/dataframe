@@ -2,9 +2,9 @@
 module Operations.Sort where
 
 import qualified Data.DataFrame as D
-import qualified Data.DataFrame.Internal as DI
+import qualified Data.DataFrame.Internal.Column as DI
+import qualified Data.DataFrame.Internal.DataFrame as DI
 import qualified Data.DataFrame.Errors as DE
-import qualified Data.DataFrame.Operations as DO
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU

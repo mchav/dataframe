@@ -1,65 +1,38 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE Strict #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
-
-module Data.DataFrame.IO (
-    readSeparated,
-    writeSeparated,
-    readCsv,
-    writeCsv,
-    readTsv,
-    splitIgnoring,
-    readValue,
-    readInt,
-    readInteger,
-    readDouble,
-    safeReadValue,
-    readWithDefault,
-    defaultOptions,
-    ReadOptions(..)) where
+module Data.DataFrame.IO.CSV where
 
 import qualified Data.List as L
 import qualified Data.Map as M
-import qualified Data.Set as S
 import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.IO as TLIO
+import qualified Data.Text.IO as TIO
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
-import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector.Unboxed.Mutable as VUM
 
-import Control.Monad (foldM_, forM_, replicateM_, foldM, when, zipWithM_, unless)
-import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad.ST ( ST, runST )
-import Data.Char (intToDigit)
-import Data.DataFrame.Internal
-import Data.DataFrame.Operations (addColumn, addColumn', columnNames, parseDefaults, parseDefault)
-import Data.DataFrame.Util
-import Data.List (transpose, foldl')
-import Data.Maybe ( fromMaybe, isJust )
+import Control.Monad (forM_, zipWithM_, unless)
+import Data.Char
+import Data.DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, columnLength)
+import Data.DataFrame.Internal.DataFrame (DataFrame(..))
+import Data.DataFrame.Internal.Parsing
+import Data.DataFrame.Operations.Typing
+import Data.Function (on)
+import Data.Maybe
 import Data.Type.Equality
   ( TestEquality (testEquality),
     type (:~:) (Refl)
   )
-import GHC.IO (unsafePerformIO)
-import GHC.IO.Handle
-    ( hClose, hSeek, SeekMode(AbsoluteSeek), hIsEOF )
-import GHC.IO.Handle.Types (Handle)
-import GHC.Stack (HasCallStack)
-import System.Directory ( removeFile, getTemporaryDirectory )
-import System.IO ( withFile, IOMode(ReadMode, WriteMode), openTempFile )
+import GHC.IO.Handle (Handle)
+import System.IO
 import Type.Reflection
-import Text.Read (readMaybe)
-import Data.Function (on)
-import Unsafe.Coerce (unsafeCoerce)
 
 -- | Record for CSV read options.
 data ReadOptions = ReadOptions {
@@ -128,6 +101,15 @@ getInitialDataVectors i n mCol (x:xs) = do
             _ -> MutableBoxedColumn <$> ((VM.new n :: IO (VM.IOVector T.Text)) >>= \c -> VM.write c 0 x' >> return c)
     VM.write mCol i col
     getInitialDataVectors (i + 1) n mCol xs
+
+inferValueType :: T.Text -> T.Text
+inferValueType s = let    
+        example = s
+    in case readInt example of
+        Just _ -> "Int"
+        Nothing -> case readDouble example of
+            Just _ -> "Double"
+            Nothing -> "Other"
 
 -- | Reads rows from the handle and stores values in mutable vectors.
 fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()

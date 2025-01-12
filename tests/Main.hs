@@ -3,8 +3,8 @@
 module Main where
 
 import qualified Data.DataFrame as D
-import qualified Data.DataFrame.Internal as DI
-import qualified Data.DataFrame.Operations as DO
+import qualified Data.DataFrame.Internal.Column as DI
+import qualified Data.DataFrame.Internal.DataFrame as DI
 import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Vector as V
@@ -17,11 +17,11 @@ import Test.HUnit
 
 import Assertions
 
-import qualified Operations.AddColumn
 import qualified Operations.Apply
 import qualified Operations.Derive
 import qualified Operations.Filter
 import qualified Operations.GroupBy
+import qualified Operations.InsertColumn
 import qualified Operations.Sort
 import qualified Operations.Take
 
@@ -46,19 +46,19 @@ dimensionsTest = [ TestLabel "dimensions_correctDimensions" correctDimensions
 parseDate :: Test
 parseDate = let
     expected = Just $ DI.BoxedColumn (V.fromList [fromGregorian 2020 02 14, fromGregorian 2021 02 14, fromGregorian 2022 02 14])
-    actual = DO.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "2021-02-14", "2022-02-14"])
+    actual = D.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "2021-02-14", "2022-02-14"])
   in TestCase (assertEqual "Correctly parses gregorian date" expected actual)
 
 incompleteDataParseEither :: Test
 incompleteDataParseEither = let
     expected = Just $ DI.BoxedColumn (V.fromList [Right $ fromGregorian 2020 02 14, Left ("2021-02-" :: T.Text), Right $ fromGregorian 2022 02 14])
-    actual = DO.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"])
+    actual = D.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"])
   in TestCase (assertEqual "Parses Either for gregorian date" expected actual)
 
 incompleteDataParseMaybe :: Test
 incompleteDataParseMaybe = let
     expected = Just $ DI.BoxedColumn (V.fromList [Just $ fromGregorian 2020 02 14, Nothing, Just $ fromGregorian 2022 02 14])
-    actual = DO.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "", "2022-02-14"])
+    actual = D.parseDefault True $ Just $ DI.toColumn' (V.fromList ["2020-02-14" :: T.Text, "", "2022-02-14"])
   in TestCase (assertEqual "Parses Maybe for gregorian date with null/empty" expected actual)
 
 parseTests :: [Test]
@@ -70,11 +70,11 @@ parseTests = [
 
 tests :: Test
 tests = TestList $ dimensionsTest
-                ++ Operations.AddColumn.tests
                 ++ Operations.Apply.tests
                 ++ Operations.Derive.tests
                 ++ Operations.Filter.tests
                 ++ Operations.GroupBy.tests
+                ++ Operations.InsertColumn.tests
                 ++ Operations.Sort.tests
                 ++ Operations.Take.tests
                 ++ parseTests
