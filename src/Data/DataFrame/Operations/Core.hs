@@ -185,8 +185,5 @@ valueCounts columnName df = case getColumn columnName df of
           Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
           Just Refl -> M.toAscList column
 
--- fold :: Foldable t => (a -> DataFrame -> DataFrame) -> DataFrame -> t a -> DataFrame
--- fold f acc xs = foldr f acc xs
-
 fold :: (a -> DataFrame -> DataFrame) -> [a] -> DataFrame -> DataFrame
 fold f xs acc = L.foldl' (flip f) acc xs
