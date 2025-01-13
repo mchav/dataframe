@@ -30,16 +30,14 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) = let
   in case (typeRep @a) `testEquality` (typeRep @T.Text) of
         Nothing -> case (typeRep @a) `testEquality` (typeRep @String) of
             Just Refl -> let
-                nullish = S.fromList ["nan", "NULL", "null", "", " "]
-                emptyToNothing v = if S.member v nullish then Nothing else Just v
+                emptyToNothing v = if isNullish (T.pack v) then Nothing else Just v
                 safeVector = V.map emptyToNothing c
                 hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
               in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
             Nothing -> Just $ BoxedColumn c
         Just Refl ->
           let example = T.strip (V.head c)
-              nullish = S.fromList ["nan", "NULL", "null", "", " "]
-              emptyToNothing v = if S.member v nullish then Nothing else Just v
+              emptyToNothing v = if isNullish v then Nothing else Just v
            in case readInt example of
                 Just _ ->
                   let safeVector = V.map ((=<<) readInt . emptyToNothing) c
@@ -53,7 +51,7 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) = let
                   Nothing -> case parseTimeOpt example of
                     Just d -> let
                         -- failed parse should be Either, nullish should be Maybe
-                        emptyToNothing' v = if S.member v nullish then Left v else Right v
+                        emptyToNothing' v = if isNullish v then Left v else Right v
                         parseTimeEither v = case parseTimeOpt v of
                           Just v' -> Right v'
                           Nothing -> Left v
@@ -61,7 +59,7 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) = let
                         toMaybe (Left _) = Nothing
                         toMaybe (Right value) = Just value
                         lefts = V.filter isLeft safeVector
-                        onlyNulls = (not (V.null lefts) && V.all ((`S.member` nullish) . fromLeft "non-null") lefts)
+                        onlyNulls = (not (V.null lefts) && V.all (isNullish . fromLeft "non-null") lefts)
                       in Just $ if safeRead
                         then if onlyNulls
                              then BoxedColumn (V.map toMaybe safeVector)
@@ -71,6 +69,6 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) = let
                         else BoxedColumn (V.map unsafeParseTime c)
                     Nothing -> let
                         safeVector = V.map emptyToNothing c
-                        hasNulls = isJust $ V.find (`S.member` nullish) c
+                        hasNulls = V.any isNullish c
                       in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
 parseDefault safeRead column = column
