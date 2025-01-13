@@ -15,8 +15,8 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 
--- Numbers default to int and strings to text
-default (Int, T.Text)
+-- Numbers default to int and double, and strings to text
+default (Int, T.Text, Double)
 
 -- Example usage of DataFrame library
 
@@ -109,7 +109,7 @@ chipotle = do
   print $
     withTotalPrice
       |> D.select ["quantity", "item_name", "item_price", "total_price"]
-      |> D.filter "total_price" ((<) @Double 100)
+      |> D.filter "total_price" (100.0 <)
       |> D.take 10
 
   -- Check how many chicken burritos were ordered.
@@ -142,7 +142,7 @@ chipotle = do
 
   let firstOrder =
         withTotalPrice
-          |> D.filterBy (any (T.isInfixOf "Guacamole") . fromMaybe []) "choice_description"
+          |> D.filterBy (maybe False (T.isInfixOf "Guacamole")) "choice_description"
           |> D.filterBy (("Chicken Bowl" :: T.Text) ==) "item_name"
 
   print $ D.take 10 firstOrder
