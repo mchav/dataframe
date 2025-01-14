@@ -192,7 +192,7 @@ plotVerticalGivenCounts cname counts' = do
                             ++ [show (maxValue + partition)]
                             ++ [""]
     mapM_ putStrLn (zipWith (++) incString fullGraph)
-    putStrLn $ " " ++ replicate longestLabelLength ' ' ++ unwords (map (brightGreen . flip leftJustify longestLabelLength . fst) counts)
+    putStrLn $ " " ++ replicate (length (show maxValue) + 1) ' ' ++ unwords (map (brightGreen . flip leftJustify longestLabelLength . fst) counts)
     putChar '\n'
 
 leftJustify :: String -> Int -> String
