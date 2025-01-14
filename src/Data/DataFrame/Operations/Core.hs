@@ -93,8 +93,11 @@ insertColumn' name xs d
             Nothing -> xs
             Just (BoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
             Just (UnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+            -- TODO: What does this mean when groupby operations are changed to box operations?
+            -- Maybe handle these with empty.
             Just (GroupedBoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
             Just (GroupedUnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+        -- Make other columns optional.
         | diff < 0 = error "Column is too large to add"
    in d
         { columns = columns' V.// [(n, xs')],
@@ -127,6 +130,7 @@ insertColumnWithDefault defaultValue name xs d =
       values = xs V.++ V.replicate (rows - V.length xs) defaultValue
    in insertColumn' name (Just $ toColumn' values) d
 
+-- TODO: Add existence check in rename.
 rename :: T.Text -> T.Text -> DataFrame -> DataFrame
 rename orig new df = let
     columnIndex = (M.!) (columnIndices df) orig
