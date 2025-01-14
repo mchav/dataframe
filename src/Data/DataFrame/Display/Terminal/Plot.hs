@@ -183,9 +183,15 @@ plotVerticalGivenCounts cname counts' = do
         let disp = if null bar then "| " else bar
         let hist = "‾" ++ bar
         return $ replicate longestLabelLength (leftJustify hist maximumLineLength) ++ [border]
-    let increments = reverse [0,(smallestPartition increment intPlotRanges)..maxValue]
-    let incString = map ((++) " " . flip leftJustify longestLabelLength . (++) " " . show) increments
-    mapM_ putStrLn (zipWith (++) incString (map brightBlue $ rotate $ border : concat body))
+    let fullGraph = map brightBlue $ rotate $ border : concat body
+    let partition = smallestPartition increment intPlotRanges
+    let increments = reverse [0, maxValue `div` 2 , maxValue + partition]
+    let incString = reverse $ map (`leftJustify` (length (show maxValue) + 1)) $ show 0 : replicate (length fullGraph `div` 2 - 2) " "
+                            ++ [show (maxValue `div` 2)]
+                            ++ replicate (length fullGraph `div` 2 - 2) " "
+                            ++ [show (maxValue + partition)]
+                            ++ [""]
+    mapM_ putStrLn (zipWith (++) incString fullGraph)
     putStrLn $ " " ++ replicate longestLabelLength ' ' ++ unwords (map (brightGreen . flip leftJustify longestLabelLength . fst) counts)
     putChar '\n'
 
