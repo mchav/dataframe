@@ -155,15 +155,15 @@ split c s
 -- generalize to handle ther structures e.g braces and parens.
 -- This should probably use a stack.
 splitIgnoring :: Char -> Char -> T.Text -> [T.Text]
-splitIgnoring c o s = ret
-    where (_, acc, res) = T.foldr (splitIgnoring' c o) (False, "", []) s
-          ret = if acc == "" then res else acc : res
+splitIgnoring c o s = reverse ret
+    where (_, acc, res) = T.foldl (splitIgnoring' c o) (False, "", []) s
+          ret = if acc == "" && T.last s /= ',' then res else acc : res
 
-splitIgnoring' :: Char -> Char -> Char -> (Bool, T.Text, [T.Text]) -> (Bool, T.Text, [T.Text])
-splitIgnoring' c o curr (!inIgnore, !word, !res)
+splitIgnoring' :: Char -> Char -> (Bool, T.Text, [T.Text]) -> Char -> (Bool, T.Text, [T.Text])
+splitIgnoring' c o (!inIgnore, !word, !res) curr 
     | curr == o                  = (not inIgnore, word, res)
     | isTerminal && not inIgnore = (inIgnore, "", word:res)
-    | otherwise                  = (inIgnore, T.singleton curr `T.append` word, res)
+    | otherwise                  = (inIgnore, word `T.snoc` curr, res)
         where isTerminal = curr == c || (curr == '\r' && word /= "")
 
 hasCommaInQuotes :: T.Text -> Bool
