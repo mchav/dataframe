@@ -124,7 +124,7 @@ executable dataframe
 
 benchmark dataframe-benchmark
     type:       exitcode-stdio-1.0
-    main-is:    DataFrameBenchmark.hs
+    main-is:    Main.hs
     hs-source-dirs: benchmark
     build-depends: base >= 4.17.2.0 && < 4.21,
                    criterion >= 1,
