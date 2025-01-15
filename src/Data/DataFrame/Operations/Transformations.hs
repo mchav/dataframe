@@ -16,6 +16,7 @@ import Data.DataFrame.Errors (DataFrameException(..))
 import Data.DataFrame.Internal.Column (Column(..), columnTypeString, itransform, ifoldrColumn)
 import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn)
 import Data.DataFrame.Internal.Function (Function(..), funcApply)
+import Data.DataFrame.Internal.Row (mkRowFromArgs)
 import Data.DataFrame.Internal.Types (Columnable, RowValue, toRowValue, transform)
 import Data.DataFrame.Operations.Core
 import Type.Reflection (typeRep, typeOf)
@@ -42,25 +43,17 @@ apply f columnName d = case getColumn columnName d of
 deriveFrom :: ([T.Text], Function) -> T.Text -> DataFrame -> DataFrame
 deriveFrom (args, f) name df = case f of
   (F4 (f' :: a -> b -> c -> d -> e)) -> let
-      xs = VG.map (\row -> funcApply @e row f) $ V.generate (fst (dimensions df)) (mkRow df args)
+      xs = VG.map (\row -> funcApply @e row f) $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
     in insertColumn name xs df
   (F3 (f' :: a -> b -> c -> d)) -> let
-      xs = VG.map (\row -> funcApply @d row f) $ V.generate (fst (dimensions df)) (mkRow df args)
+      xs = VG.map (\row -> funcApply @d row f) $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
     in insertColumn name xs df
   (F2 (f' :: a -> b -> c)) -> let
-      xs = VG.map (\row -> funcApply @c row f) $ V.generate (fst (dimensions df)) (mkRow df args)
+      xs = VG.map (\row -> funcApply @c row f) $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
     in insertColumn name xs df
   (F1 (f' :: a -> b)) -> let
-      xs = VG.map (\row -> funcApply @b row f) $ V.generate (fst (dimensions df)) (mkRow df args)
+      xs = VG.map (\row -> funcApply @b row f) $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
     in insertColumn name xs df
-
-mkRow :: DataFrame -> [T.Text] -> Int -> [RowValue]
-mkRow df names i = foldr go [] names
-  where
-    go name acc = case getColumn name df of
-      Nothing -> throw $ ColumnNotFoundException name "applyF" (map fst $ M.toList $ columnIndices df)
-      Just (BoxedColumn column) -> toRowValue (column V.! i) : acc
-      Just (UnboxedColumn column) -> toRowValue (column VU.! i) : acc
 
 -- | O(k) Apply a function to a given column in a dataframe and
 -- add the result into alias column.

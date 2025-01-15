@@ -9,16 +9,19 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Generic as VG
 
 import Control.Exception (throw)
 import Data.DataFrame.Errors (DataFrameException(..))
 import Data.DataFrame.Internal.Column
 import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
-import Data.DataFrame.Internal.Types (Columnable)
+import Data.DataFrame.Internal.Row (mkRowFromArgs)
+import Data.DataFrame.Internal.Types (Columnable, RowValue, toRowValue)
 import Data.DataFrame.Operations.Core
 import Prelude hiding (filter)
 import Type.Reflection (typeRep)
+import Data.DataFrame.Internal.Function
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
@@ -64,6 +67,13 @@ filter filterColumnName condition df = case getColumn filterColumnName df of
 
 filterBy :: (Columnable a) => (a -> Bool) -> T.Text -> DataFrame -> DataFrame
 filterBy = flip filter
+
+filterWhere :: ([T.Text], Function) -> DataFrame -> DataFrame
+filterWhere (args, f) df = let
+    indexes = VG.ifoldl' (\s i row -> if funcApply @Bool row f then S.insert i s else s) S.empty $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
+    c' = snd $ dataframeDimensions df
+    pick idxs col = atIndices idxs <$> col
+  in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
 
 -- | O(n) Selects a number of columns in a given dataframe.
 --

@@ -216,12 +216,13 @@ starwars %>%
 ```haskell
 starwars |> D.select ["species", "mass"]
          |> D.groupByAgg D.Count ["species"]
+         -- This will be saved in a variable called  "Mean_mass"
          |> D.reduceByAgg D.Mean "mass"
          -- Always better to be explcit about types for
          -- numbers but you can also turn on defaults
          -- to save keystrokes.
-         |> D.filter "Count" ((1::Int)<)
-         |> D.filter "Mean_mass" ((50 ::Double)<)
+         |> D.filterWhere (["Count", "Mean_mass"],
+                           D.func (\(n :: Int) (mass :: Double) -> n > 1 && mass > 50))
 ```
 
 ```
