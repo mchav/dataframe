@@ -115,6 +115,24 @@ starwars
   |> D.take 10
 ```
 
+```
+-------------------------------------------------------------------------------
+index |         name          |  height   |   mass    |           bmi          
+------|-----------------------|-----------|-----------|------------------------
+ Int  |         Text          | Maybe Int | Maybe Int |      Maybe Double      
+------|-----------------------|-----------|-----------|------------------------
+0     | Luke Skywalker        | Just 172  | Just 77   | Just 26.027582477014604
+1     | C-3PO                 | Just 167  | Just 75   | Just 26.89232313815483 
+2     | R2-D2                 | Just 96   | Just 32   | Just 34.72222222222222 
+3     | Darth Vader           | Just 202  | Just 136  | Just 33.33006567983531 
+4     | Leia Organa           | Just 150  | Just 49   | Just 21.77777777777778 
+5     | Owen Lars             | Just 178  | Just 120  | Just 37.87400580734756 
+6     | Beru Whitesun Lars    | Just 165  | Just 75   | Just 27.548209366391188
+7     | R5-D4                 | Just 97   | Just 32   | Just 34.009990434690195
+8     | Biggs Darklighter     | Just 183  | Just 84   | Just 25.082863029651524
+9     | Obi-Wan Kenobi        | Just 182  | Just 77   | Just 23.24598478444632 
+```
+
 Haskell's applicative syntax does take some getting used to.
 
 `f <$> a` means apply f to the thing inside the "container". In this
@@ -135,24 +153,6 @@ Just 4
 
 You'll find a wealth of functions for dealing with optionals in the package
 `Data.Maybe`.
-
-```
--------------------------------------------------------------------------------
-index |         name          |  height   |   mass    |           bmi          
-------|-----------------------|-----------|-----------|------------------------
- Int  |         Text          | Maybe Int | Maybe Int |      Maybe Double      
-------|-----------------------|-----------|-----------|------------------------
-0     | Luke Skywalker        | Just 172  | Just 77   | Just 26.027582477014604
-1     | C-3PO                 | Just 167  | Just 75   | Just 26.89232313815483 
-2     | R2-D2                 | Just 96   | Just 32   | Just 34.72222222222222 
-3     | Darth Vader           | Just 202  | Just 136  | Just 33.33006567983531 
-4     | Leia Organa           | Just 150  | Just 49   | Just 21.77777777777778 
-5     | Owen Lars             | Just 178  | Just 120  | Just 37.87400580734756 
-6     | Beru Whitesun Lars    | Just 165  | Just 75   | Just 27.548209366391188
-7     | R5-D4                 | Just 97   | Just 32   | Just 34.009990434690195
-8     | Biggs Darklighter     | Just 183  | Just 84   | Just 25.082863029651524
-9     | Obi-Wan Kenobi        | Just 182  | Just 77   | Just 23.24598478444632 
-```
 
 ## Sorting
 
