@@ -106,7 +106,6 @@ Our logic is more explicit about what's going on. Because both our fields are nu
 
 ```haskell
 bmi (w :: Int) (h :: Int) = (fromIntegral w) / (fromIntegral h / 100) ** 2 :: Double
-targetColumns = Prelude.takeWhile ("mass" /=) (D.columnNames starwars) ++ ["mass", "bmi"]
 
 starwars
   |> D.selectRange ("name", "mass")
