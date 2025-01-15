@@ -57,13 +57,10 @@ starwars %>%
 #> # ℹ 82 more rows
 ```
 
-To get the same predicate-like functionality we define our own functions on the column names.
+To get the same predicate-like functionality we use `selectBy`.
 
 ```haskell
-columns = (D.columnNames starwars)
-isColorColumn = Prelude.filter (Str.isSuffixOf  "color")
-colorColumns = [cols | cols <- isColorColumn columns]
-starwars |> D.select ("name":colorColumns)
+starwars |> D.selectBy (\cname -> cname == "name" || T.isSuffixOf "color" cname)
          |> D.take 10
 ```
 
@@ -108,16 +105,37 @@ starwars %>%
 Our logic is more explicit about what's going on. Because both our fields are nullable/optional we have to specify the type.
 
 ```haskell
-bmi w h = (fromIntegral w) / (fromIntegral h / 100) ** 2 :: Double
+bmi (w :: Int) (h :: Int) = (fromIntegral w) / (fromIntegral h / 100) ** 2 :: Double
 targetColumns = Prelude.takeWhile ("mass" /=) (D.columnNames starwars) ++ ["mass", "bmi"]
 
-starwars &
-    -- mass and height are optionals so we combine them with
-    -- Haskell's Applicative operators.
-    D.deriveFrom (["mass", "height"], D.func (\(w :: Int) (h :: Int) -> bmi <$> w <*> h)) "bmi" &
-    D.select targetColumns &
-    D.take 10
+starwars
+  |> D.selectRange ("name", "mass")
+  -- mass and height are optionals so we combine them with
+  -- Haskell's Applicative operators.
+  |> D.deriveFrom (["mass", "height"], D.func (\w h -> bmi <$> w <*> h)) "bmi" 
+  |> D.take 10
 ```
+
+Haskell's applicative syntax does take some getting used to.
+
+`f <$> a` means apply f to the thing inside the "container". In this
+case the container (or more infamously the monad) is of type `Maybe`.
+So this can also be written as `fmap f a`.
+
+But this only works if our `f` takes a single argument. If it takes
+two arguments then the we use `<*>` to specify the second argument.
+
+So, applying bmi to two optionals can be written as:
+
+```haskell
+ghci> fmap (+) (Just 2) <*> Just 2
+Just 4
+ghci> (+) <$> Just 2 <*> Just 2
+Just 4
+```
+
+You'll find a wealth of functions for dealing with optionals in the package
+`Data.Maybe`.
 
 ```
 -------------------------------------------------------------------------------

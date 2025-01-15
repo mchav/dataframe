@@ -73,6 +73,7 @@ select ::
   DataFrame ->
   DataFrame
 select cs df
+  | L.null cs = empty
   | not $ any (`elem` columnNames df) cs = throw $ ColumnNotFoundException (T.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
   | otherwise = L.foldl' addKeyValue empty cs
   where
@@ -88,6 +89,18 @@ select cs df
           freeIndices = map snd removed ++ freeIndices df,
           dataframeDimensions = (r, L.length remaining)
         }
+
+-- | O(n) select columns by index range of column names.
+selectIntRange :: (Int, Int) -> DataFrame -> DataFrame
+selectIntRange (from, to) df = select (Prelude.take (to - from + 1) $ drop from (columnNames df)) df
+
+-- | O(n) select columns by index range of column names.
+selectRange :: (T.Text, T.Text) -> DataFrame -> DataFrame
+selectRange (from, to) df = select (reverse $ Prelude.dropWhile (to /=) $ reverse $ dropWhile (from /=) (columnNames df)) df
+
+-- | O(n) select columns by column predicate name.
+selectBy :: (T.Text -> Bool) -> DataFrame -> DataFrame
+selectBy f df = select (L.filter f (columnNames df)) df
 
 -- | O(n) inverse of select
 --
