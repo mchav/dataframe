@@ -7,7 +7,6 @@
 {-# LANGUAGE RankNTypes #-}
 module Data.DataFrame.IO.CSV where
 
--- import qualified Data.Array as Array
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -111,9 +110,9 @@ getInitialDataVectors :: Int -> VM.IOVector Column -> [T.Text] -> IO ()
 getInitialDataVectors n mCol xs = do
     forM_ (zip [0..] xs) $ \(i, x) -> do
         col <- case inferValueType x of
-                "Int" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Int)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readInt x) >> return c)
-                "Double" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Double)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readDouble x) >> return c)
-                _ -> MutableBoxedColumn <$> ((VM.new n :: IO (VM.IOVector T.Text)) >>= \c -> VM.write c 0 x >> return c)
+                "Int" -> MutableUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Int)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readInt x) >> return c)
+                "Double" -> MutableUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Double)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readDouble x) >> return c)
+                _ -> MutableBoxedColumn <$> ((VM.unsafeNew n :: IO (VM.IOVector T.Text)) >>= \c -> VM.write c 0 x >> return c)
         VM.write mCol i col
 
 inferValueType :: T.Text -> T.Text
@@ -136,26 +135,26 @@ fillColumns c mutableCols nullIndices handle =
         & Stream.decodeUtf8
         & Stream.splitOn (== '\n') Fold.toList
         & Stream.filter (not . null)
+        & Stream.parMapM (Stream.maxThreads numCapabilities) (return . T.pack)
         & Stream.zipWith (,) (Stream.fromList [1..])
         & Stream.fold (Fold.drainMapM (parseLine c mutableCols nullIndices))
 
-parseLine :: Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> (Int, [Char]) -> IO ()
-parseLine c mutableCols nullIndices (i, arr) = do
-    zipWithM_ (writeValue mutableCols nullIndices i) [0..] (parseSep c (T.pack arr))
+parseLine :: Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> (Int, T.Text) -> IO ()
+parseLine c mutableCols nullIndices (!i, !arr) = do
+    zipWithM_ (writeValue mutableCols nullIndices i) [0..] (parseSep c arr)
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
 writeValue :: VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> T.Text -> IO ()
 writeValue mutableCols nullIndices count colIndex value = do
-    col <- VM.read mutableCols colIndex
+    col <- VM.unsafeRead mutableCols colIndex
     res <- writeColumn count value col
-    case res of
-        Left value -> VM.modify nullIndices ((count, value) :) colIndex
-        Right _ -> return ()
+    let modify value = VM.unsafeModify nullIndices ((count, value) :) colIndex
+    either modify (const (return ())) res
 
 -- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
 freezeColumn :: VM.IOVector Column -> V.Vector [(Int, T.Text)] -> ReadOptions -> Int -> IO (Maybe Column)
 freezeColumn mutableCols nulls opts colIndex = do
-    col <- VM.read mutableCols colIndex
+    col <- VM.unsafeRead mutableCols colIndex
     Just <$> freezeColumn' (nulls V.! colIndex) col
 
 -- | Constructs a dataframe column, optionally inferring types.

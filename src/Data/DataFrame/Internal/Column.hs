@@ -333,19 +333,19 @@ writeColumn :: Int -> T.Text -> Column -> IO (Either T.Text Bool)
 writeColumn i value (MutableBoxedColumn (col :: VBM.IOVector a)) =
   case testEquality (typeRep @a) (typeRep @T.Text) of
       Just Refl -> (if isNullish value
-                    then VBM.write col i "" >> return (Left value)
-                    else VBM.write col i value >> return (Right True))
+                    then VBM.unsafeWrite col i "" >> return (Left value)
+                    else VBM.unsafeWrite col i value >> return (Right True))
       Nothing -> return (Left (T.pack (show value)))
 writeColumn i value (MutableUnboxedColumn (col :: VUM.IOVector a)) =
   case testEquality (typeRep @a) (typeRep @Int) of
       Just Refl -> case readInt value of
-        Just v -> VUM.write col i v >> return (Right True)
-        Nothing -> VUM.write col i 0 >> return (Left value)
+        Just v -> VUM.unsafeWrite col i v >> return (Right True)
+        Nothing -> VUM.unsafeWrite col i 0 >> return (Left value)
       Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
         Nothing -> return (Left value)
         Just Refl -> case readDouble value of
-          Just v -> VUM.write col i v >> return (Right True)
-          Nothing -> VUM.write col i 0 >> return (Left value)
+          Just v -> VUM.unsafeWrite col i v >> return (Right True)
+          Nothing -> VUM.unsafeWrite col i 0 >> return (Left value)
 
 freezeColumn' :: [(Int, T.Text)] -> Column -> IO Column
 freezeColumn' nulls (MutableBoxedColumn col)
