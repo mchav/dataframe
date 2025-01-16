@@ -14,7 +14,7 @@ maintainer:         mschavinda@gmail.com
 
 copyright: (c) 2024-2024 Michael Chavinda
 category: Data
-tested-with: GHC ==9.10.1 || ==9.8.3 || ==9.6.6
+tested-with: GHC ==9.8.3 || ==9.6.6 || == 9.4.8
 extra-doc-files: CHANGELOG.md README.md
 
 source-repository head
