@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Strict #-}
 module Data.DataFrame.Internal.Parsing where
 
 import qualified Data.Set as S

@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes #-}
 module Data.DataFrame.IO.CSV where
 
+-- import qualified Data.Array as Array
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -17,9 +18,17 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed.Mutable as VUM
+import qualified Streamly.Data.Array as Array
+import qualified Streamly.Data.Fold as Fold
+import qualified Streamly.Data.Stream as Stream
+import qualified Streamly.Data.Stream.Prelude as Stream
+import qualified Streamly.Internal.Data.Array as Array (compactOnByte, toStream)
+import qualified Streamly.FileSystem.File as File
+import qualified Streamly.FileSystem.Handle as Handle
+import qualified Streamly.Unicode.Stream as Stream
 
 import Control.Applicative ((<$>), (<|>), (<*>), (<*), (*>), many)
-import Control.Monad (forM_, zipWithM_, unless, void)
+import Control.Monad (forM_, zipWithM_, unless, void, zipWithM)
 import Data.Attoparsec.Text
 import Data.Char
 import Data.DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, columnLength)
@@ -27,13 +36,16 @@ import Data.DataFrame.Internal.DataFrame (DataFrame(..))
 import Data.DataFrame.Internal.Parsing
 import Data.DataFrame.Operations.Typing
 import Data.Either
-import Data.Function (on)
+import Data.Function (on, (&))
 import Data.Maybe
 import Data.Type.Equality
   ( TestEquality (testEquality),
     type (:~:) (Refl)
   )
+import Data.Word
+import GHC.Conc (numCapabilities)
 import GHC.IO.Handle (Handle)
+import GHC.IO (unsafePerformIO)
 import Prelude hiding (concat, takeWhile)
 import System.IO
 import Type.Reflection
@@ -75,7 +87,7 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
     -- Initialize mutable vectors for each column
     let numColumns = length columnNames
     dataRow <- parseSep c <$> TIO.hGetLine handle
-    totalRows <- countRows path
+    totalRows <- wc path
     let actualRows = if hasHeader opts then totalRows - 1 else totalRows
     nullIndices <- VM.new numColumns
     VM.set nullIndices []
@@ -83,7 +95,7 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
     getInitialDataVectors actualRows mutableCols dataRow
 
     -- Read rows into the mutable vectors
-    fillColumns 1 c mutableCols nullIndices handle
+    fillColumns c mutableCols nullIndices handle
 
     -- Freeze the mutable vectors into immutable ones
     nulls' <- V.unsafeFreeze nullIndices
@@ -105,7 +117,7 @@ getInitialDataVectors n mCol xs = do
         VM.write mCol i col
 
 inferValueType :: T.Text -> T.Text
-inferValueType s = let    
+inferValueType s = let
         example = s
     in case readInt example of
         Just _ -> "Int"
@@ -113,14 +125,23 @@ inferValueType s = let
             Just _ -> "Double"
             Nothing -> "Other"
 
--- | Reads rows from the handle and stores values in mutable vectors.
-fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
-fillColumns i c mutableCols nullIndices handle = do
-    isEOF <- hIsEOF handle
-    unless isEOF $ do
-        row <- parseSep c <$> TIO.hGetLine handle
-        zipWithM_ (writeValue mutableCols nullIndices i) [0..] row
-        fillColumns (i + 1) c mutableCols nullIndices handle
+wc :: String -> IO Int
+wc file = File.read file
+    & Stream.decodeUtf8
+    & Stream.fold (Fold.foldl' (\l ch -> if ch == '\n' then l + 1 else l) 0)
+
+fillColumns :: Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
+fillColumns c mutableCols nullIndices handle =
+      Handle.read handle
+        & Stream.decodeUtf8
+        & Stream.splitOn (== '\n') Fold.toList
+        & Stream.filter (not . null)
+        & Stream.zipWith (,) (Stream.fromList [1..])
+        & Stream.fold (Fold.drainMapM (parseLine c mutableCols nullIndices))
+
+parseLine :: Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> (Int, [Char]) -> IO ()
+parseLine c mutableCols nullIndices (i, arr) = do
+    zipWithM_ (writeValue mutableCols nullIndices i) [0..] (parseSep c (T.pack arr))
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
 writeValue :: VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> T.Text -> IO ()
@@ -180,16 +201,6 @@ lineEnd :: Parser ()
 lineEnd =
    void (char '\n') <|> void (string "\r\n") <|> void (char '\r')
    <?> "end of line"
-
--- | First pass to count rows for exact allocation
-countRows :: FilePath -> IO Int
-countRows path = withFile path ReadMode $ \handle -> do
-    let loop !n = do
-            eof <- hIsEOF handle
-            if eof
-            then return n
-            else TLIO.hGetLine handle >> loop (n + 1) 
-    loop 0
 
 writeCsv :: String -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
