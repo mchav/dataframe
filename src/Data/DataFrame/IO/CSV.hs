@@ -144,10 +144,7 @@ mkColumn opts colData =
     in if inferTypes opts then parseDefault (safeRead opts) col else col
 
 parseSep :: Char -> T.Text -> [T.Text]
-parseSep c s =
-   case parseOnly (record c) s of
-    Left err -> error err
-    Right v -> v
+parseSep c s = either error id (parseOnly (record c) s)
 
 record :: Char -> Parser [T.Text]
 record c =
