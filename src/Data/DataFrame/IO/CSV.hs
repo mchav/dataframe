@@ -76,7 +76,7 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
     nullIndices <- VM.new numColumns
     VM.set nullIndices []
     mutableCols <- VM.new numColumns
-    getInitialDataVectors 0 actualRows mutableCols dataRow
+    getInitialDataVectors actualRows mutableCols dataRow
 
     -- Read rows into the mutable vectors
     fillColumns 1 c mutableCols nullIndices handle
@@ -91,16 +91,15 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
             dataframeDimensions = (maybe 0 columnLength (cols V.! 0), V.length cols)
         }
 
-getInitialDataVectors :: Int -> Int -> VM.IOVector Column -> [T.Text] -> IO ()
-getInitialDataVectors _ _ _ [] = return ()
-getInitialDataVectors i n mCol (x:xs) = do
-    let x' = removeQuotes x
-    col <- case inferValueType x of
-            "Int" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Int)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readInt x') >> return c)
-            "Double" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Double)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readDouble x') >> return c)
-            _ -> MutableBoxedColumn <$> ((VM.new n :: IO (VM.IOVector T.Text)) >>= \c -> VM.write c 0 x' >> return c)
-    VM.write mCol i col
-    getInitialDataVectors (i + 1) n mCol xs
+getInitialDataVectors :: Int -> VM.IOVector Column -> [T.Text] -> IO ()
+getInitialDataVectors n mCol xs = do
+    forM_ (zip [0..] xs) $ \(i, x) -> do
+        let x' = removeQuotes x
+        col <- case inferValueType x of
+                "Int" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Int)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readInt x') >> return c)
+                "Double" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Double)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readDouble x') >> return c)
+                _ -> MutableBoxedColumn <$> ((VM.new n :: IO (VM.IOVector T.Text)) >>= \c -> VM.write c 0 x' >> return c)
+        VM.write mCol i col
 
 inferValueType :: T.Text -> T.Text
 inferValueType s = let    
@@ -182,10 +181,13 @@ removeQuotes s
 
 -- | First pass to count rows for exact allocation
 countRows :: FilePath -> IO Int
-countRows path = do
-    contents <- TLIO.readFile path
-    return $ length $ TL.lines contents
-
+countRows path = withFile path ReadMode $ \handle -> do
+    let loop !n = do
+            eof <- hIsEOF handle
+            if eof
+            then return n
+            else TLIO.hGetLine handle >> loop (n + 1) 
+    loop 0
 
 writeCsv :: String -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
