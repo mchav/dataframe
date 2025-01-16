@@ -201,31 +201,29 @@ itransformUnboxed f column = case testEquality (typeRep @b) (typeRep @Int) of
     Just Refl -> UnboxedColumn $ VG.imap f column
     Nothing -> case testEquality (typeRep @b) (typeRep @Int16) of
       Just Refl -> UnboxedColumn $ VG.imap f column
-      Nothing -> case testEquality (typeRep @b) (typeRep @Int16) of
+      Nothing -> case testEquality (typeRep @b) (typeRep @Int32) of
         Just Refl -> UnboxedColumn $ VG.imap f column
-        Nothing -> case testEquality (typeRep @b) (typeRep @Int32) of
+        Nothing -> case testEquality (typeRep @b) (typeRep @Int64) of
           Just Refl -> UnboxedColumn $ VG.imap f column
-          Nothing -> case testEquality (typeRep @b) (typeRep @Int64) of
+          Nothing -> case testEquality (typeRep @b) (typeRep @Word8) of
             Just Refl -> UnboxedColumn $ VG.imap f column
-            Nothing -> case testEquality (typeRep @b) (typeRep @Word8) of
+            Nothing-> case testEquality (typeRep @b) (typeRep @Word16) of
               Just Refl -> UnboxedColumn $ VG.imap f column
-              Nothing-> case testEquality (typeRep @b) (typeRep @Word16) of
+              Nothing -> case testEquality (typeRep @b) (typeRep @Word32) of
                 Just Refl -> UnboxedColumn $ VG.imap f column
-                Nothing -> case testEquality (typeRep @b) (typeRep @Word32) of
+                Nothing -> case testEquality (typeRep @b) (typeRep @Word64) of
                   Just Refl -> UnboxedColumn $ VG.imap f column
-                  Nothing -> case testEquality (typeRep @b) (typeRep @Word64) of
+                  Nothing -> case testEquality (typeRep @b) (typeRep @Char) of
                     Just Refl -> UnboxedColumn $ VG.imap f column
-                    Nothing -> case testEquality (typeRep @b) (typeRep @Char) of
+                    Nothing -> case testEquality (typeRep @b) (typeRep @Bool) of
                       Just Refl -> UnboxedColumn $ VG.imap f column
-                      Nothing -> case testEquality (typeRep @b) (typeRep @Bool) of
+                      Nothing -> case testEquality (typeRep @b) (typeRep @Float) of
                         Just Refl -> UnboxedColumn $ VG.imap f column
-                        Nothing -> case testEquality (typeRep @b) (typeRep @Float) of
+                        Nothing -> case testEquality (typeRep @b) (typeRep @Double) of
                           Just Refl -> UnboxedColumn $ VG.imap f column
-                          Nothing -> case testEquality (typeRep @b) (typeRep @Double) of
+                          Nothing -> case testEquality (typeRep @b) (typeRep @Word) of
                             Just Refl -> UnboxedColumn $ VG.imap f column
-                            Nothing -> case testEquality (typeRep @b) (typeRep @Word) of
-                              Just Refl -> UnboxedColumn $ VG.imap f column
-                              Nothing -> error "Result type is unboxed" -- since we only call this after confirming 
+                            Nothing -> error "Result type is unboxed" -- since we only call this after confirming 
 
 -- | tranform with index.
 itransform :: forall b c. (Columnable b, Columnable c) => (Int -> b -> c) -> Column -> Maybe Column
