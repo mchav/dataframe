@@ -18,12 +18,15 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
-import Control.Monad (forM_, zipWithM_, unless)
+import Control.Applicative ((<$>), (<|>), (<*>), (<*), (*>), many)
+import Control.Monad (forM_, zipWithM_, unless, void)
+import Data.Attoparsec.Text
 import Data.Char
 import Data.DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, columnLength)
 import Data.DataFrame.Internal.DataFrame (DataFrame(..))
 import Data.DataFrame.Internal.Parsing
 import Data.DataFrame.Operations.Typing
+import Data.Either
 import Data.Function (on)
 import Data.Maybe
 import Data.Type.Equality
@@ -31,6 +34,7 @@ import Data.Type.Equality
     type (:~:) (Refl)
   )
 import GHC.IO.Handle (Handle)
+import Prelude hiding (concat, takeWhile)
 import System.IO
 import Type.Reflection
 
@@ -61,7 +65,7 @@ readTsv = readSeparated '\t' defaultOptions
 -- | Reads a character separated file into a dataframe using mutable vectors.
 readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
 readSeparated c opts path = withFile path ReadMode $ \handle -> do
-    firstRow <- split c <$> TIO.hGetLine handle
+    firstRow <- parseSep c <$> TIO.hGetLine handle
     let columnNames = if hasHeader opts
                       then map (T.filter (/= '\"')) firstRow
                       else map (T.singleton . intToDigit) [0..(length firstRow - 1)]
@@ -70,7 +74,7 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
 
     -- Initialize mutable vectors for each column
     let numColumns = length columnNames
-    dataRow <- split c <$> TIO.hGetLine handle
+    dataRow <- parseSep c <$> TIO.hGetLine handle
     totalRows <- countRows path
     let actualRows = if hasHeader opts then totalRows - 1 else totalRows
     nullIndices <- VM.new numColumns
@@ -94,11 +98,10 @@ readSeparated c opts path = withFile path ReadMode $ \handle -> do
 getInitialDataVectors :: Int -> VM.IOVector Column -> [T.Text] -> IO ()
 getInitialDataVectors n mCol xs = do
     forM_ (zip [0..] xs) $ \(i, x) -> do
-        let x' = removeQuotes x
         col <- case inferValueType x of
-                "Int" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Int)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readInt x') >> return c)
-                "Double" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Double)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readDouble x') >> return c)
-                _ -> MutableBoxedColumn <$> ((VM.new n :: IO (VM.IOVector T.Text)) >>= \c -> VM.write c 0 x' >> return c)
+                "Int" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Int)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readInt x) >> return c)
+                "Double" -> MutableUnboxedColumn <$> ((VUM.new n :: IO (VUM.IOVector Double)) >>= \c -> VUM.write c 0 (fromMaybe 0 $ readDouble x) >> return c)
+                _ -> MutableBoxedColumn <$> ((VM.new n :: IO (VM.IOVector T.Text)) >>= \c -> VM.write c 0 x >> return c)
         VM.write mCol i col
 
 inferValueType :: T.Text -> T.Text
@@ -115,7 +118,7 @@ fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] 
 fillColumns i c mutableCols nullIndices handle = do
     isEOF <- hIsEOF handle
     unless isEOF $ do
-        row <- split c <$> TIO.hGetLine handle
+        row <- parseSep c <$> TIO.hGetLine handle
         zipWithM_ (writeValue mutableCols nullIndices i) [0..] row
         fillColumns (i + 1) c mutableCols nullIndices handle
 
@@ -140,44 +143,46 @@ mkColumn opts colData =
     let col = Just $ BoxedColumn colData
     in if inferTypes opts then parseDefault (safeRead opts) col else col
 
+parseSep :: Char -> T.Text -> [T.Text]
+parseSep c s =
+   case parseOnly (record c) s of
+    Left err -> error err
+    Right v -> v
 
--- | A naive splitting algorithm. If there are no quotes in the string
--- we split by the character. Otherwise we interate through the
--- string to identify parts where the character is not used to separate
--- columns.
-split :: Char -> T.Text -> [T.Text]
-split c s
-    | not (hasCommaInQuotes s) = map (removeQuotes . T.strip) $ T.split (c ==) s
-    | otherwise           = splitIgnoring c '\"' s
+record :: Char -> Parser [T.Text]
+record c =
+   field c `sepBy1` char c
+   <?> "record"
 
--- TODO: This currently doesn't handle anything except quotes. It should
--- generalize to handle ther structures e.g braces and parens.
--- This should probably use a stack.
-splitIgnoring :: Char -> Char -> T.Text -> [T.Text]
-splitIgnoring c o s = reverse ret
-    where (_, acc, res) = T.foldl (splitIgnoring' c o) (False, "", []) s
-          ret = if acc == "" && T.last s /= ',' then res else acc : res
+field :: Char -> Parser T.Text
+field c =
+   quotedField <|> unquotedField c
+   <?> "field"
 
-splitIgnoring' :: Char -> Char -> (Bool, T.Text, [T.Text]) -> Char -> (Bool, T.Text, [T.Text])
-splitIgnoring' c o (!inIgnore, !word, !res) curr 
-    | curr == o                  = (not inIgnore, word, res)
-    | isTerminal && not inIgnore = (inIgnore, "", word:res)
-    | otherwise                  = (inIgnore, word `T.snoc` curr, res)
-        where isTerminal = curr == c || (curr == '\r' && word /= "")
+unquotedField :: Char -> Parser T.Text
+unquotedField sep =
+   takeWhile (\c -> c /= sep && c /= '\n' && c /= '\r' && c /= '"')
+   <?> "unquoted field"
 
-hasCommaInQuotes :: T.Text -> Bool
-hasCommaInQuotes = snd . T.foldl' go (False, False)
-    where go (!inQuotes, !hasComma) c
-            | c == ',' && inQuotes = (inQuotes, True)
-            | c == '\"' = (not inQuotes, hasComma)
-            | otherwise = (inQuotes, hasComma)
+insideQuotes :: Parser T.Text
+insideQuotes =
+   T.append <$> takeWhile (/= '"')
+            <*> (T.concat <$> many (T.cons <$> dquotes <*> insideQuotes))
+   <?> "inside of double quotes"
+   where
+      dquotes =
+         string "\"\"" >> return '"'
+         <?> "paired double quotes"
 
-removeQuotes :: T.Text -> T.Text
-removeQuotes s
-    | T.null s' = s'
-    | otherwise = if T.head s' == '\"' && T.last s' == '\"' then T.init (T.tail s') else s'
-        where s' = T.strip s
+quotedField :: Parser T.Text
+quotedField =
+   char '"' *> insideQuotes <* char '"'
+   <?> "quoted field"
 
+lineEnd :: Parser ()
+lineEnd =
+   void (char '\n') <|> void (string "\r\n") <|> void (char '\r')
+   <?> "end of line"
 
 -- | First pass to count rows for exact allocation
 countRows :: FilePath -> IO Int
