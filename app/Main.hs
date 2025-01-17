@@ -35,7 +35,7 @@ main = do
   putStrLn $ replicate 100 '-'
 
   putStrLn "Covid Data"
-  -- covid
+  covid
   putStrLn $ replicate 100 '-'
 
 
