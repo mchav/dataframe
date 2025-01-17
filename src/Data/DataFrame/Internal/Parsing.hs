@@ -39,7 +39,6 @@ readByteStringInt s = case C.readInt (C.strip s) of
   Just (value, _) -> Nothing
 {-# INLINE readByteStringInt #-}
 
-
 readDouble :: (HasCallStack) => T.Text -> Maybe Double
 readDouble s =
   case signed double s of
