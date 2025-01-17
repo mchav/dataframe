@@ -160,7 +160,7 @@ field c =
 unquotedField :: Char -> Parser C.ByteString
 unquotedField sep =
    takeWhile nonTerminal <?> "unquoted field"
-   where nonTerminal = (`S.member` S.fromList [sep, '\n', '\r', '"'])
+   where nonTerminal = (`S.notMember` S.fromList [sep, '\n', '\r', '"'])
 
 insideQuotes :: Parser C.ByteString
 insideQuotes =
