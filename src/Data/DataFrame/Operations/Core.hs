@@ -151,19 +151,20 @@ columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map fst' t
   where
     triples = L.sortBy (compare `on` snd') (V.ifoldl' go [] (columns df)) :: [(T.Text, Int,  Int, T.Text)]
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
-    columnName i = T.unpack (indexMap M.! i)
+    columnName i = indexMap M.! i
     numNulls c = VG.length $ VG.filter isNullish c
     go acc i Nothing = acc
     go acc i (Just (BoxedColumn (c :: V.Vector a))) = let
-        cname = T.pack $ columnName i
+        cname = columnName i
         countNulls = numNulls (VG.map (T.pack . show) c)
         columnType = T.pack $ show $ typeRep @a
       in (cname, VG.length c - countNulls, countNulls, columnType) : acc
     go acc i (Just (UnboxedColumn (c :: VU.Vector a))) = let
-        cname = T.pack $ columnName i
-        countNulls = numNulls (V.map (T.pack . show) (V.convert c))
+        cname = columnName i
         columnType = T.pack $ show $ typeRep @a
-      in (cname, VG.length c - countNulls, countNulls, columnType) : acc
+        -- Unboxed columns cannot have nulls since Maybe
+        -- is not an instance of Unbox a
+      in (cname, VG.length c, 0, columnType) : acc
     fst' (x, _, _, _) = x
     snd' (_, x, _, _) = x
     thd' (_, _, x, _) = x
