@@ -23,11 +23,11 @@ default (Int, T.Text, Double)
 main :: IO ()
 main = do
   putStrLn "Housing"
-  housing
+  -- housing
   putStrLn $ replicate 100 '-'
 
   putStrLn "Chipotle Data"
-  chipotle
+  -- chipotle
   putStrLn $ replicate 100 '-'
 
   putStrLn "One Billion Row Challenge"
@@ -35,7 +35,7 @@ main = do
   putStrLn $ replicate 100 '-'
 
   putStrLn "Covid Data"
-  covid
+  -- covid
   putStrLn $ replicate 100 '-'
 
 
@@ -44,7 +44,7 @@ mean xs = VG.sum xs / fromIntegral (VG.length xs)
 
 oneBillingRowChallenge :: IO ()
 oneBillingRowChallenge = do
-  parsed <- D.readSeparated ';' D.defaultOptions "./data/measurements.txt"
+  parsed <- D.readSeparated ';' D.defaultOptions "../1brc/32_5M.txt"
   print $
     parsed
       |> D.groupBy ["City"]

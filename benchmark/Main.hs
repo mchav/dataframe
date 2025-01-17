@@ -2,7 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import qualified Data.DataFrame as D
-import qualified Data.DataFrame.Internal.Column as D
 import qualified Data.Vector.Unboxed as VU
 
 import Control.Monad (replicateM)

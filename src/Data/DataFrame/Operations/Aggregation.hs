@@ -113,7 +113,7 @@ mkGroupedColumns indices df acc name =
        in insertColumn name vs acc
     (Just (UnboxedColumn column)) ->
       let vs = indices `getIndicesUnboxed` column
-       in addUnboxedColumn name vs acc
+       in insertUnboxedColumn name vs acc
 
 groupColumns :: V.Vector (VU.Vector Int) -> DataFrame -> DataFrame -> T.Text -> DataFrame
 groupColumns indices df acc name =
@@ -231,3 +231,4 @@ appendWithFrontMin x [] = [x]
 appendWithFrontMin x xs@(f:rest)
   | x < f = x:xs
   | otherwise = f:x:rest
+{-# INLINE appendWithFrontMin #-}

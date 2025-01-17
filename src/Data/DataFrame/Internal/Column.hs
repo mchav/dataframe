@@ -7,6 +7,7 @@
 {-# LANGUAGE TypeApplications #-}
 module Data.DataFrame.Internal.Column where
 
+import qualified Data.ByteString.Char8 as C
 import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Text as T
@@ -23,6 +24,7 @@ import Data.DataFrame.Internal.Types
 import Data.DataFrame.Internal.Parsing
 import Data.Int
 import Data.Maybe
+import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Type.Equality (type (:~:)(Refl), TestEquality (..))
 import Data.Typeable (Typeable)
 import Data.Word
@@ -146,9 +148,11 @@ atIndicesStable indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ i
 
 getIndices :: VU.Vector Int -> VB.Vector a -> VB.Vector a
 getIndices indices xs = VB.generate (VU.length indices) (\i -> xs VB.! (indices VU.! i))
+{-# INLINE getIndices #-}
 
 getIndicesUnboxed :: (VU.Unbox a) => VU.Vector Int -> VU.Vector a -> VU.Vector a
 getIndicesUnboxed indices xs = VU.generate (VU.length indices) (\i -> xs VU.! (indices VU.! i))
+{-# INLINE getIndicesUnboxed #-}
 
 sortedIndexes :: Bool -> Column -> VU.Vector Int
 sortedIndexes asc (BoxedColumn column ) = runST $ do
@@ -171,7 +175,7 @@ sortedIndexes asc (GroupedUnboxedColumn column) = runST $ do
   VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
   sorted <- VG.unsafeFreeze withIndexes
   return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
-
+{-# INLINE sortedIndexes #-}
 
 -- Operations on a column that may change its type.
 
@@ -299,12 +303,16 @@ ifoldlColumn f acc c@(GroupedUnboxedColumn (column :: VB.Vector d)) = do
   return $ VG.ifoldl' f acc column
 
 reduceColumn :: forall a b. Columnable a => (a -> b) -> Column -> b
+{-# SPECIALIZE reduceColumn ::
+    (VU.Vector (Double, Double) -> Double) -> Column -> Double,
+    (VU.Vector Double -> Double) -> Column -> Double #-}
 reduceColumn f (BoxedColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
   Just Refl -> f column
   Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
 reduceColumn f (UnboxedColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
   Just Refl -> f column
   Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
+{-# INLINE reduceColumn #-}
 
 safeReduceColumn :: forall a b. (Typeable a) => (a -> b) -> Column -> Maybe b
 safeReduceColumn f (BoxedColumn (column :: c)) = do
@@ -327,23 +335,28 @@ zipColumns (UnboxedColumn column) (BoxedColumn other) = BoxedColumn (VB.generate
 zipColumns (UnboxedColumn column) (UnboxedColumn other) = UnboxedColumn (VU.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
 
 -- Functions for mutable columns (intended for IO).
-writeColumn :: Int -> T.Text -> Column -> IO (Either T.Text Bool)
-writeColumn i value (MutableBoxedColumn (col :: VBM.IOVector a)) =
-  case testEquality (typeRep @a) (typeRep @T.Text) of
+-- Clean this up.
+writeColumn :: Int -> C.ByteString -> Column -> IO (Either T.Text Bool)
+writeColumn i value' (MutableBoxedColumn (col :: VBM.IOVector a)) = let
+    value = decodeUtf8Lenient value'
+  in case testEquality (typeRep @a) (typeRep @T.Text) of
       Just Refl -> (if isNullish value
                     then VBM.unsafeWrite col i "" >> return (Left value)
                     else VBM.unsafeWrite col i value >> return (Right True))
       Nothing -> return (Left (T.pack (show value)))
 writeColumn i value (MutableUnboxedColumn (col :: VUM.IOVector a)) =
   case testEquality (typeRep @a) (typeRep @Int) of
-      Just Refl -> case readInt value of
+      Just Refl -> case readByteStringInt value of
         Just v -> VUM.unsafeWrite col i v >> return (Right True)
-        Nothing -> VUM.unsafeWrite col i 0 >> return (Left value)
-      Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
-        Nothing -> return (Left value)
-        Just Refl -> case readDouble value of
-          Just v -> VUM.unsafeWrite col i v >> return (Right True)
-          Nothing -> VUM.unsafeWrite col i 0 >> return (Left value)
+        Nothing -> VUM.unsafeWrite col i 0 >> return (Left $ decodeUtf8Lenient value)
+      Nothing -> let
+          value' = decodeUtf8Lenient value
+        in case testEquality (typeRep @a) (typeRep @Double) of
+          Nothing -> return (Left value')
+          Just Refl -> case readDouble value' of
+            Just v -> VUM.unsafeWrite col i v >> return (Right True)
+            Nothing -> VUM.unsafeWrite col i 0 >> return (Left value')
+{-# INLINE writeColumn #-}
 
 freezeColumn' :: [(Int, T.Text)] -> Column -> IO Column
 freezeColumn' nulls (MutableBoxedColumn col)
@@ -354,4 +367,4 @@ freezeColumn' nulls (MutableUnboxedColumn col)
   | null nulls = UnboxedColumn <$> VU.unsafeFreeze col
   | all (isNullish . snd) nulls = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ VB.generate (VU.length c) (\i -> if i `elem` map fst nulls then Nothing else Just (c VU.! i))
   | otherwise  = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ VB.generate (VU.length c) (\i -> if i `elem` map fst nulls then Left (fromMaybe (error "") (lookup i nulls)) else Right (c VU.! i))
-
+{-# INLINE freezeColumn' #-}

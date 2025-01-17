@@ -3,8 +3,7 @@
 module Main where
 
 import qualified Data.DataFrame as D
-import qualified Data.DataFrame.Internal.Column as DI
-import qualified Data.DataFrame.Internal.DataFrame as DI
+import qualified Data.DataFrame as DI
 import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Vector as V

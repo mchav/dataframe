@@ -21,7 +21,7 @@ source-repository head
   type:     git
   location: https://github.com/mchav/dataframe
 
-library dataframe-lib
+library
     exposed-modules: Data.DataFrame
     other-modules: Data.DataFrame.Internal.Types,
                    Data.DataFrame.Internal.Function,
@@ -44,40 +44,7 @@ library dataframe-lib
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
                       attoparsec >= 0.12,
-                      containers >= 0.6.7 && < 0.8,
-                      directory >= 1.3.0.0,
-                      hashable >= 1.2,
-                      statistics >= 0.13,
-                      text >= 2.0,
-                      time >= 1.12,
-                      vector ^>= 0.13,
-                      vector-algorithms >= 0.9
-    hs-source-dirs:   src
-    default-language: Haskell2010
-
-library dataframe-lib-dev
-    exposed-modules: Data.DataFrame,
-                     Data.DataFrame.Internal.Types,
-                     Data.DataFrame.Internal.Function,
-                     Data.DataFrame.Internal.Parsing,
-                     Data.DataFrame.Internal.Column,
-                     Data.DataFrame.Display.Terminal.PrettyPrint,
-                     Data.DataFrame.Display.Terminal.Colours,
-                     Data.DataFrame.Internal.DataFrame,
-                     Data.DataFrame.Internal.Row,
-                     Data.DataFrame.Errors,
-                     Data.DataFrame.Operations.Core,
-                     Data.DataFrame.Operations.Subset,
-                     Data.DataFrame.Operations.Sorting,
-                     Data.DataFrame.Operations.Statistics,
-                     Data.DataFrame.Operations.Transformations,
-                     Data.DataFrame.Operations.Typing,
-                     Data.DataFrame.Operations.Aggregation,
-                     Data.DataFrame.Display.Terminal.Plot,
-                     Data.DataFrame.IO.CSV
-    build-depends:    base >= 4.17.2.0 && < 4.21,
-                      array ^>= 0.5,
-                      attoparsec >= 0.12,
+                      bytestring >= 0.11,
                       containers >= 0.6.7 && < 0.8,
                       directory >= 1.3.0.0,
                       hashable >= 1.2,
@@ -113,6 +80,7 @@ executable dataframe
     build-depends:    base >= 4.17.2.0 && < 4.21,
                       array ^>= 0.5,
                       attoparsec >= 0.12,
+                      bytestring >= 0.11,
                       containers >= 0.6.7 && < 0.8,
                       directory >= 1.3.0.0,
                       hashable >= 1.2,
@@ -134,7 +102,7 @@ benchmark dataframe-benchmark
                    text >= 2.0,
                    random >= 1,
                    vector ^>= 0.13,
-                   dataframe-lib-dev
+                   dataframe
     default-language: Haskell2010
 
 test-suite tests
@@ -155,6 +123,6 @@ test-suite tests
                    text >= 2.0,
                    time >= 1.12,
                    vector ^>= 0.13,
-                   dataframe-lib-dev
+                   dataframe
     hs-source-dirs: tests
     default-language: Haskell2010

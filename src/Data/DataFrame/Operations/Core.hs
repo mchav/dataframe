@@ -31,10 +31,12 @@ import Prelude hiding (null)
 -- | O(1) Get DataFrame dimensions i.e. (rows, columns)
 dimensions :: DataFrame -> (Int, Int)
 dimensions = dataframeDimensions
+{-# INLINE dimensions #-}
 
 -- | O(k) Get column names of the DataFrame in order of insertion.
 columnNames :: DataFrame -> [T.Text]
 columnNames = map fst . L.sortBy (compare `on` snd). M.toList . columnIndices
+{-# INLINE columnNames #-}
 
 -- | /O(n)/ Adds a vector to the dataframe.
 insertColumn ::
@@ -48,6 +50,7 @@ insertColumn ::
   DataFrame ->
   DataFrame
 insertColumn name xs = insertColumn' name (Just (toColumn' xs))
+{-# INLINE insertColumn #-}
 
 cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
 cloneColumn original new df = fromMaybe (throw $ ColumnNotFoundException original "cloneColumn" (map fst $ M.toList $ columnIndices df)) $ do
@@ -55,7 +58,7 @@ cloneColumn original new df = fromMaybe (throw $ ColumnNotFoundException origina
   return $ insertColumn' new (Just column) df
 
 -- | /O(n)/ Adds an unboxed vector to the dataframe.
-addUnboxedColumn ::
+insertUnboxedColumn ::
   forall a.
   (Columnable a, VU.Unbox a) =>
   -- | Column Name
@@ -65,7 +68,7 @@ addUnboxedColumn ::
   -- | DataFrame to add to column
   DataFrame ->
   DataFrame
-addUnboxedColumn name xs = insertColumn' name (Just (UnboxedColumn xs))
+insertUnboxedColumn name xs = insertColumn' name (Just (UnboxedColumn xs))
 
 -- -- | /O(n)/ Add a column to the dataframe. Not meant for external use.
 insertColumn' ::
@@ -108,6 +111,7 @@ insertColumn' name xs d
         where diff = r - l
               l = maybe 0 columnLength xs
               (r, c) = dataframeDimensions d
+{-# INLINE insertColumn' #-}
 
 -- | /O(k)/ Add a column to the dataframe providing a default.
 -- This constructs a new vector and also may convert it

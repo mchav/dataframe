@@ -105,7 +105,7 @@ applyStatistics f name df = case getColumn name df of
 
 summarize :: DataFrame -> DataFrame
 summarize df = fold columnStats (columnNames df) (fromList [("Statistic", toColumn ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
-  where columnStats name d = if all isJust (stats name) then addUnboxedColumn name (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
+  where columnStats name d = if all isJust (stats name) then insertUnboxedColumn name (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
         stats name = let
             quantiles = applyStatistics (SS.quantilesVec SS.medianUnbiased (VU.fromList [0,1,2,3,4]) 4) name df
             min' = flip (VG.!) 0 <$> quantiles

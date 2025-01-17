@@ -2,6 +2,7 @@
 {-# LANGUAGE Strict #-}
 module Data.DataFrame.Internal.Parsing where
 
+import qualified Data.ByteString.Char8 as C
 import qualified Data.Set as S
 import qualified Data.Text as T
 
@@ -29,6 +30,15 @@ readInt s = case signed decimal (T.strip s) of
   Left _ -> Nothing
   Right (value, "") -> Just value
   Right (value, _) -> Nothing
+{-# INLINE readInt #-}
+
+readByteStringInt :: (HasCallStack) => C.ByteString -> Maybe Int
+readByteStringInt s = case C.readInt (C.strip s) of
+  Nothing -> Nothing
+  Just (value, "") -> Just value
+  Just (value, _) -> Nothing
+{-# INLINE readByteStringInt #-}
+
 
 readDouble :: (HasCallStack) => T.Text -> Maybe Double
 readDouble s =
@@ -36,18 +46,21 @@ readDouble s =
     Left _ -> Nothing
     Right (value, "") -> Just value
     Right (value, _) -> Nothing
+{-# INLINE readDouble #-}
 
 readIntegerEither :: (HasCallStack) => T.Text -> Either T.Text Integer
 readIntegerEither s = case signed decimal (T.strip s) of
   Left _ -> Left s
   Right (value, "") -> Right value
   Right (value, _) -> Left s
+{-# INLINE readIntegerEither #-}
 
 readIntEither :: (HasCallStack) => T.Text -> Either T.Text Int
 readIntEither s = case signed decimal (T.strip s) of
   Left _ -> Left s
   Right (value, "") -> Right value
   Right (value, _) -> Left s
+{-# INLINE readIntEither #-}
 
 readDoubleEither :: (HasCallStack) => T.Text -> Either T.Text Double
 readDoubleEither s =
@@ -55,6 +68,7 @@ readDoubleEither s =
     Left _ -> Left s
     Right (value, "") -> Right value
     Right (value, _) -> Left s
+{-# INLINE readDoubleEither #-}
 
 safeReadValue :: (Read a) => T.Text -> Maybe a
 safeReadValue s = readMaybe (T.unpack s)
