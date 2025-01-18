@@ -21,7 +21,7 @@ import Data.Type.Equality (TestEquality(..))
 
 -- We need an "Object" type as an intermediate representation
 -- for rows. Useful for things like sorting and function application.
-type Columnable a = (Typeable a, Show a, Ord a)
+type Columnable a = (Typeable a, Show a, Ord a, Eq a)
 
 data RowValue where
     Value :: (Columnable a) => a -> RowValue
