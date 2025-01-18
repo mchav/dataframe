@@ -8,6 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE Strict #-}
 module Data.DataFrame.Internal.Types where
 
 import Data.Int ( Int8, Int16, Int32, Int64 )
@@ -36,6 +37,10 @@ instance Ord RowValue where
     (Value a) <= (Value b) = fromMaybe False $ do
         Refl <- testEquality (typeOf a) (typeOf b)
         return $ a <= b
+
+instance Show RowValue where
+    show :: RowValue -> String
+    show (Value a) = show a
 
 toRowValue :: forall a . (Columnable a) => a -> RowValue
 toRowValue =  Value

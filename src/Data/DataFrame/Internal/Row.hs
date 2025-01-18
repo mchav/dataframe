@@ -39,7 +39,7 @@ mkRowFromArgs names df i = V.map get (V.fromList names)
       Just (UnboxedColumn column) -> toRowValue (column VU.! i)
 
 mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Row
-mkRowRep df names i = V.generate (S.size names) (\index -> get index (names' V.! index))
+mkRowRep df names i = V.generate (S.size names) (\index -> get (names' V.! index))
   where
     inOrderIndexes = map fst $ L.sortBy (compare `on` snd) $ M.toList (columnIndices df)
     names' = V.fromList [n | n <- inOrderIndexes, S.member n names]
@@ -48,23 +48,23 @@ mkRowRep df names i = V.generate (S.size names) (\index -> get index (names' V.!
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
-    get index name = case getColumn name df of 
-      Just (BoxedColumn c) -> case c V.!? index of
+    get name = case getColumn name df of
+      Just (BoxedColumn c) -> case c V.!? i of
         Just e -> toRowValue e
         Nothing -> throwError name
-      Just (UnboxedColumn c) -> case c VU.!? index of
+      Just (UnboxedColumn c) -> case c VU.!? i of
         Just e -> toRowValue e
         Nothing -> throwError name
-      Just (GroupedBoxedColumn c) -> case c V.!? index of
+      Just (GroupedBoxedColumn c) -> case c V.!? i of
         Just e -> toRowValue e
         Nothing -> throwError name
-      Just (GroupedUnboxedColumn c) -> case c V.!? index of
+      Just (GroupedUnboxedColumn c) -> case c V.!? i of
         Just e -> toRowValue e
         Nothing -> throwError name
 
 sortedIndexes' :: Bool -> V.Vector Row -> VU.Vector Int
 sortedIndexes' asc rows = runST $ do
   withIndexes <- VG.thaw (V.indexed rows)
-  VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
+  VA.sortBy ((if asc then compare else flip compare) `on` snd) withIndexes
   sorted <- VG.unsafeFreeze withIndexes
   return $ VU.generate (VG.length rows) (\i -> fst (sorted VG.! i))
