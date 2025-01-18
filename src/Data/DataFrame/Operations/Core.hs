@@ -5,6 +5,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE BangPatterns #-}
 module Data.DataFrame.Operations.Core where
 
 import qualified Data.List as L
@@ -18,14 +19,14 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception ( throw )
 import Data.DataFrame.Errors
-import Data.DataFrame.Internal.Column ( Column(..), toColumn', toColumn, columnLength )
+import Data.DataFrame.Internal.Column ( Column(..), toColumn', toColumn, columnLength, columnTypeString )
 import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn, null, empty)
 import Data.DataFrame.Internal.Parsing (isNullish)
 import Data.DataFrame.Internal.Types (Columnable)
 import Data.Function (on, (&))
 import Data.Maybe
 import Data.Type.Equality (type (:~:)(Refl), TestEquality(..))
-import Type.Reflection (typeRep)
+import Type.Reflection
 import Prelude hiding (null)
 
 -- | O(1) Get DataFrame dimensions i.e. (rows, columns)
@@ -156,24 +157,35 @@ columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map fst' t
     triples = L.sortBy (compare `on` snd') (V.ifoldl' go [] (columns df)) :: [(T.Text, Int,  Int, T.Text)]
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
     columnName i = indexMap M.! i
-    numNulls c = VG.length $ VG.filter isNullish c
     go acc i Nothing = acc
-    go acc i (Just (BoxedColumn (c :: V.Vector a))) = let
+    go acc i (Just col@(BoxedColumn (c :: V.Vector a))) = let
         cname = columnName i
-        countNulls = numNulls (VG.map (T.pack . show) c)
+        countNulls = nulls col
         columnType = T.pack $ show $ typeRep @a
       in (cname, VG.length c - countNulls, countNulls, columnType) : acc
-    go acc i (Just (UnboxedColumn (c :: VU.Vector a))) = let
+    go acc i (Just col@(UnboxedColumn c)) = let
         cname = columnName i
-        columnType = T.pack $ show $ typeRep @a
+        columnType = T.pack $ columnTypeString col
         -- Unboxed columns cannot have nulls since Maybe
         -- is not an instance of Unbox a
       in (cname, VG.length c, 0, columnType) : acc
-    fst' (x, _, _, _) = x
-    snd' (_, x, _, _) = x
-    thd' (_, _, x, _) = x
-    fth' (_, _, _, x) = x
+    fst' (!x, _, _, _) = x
+    snd' (_, !x, _, _) = x
+    thd' (_, _, !x, _) = x
+    fth' (_, _, _, !x) = x
 
+
+nulls :: Column -> Int
+nulls (BoxedColumn (xs :: V.Vector a)) = case testEquality (typeRep @a) (typeRep @T.Text) of
+  Just Refl -> VG.length $ VG.filter isNullish xs
+  Nothing -> case testEquality (typeRep @a) (typeRep @String) of
+    Just Refl -> VG.length $ VG.filter (isNullish . T.pack) xs
+    Nothing -> case typeRep @a of
+      App t1 t2 -> case eqTypeRep t1 (typeRep @Maybe) of
+          Just HRefl -> VG.length $ VG.filter isNothing xs
+          Nothing -> 0
+      _ -> 0
+nulls _ = 0
 
 fromList :: [(T.Text, Column)] -> DataFrame
 fromList = L.foldl' (\df (name, column) -> insertColumn' name (Just column) df) empty
