@@ -329,10 +329,11 @@ longZipColumns (UnboxedColumn column) (BoxedColumn other) = BoxedColumn (VB.gene
 longZipColumns (UnboxedColumn column) (UnboxedColumn other) = BoxedColumn (VB.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
 
 zipColumns :: Column -> Column -> Column
-zipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (VB.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
+zipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (VG.zip column other)
 zipColumns (BoxedColumn column) (UnboxedColumn other) = BoxedColumn (VB.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
 zipColumns (UnboxedColumn column) (BoxedColumn other) = BoxedColumn (VB.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
-zipColumns (UnboxedColumn column) (UnboxedColumn other) = UnboxedColumn (VU.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
+zipColumns (UnboxedColumn column) (UnboxedColumn other) = UnboxedColumn (VG.zip column other)
+{-# INLINE zipColumns #-}
 
 -- Functions for mutable columns (intended for IO).
 -- Clean this up.

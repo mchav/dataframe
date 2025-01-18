@@ -87,10 +87,13 @@ sum name df = case getColumn name df of
 applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
 applyStatistic f name df = do
       column <- getColumn name df
-      matching <- asum [ transform (fromIntegral :: Int -> Double) column,
-                         transform (realToFrac :: Float -> Double) column,
-                         Just column ]
-      safeReduceColumn f matching
+      if columnTypeString column == "Double"
+      then safeReduceColumn f column
+      else do
+        matching <- asum [ transform (fromIntegral :: Int -> Double) column,
+                          transform (realToFrac :: Float -> Double) column,
+                          Just column ]
+        safeReduceColumn f matching
 
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
 applyStatistics f name df = case getColumn name df of
