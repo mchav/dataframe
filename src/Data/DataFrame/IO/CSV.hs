@@ -66,36 +66,38 @@ readTsv = readSeparated '\t' defaultOptions
 
 -- | Reads a character separated file into a dataframe using mutable vectors.
 readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
-readSeparated c opts path = withFile path ReadMode $ \handle -> do
-    firstRow <- map decodeUtf8Lenient . parseSep c <$> C.hGetLine handle
-    let columnNames = if hasHeader opts
-                      then map (T.filter (/= '\"')) firstRow
-                      else map (T.singleton . intToDigit) [0..(length firstRow - 1)]
-    -- If there was no header rewind the file cursor.
-    unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
-
-    -- Initialize mutable vectors for each column
-    let numColumns = length columnNames
-    dataRow <- map decodeUtf8Lenient . parseSep c <$> C.hGetLine handle
+readSeparated c opts path = do
     totalRows <- countRows path
-    let actualRows = if hasHeader opts then totalRows - 1 else totalRows
-    nullIndices <- VM.unsafeNew numColumns
-    VM.set nullIndices []
-    mutableCols <- VM.unsafeNew numColumns
-    getInitialDataVectors actualRows mutableCols dataRow
+    withFile path ReadMode $ \handle -> do
+        firstRow <- map decodeUtf8Lenient . parseSep c <$> C.hGetLine handle
+        let columnNames = if hasHeader opts
+                        then map (T.filter (/= '\"')) firstRow
+                        else map (T.singleton . intToDigit) [0..(length firstRow - 1)]
+        -- If there was no header rewind the file cursor.
+        unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
 
-    -- Read rows into the mutable vectors
-    fillColumns actualRows c mutableCols nullIndices handle
+        -- Initialize mutable vectors for each column
+        let numColumns = length columnNames
+        dataRow <- map decodeUtf8Lenient . parseSep c <$> C.hGetLine handle
+        let actualRows = if hasHeader opts then totalRows - 1 else totalRows
+        nullIndices <- VM.unsafeNew numColumns
+        VM.set nullIndices []
+        mutableCols <- VM.unsafeNew numColumns
+        getInitialDataVectors actualRows mutableCols dataRow
 
-    -- Freeze the mutable vectors into immutable ones
-    nulls' <- V.unsafeFreeze nullIndices
-    cols <- V.mapM (freezeColumn mutableCols nulls' opts) (V.generate numColumns id)
-    return $ DataFrame {
-            columns = cols,
-            freeIndices = [],
-            columnIndices = M.fromList (zip columnNames [0..]),
-            dataframeDimensions = (maybe 0 columnLength (cols V.! 0), V.length cols)
-        }
+        -- Read rows into the mutable vectors
+        fillColumns actualRows c mutableCols nullIndices handle
+
+        -- Freeze the mutable vectors into immutable ones
+        nulls' <- V.unsafeFreeze nullIndices
+        cols <- V.mapM (freezeColumn mutableCols nulls' opts) (V.generate numColumns id)
+        return $ DataFrame {
+                columns = cols,
+                freeIndices = [],
+                columnIndices = M.fromList (zip columnNames [0..]),
+                dataframeDimensions = (maybe 0 columnLength (cols V.! 0), V.length cols)
+            }
+{-# INLINE readSeparated #-}
 
 getInitialDataVectors :: Int -> VM.IOVector Column -> [T.Text] -> IO ()
 getInitialDataVectors n mCol xs = do
@@ -105,6 +107,7 @@ getInitialDataVectors n mCol xs = do
                 "Double" -> MutableUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Double)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readDouble x) >> return c)
                 _ -> MutableBoxedColumn <$> ((VM.unsafeNew n :: IO (VM.IOVector T.Text)) >>= \c -> VM.unsafeWrite c 0 x >> return c)
         VM.unsafeWrite mCol i col
+{-# INLINE getInitialDataVectors #-}
 
 inferValueType :: T.Text -> T.Text
 inferValueType s = let
@@ -114,6 +117,7 @@ inferValueType s = let
         Nothing -> case readDouble example of
             Just _ -> "Double"
             Nothing -> "Other"
+{-# INLINE inferValueType #-}
 
 -- | Reads rows from the handle and stores values in mutable vectors.
 fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
@@ -123,6 +127,7 @@ fillColumns n c mutableCols nullIndices handle = do
         unless isEOF $ do
             row <- parseSep c <$> C.hGetLine handle
             zipWithM_ (writeValue mutableCols nullIndices i) [0..] row
+{-# INLINE fillColumns #-}
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
 writeValue :: VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> C.ByteString -> IO ()
@@ -131,12 +136,14 @@ writeValue mutableCols nullIndices count colIndex value = do
     res <- writeColumn count value col
     let modify value = VM.unsafeModify nullIndices ((count, value) :) colIndex
     either modify (const (return ())) res
+{-# INLINE writeValue #-}
 
 -- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
 freezeColumn :: VM.IOVector Column -> V.Vector [(Int, T.Text)] -> ReadOptions -> Int -> IO (Maybe Column)
 freezeColumn mutableCols nulls opts colIndex = do
     col <- VM.unsafeRead mutableCols colIndex
     Just <$> freezeColumn' (nulls V.! colIndex) col
+{-# INLINE freezeColumn #-}
 
 -- | Constructs a dataframe column, optionally inferring types.
 mkColumn :: ReadOptions -> V.Vector T.Text -> Maybe Column
@@ -146,21 +153,25 @@ mkColumn opts colData =
 
 parseSep :: Char -> C.ByteString -> [C.ByteString]
 parseSep c s = either error id (parseOnly (record c) s)
+{-# INLINE parseSep #-}
 
 record :: Char -> Parser [C.ByteString]
 record c =
    field c `sepBy1` char c
    <?> "record"
+{-# INLINE record #-}
 
 field :: Char -> Parser C.ByteString
 field c =
    quotedField <|> unquotedField c
    <?> "field"
+{-# INLINE field #-}
 
 unquotedField :: Char -> Parser C.ByteString
 unquotedField sep =
    takeWhile nonTerminal <?> "unquoted field"
    where nonTerminal = (`S.notMember` S.fromList [sep, '\n', '\r', '"'])
+{-# INLINE unquotedField #-}
 
 insideQuotes :: Parser C.ByteString
 insideQuotes =
@@ -171,17 +182,19 @@ insideQuotes =
       dquotes =
          string "\"\"" >> return '"'
          <?> "paired double quotes"
+{-# INLINE insideQuotes #-}
 
 quotedField :: Parser C.ByteString
 quotedField =
    char '"' *> insideQuotes <* char '"'
    <?> "quoted field"
+{-# INLINE quotedField #-}
 
 lineEnd :: Parser ()
 lineEnd =
    void (char '\n') <|> void (string "\r\n") <|> void (char '\r')
    <?> "end of line"
-
+{-# INLINE lineEnd #-}
 
 -- | First pass to count rows for exact allocation
 countRows :: FilePath -> IO Int
@@ -192,6 +205,7 @@ countRows path = withFile path ReadMode $ \handle -> do
             then return n
             else C.hGetLine handle >> loop (n + 1) 
     loop 0
+{-# INLINE countRows #-}
 
 writeCsv :: String -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
