@@ -6,84 +6,65 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Algorithms.Merge as VA
 
 import Control.Exception (throw)
+import Control.Monad.ST (runST)
 import Data.DataFrame.Errors (DataFrameException(..))
 import Data.DataFrame.Internal.Column
 import Data.DataFrame.Internal.DataFrame
 import Data.DataFrame.Internal.Types
+import Data.Function (on)
 
-type Row = [RowValue]
+type Row = V.Vector RowValue
 
 toRowList :: [T.Text] -> DataFrame -> [Row]
 toRowList names df = let
     nameSet = S.fromList names
   in map (mkRowRep df nameSet) [0..(fst (dataframeDimensions df) - 1)]
 
-mkRowFromArgs :: [T.Text] -> DataFrame -> Int -> [RowValue]
-mkRowFromArgs names df i = foldr go [] names
+toRowVector :: [T.Text] -> DataFrame -> V.Vector Row
+toRowVector names df = let
+    nameSet = S.fromList names
+  in V.generate (fst (dataframeDimensions df)) (mkRowRep df nameSet)
+
+mkRowFromArgs :: [T.Text] -> DataFrame -> Int -> Row
+mkRowFromArgs names df i = V.map get (V.fromList names)
   where
-    go name acc = case getColumn name df of
+    get name = case getColumn name df of
       Nothing -> throw $ ColumnNotFoundException name "[INTERNAL] mkRowFromArgs" (map fst $ M.toList $ columnIndices df)
-      Just (BoxedColumn column) -> toRowValue (column V.! i) : acc
-      Just (UnboxedColumn column) -> toRowValue (column VU.! i) : acc
+      Just (BoxedColumn column) -> toRowValue (column V.! i)
+      Just (UnboxedColumn column) -> toRowValue (column VU.! i)
 
 mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Row
-mkRowRep df names i = reverse $ V.ifoldl' go [] (columns df)
+mkRowRep df names i = V.generate (S.size names) (\index -> get index (names' V.! index))
   where
-    indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
-    go acc k Nothing = acc
-    go acc k (Just (BoxedColumn c)) =
-      if S.notMember (indexMap M.! k) names
-        then acc
-        else case c V.!? i of
-          Just e -> toRowValue e : acc
-          Nothing ->
-            error $
-              "Column "
-                ++ T.unpack (indexMap M.! k)
+    inOrderIndexes = map fst $ L.sortBy (compare `on` snd) $ M.toList (columnIndices df)
+    names' = V.fromList [n | n <- inOrderIndexes, S.member n names]
+    throwError name = error $ "Column "
+                ++ T.unpack name
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
-    go acc k (Just (UnboxedColumn c)) =
-      if S.notMember (indexMap M.! k) names
-        then acc
-        else case c VU.!? i of
-          Just e -> toRowValue e : acc
-          Nothing ->
-            error $
-              "Column "
-                ++ T.unpack (indexMap M.! k)
-                ++ " has less items than "
-                ++ "the other columns at index "
-                ++ show i
-    go acc k (Just (GroupedBoxedColumn c)) =
-      if S.notMember (indexMap M.! k) names
-        then acc
-        else case c V.!? i of
-          Just e -> toRowValue e : acc
-          Nothing ->
-            error $
-              "Column "
-                ++ T.unpack (indexMap M.! k)
-                ++ " has less items than "
-                ++ "the other columns at index "
-                ++ show i
-    go acc k (Just (GroupedUnboxedColumn c)) =
-      if S.notMember (indexMap M.! k) names
-        then acc
-        else case c V.!? i of
-          Just e -> toRowValue e : acc
-          Nothing ->
-            error $
-              "Column "
-                ++ T.unpack (indexMap M.! k)
-                ++ " has less items than "
-                ++ "the other columns at index "
-                ++ show i
+    get index name = case getColumn name df of 
+      Just (BoxedColumn c) -> case c V.!? index of
+        Just e -> toRowValue e
+        Nothing -> throwError name
+      Just (UnboxedColumn c) -> case c VU.!? index of
+        Just e -> toRowValue e
+        Nothing -> throwError name
+      Just (GroupedBoxedColumn c) -> case c V.!? index of
+        Just e -> toRowValue e
+        Nothing -> throwError name
+      Just (GroupedUnboxedColumn c) -> case c V.!? index of
+        Just e -> toRowValue e
+        Nothing -> throwError name
 
-sortedIndexes' :: Bool -> [Row] -> VU.Vector Int
-sortedIndexes' asc rows = VU.fromList
-                        $ map fst
-                        $ L.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') (zip [0..] rows)
+sortedIndexes' :: Bool -> V.Vector Row -> VU.Vector Int
+sortedIndexes' asc rows = runST $ do
+  withIndexes <- VG.thaw (V.indexed rows)
+  VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
+  sorted <- VG.unsafeFreeze withIndexes
+  return $ VU.generate (VG.length rows) (\i -> fst (sorted VG.! i))

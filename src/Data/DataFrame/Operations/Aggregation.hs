@@ -33,7 +33,7 @@ import Data.Function ((&))
 import Data.Hashable
 import Data.Maybe
 import Data.Type.Equality (type (:~:)(Refl), TestEquality(..))
-import Type.Reflection (typeRep)
+import Type.Reflection (typeRep, typeOf)
 
 -- | O(k * n) groups the dataframe by the given rows aggregating the remaining rows
 -- into vector that should be reduced later.
@@ -75,15 +75,15 @@ groupBy names df
     groupingColumns = columnNames df L.\\ names
 
 mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Int
-mkRowRep df names i = hash $ V.ifoldl' go "" (columns df)
+mkRowRep df names i = hash $ V.ifoldl' go [] (columns df)
   where
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
     go acc k Nothing = acc
-    go acc k (Just (BoxedColumn c)) =
+    go acc k (Just (BoxedColumn (c :: V.Vector a))) =
       if S.notMember (indexMap M.! k) names
         then acc
         else case c V.!? i of
-          Just e -> acc <> (T.pack . show) e
+          Just e -> hash' @a e : acc
           Nothing ->
             error $
               "Column "
@@ -91,11 +91,11 @@ mkRowRep df names i = hash $ V.ifoldl' go "" (columns df)
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
-    go acc k (Just (UnboxedColumn c)) =
+    go acc k (Just (UnboxedColumn (c :: VU.Vector a))) =
       if S.notMember (indexMap M.! k) names
         then acc
         else case c VU.!? i of
-          Just e -> acc <> (T.pack . show) e
+          Just e -> hash' @a e : acc
           Nothing ->
             error $
               "Column "
@@ -103,6 +103,17 @@ mkRowRep df names i = hash $ V.ifoldl' go "" (columns df)
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
+
+-- | This hash function returns the hash when given a non numeric type but
+-- the value when given a numeric.
+hash' :: Columnable a => a -> Double
+hash' value = case testEquality (typeOf value) (typeRep @Double) of
+  Just Refl -> value
+  Nothing -> case testEquality (typeOf value) (typeRep @Int) of
+    Just Refl -> fromIntegral value
+    Nothing -> case testEquality (typeOf value) (typeRep @T.Text) of
+      Just Refl -> fromIntegral $ hash value
+      Nothing -> fromIntegral $ hash (show value)
 
 mkGroupedColumns :: VU.Vector Int -> DataFrame -> DataFrame -> T.Text -> DataFrame
 mkGroupedColumns indices df acc name =

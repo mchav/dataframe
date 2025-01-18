@@ -28,6 +28,6 @@ sortBy order names df
   | otherwise = let
       -- TODO: Remove the SortOrder defintion from operations so we can share it between here and internal and
       -- we don't have to do this Bool mapping.
-      indexes = sortedIndexes' (order == Ascending) (toRowList names df)
+      indexes = sortedIndexes' (order == Ascending) (toRowVector names df)
       pick idxs col = atIndicesStable idxs <$> col
     in df {columns = V.map (pick indexes) (columns df)}

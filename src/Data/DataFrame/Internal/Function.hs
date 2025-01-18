@@ -6,10 +6,13 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Data.DataFrame.Internal.Function where
 
 import qualified Data.Text as T
+import qualified Data.Vector as V
 
 import Data.DataFrame.Internal.Types
 import Data.Typeable ( Typeable, type (:~:)(Refl) )
@@ -52,19 +55,29 @@ instance {-# INCOHERENT #-} (Columnable a, Columnable b, Columnable c, Columnabl
 func :: forall fn . WrapFunction fn => fn -> Function
 func = wrapFunction
 
-funcApply :: forall c . (Columnable c) => [RowValue] -> Function ->  c
-funcApply [] _ = error "Empty args"
-funcApply [Value (x :: a')] (F1 (f :: (a -> b))) = case testEquality (typeRep @a') (typeRep @a) of
+pattern Empty :: V.Vector a
+pattern Empty <- (V.null -> True) where Empty = V.empty 
+
+uncons :: V.Vector a -> Maybe (a, V.Vector a)
+uncons Empty = Nothing
+uncons v     = Just (V.unsafeHead v, V.unsafeTail v)
+
+pattern (:<|)  :: a -> V.Vector a -> V.Vector a
+pattern x :<| xs <- (uncons -> Just (x, xs))
+
+funcApply :: forall c . (Columnable c) => V.Vector RowValue -> Function ->  c
+funcApply Empty _ = error "Empty args"
+funcApply (Value (x :: a') :<| Empty) (F1 (f :: (a -> b))) = case testEquality (typeRep @a') (typeRep @a) of
         Just Refl -> case testEquality (typeOf (f x)) (typeRep @c) of
             Just Refl -> f x
             Nothing -> error "Result type mismatch"
         Nothing -> error "Arg type mismatch"
-funcApply (Value (x :: a') : xs) (F2 (f :: (a -> b))) = case testEquality (typeOf x) (typeRep @a) of
+funcApply (Value (x :: a') :<| xs) (F2 (f :: (a -> b))) = case testEquality (typeOf x) (typeRep @a) of
         Just Refl -> funcApply xs (F1 (f x))
         Nothing -> error "Arg type mismatch"
-funcApply (Value (x :: a') : xs) (F3 (f :: (a -> b))) = case testEquality (typeOf x) (typeRep @a) of
+funcApply (Value (x :: a') :<| xs) (F3 (f :: (a -> b))) = case testEquality (typeOf x) (typeRep @a) of
         Just Refl -> funcApply xs (F2 (f x))
         Nothing -> error "Arg type mismatch"
-funcApply (Value (x :: a') : xs) (F4 (f :: (a -> b))) = case testEquality (typeOf x) (typeRep @a) of
+funcApply (Value (x :: a') :<| xs) (F4 (f :: (a -> b))) = case testEquality (typeOf x) (typeRep @a) of
         Just Refl -> funcApply xs (F3 (f x))
         Nothing -> error "Arg type mismatch"
