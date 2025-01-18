@@ -25,8 +25,8 @@ data Function where
     F2 :: forall a b c . (Columnable a, Columnable b, Columnable c) => (a -> b -> c) -> Function
     F3 :: forall a b c d . (Columnable a, Columnable b, Columnable c, Columnable d) => (a -> b -> c -> d) -> Function
     F4 :: forall a b c d e . (Columnable a, Columnable b, Columnable c, Columnable d, Columnable e) => (a -> b -> c -> d -> e) -> Function
-    Cond :: forall a . (Typeable a, Show a, Ord a) => (a -> Bool) -> Function
-    ICond :: forall a . (Typeable a, Show a, Ord a) => (Int -> a -> Bool) -> Function
+    Cond :: forall a . (Columnable a) => (a -> Bool) -> Function
+    ICond :: forall a . (Columnable a) => (Int -> a -> Bool) -> Function
 
 -- Helper class to do the actual wrapping
 class WrapFunction a where
