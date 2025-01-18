@@ -69,7 +69,7 @@ readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
 readSeparated c opts path = do
     totalRows <- countRows path
     withFile path ReadMode $ \handle -> do
-        firstRow <- map decodeUtf8Lenient . parseSep c <$> C.hGetLine handle
+        firstRow <- map (decodeUtf8Lenient . C.strip) . parseSep c <$> C.hGetLine handle
         let columnNames = if hasHeader opts
                         then map (T.filter (/= '\"')) firstRow
                         else map (T.singleton . intToDigit) [0..(length firstRow - 1)]
@@ -78,7 +78,7 @@ readSeparated c opts path = do
 
         -- Initialize mutable vectors for each column
         let numColumns = length columnNames
-        dataRow <- map decodeUtf8Lenient . parseSep c <$> C.hGetLine handle
+        dataRow <- map (decodeUtf8Lenient . C.strip) . parseSep c <$> C.hGetLine handle
         let actualRows = if hasHeader opts then totalRows - 1 else totalRows
         nullIndices <- VM.unsafeNew numColumns
         VM.set nullIndices []

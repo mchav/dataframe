@@ -338,7 +338,7 @@ zipColumns (UnboxedColumn column) (UnboxedColumn other) = UnboxedColumn (VU.gene
 -- Clean this up.
 writeColumn :: Int -> C.ByteString -> Column -> IO (Either T.Text Bool)
 writeColumn i value' (MutableBoxedColumn (col :: VBM.IOVector a)) = let
-    value = decodeUtf8Lenient value'
+    value = (decodeUtf8Lenient . C.strip) value'
   in case testEquality (typeRep @a) (typeRep @T.Text) of
       Just Refl -> (if isNullish value
                     then VBM.unsafeWrite col i "" >> return (Left value)
