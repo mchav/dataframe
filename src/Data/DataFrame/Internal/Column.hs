@@ -109,29 +109,27 @@ columnLength (BoxedColumn xs) = VG.length xs
 columnLength (UnboxedColumn xs) = VG.length xs
 columnLength (GroupedBoxedColumn xs) = VG.length xs
 columnLength (GroupedUnboxedColumn xs) = VG.length xs
+{-# INLINE columnLength #-}
 
 takeColumn :: Int -> Column -> Column
 takeColumn n (BoxedColumn xs) = BoxedColumn $ VG.take n xs
 takeColumn n (UnboxedColumn xs) = UnboxedColumn $ VG.take n xs
 takeColumn n (GroupedBoxedColumn xs) = GroupedBoxedColumn $ VG.take n xs
 takeColumn n (GroupedUnboxedColumn xs) = GroupedUnboxedColumn $ VG.take n xs
+{-# INLINE takeColumn #-}
 
 -- TODO: Maybe we can remvoe all this boilerplate and make
 -- transform take in a generic vector function.
 takeLastColumn :: Int -> Column -> Column
-takeLastColumn n column = let
-    slice n ys = VG.slice (VG.length ys - n) n ys
-  in case column of
-    (BoxedColumn xs) -> BoxedColumn $ slice n xs
-    (UnboxedColumn xs) -> UnboxedColumn $ slice n xs
-    (GroupedBoxedColumn xs) -> GroupedBoxedColumn $ slice n xs
-    (GroupedUnboxedColumn xs) -> GroupedUnboxedColumn $ slice n xs
+takeLastColumn n column = sliceColumn (columnLength column - n) n column
+{-# INLINE takeLastColumn #-}
 
 sliceColumn :: Int -> Int -> Column -> Column
 sliceColumn start n (BoxedColumn xs) = BoxedColumn $ VG.slice start n xs
 sliceColumn start n (UnboxedColumn xs) = UnboxedColumn $ VG.slice start n xs
 sliceColumn start n (GroupedBoxedColumn xs) = GroupedBoxedColumn $ VG.slice start n xs
 sliceColumn start n (GroupedUnboxedColumn xs) = GroupedUnboxedColumn $ VG.slice start n xs
+{-# INLINE sliceColumn #-}
 
 -- TODO: We can probably generalize this to `applyVectorFunction`.
 atIndices :: S.Set Int -> Column -> Column
@@ -139,12 +137,14 @@ atIndices indexes (BoxedColumn column) = BoxedColumn $ VG.ifilter (\i _ -> i `S.
 atIndices indexes (UnboxedColumn column) = UnboxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
 atIndices indexes (GroupedBoxedColumn column) = GroupedBoxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
 atIndices indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
+{-# INLINE atIndices #-}
 
 atIndicesStable :: VU.Vector Int -> Column -> Column
 atIndicesStable indexes (BoxedColumn column) = BoxedColumn $ indexes `getIndices` column
 atIndicesStable indexes (UnboxedColumn column) = UnboxedColumn $ indexes `getIndicesUnboxed` column
 atIndicesStable indexes (GroupedBoxedColumn column) = GroupedBoxedColumn $ indexes `getIndices` column
 atIndicesStable indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ indexes `getIndices` column
+{-# INLINE atIndicesStable #-}
 
 getIndices :: VU.Vector Int -> VB.Vector a -> VB.Vector a
 getIndices indices xs = VB.generate (VU.length indices) (\i -> xs VB.! (indices VU.! i))
