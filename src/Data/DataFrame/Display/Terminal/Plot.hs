@@ -3,7 +3,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TupleSections #-}
 module Data.DataFrame.Display.Terminal.Plot where
@@ -136,16 +135,8 @@ plotGivenCounts cname counts = do
     let border = "|" ++ replicate (longestLabelLength + length (show maxValue) + longestBar + 6) '-' ++ "|"
     body <- forM counts $ \(label, count) -> do
         let barChunks = fromIntegral $ (count * fromIntegral n `div` increment) `div` fromIntegral n
-        let remainder = fromIntegral $ (count * fromIntegral n `div` increment) `rem` fromIntegral n
-        
-#       ifdef mingw32_HOST_OS
-        -- Windows doesn't deal well with the fractional unicode types.
-        -- They may use a different encoding.
-        let fractional = []
-#       else
+        let remainder = fromIntegral $ (count * fromIntegral n `div` increment) `rem` fromIntegral n      
         let fractional = ([chr (ord '█' + n - remainder - 1) | remainder > 0])
-#       endif
-
         let bar = replicate barChunks '█' ++ fractional
         let disp = if null bar then "| " else bar
         let hist=  "|" ++ brightGreen (leftJustify label longestLabelLength) ++ " | " ++
@@ -170,15 +161,7 @@ plotVerticalGivenCounts cname counts' = do
     body <- forM counts $ \(label, count) -> do
         let barChunks = fromIntegral $ (count * fromIntegral n `div` increment) `div` fromIntegral n
         let remainder = fromIntegral $ (count * fromIntegral n `div` increment) `rem` fromIntegral n
-
-#       ifdef mingw32_HOST_OS
-        -- Windows doesn't deal well with the fractional unicode types.
-        -- They may use a different encoding.
-        let fractional = []
-#       else
         let fractional = ([chr (ord '█' - (n - remainder - 1)) | remainder > 0])
-#       endif
-
         let bar = replicate barChunks '█' ++ fractional
         let disp = if null bar then "| " else bar
         let hist = "‾" ++ bar
@@ -211,15 +194,7 @@ plotGivenCounts' cname counts = do
     body <- forM counts $ \((plotCol, byCol), count) -> do
         let barChunks = fromIntegral $ (count * fromIntegral n `div` increment) `div` fromIntegral n
         let remainder = fromIntegral $ (count * fromIntegral n `div` increment) `rem` fromIntegral n
-        
-#       ifdef mingw32_HOST_OS
-        -- Windows doesn't deal well with the fractional unicode types.
-        -- They may use a different encoding.
-        let fractional = []
-#       else
         let fractional = ([chr (ord '█' + n - remainder - 1) | remainder > 0])
-#       endif
-
         let bar = replicate barChunks '█' ++ fractional
         let disp = if null bar then "| " else bar
         let label = plotCol ++ " " ++ byCol
