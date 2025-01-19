@@ -24,7 +24,7 @@ sortBy ::
   DataFrame ->
   DataFrame
 sortBy order names df
-  | not $ any (`elem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "sortBy" (columnNames df)
+  | any (`notElem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "sortBy" (columnNames df)
   | otherwise = let
       -- TODO: Remove the SortOrder defintion from operations so we can share it between here and internal and
       -- we don't have to do this Bool mapping.

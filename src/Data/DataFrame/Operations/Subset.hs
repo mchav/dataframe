@@ -84,7 +84,7 @@ select ::
   DataFrame
 select cs df
   | L.null cs = empty
-  | not $ any (`elem` columnNames df) cs = throw $ ColumnNotFoundException (T.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
+  | any (`notElem` columnNames df) cs = throw $ ColumnNotFoundException (T.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
   | otherwise = L.foldl' addKeyValue empty cs
   where
     cIndexAssoc = M.toList $ columnIndices df

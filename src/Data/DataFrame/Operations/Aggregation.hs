@@ -42,7 +42,7 @@ groupBy ::
   DataFrame ->
   DataFrame
 groupBy names df
-  | not $ any (`elem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
+  | any (`notElem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
   | otherwise = L.foldl' insertColumns initDf groupingColumns
   where
     -- Create a string representation of each row.

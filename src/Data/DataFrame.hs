@@ -8,7 +8,7 @@ import Data.DataFrame.Internal.Types as D
 import Data.DataFrame.Internal.Function as D
 import Data.DataFrame.Internal.Parsing as D
 import Data.DataFrame.Internal.Column as D
-import Data.DataFrame.Internal.DataFrame as D
+import Data.DataFrame.Internal.DataFrame as D hiding (columnIndices, columns)
 import Data.DataFrame.Internal.Row as D hiding (mkRowRep)
 import Data.DataFrame.Errors as D
 import Data.DataFrame.Operations.Core as D
