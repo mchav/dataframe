@@ -5,7 +5,7 @@ Exploratory data analysis (EDA), in brief, is what you do when you first get a d
 * check for completeness/correctness of data.
 * understand the relationships between the explanatory variables.
 * understand the relationship between the explanatory and outcome variables.
-* preliminary determine what models would be appropriate for our data. 
+* preliminarily determine what models would be appropriate for our data. 
 
 It's important for EDA tools to be feature-rich and intuitive so we can answer many different kinds of questions about the data without the tool getting in the way.
 
@@ -15,13 +15,13 @@ There are four types of explanatory data analysis:
 * univariate non-graphical analysis
 * multivariate non-graphical analysis
 * univariate graphical analysis
-* multivariate non-graphical analysis
+* multivariate graphical analysis
 
 We will look at each type of EDA and describe how we can use dataframe for each type. We'll be using the [California Housing Dataset](https://www.kaggle.com/datasets/camnugent/california-housing-prices) to demonstrate the concepts as we explain them.
 
 ## Univariate non-graphical analysis
 
-Univariate non-graphical analysis should give us a sense of the distribution of our datasets variables. In the real world our variables are measurable characteristics. How they are distributed (the "sample distribution") and this may often help us estimate the overall distribution ("population distribution") of the variable. For example, if our variable was finishing times for a race, our analysis should be able to answer questions like what was the slowest time, what time did people tend to run, who was the fastest, were all times recorded etc.
+Univariate non-graphical analysis should give us a sense of the distribution of our dataset's variables. In the real world our variables are measurable characteristics. How they are distributed (the "sample distribution") and this may often help us estimate the overall distribution ("population distribution") of the variable. For example, if our variable was finishing times for a race, our analysis should be able to answer questions like what was the slowest time, what time did people tend to run, who was the fastest, were all times recorded etc.
 
 For categorical data the best univariate non-graphical analysis is a tabulation of the frequency of each category.
 
@@ -38,7 +38,7 @@ index |   Statistic    | <1H OCEAN | INLAND  | ISLAND  | NEAR BAY | NEAR OCEAN
 1     | Percentage (%) | 44        | 31      | 0       | 11       | 12
 ```
 
-We can also plot similar tables for non-categorical data with a small value set e.g show sizes.
+We can also plot similar tables for non-categorical data with a small value set e.g shoe sizes.
 
 For quantitative data our goal is to understand the population distribution through our sample distribution. For a given quantitative variable we typically care about its:
 
@@ -73,7 +73,7 @@ index |    Column Name     | # Non-null Values | # Null Values |     Type
 9     | longitude          | 20640             | 0             | Double
 ```
 
-It seems we have most of the data except some missing total bedrooms. Dealing with nulls is a separate topic that requires a lot of and intimate knowledge of the data. So for this initial pass we'll leave out the total_bedrooms variable.
+It seems we have most of the data except some missing total bedrooms. Dealing with nulls is a separate topic that requires intimate knowledge of the data. So for this initial pass we'll leave out the total_bedrooms variable.
 
 ### Central tendency
 The central tendency of a distribution describes a "typical" value of that distribution. The most common statistical measures of central tendency are arithmetic mean and median. For symmetric distributions the mean and the median are the same. But for a skewed distribution the mean is pulled towards the "heavier" side wherease the median is more robust to these changes.
@@ -87,10 +87,10 @@ ghci> D.median "housing_median_age" df
 Just 29.0
 ```
 
-Note: the values are displayed with a `Just` because they are optional values. Trying to get the mean or median of a non-numeric column would return `Nothing`.
+Note: the values are displayed with a `Just` to denote that they may not be computable or not exist. Trying to get the mean or median of a non-numeric column would return `Nothing`. `Nothing` is similar to `NULL` in SQL.
 
 ### Spread
-Spread is a measure of how away from the center we are still likely to find data values. There are three main measures of spread: variance, mean absolute deviation, standard deviation, and interquartile range.
+Spread is a measure of how far away from the center we are still likely to find data values. There are three main measures of spread: variance, mean absolute deviation, standard deviation, and interquartile range.
 
 ### Mean absolute deviation
 We start by looking at mean absolute deviation since it's the simplest measure of spread. The mean absolute deviation measures how far from the average values are on average. We calcuate it by taking the absolute value of the difference between each observation and the mean of that variable, then finally taking the average of those.
@@ -134,7 +134,7 @@ What if we give more weight to the further deviations?
 
 
 ### Standard deviation
-That's what standard deviation aims to do. Standard deviation considers the spread of outliers. Instead of calculating the absolute difference of each observation from the mean we calculate the square of the difference. We still take the average and then finally we take the square root of the result.
+That's what standard deviation aims to do. Standard deviation considers the spread of outliers. Instead of calculating the absolute difference of each observation from the mean we calculate the square of the difference. This has the effect of exaggerating further outliers.
 
 ```haskell
 ghci> sumOfSqureDifferences = fromMaybe 0 $ D.sum "deviation" withDeviation 
@@ -142,7 +142,7 @@ ghci> n = fromIntegral $ (fst $ D.dimensions df) - 1
 ghci> sqrt (sumOfSqureDifferences / n)
 115395.6158744
 ```
-The standard deviation being larger than the mean absolute deviation means we do have some outliers. However, since the difference is fairly small. So we can conclude that there aren't very many outliers in our dataset.
+The standard deviation being larger than the mean absolute deviation means we do have some outliers. However, since the difference is fairly small we can conclude that there aren't very many outliers in our dataset.
 
 We can calculate the standard deviation in one line as follows:
 
@@ -166,7 +166,7 @@ Just 145158.3333333336
 This is larger than the standard deviation but not by much. This means that outliers don't have a significant influence on the distribution and most values are close to typical.
 
 ### Variance
-Variance is the square of the standard deviation. It is much more sensitive to outliers. But because it's not in the same units as our original variable (it is in units squared) it's much more difficult to interpret.
+Variance is the square of the standard deviation. It is much more sensitive to outliers. Variance does not have the same units as our original variable (it is in units squared). Therefore, it's much more difficult to interpret.
 
 In our example it's a very large number:
 
