@@ -138,10 +138,11 @@ insertColumnWithDefault defaultValue name xs d =
 
 -- TODO: Add existence check in rename.
 rename :: T.Text -> T.Text -> DataFrame -> DataFrame
-rename orig new df = let
-    columnIndex = (M.!) (columnIndices df) orig
-    newColumnIndices = M.insert new columnIndex (M.delete orig (columnIndices df))
-  in df { columnIndices = newColumnIndices}
+rename orig new df = fromMaybe (throw $ ColumnNotFoundException orig "rename" (map fst $ M.toList $ columnIndices df)) $ do
+  columnIndex <- M.lookup orig (columnIndices df)
+  let origRemoved = M.delete orig (columnIndices df)
+  let newAdded = M.insert new columnIndex origRemoved
+  return df { columnIndices = newAdded }
 
 -- | O(1) Get the number of elements in a given column.
 columnSize :: T.Text -> DataFrame -> Maybe Int
