@@ -78,15 +78,22 @@ readSeparated c opts path = do
 
         -- Initialize mutable vectors for each column
         let numColumns = length columnNames
+        let numRows = if hasHeader opts then totalRows - 1 else totalRows
+        -- Use this row to infer the types of the rest of the column.
+        -- TODO: this isn't robust but in so far as this is a guess anyway
+        -- it's probably fine. But we should probably sample n rows and pick
+        -- the most likely type from the sample.
         dataRow <- map (decodeUtf8Lenient . C.strip) . parseSep c <$> C.hGetLine handle
-        let actualRows = if hasHeader opts then totalRows - 1 else totalRows
+
+        -- This array will track the indices of all null values for each column.
+        -- If any exist then the column will be an optional type.
         nullIndices <- VM.unsafeNew numColumns
         VM.set nullIndices []
         mutableCols <- VM.unsafeNew numColumns
-        getInitialDataVectors actualRows mutableCols dataRow
+        getInitialDataVectors numRows mutableCols dataRow
 
         -- Read rows into the mutable vectors
-        fillColumns actualRows c mutableCols nullIndices handle
+        fillColumns numRows c mutableCols nullIndices handle
 
         -- Freeze the mutable vectors into immutable ones
         nulls' <- V.unsafeFreeze nullIndices
