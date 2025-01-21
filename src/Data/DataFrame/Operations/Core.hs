@@ -148,16 +148,26 @@ rename orig new df = fromMaybe (throw $ ColumnNotFoundException orig "rename" (m
 columnSize :: T.Text -> DataFrame -> Maybe Int
 columnSize name df = columnLength <$> getColumn name df
 
+data ColumnInfo = ColumnInfo {
+    nameOfColumn :: !T.Text,
+    nonNullValues :: !Int,
+    nullValues :: !Int,
+    partiallyParsedValues :: !Int,
+    uniqueValues :: !Int,
+    typeOfColumn :: !T.Text
+  }
+
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
 columnInfo :: DataFrame -> DataFrame
-columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map fst' triples))
-                      & insertColumn' "# Non-null Values" (Just $ toColumn (map snd' triples))
-                      & insertColumn' "# Null Values" (Just $ toColumn (map thd' triples))
-                      & insertColumn' "# Partially parsed" (Just $ toColumn (map fth' triples))
-                      & insertColumn' "Type" (Just $ toColumn (map ffth' triples))
+columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map nameOfColumn infos))
+                      & insertColumn' "# Non-null Values" (Just $ toColumn (map nonNullValues infos))
+                      & insertColumn' "# Null Values" (Just $ toColumn (map nullValues infos))
+                      & insertColumn' "# Partially parsed" (Just $ toColumn (map partiallyParsedValues infos))
+                      & insertColumn' "# Unique Values" (Just $ toColumn (map uniqueValues infos))
+                      & insertColumn' "Type" (Just $ toColumn (map typeOfColumn infos))
   where
-    triples = L.sortBy (compare `on` snd') (V.ifoldl' go [] (columns df)) :: [(T.Text, Int,  Int, Int, T.Text)]
+    infos = L.sortBy (compare `on` nonNullValues) (V.ifoldl' go [] (columns df)) :: [ColumnInfo]
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
     columnName i = indexMap M.! i
     go acc i Nothing = acc
@@ -166,19 +176,15 @@ columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map fst' t
         countNulls = nulls col
         countPartial = partiallyParsed col
         columnType = T.pack $ show $ typeRep @a
-      in (cname, columnLength col - countNulls, countNulls, countPartial, columnType) : acc
+        unique = S.size $ VG.foldr S.insert S.empty c
+      in ColumnInfo cname (columnLength col - countNulls) countNulls countPartial unique columnType : acc
     go acc i (Just col@(UnboxedColumn c)) = let
         cname = columnName i
         columnType = T.pack $ columnTypeString col
+        unique = S.size $ VG.foldr S.insert S.empty c
         -- Unboxed columns cannot have nulls since Maybe
         -- is not an instance of Unbox a
-      in (cname, columnLength col, 0, 0, columnType) : acc
-    fst'  (!x, _, _, _, _) = x
-    snd'  (_, !x, _, _, _) = x
-    thd'  (_, _, !x, _, _) = x
-    fth'  (_, _, _, !x, _) = x
-    ffth' (_, _, _, _, !x) = x
-
+      in ColumnInfo cname (columnLength col) 0 0 unique columnType : acc
 
 nulls :: Column -> Int
 nulls (BoxedColumn (xs :: V.Vector a)) = case testEquality (typeRep @a) (typeRep @T.Text) of
