@@ -36,14 +36,27 @@ takeLast n d = d {columns = V.map (takeLastColumn n' <$>) (columns d), dataframe
     (r, c) = dataframeDimensions d
     n' = clip n 0 r
 
-clip :: Int -> Int -> Int -> Int
-clip n left right = min right $ max n left
+drop :: Int -> DataFrame -> DataFrame
+drop n d = d {columns = V.map (sliceColumn n' (max (r - n') 0) <$>) (columns d), dataframeDimensions = (max (r - n') 0, c)}
+  where
+    (r, c) = dataframeDimensions d
+    n' = clip n 0 r
+
+dropLast :: Int -> DataFrame -> DataFrame
+dropLast n d = d {columns = V.map (sliceColumn 0 n' <$>) (columns d), dataframeDimensions = (n', c)}
+  where
+    (r, c) = dataframeDimensions d
+    n' = clip (r - n) 0 r
 
 -- | O(k * n) Take a range of rows of a DataFrame.
 range :: (Int, Int) -> DataFrame -> DataFrame
-range (start, end) d = d {columns = V.map (sliceColumn start (end - start) <$>) (columns d), dataframeDimensions = (min (max (end - start) 0) r, c)}
+range (start, end) d = d {columns = V.map (sliceColumn (clip start 0 r) n' <$>) (columns d), dataframeDimensions = (n', c)}
   where
     (r, c) = dataframeDimensions d
+    n' = clip (end - start) 0 r
+
+clip :: Int -> Int -> Int -> Int
+clip n left right = min right $ max n left
 
 -- | O(n * k) Filter rows by a given condition.
 filter ::
@@ -102,7 +115,7 @@ select cs df
 
 -- | O(n) select columns by index range of column names.
 selectIntRange :: (Int, Int) -> DataFrame -> DataFrame
-selectIntRange (from, to) df = select (Prelude.take (to - from + 1) $ drop from (columnNames df)) df
+selectIntRange (from, to) df = select (Prelude.take (to - from + 1) $ Prelude.drop from (columnNames df)) df
 
 -- | O(n) select columns by index range of column names.
 selectRange :: (T.Text, T.Text) -> DataFrame -> DataFrame
@@ -114,7 +127,7 @@ selectBy f df = select (L.filter f (columnNames df)) df
 
 -- | O(n) inverse of select
 --
--- > drop ["Name"] df
+-- > exclude ["Name"] df
 exclude ::
   [T.Text] ->
   DataFrame ->
