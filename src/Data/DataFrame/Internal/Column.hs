@@ -321,6 +321,7 @@ safeReduceColumn f (BoxedColumn (column :: c)) = do
 safeReduceColumn f (UnboxedColumn (column :: c)) = do
   Refl <- testEquality (typeRep @c) (typeRep @a)
   return $ f column
+{-# INLINE safeReduceColumn #-}
 
 longZipColumns :: Column -> Column -> Column
 longZipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (VB.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
