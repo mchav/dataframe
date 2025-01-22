@@ -73,7 +73,12 @@ interQuartileRange :: T.Text -> DataFrame -> Maybe Double
 interQuartileRange = applyStatistic (SS.midspread SS.medianUnbiased 4)
 
 correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
-correlation first second df = reduceColumn @(VU.Vector (Double, Double)) SS.correlation <$> (zipColumns <$> getColumn first df <*> getColumn second df)
+correlation first second df = do
+  (UnboxedColumn (f :: VU.Vector a)) <- getColumn first df
+  (UnboxedColumn (s :: VU.Vector b)) <- getColumn second df
+  Refl <- testEquality (typeRep @a) (typeRep @Double)
+  Refl <- testEquality (typeRep @b) (typeRep @Double)
+  return $ SS.correlation2 f s
 
 sum :: T.Text -> DataFrame -> Maybe Double
 sum name df = case getColumn name df of
