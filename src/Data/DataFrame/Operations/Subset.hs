@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -101,7 +102,7 @@ select cs df
   | otherwise = L.foldl' addKeyValue empty cs
   where
     cIndexAssoc = M.toList $ columnIndices df
-    remaining = L.filter (\(c, i) -> c `elem` cs) cIndexAssoc
+    remaining = L.filter (\(!c, _) -> c `elem` cs) cIndexAssoc
     removed = cIndexAssoc L.\\ remaining
     indexes = map snd remaining
     (r, c) = dataframeDimensions df
