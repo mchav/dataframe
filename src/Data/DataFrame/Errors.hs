@@ -59,9 +59,9 @@ typeMismatchError' givenType expectedType =
     red "\n\n[Error]: Type Mismatch"
       ++ "\n\tWhile running your code I tried to "
       ++ "get a column of type: "
-      ++ green (show givenType)
+      ++ red (show givenType)
       ++ " but column was of type: "
-      ++ red (show expectedType)
+      ++ green (show expectedType)
 
 addCallPointInfo :: T.Text -> Maybe T.Text -> String -> String
 addCallPointInfo name (Just cp) err =
