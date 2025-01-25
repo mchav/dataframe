@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE GADTs #-}
 module Data.DataFrame.Operations.Subset where
 
 import qualified Data.List as L
@@ -12,6 +13,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Generic as VG
+import qualified Prelude
 
 import Control.Exception (throw)
 import Data.DataFrame.Errors (DataFrameException(..))
@@ -20,9 +22,11 @@ import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
 import Data.DataFrame.Internal.Row (mkRowFromArgs)
 import Data.DataFrame.Internal.Types (Columnable, RowValue, toRowValue)
 import Data.DataFrame.Operations.Core
-import Prelude hiding (filter)
-import Type.Reflection (typeRep)
+import Prelude hiding (filter, take)
+import Type.Reflection
 import Data.DataFrame.Internal.Function
+import Data.Maybe (isJust, fromMaybe)
+import Data.DataFrame.Operations.Transformations (apply)
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
@@ -88,6 +92,23 @@ filterWhere (args, f) df = let
     c' = snd $ dataframeDimensions df
     pick idxs col = atIndices idxs <$> col
   in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
+
+
+filterJust :: T.Text -> DataFrame -> DataFrame
+filterJust name df = case getColumn name df of
+  Nothing -> throw $ ColumnNotFoundException name "extractNonEmpty" (map fst $ M.toList $ columnIndices df)
+  Just column@(BoxedColumn (col :: V.Vector a)) -> case typeRep @a of
+    App t1 t2 -> case eqTypeRep t1 (typeRep @Maybe) of
+      Just HRefl -> filter @a name isJust df
+      Nothing -> throw $ TypeMismatchException' (typeRep @a) (columnTypeString column) name "filterJust"
+
+
+-- | O(k) cuts the dataframe in a cube of size (a, b) where
+--   a is the length and b is the width.   
+--
+-- > cube (10, 5) df
+cube :: (Int, Int) -> DataFrame -> DataFrame
+cube (length, width) = take length . selectIntRange (0, width - 1)
 
 -- | O(n) Selects a number of columns in a given dataframe.
 --
