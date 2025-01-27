@@ -53,9 +53,14 @@ filterColumnInexistentValues = TestCase (assertEqual "Non existent filter value 
                                 (D.dimensions $ D.filter @Int "test1" (<0) testData))
 
 filterColumnAllValues :: Test
-filterColumnAllValues = TestCase (assertEqual "Filters all clumns"
+filterColumnAllValues = TestCase (assertEqual "Filters all columns"
                                 (26, 8)
                                 (D.dimensions $ D.filter @Int "test1" (const True) testData))
+
+filterJustWAI :: Test
+filterJustWAI = TestCase (assertEqual "Filters out Nothing and unwraps Maybe"
+                                (D.fromList [("test", D.toColumn $ replicate 5 (1 :: Int))])
+                                (D.filterJust "test" (D.fromList [("test", D.toColumn $ take 10 $ cycle [Just (1 :: Int), Nothing])])))
 
 tests :: [Test]
 tests = [ TestLabel "filterColumnDoesNotExist" filterColumnDoesNotExist
@@ -64,4 +69,5 @@ tests = [ TestLabel "filterColumnDoesNotExist" filterColumnDoesNotExist
         , TestLabel "filterByColumnWrongType" filterByColumnWrongType
         , TestLabel "filterColumnInexistentValues" filterColumnInexistentValues
         , TestLabel "filterColumnAllValues" filterColumnAllValues
+        , TestLabel "filterJustWAI" filterJustWAI
         ]

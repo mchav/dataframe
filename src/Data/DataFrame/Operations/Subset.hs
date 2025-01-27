@@ -19,14 +19,15 @@ import Control.Exception (throw)
 import Data.DataFrame.Errors (DataFrameException(..))
 import Data.DataFrame.Internal.Column
 import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
+import Data.DataFrame.Internal.Function
 import Data.DataFrame.Internal.Row (mkRowFromArgs)
 import Data.DataFrame.Internal.Types (Columnable, RowValue, toRowValue)
 import Data.DataFrame.Operations.Core
+import Data.DataFrame.Operations.Transformations (apply)
+import Data.Function ((&))
+import Data.Maybe (isJust, fromJust, fromMaybe)
 import Prelude hiding (filter, take)
 import Type.Reflection
-import Data.DataFrame.Internal.Function
-import Data.Maybe (isJust, fromMaybe)
-import Data.DataFrame.Operations.Transformations (apply)
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
@@ -97,11 +98,8 @@ filterWhere (args, f) df = let
 filterJust :: T.Text -> DataFrame -> DataFrame
 filterJust name df = case getColumn name df of
   Nothing -> throw $ ColumnNotFoundException name "extractNonEmpty" (map fst $ M.toList $ columnIndices df)
-  Just column@(BoxedColumn (col :: V.Vector a)) -> case typeRep @a of
-    App t1 t2 -> case eqTypeRep t1 (typeRep @Maybe) of
-      Just HRefl -> filter @a name isJust df
-      Nothing -> throw $ TypeMismatchException' (typeRep @a) (columnTypeString column) name "filterJust"
-
+  Just column@(OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isJust df & apply @(Maybe a) fromJust name
+  Just column -> error $ "Column " ++ T.unpack name ++ " is not of type Maybe a"
 
 -- | O(k) cuts the dataframe in a cube of size (a, b) where
 --   a is the length and b is the width.   

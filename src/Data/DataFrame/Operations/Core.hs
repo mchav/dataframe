@@ -171,6 +171,13 @@ columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map nameOf
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
     columnName i = indexMap M.! i
     go acc i Nothing = acc
+    go acc i (Just col@(OptionalColumn (c :: V.Vector a))) = let
+        cname = columnName i
+        countNulls = nulls col
+        countPartial = partiallyParsed col
+        columnType = T.pack $ show $ typeRep @a
+        unique = S.size $ VG.foldr S.insert S.empty c
+      in ColumnInfo cname (columnLength col - countNulls) countNulls countPartial unique columnType : acc
     go acc i (Just col@(BoxedColumn (c :: V.Vector a))) = let
         cname = columnName i
         countNulls = nulls col

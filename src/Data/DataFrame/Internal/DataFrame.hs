@@ -47,6 +47,7 @@ asText d =
       getType Nothing = ""
       getType (Just (BoxedColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
       getType (Just (UnboxedColumn (column :: VU.Vector a))) = T.pack $ show (typeRep @a)
+      getType (Just (OptionalColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
       getType (Just (GroupedBoxedColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
       getType (Just (GroupedUnboxedColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
       -- Separate out cases dynamically so we don't end up making round trip string
@@ -57,8 +58,9 @@ asText d =
                 Just Refl -> V.map T.pack column
                 Nothing -> V.map (T.pack . show) column
       get (Just (UnboxedColumn column)) = V.map (T.pack . show) (V.convert column)
-      get (Just (GroupedBoxedColumn column)) = V.map (T.pack . show) (V.convert column)
-      get (Just (GroupedUnboxedColumn column)) = V.map (T.pack . show) (V.convert column)
+      get (Just (OptionalColumn column)) = V.map (T.pack . show) column
+      get (Just (GroupedBoxedColumn column)) = V.map (T.pack . show) column
+      get (Just (GroupedUnboxedColumn column)) = V.map (T.pack . show) column
       getTextColumnFromFrame df (i, name) = if i == 0
                                             then V.fromList (map (T.pack . show) [0..(fst (dataframeDimensions df) - 1)])
                                             else get $ (V.!) (columns d) ((M.!) (columnIndices d) name)

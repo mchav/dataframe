@@ -123,6 +123,7 @@ plotForColumn cname (Just (UnboxedColumn (column :: VU.Vector a))) orientation d
     else case orientation of
         VerticalHistogram -> plotVerticalGivenCounts cname counts
         HorizontalHistogram -> plotGivenCounts cname counts
+plotForColumn _ _ _ _ = return ()
 
 plotGivenCounts :: HasCallStack => T.Text -> [(String, Integer)] -> IO ()
 plotGivenCounts cname counts = do
