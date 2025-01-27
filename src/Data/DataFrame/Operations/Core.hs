@@ -98,6 +98,7 @@ insertColumn' name xs d
             Nothing -> xs
             Just (BoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
             Just (UnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+            Just (OptionalColumn col) -> Just $ OptionalColumn $ col <> V.replicate diff Nothing
             -- TODO: What does this mean when groupby operations are changed to box operations?
             -- Maybe handle these with empty.
             Just (GroupedBoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
@@ -194,6 +195,7 @@ columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map nameOf
       in ColumnInfo cname (columnLength col) 0 0 unique columnType : acc
 
 nulls :: Column -> Int
+nulls (OptionalColumn xs) = VG.length $ VG.filter isJust xs
 nulls (BoxedColumn (xs :: V.Vector a)) = case testEquality (typeRep @a) (typeRep @T.Text) of
   Just Refl -> VG.length $ VG.filter isNullish xs
   Nothing -> case testEquality (typeRep @a) (typeRep @String) of
@@ -222,6 +224,12 @@ valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Integer)]
 valueCounts columnName df = case getColumn columnName df of
       Nothing -> throw $ ColumnNotFoundException columnName "sortBy" (map fst $ M.toList $ columnIndices df)
       Just (BoxedColumn (column' :: V.Vector c)) ->
+        let
+          column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Integer) m) M.empty column'
+        in case (typeRep @a) `testEquality` (typeRep @c) of
+              Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
+              Just Refl -> M.toAscList column
+      Just (OptionalColumn (column' :: V.Vector c)) ->
         let
           column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Integer) m) M.empty column'
         in case (typeRep @a) `testEquality` (typeRep @c) of

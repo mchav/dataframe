@@ -89,6 +89,8 @@ plotForColumnBy byCol cname (Just (UnboxedColumn byColumn)) (Just (UnboxedColumn
     else case orientation of
         VerticalHistogram -> error "Vertical histograms aren't yet supported"
         HorizontalHistogram -> plotGivenCounts' cname counts
+-- TODO: Add Optional columns
+plotForColumnBy _ _ _ _ _ _ = return ()
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
 plotForColumn :: HasCallStack => T.Text -> Maybe Column -> HistogramOrientation -> DataFrame -> IO ()

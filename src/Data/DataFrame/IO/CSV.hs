@@ -152,12 +152,6 @@ freezeColumn mutableCols nulls opts colIndex = do
     Just <$> freezeColumn' (nulls V.! colIndex) col
 {-# INLINE freezeColumn #-}
 
--- | Constructs a dataframe column, optionally inferring types.
-mkColumn :: ReadOptions -> V.Vector T.Text -> Maybe Column
-mkColumn opts colData =
-    let col = Just $ BoxedColumn colData
-    in if inferTypes opts then parseDefault (safeRead opts) col else col
-
 parseSep :: Char -> C.ByteString -> [C.ByteString]
 parseSep c s = either error id (parseOnly (record c) s)
 {-# INLINE parseSep #-}
@@ -257,6 +251,18 @@ getRowAsText df i = V.ifoldr go [] (columns df)
                 ++ show i
     go k (Just (UnboxedColumn c)) acc = case c VU.!? i of
         Just e -> T.pack (show e) : acc
+        Nothing ->
+            error $
+                "Column "
+                ++ T.unpack (indexMap M.! k)
+                ++ " has less items than "
+                ++ "the other columns at index "
+                ++ show i
+    go k (Just (OptionalColumn (c :: V.Vector (Maybe a)))) acc = case c V.!? i of
+        Just e -> textRep : acc
+            where textRep = case testEquality (typeRep @a) (typeRep @T.Text) of
+                    Just Refl -> fromMaybe "Nothing" e
+                    Nothing   -> (T.pack . show) e
         Nothing ->
             error $
                 "Column "

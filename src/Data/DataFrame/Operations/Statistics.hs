@@ -42,6 +42,17 @@ frequencies name df = case getColumn name df of
           Nothing -> (T.pack . show) c'
       initDf = empty & insertColumn "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
     in L.foldl' (\df (col, k) -> insertColumn (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+  Just ((OptionalColumn (column :: V.Vector a))) -> let
+      counts = valueCounts @a name df
+      total = P.sum $ map snd counts
+      vText :: forall a . (Columnable a) => a -> T.Text
+      vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
+        Just Refl -> c'
+        Nothing -> case testEquality (typeRep @a) (typeRep @String) of
+          Just Refl -> T.pack c'
+          Nothing -> (T.pack . show) c'
+      initDf = empty & insertColumn "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
+    in L.foldl' (\df (col, k) -> insertColumn (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
   Just ((UnboxedColumn (column :: VU.Vector a))) -> let
       counts = valueCounts @a name df
       total = P.sum $ map snd counts

@@ -37,6 +37,7 @@ mkRowFromArgs names df i = V.map get (V.fromList names)
       Nothing -> throw $ ColumnNotFoundException name "[INTERNAL] mkRowFromArgs" (map fst $ M.toList $ columnIndices df)
       Just (BoxedColumn column) -> toRowValue (column V.! i)
       Just (UnboxedColumn column) -> toRowValue (column VU.! i)
+      Just (OptionalColumn column) -> toRowValue (column V.! i)
 
 mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Row
 mkRowRep df names i = V.generate (S.size names) (\index -> get (names' V.! index))
@@ -50,6 +51,9 @@ mkRowRep df names i = V.generate (S.size names) (\index -> get (names' V.! index
                 ++ show i
     get name = case getColumn name df of
       Just (BoxedColumn c) -> case c V.!? i of
+        Just e -> toRowValue e
+        Nothing -> throwError name
+      Just (OptionalColumn c) -> case c V.!? i of
         Just e -> toRowValue e
         Nothing -> throwError name
       Just (UnboxedColumn c) -> case c VU.!? i of
