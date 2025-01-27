@@ -89,6 +89,6 @@ null df = dataframeDimensions df == (0, 0)
 
 metadata :: DataFrame -> String
 metadata df = show (columnIndices df) ++ "\n" ++
-              show (V.map isJust (columns df)) ++ "\n" ++
+              show (V.map (fmap columnVersionString) (columns df)) ++ "\n" ++
               show (freeIndices df) ++ "\n" ++
               show (dataframeDimensions df)

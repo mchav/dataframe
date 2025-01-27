@@ -53,11 +53,20 @@ isGrouped (GroupedBoxedColumn column) = True
 isGrouped (GroupedUnboxedColumn column) = True
 isGrouped _ = False
 
+columnVersionString :: Column -> String
+columnVersionString column = case column of
+  BoxedColumn _ -> "Boxed"
+  UnboxedColumn _ -> "Unboxed"
+  OptionalColumn _ -> "Optional"
+  GroupedBoxedColumn _ -> "Grouped Boxed"
+  GroupedUnboxedColumn _ -> "Grouped Unboxed"
+  GroupedOptionalColumn _ -> "Grouped Optional"
+
 columnTypeString :: Column -> String
 columnTypeString column = case column of
   BoxedColumn (column :: VB.Vector a) -> show (typeRep @a)
   UnboxedColumn (column :: VU.Vector a) -> show (typeRep @a)
-  OptionalColumn (column :: VB.Vector (Maybe a)) -> show (typeRep @a)
+  OptionalColumn (column :: VB.Vector a) -> show (typeRep @a)
   GroupedBoxedColumn (column :: VB.Vector a) -> show (typeRep @a)
   GroupedUnboxedColumn (column :: VB.Vector a) -> show (typeRep @a)
   GroupedOptionalColumn (column :: VB.Vector a) -> show (typeRep @a)
@@ -334,6 +343,9 @@ ifilterColumnF (ICond (f :: Int -> a -> Bool)) c@(BoxedColumn (column :: VB.Vect
 ifilterColumnF (ICond (f :: Int -> a -> Bool)) c@(UnboxedColumn (column :: VU.Vector b)) = do
   Refl <- testEquality (typeRep @a) (typeRep @b)
   return $ UnboxedColumn $ VG.ifilter f column
+ifilterColumnF (ICond (f :: Int -> a -> Bool)) c@(OptionalColumn (column :: VB.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  return $ OptionalColumn $ VG.ifilter f column
 ifilterColumnF (ICond (f :: Int -> a -> Bool)) c@(GroupedBoxedColumn (column :: VB.Vector b)) = do
   Refl <- testEquality (typeRep @a) (typeRep @b)
   return $ GroupedBoxedColumn $ VG.ifilter f column
@@ -343,6 +355,9 @@ ifilterColumnF (ICond (f :: Int -> a -> Bool)) c@(GroupedUnboxedColumn (column :
 
 ifoldrColumn :: forall a b. (Columnable a, Columnable b) => (Int -> a -> b -> b) -> b -> Column -> Maybe b
 ifoldrColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @d)
+  return $ VG.ifoldr f acc column
+ifoldrColumn f acc c@(OptionalColumn (column :: VB.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldr f acc column
 ifoldrColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = do
@@ -382,6 +397,9 @@ reduceColumn f (BoxedColumn (column :: c)) = case testEquality (typeRep @c) (typ
 reduceColumn f (UnboxedColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
   Just Refl -> f column
   Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
+reduceColumn f (OptionalColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
+  Just Refl -> f column
+  Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
 {-# INLINE reduceColumn #-}
 
 safeReduceColumn :: forall a b. (Typeable a) => (a -> b) -> Column -> Maybe b
@@ -389,6 +407,9 @@ safeReduceColumn f (BoxedColumn (column :: c)) = do
   Refl <- testEquality (typeRep @c) (typeRep @a)
   return $ f column
 safeReduceColumn f (UnboxedColumn (column :: c)) = do
+  Refl <- testEquality (typeRep @c) (typeRep @a)
+  return $ f column
+safeReduceColumn f (OptionalColumn (column :: c)) = do
   Refl <- testEquality (typeRep @c) (typeRep @a)
   return $ f column
 {-# INLINE safeReduceColumn #-}
