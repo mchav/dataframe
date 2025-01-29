@@ -405,13 +405,13 @@ reduceColumn f (OptionalColumn (column :: c)) = case testEquality (typeRep @c) (
 safeReduceColumn :: forall a b. (Typeable a) => (a -> b) -> Column -> Maybe b
 safeReduceColumn f (BoxedColumn (column :: c)) = do
   Refl <- testEquality (typeRep @c) (typeRep @a)
-  return $ f column
+  return $! f column
 safeReduceColumn f (UnboxedColumn (column :: c)) = do
   Refl <- testEquality (typeRep @c) (typeRep @a)
-  return $ f column
+  return $! f column
 safeReduceColumn f (OptionalColumn (column :: c)) = do
   Refl <- testEquality (typeRep @c) (typeRep @a)
-  return $ f column
+  return $! f column
 {-# INLINE safeReduceColumn #-}
 
 longZipColumns :: Column -> Column -> Column

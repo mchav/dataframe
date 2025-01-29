@@ -114,11 +114,11 @@ applyStatistic f name df = do
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
 applyStatistics f name df = case getColumn name df of
   Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
-    Just Refl -> Just $ f (VU.map fromIntegral column)
+    Just Refl -> Just $! f (VU.map fromIntegral column)
     Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-      Just Refl -> Just $ f column
+      Just Refl -> Just $! f column
       Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
-        Just Refl -> Just $ f (VG.map realToFrac column)
+        Just Refl -> Just $! f (VG.map realToFrac column)
         Nothing -> Nothing
   _ -> Nothing
 
