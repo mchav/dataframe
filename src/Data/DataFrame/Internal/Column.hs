@@ -434,21 +434,21 @@ writeColumn i value' (MutableBoxedColumn (col :: VBM.IOVector a)) = let
     value = (decodeUtf8Lenient . C.strip) value'
   in case testEquality (typeRep @a) (typeRep @T.Text) of
       Just Refl -> (if isNullish value
-                    then VBM.unsafeWrite col i "" >> return (Left value)
+                    then VBM.unsafeWrite col i "" >> return (Left $! value)
                     else VBM.unsafeWrite col i value >> return (Right True))
       Nothing -> return (Left (T.pack (show value)))
 writeColumn i value (MutableUnboxedColumn (col :: VUM.IOVector a)) =
   case testEquality (typeRep @a) (typeRep @Int) of
       Just Refl -> case readByteStringInt value of
         Just v -> VUM.unsafeWrite col i v >> return (Right True)
-        Nothing -> VUM.unsafeWrite col i 0 >> return (Left $ decodeUtf8Lenient value)
+        Nothing -> VUM.unsafeWrite col i 0 >> return (Left $! decodeUtf8Lenient value)
       Nothing -> let
           value' = decodeUtf8Lenient value
         in case testEquality (typeRep @a) (typeRep @Double) of
-          Nothing -> return (Left value')
+          Nothing -> return (Left $! value')
           Just Refl -> case readDouble value' of
             Just v -> VUM.unsafeWrite col i v >> return (Right True)
-            Nothing -> VUM.unsafeWrite col i 0 >> return (Left value')
+            Nothing -> VUM.unsafeWrite col i 0 >> return (Left $! value')
 {-# INLINE writeColumn #-}
 
 freezeColumn' :: [(Int, T.Text)] -> Column -> IO Column
