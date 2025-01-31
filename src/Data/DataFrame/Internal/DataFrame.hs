@@ -4,6 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE StrictData #-}
 module Data.DataFrame.Internal.DataFrame where
 
 import qualified Data.Map as M

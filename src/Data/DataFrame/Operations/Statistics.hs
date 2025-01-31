@@ -4,6 +4,7 @@
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
 module Data.DataFrame.Operations.Statistics where
 
 import qualified Data.List as L
