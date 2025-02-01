@@ -33,9 +33,9 @@
   - Applying many throws exception when the function type doesn't equal. DONE
 
 * applyWhere
-  - Applies function when target column criteria is met
-  - When criterion column doesn't exist throw an error.
-  - When target column doesn't exist throw an error.
+  - Applies function when target column criteria is met. DONE
+  - When criterion column doesn't exist throw an error. DONE
+  - When target column doesn't exist throw an error. DONE
   - When the type of the criterion column doesn't exist throw an error. DONE
   - When the type of the target column doesn't exist throw an error. DONE
   - When the criterion function has the wrong type throw an error. DONE
