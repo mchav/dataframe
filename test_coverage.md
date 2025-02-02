@@ -42,8 +42,8 @@
   - When the target function has the wrong type throw an error. DONE
 
 * derive
-  - Applies function to given column and adds it to alias.
-  - When column doesn't exist throw an error.
+  - Applies function to given column and adds it to alias. DONE
+  - When column doesn't exist throw an error. DONE
 
 * applyAtIndex
   - Applies function to row at index.
