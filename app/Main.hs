@@ -76,7 +76,7 @@ covid = do
       |> D.filter "Direction" (== "Exports")
       |> D.select ["Direction", "Year", "Country", "Value"]
       |> D.groupBy ["Direction", "Year", "Country"]
-      |> D.reduceBy VG.sum "Value"
+      |> D.reduceByAgg D.Sum "Value"
 
 chipotle :: IO ()
 chipotle = do
