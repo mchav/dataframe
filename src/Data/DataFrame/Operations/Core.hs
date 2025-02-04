@@ -161,12 +161,12 @@ data ColumnInfo = ColumnInfo {
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
 columnInfo :: DataFrame -> DataFrame
-columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map nameOfColumn infos))
-                      & insertColumn' "# Non-null Values" (Just $ toColumn (map nonNullValues infos))
-                      & insertColumn' "# Null Values" (Just $ toColumn (map nullValues infos))
-                      & insertColumn' "# Partially parsed" (Just $ toColumn (map partiallyParsedValues infos))
-                      & insertColumn' "# Unique Values" (Just $ toColumn (map uniqueValues infos))
-                      & insertColumn' "Type" (Just $ toColumn (map typeOfColumn infos))
+columnInfo df = empty & insertColumn' "Column Name" (Just $! toColumn (map nameOfColumn infos))
+                      & insertColumn' "# Non-null Values" (Just $! toColumn (map nonNullValues infos))
+                      & insertColumn' "# Null Values" (Just $! toColumn (map nullValues infos))
+                      & insertColumn' "# Partially parsed" (Just $! toColumn (map partiallyParsedValues infos))
+                      & insertColumn' "# Unique Values" (Just $! toColumn (map uniqueValues infos))
+                      & insertColumn' "Type" (Just $! toColumn (map typeOfColumn infos))
   where
     infos = L.sortBy (compare `on` nonNullValues) (V.ifoldl' go [] (columns df)) :: [ColumnInfo]
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
@@ -181,11 +181,10 @@ columnInfo df = empty & insertColumn' "Column Name" (Just $ toColumn (map nameOf
       in ColumnInfo cname (columnLength col - countNulls) countNulls countPartial unique columnType : acc
     go acc i (Just col@(BoxedColumn (c :: V.Vector a))) = let
         cname = columnName i
-        countNulls = nulls col
         countPartial = partiallyParsed col
         columnType = T.pack $ show $ typeRep @a
         unique = S.size $ VG.foldr S.insert S.empty c
-      in ColumnInfo cname (columnLength col - countNulls) countNulls countPartial unique columnType : acc
+      in ColumnInfo cname (columnLength col) 0 countPartial unique columnType : acc
     go acc i (Just col@(UnboxedColumn c)) = let
         cname = columnName i
         columnType = T.pack $ columnTypeString col
