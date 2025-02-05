@@ -127,7 +127,7 @@ plotForColumn cname (Just (UnboxedColumn (column :: VU.Vector a))) orientation d
         HorizontalHistogram -> plotGivenCounts cname counts
 plotForColumn _ _ _ _ = return ()
 
-plotGivenCounts :: HasCallStack => T.Text -> [(String, Integer)] -> IO ()
+plotGivenCounts :: HasCallStack => T.Text -> [(String, Int)] -> IO ()
 plotGivenCounts cname counts = do
     putStrLn $ "\nHistogram for " ++ show cname ++ "\n"
     let n = 8 :: Int
@@ -149,7 +149,7 @@ plotGivenCounts cname counts = do
     mapM_ putStrLn (border : body)
     putChar '\n'
 
-plotVerticalGivenCounts :: HasCallStack => T.Text -> [(String, Integer)] -> IO ()
+plotVerticalGivenCounts :: HasCallStack => T.Text -> [(String, Int)] -> IO ()
 plotVerticalGivenCounts cname counts' = do
     putStrLn $ "\nHistogram for " ++ show cname ++ "\n"
     let n = 8 :: Int
@@ -185,7 +185,7 @@ leftJustify :: String -> Int -> String
 leftJustify s n = s ++ replicate (max 0 (n - length s)) ' '
 
 
-plotGivenCounts' :: HasCallStack => T.Text -> [((String, String), Integer)] -> IO ()
+plotGivenCounts' :: HasCallStack => T.Text -> [((String, String), Int)] -> IO ()
 plotGivenCounts' cname counts = do
     putStrLn $ "\nHistogram for " ++ show cname ++ "\n"
     let n = 8 :: Int
@@ -271,7 +271,7 @@ plotRanges = reverse [-0.1, -0.5,
               100_000, 500_000,
               1_000_000, 5_000_000]
 
-intPlotRanges :: [Integer]
+intPlotRanges :: [Int]
 intPlotRanges = [1, 5,
                 10, 50,
                 100, 500,
@@ -287,7 +287,7 @@ rotate xs
     | otherwise = map last xs : rotate (map init xs)
 
 
-countOccurrences :: Ord a => V.Vector a -> [(a, Integer)]
+countOccurrences :: Ord a => V.Vector a -> [(a, Int)]
 countOccurrences xs = M.toList $ VG.foldr count initMap xs
     where initMap = M.fromList (map (, 0) (V.toList xs))
           count k = M.insertWith (+) k 1

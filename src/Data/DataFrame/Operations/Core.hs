@@ -216,26 +216,26 @@ partiallyParsed (BoxedColumn (xs :: V.Vector a)) =
 partiallyParsed _ = 0
 
 fromList :: [(T.Text, Column)] -> DataFrame
-fromList = L.foldl' (\df (name, column) -> insertColumn' name (Just column) df) empty
+fromList = L.foldl' (\df (!name, !column) -> insertColumn' name (Just $! column) df) empty
 
 -- | O (k * n) Counts the occurences of each value in a given column.
-valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Integer)]
+valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Int)]
 valueCounts columnName df = case getColumn columnName df of
       Nothing -> throw $ ColumnNotFoundException columnName "sortBy" (map fst $ M.toList $ columnIndices df)
       Just (BoxedColumn (column' :: V.Vector c)) ->
         let
-          column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Integer) m) M.empty column'
+          column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
         in case (typeRep @a) `testEquality` (typeRep @c) of
               Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
               Just Refl -> M.toAscList column
       Just (OptionalColumn (column' :: V.Vector c)) ->
         let
-          column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Integer) m) M.empty column'
+          column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
         in case (typeRep @a) `testEquality` (typeRep @c) of
               Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
               Just Refl -> M.toAscList column
       Just (UnboxedColumn (column' :: VU.Vector c)) -> let
-          column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Integer) m) M.empty (V.convert column')
+          column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty (V.convert column')
         in case (typeRep @a) `testEquality` (typeRep @c) of
           Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
           Just Refl -> M.toAscList column
