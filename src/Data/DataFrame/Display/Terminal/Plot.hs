@@ -212,29 +212,21 @@ numericHistogram :: forall a . (HasCallStack, Columnable a)
                          => T.Text
                          -> V.Vector a
                          -> String
-numericHistogram name xs =
-    case testEquality (typeRep @a) (typeRep @Double) of
-        Just Refl -> let config = defaultConfig {
-                    title = Just (T.unpack name),
-                    width = 30,
-                    height = 10
-                }
-            in createHistogram config (V.toList xs)
-        Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
-            Just Refl -> let config = defaultConfig {
-                        title = Just (T.unpack name),
-                        width = 30,
-                        height = 10
-                    }
-                in createHistogram config (map fromIntegral $ V.toList xs)
-            Nothing -> case testEquality (typeRep @a) (typeRep @Integer) of
-                Just Refl -> let config = defaultConfig {
-                            title = Just (T.unpack name),
-                            width = 30,
-                            height = 10
-                        }
-                    in createHistogram config (map fromIntegral $ V.toList xs)
-                Nothing -> []
+numericHistogram name xs = let
+    config = defaultConfig {
+            title = Just (T.unpack name),
+            width = 30,
+            height = 10
+        }
+    in createHistogram config (V.toList xs')
+        where
+            xs' = case testEquality (typeRep @a) (typeRep @Double) of
+                Just Refl -> xs
+                Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
+                    Just Refl -> V.map fromIntegral xs
+                    Nothing -> case testEquality (typeRep @a) (typeRep @Integer) of
+                        Just Refl -> V.map fromIntegral xs
+                        Nothing -> V.empty
 
 smallestPartition :: (Ord a) => a -> [a] -> a
 -- TODO: Find a more graceful way to handle this.
@@ -252,24 +244,6 @@ largestPartition p [] = error "Data range too large to plot"
 largestPartition p (x:rest)
     | p < x = x
     | otherwise = largestPartition p rest
-
-plotRanges :: [Double]
-plotRanges = reverse [-0.1, -0.5,
-              -1, -5,
-              -10, -50,
-              -100, -500,
-              -1_000, -5_000,
-              -10_000, -50_000,
-              -100_000, -500_000,
-              -1_000_000, -5_000_000] ++
-            [0, 0.1, 0.5,
-              1, 5,
-              10, 50,
-              100, 500,
-              1_000, 5_000,
-              10_000, 50_000,
-              100_000, 500_000,
-              1_000_000, 5_000_000]
 
 intPlotRanges :: [Int]
 intPlotRanges = [1, 5,
@@ -329,6 +303,7 @@ formatNumber n
 
 -- Create the ASCII histogram
 createHistogram :: HistogramConfig -> [Double] -> String
+createHistogram _ [] = []
 createHistogram config values =
     let bins = calculateBins values (width config)
         maxCount = maximum $ map snd bins
