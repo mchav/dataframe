@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -29,6 +30,7 @@ import Data.DataFrame.Internal.DataFrame (DataFrame(..))
 import Data.DataFrame.Internal.Parsing
 import Data.DataFrame.Operations.Typing
 import Data.Function (on)
+import Data.IORef
 import Data.Maybe
 import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Type.Equality
@@ -67,7 +69,7 @@ readTsv = readSeparated '\t' defaultOptions
 -- | Reads a character separated file into a dataframe using mutable vectors.
 readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
 readSeparated c opts path = do
-    totalRows <- countRows path
+    totalRows <- countRows c path
     withFile path ReadMode $ \handle -> do
         firstRow <- map (decodeUtf8Lenient . C.strip) . parseSep c <$> C.hGetLine handle
         let columnNames = if hasHeader opts
@@ -129,11 +131,21 @@ inferValueType s = let
 -- | Reads rows from the handle and stores values in mutable vectors.
 fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
 fillColumns n c mutableCols nullIndices handle = do
+    input <- newIORef (mempty :: C.ByteString)
     forM_ [1..n] $ \i -> do
         isEOF <- hIsEOF handle
-        unless isEOF $ do
-            row <- parseSep c <$> C.hGetLine handle
-            zipWithM_ (writeValue mutableCols nullIndices i) [0..] row
+        input' <- readIORef input
+        unless (isEOF && input' == mempty) $ do
+              parseWith (C.hGet handle 512) (parseRow c) input' >>= \case
+                Fail unconsumed ctx er -> do
+                  erpos <- hTell handle
+                  fail $ "Failed to parse CSV file around " <> show erpos <> " byte; due: "
+                    <> show er <> "; context: " <> show ctx
+                Partial c -> do
+                  fail "Partial handler is called"
+                Done (unconsumed :: C.ByteString) (row :: [C.ByteString]) -> do
+                  writeIORef input unconsumed
+                  zipWithM_ (writeValue mutableCols nullIndices i) [0..] row
 {-# INLINE fillColumns #-}
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
@@ -161,6 +173,9 @@ record c =
    field c `sepBy1` char c
    <?> "record"
 {-# INLINE record #-}
+
+parseRow :: Char -> Parser [C.ByteString]
+parseRow c = (record c <* lineEnd)  <?> "record-new-line"
 
 field :: Char -> Parser C.ByteString
 field c =
@@ -193,19 +208,28 @@ quotedField =
 
 lineEnd :: Parser ()
 lineEnd =
-   void (char '\n') <|> void (string "\r\n") <|> void (char '\r')
+   (endOfLine <|> endOfInput)
    <?> "end of line"
 {-# INLINE lineEnd #-}
 
 -- | First pass to count rows for exact allocation
-countRows :: FilePath -> IO Int
-countRows path = withFile path ReadMode $ \handle -> do
-    let loop !n = do
-            eof <- hIsEOF handle
-            if eof
-            then return n
-            else C.hGetLine handle >> loop (n + 1) 
-    loop 0
+countRows :: Char -> FilePath -> IO Int
+countRows c path = withFile path ReadMode (go 0 "")
+   where
+      go !n !input h = do
+         isEOF <- hIsEOF h
+         if isEOF && input == mempty
+            then pure n
+            else
+               parseWith (C.hGet h 4096) (parseRow c) input >>= \case
+                  Fail unconsumed ctx er -> do
+                    erpos <- hTell h
+                    fail $ "Failed to parse CSV file around " <> show erpos <> " byte; due: "
+                      <> show er <> "; context: " <> show ctx
+                  Partial c -> do
+                    fail $ "Partial handler is called; n = " <> show n
+                  Done (unconsumed :: C.ByteString) _ ->
+                    go (n + 1) unconsumed h
 {-# INLINE countRows #-}
 
 writeCsv :: String -> DataFrame -> IO ()
