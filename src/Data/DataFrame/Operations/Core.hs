@@ -194,7 +194,7 @@ columnInfo df = empty & insertColumn' "Column Name" (Just $! toColumn (map nameO
       in ColumnInfo cname (columnLength col) 0 0 unique columnType : acc
 
 nulls :: Column -> Int
-nulls (OptionalColumn xs) = VG.length $ VG.filter isJust xs
+nulls (OptionalColumn xs) = VG.length $ VG.filter isNothing xs
 nulls (BoxedColumn (xs :: V.Vector a)) = case testEquality (typeRep @a) (typeRep @T.Text) of
   Just Refl -> VG.length $ VG.filter isNullish xs
   Nothing -> case testEquality (typeRep @a) (typeRep @String) of
