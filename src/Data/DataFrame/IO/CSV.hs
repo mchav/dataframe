@@ -6,6 +6,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StrictData #-}
 module Data.DataFrame.IO.CSV where
 
 import qualified Data.ByteString.Char8 as C
@@ -214,7 +215,7 @@ lineEnd =
 
 -- | First pass to count rows for exact allocation
 countRows :: Char -> FilePath -> IO Int
-countRows c path = withFile path ReadMode (go 0 "")
+countRows c path = withFile path ReadMode $! go 0 ""
    where
       go !n !input h = do
          isEOF <- hIsEOF h
