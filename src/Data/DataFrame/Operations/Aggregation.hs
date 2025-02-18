@@ -45,12 +45,13 @@ groupBy names df
   | any (`notElem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
   | otherwise = L.foldl' insertColumns initDf groupingColumns
   where
+    insertOrAdjust k v m = if MS.notMember k m then MS.insert k [v] m else MS.adjust (appendWithFrontMin v) k m
     -- Create a string representation of each row.
     values = V.generate (fst (dimensions df)) (mkRowRep df (S.fromList names))
     -- Create a mapping from the row representation to the list of indices that
     -- have that row representation. This will allow us sortedIndexesto combine the indexes
     -- where the rows are the same.
-    valueIndices = V.ifoldl' (\m index rowRep -> MS.insertWith (appendWithFrontMin . head) rowRep [index] m) M.empty values
+    valueIndices = V.ifoldl' (\m index rowRep -> insertOrAdjust rowRep index m) M.empty values
     -- Since the min is at the head this allows us to get the min in constant time and sort by it
     -- That way we can recover the original order of the rows.
     -- valueIndicesInitOrder = L.sortBy (compare `on` snd) $! MS.toList $ MS.map VU.head valueIndices
