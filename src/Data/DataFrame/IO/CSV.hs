@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE StrictData #-}
+{-# LANGUAGE Strict #-}
 module Data.DataFrame.IO.CSV where
 
 import qualified Data.ByteString.Char8 as C
@@ -24,7 +24,7 @@ import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Applicative ((<$>), (<|>), (<*>), (<*), (*>), many)
 import Control.Monad (forM_, zipWithM_, unless, void)
-import Data.Attoparsec.ByteString.Char8
+import Data.Attoparsec.Text
 import Data.Char
 import Data.DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, columnLength)
 import Data.DataFrame.Internal.DataFrame (DataFrame(..))
@@ -72,7 +72,7 @@ readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
 readSeparated c opts path = do
     totalRows <- countRows c path
     withFile path ReadMode $ \handle -> do
-        firstRow <- map (decodeUtf8Lenient . C.strip) . parseSep c <$> C.hGetLine handle
+        firstRow <- map T.strip . parseSep c <$> TIO.hGetLine handle
         let columnNames = if hasHeader opts
                         then map (T.filter (/= '\"')) firstRow
                         else map (T.singleton . intToDigit) [0..(length firstRow - 1)]
@@ -86,7 +86,7 @@ readSeparated c opts path = do
         -- TODO: this isn't robust but in so far as this is a guess anyway
         -- it's probably fine. But we should probably sample n rows and pick
         -- the most likely type from the sample.
-        dataRow <- map (decodeUtf8Lenient . C.strip) . parseSep c <$> C.hGetLine handle
+        dataRow <- map T.strip . parseSep c <$> TIO.hGetLine handle
 
         -- This array will track the indices of all null values for each column.
         -- If any exist then the column will be an optional type.
@@ -113,7 +113,7 @@ getInitialDataVectors :: Int -> VM.IOVector Column -> [T.Text] -> IO ()
 getInitialDataVectors n mCol xs = do
     forM_ (zip [0..] xs) $ \(i, x) -> do
         col <- case inferValueType x of
-                "Int" -> MutableUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Int)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readInt x) >> return c)
+                "Int" -> MutableUnboxedColumn <$>  ((VUM.unsafeNew n :: IO (VUM.IOVector Int)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readInt x) >> return c)
                 "Double" -> MutableUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Double)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readDouble x) >> return c)
                 _ -> MutableBoxedColumn <$> ((VM.unsafeNew n :: IO (VM.IOVector T.Text)) >>= \c -> VM.unsafeWrite c 0 x >> return c)
         VM.unsafeWrite mCol i col
@@ -132,25 +132,25 @@ inferValueType s = let
 -- | Reads rows from the handle and stores values in mutable vectors.
 fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
 fillColumns n c mutableCols nullIndices handle = do
-    input <- newIORef (mempty :: C.ByteString)
+    input <- newIORef (mempty :: T.Text)
     forM_ [1..n] $ \i -> do
         isEOF <- hIsEOF handle
         input' <- readIORef input
         unless (isEOF && input' == mempty) $ do
-              parseWith (C.hGet handle 512) (parseRow c) input' >>= \case
+              parseWith (TIO.hGetChunk handle) (parseRow c) input' >>= \case
                 Fail unconsumed ctx er -> do
                   erpos <- hTell handle
                   fail $ "Failed to parse CSV file around " <> show erpos <> " byte; due: "
                     <> show er <> "; context: " <> show ctx
                 Partial c -> do
                   fail "Partial handler is called"
-                Done (unconsumed :: C.ByteString) (row :: [C.ByteString]) -> do
+                Done (unconsumed :: T.Text) (row :: [T.Text]) -> do
                   writeIORef input unconsumed
                   zipWithM_ (writeValue mutableCols nullIndices i) [0..] row
 {-# INLINE fillColumns #-}
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
-writeValue :: VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> C.ByteString -> IO ()
+writeValue :: VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> T.Text -> IO ()
 writeValue mutableCols nullIndices count colIndex value = do
     col <- VM.unsafeRead mutableCols colIndex
     res <- writeColumn count value col
@@ -165,35 +165,35 @@ freezeColumn mutableCols nulls opts colIndex = do
     Just <$> freezeColumn' (nulls V.! colIndex) col
 {-# INLINE freezeColumn #-}
 
-parseSep :: Char -> C.ByteString -> [C.ByteString]
+parseSep :: Char -> T.Text -> [T.Text]
 parseSep c s = either error id (parseOnly (record c) s)
 {-# INLINE parseSep #-}
 
-record :: Char -> Parser [C.ByteString]
+record :: Char -> Parser [T.Text]
 record c =
    field c `sepBy1` char c
    <?> "record"
 {-# INLINE record #-}
 
-parseRow :: Char -> Parser [C.ByteString]
+parseRow :: Char -> Parser [T.Text]
 parseRow c = (record c <* lineEnd)  <?> "record-new-line"
 
-field :: Char -> Parser C.ByteString
+field :: Char -> Parser T.Text
 field c =
    quotedField <|> unquotedField c
    <?> "field"
 {-# INLINE field #-}
 
-unquotedField :: Char -> Parser C.ByteString
+unquotedField :: Char -> Parser T.Text
 unquotedField sep =
    takeWhile nonTerminal <?> "unquoted field"
    where nonTerminal = (`S.notMember` S.fromList [sep, '\n', '\r', '"'])
 {-# INLINE unquotedField #-}
 
-insideQuotes :: Parser C.ByteString
+insideQuotes :: Parser T.Text
 insideQuotes =
-   C.append <$> takeWhile (/= '"')
-            <*> (C.concat <$> many (C.cons <$> dquotes <*> insideQuotes))
+   T.append <$> takeWhile (/= '"')
+            <*> (T.concat <$> many (T.cons <$> dquotes <*> insideQuotes))
    <?> "inside of double quotes"
    where
       dquotes =
@@ -201,7 +201,7 @@ insideQuotes =
          <?> "paired double quotes"
 {-# INLINE insideQuotes #-}
 
-quotedField :: Parser C.ByteString
+quotedField :: Parser T.Text
 quotedField =
    char '"' *> insideQuotes <* char '"'
    <?> "quoted field"
@@ -222,14 +222,14 @@ countRows c path = withFile path ReadMode $! go 0 ""
          if isEOF && input == mempty
             then pure n
             else
-               parseWith (C.hGet h 4096) (parseRow c) input >>= \case
+               parseWith (TIO.hGetChunk h) (parseRow c) input >>= \case
                   Fail unconsumed ctx er -> do
                     erpos <- hTell h
                     fail $ "Failed to parse CSV file around " <> show erpos <> " byte; due: "
                       <> show er <> "; context: " <> show ctx
                   Partial c -> do
                     fail $ "Partial handler is called; n = " <> show n
-                  Done (unconsumed :: C.ByteString) _ ->
+                  Done (unconsumed :: T.Text) _ ->
                     go (n + 1) unconsumed h
 {-# INLINE countRows #-}
 
