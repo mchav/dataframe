@@ -83,38 +83,51 @@ insertColumn' ::
   DataFrame
 insertColumn' name xs d
     | M.member name (columnIndices d) = let
-      i = (M.!) (columnIndices d) name
-    in d { columns = columns d V.// [(i, xs)] }
-  | otherwise = let
-      (n:rest) = case freeIndices d of
-        [] -> [VG.length (columns d)..(VG.length (columns d) * 2 - 1)]
-        lst -> lst
-      columns' = if L.null (freeIndices d)
-                 then columns d V.++ V.replicate (VG.length (columns d)) Nothing
-                 else columns d
-      xs'
-        | diff == 0 || null d = xs
-        | diff > 0 = case xs of
-            Nothing -> xs
-            Just (BoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
-            Just (UnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
-            Just (OptionalColumn col) -> Just $ OptionalColumn $ col <> V.replicate diff Nothing
-            -- TODO: What does this mean when groupby operations are changed to box operations?
-            -- Maybe handle these with empty.
-            Just (GroupedBoxedColumn col) -> Just $ BoxedColumn $ V.map Just col <> V.replicate diff Nothing
-            Just (GroupedUnboxedColumn col) -> Just $ BoxedColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
-        -- Make other columns optional.
-        | diff < 0 = error "Column is too large to add"
-   in d
-        { columns = columns' V.// [(n, xs')],
-          columnIndices = M.insert name n (columnIndices d),
-          freeIndices = rest,
-          dataframeDimensions = (if r == 0 then l else r, c + 1)
-        }
-        where diff = r - l
+        i = (M.!) (columnIndices d) name
+      in d { columns = columns d V.// [(i, xs)] }
+    | otherwise = insertNewColumn
+      where
+        insertNewColumn
+          -- If we have a non-empty dataframe and we have more rows in the new column than the other column
+          -- we should make all the other columns have null and then add the new column. 
+          | fst (dataframeDimensions d) > 0 && maybe 0 columnLength xs > fst (dataframeDimensions d) = let
+              diff = l - r
               l = maybe 0 columnLength xs
               (r, c) = dataframeDimensions d
-{-# INLINE insertColumn' #-}
+              fillColumn (Just (OptionalColumn col)) = Just $ OptionalColumn $ col <> V.replicate diff Nothing
+              fillColumn Nothing = xs
+              fillColumn (Just (BoxedColumn col)) = Just $ OptionalColumn $ V.map Just col <> V.replicate diff Nothing
+              fillColumn (Just (UnboxedColumn col)) = Just $ OptionalColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+              fillColumn (Just (GroupedBoxedColumn col)) = Just $ GroupedBoxedColumn $ col <> V.replicate diff V.empty
+              fillColumn (Just (GroupedUnboxedColumn col)) = Just $ GroupedUnboxedColumn $ col <> V.replicate diff VU.empty
+              indexes = (map snd . L.sortBy (compare `on` snd). M.toList . columnIndices) d
+              nonEmptyColumns = L.foldl' (\acc i -> acc ++ [fromMaybe (error "Unexpected") (fillColumn $ columns d V.! i)]) [] indexes
+            in fromList (zip (columnNames d ++ [name]) (nonEmptyColumns ++ [fromMaybe (error "Unexpected") xs]))
+          | otherwise = let
+                (n:rest) = case freeIndices d of
+                  [] -> [VG.length (columns d)..(VG.length (columns d) * 2 - 1)]
+                  lst -> lst
+                columns' = if L.null (freeIndices d)
+                          then columns d V.++ V.replicate (VG.length (columns d)) Nothing
+                          else columns d
+                xs'
+                  | diff <= 0 || null d = xs
+                  | otherwise = case xs of
+                      Nothing -> xs
+                      Just (BoxedColumn col) -> Just $ OptionalColumn $ V.map Just col <> V.replicate diff Nothing
+                      Just (UnboxedColumn col) -> Just $ OptionalColumn $ V.map Just (V.convert col) <> V.replicate diff Nothing
+                      Just (OptionalColumn col) -> Just $ OptionalColumn $ col <> V.replicate diff Nothing
+                      Just (GroupedBoxedColumn col) -> Just $ GroupedBoxedColumn $ col <> V.replicate diff V.empty
+                      Just (GroupedUnboxedColumn col) -> Just $ GroupedUnboxedColumn $ col <> V.replicate diff VU.empty
+            in d
+                  { columns = columns' V.// [(n, xs')],
+                    columnIndices = M.insert name n (columnIndices d),
+                    freeIndices = rest,
+                    dataframeDimensions = (if r == 0 then l else r, c + 1)
+                  }
+                  where diff = r - l
+                        l = maybe 0 columnLength xs
+                        (r, c) = dataframeDimensions d
 
 -- | /O(k)/ Add a column to the dataframe providing a default.
 -- This constructs a new vector and also may convert it

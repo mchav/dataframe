@@ -48,14 +48,14 @@ addUnboxedColumn' = TestCase (assertEqual "Value should be boxed"
 addSmallerColumnBoxed :: Test
 addSmallerColumnBoxed = TestCase (
     assertEqual "Missing values should be replaced with Nothing"
-    (Just $ DI.BoxedColumn (V.fromList [Just "a" :: Maybe T.Text, Just "b",  Just "c", Nothing, Nothing]))
+    (Just $ DI.OptionalColumn (V.fromList [Just "a" :: Maybe T.Text, Just "b",  Just "c", Nothing, Nothing]))
     (DI.getColumn "newer" $ D.insertColumn "newer" (V.fromList ["a" :: T.Text, "b", "c"]) $ D.insertColumn "new" (V.fromList ["a" :: T.Text, "b", "c", "d", "e"]) D.empty)
   )
 
 addSmallerColumnUnboxed :: Test
 addSmallerColumnUnboxed = TestCase (
     assertEqual "Missing values should be replaced with Nothing"
-    (Just $ DI.BoxedColumn (V.fromList [Just 1 :: Maybe Int, Just 2,  Just 3, Nothing, Nothing]))
+    (Just $ DI.OptionalColumn (V.fromList [Just 1 :: Maybe Int, Just 2,  Just 3, Nothing, Nothing]))
     (DI.getColumn "newer" $ D.insertColumn "newer" (V.fromList [1 :: Int, 2, 3]) $ D.insertColumn "new" (V.fromList [1 :: Int, 2, 3, 4, 5]) D.empty)
   )
 
@@ -75,16 +75,20 @@ insertColumnWithDefaultFillsLargerNoop = TestCase (
 
 addLargerColumnBoxed :: Test
 addLargerColumnBoxed =
-  TestCase (assertExpectException "[Error Case]"
-                    "Column is too large to add"
-                    (print $ D.insertColumn "new" (V.fromList ["a" :: T.Text, "b", "c", "d", "e"])
-                            $ D.insertColumn "newer" (V.fromList ["a" :: T.Text, "b", "c"]) D.empty))
+  TestCase (assertEqual "Smaller lists should grow and contain optionals"
+                    (D.fromList [("new", D.toColumn [Just "a" :: Maybe T.Text, Just "b", Just "c", Nothing, Nothing]),
+                                 ("newer", D.toColumn ["a" :: T.Text, "b", "c", "d", "e"])])
+                    (D.insertColumn "newer" (V.fromList ["a" :: T.Text, "b", "c", "d", "e"])
+                            $ D.insertColumn "new" (V.fromList ["a" :: T.Text, "b", "c"]) D.empty))
 addLargerColumnUnboxed :: Test
 addLargerColumnUnboxed =
-    TestCase (assertExpectException "[Error Case]"
-                    "Column is too large to add"
-                    (print $ D.insertColumn "new" (V.fromList [1 :: Int, 2, 3, 4, 5])
-                     $ D.insertColumn "newer" (V.fromList [1 :: Int, 2, 3]) D.empty))
+    TestCase (assertEqual "Smaller lists should grow and contain optionals"
+                    (D.fromList [("old", D.toColumn [Just 1 :: Maybe Int, Just 2, Nothing, Nothing, Nothing]),
+                                 ("new", D.toColumn [Just 1 :: Maybe Int, Just 2, Just 3, Nothing, Nothing]),
+                                 ("newer", D.toColumn [1 :: Int, 2, 3, 4, 5])])
+                    (D.insertColumn "newer" (V.fromList [1 :: Int, 2, 3, 4, 5])
+                     $ D.insertColumn "new" (V.fromList [1 :: Int, 2, 3]) $ 
+                     D.insertColumn "old" (V.fromList [1 :: Int, 2]) D.empty))
 
 dimensionsChangeAfterAdd :: Test
 dimensionsChangeAfterAdd = TestCase (assertEqual "should be (26, 3)"
