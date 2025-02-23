@@ -118,6 +118,12 @@ class (Columnable a) => Columnify a where
 instance (Columnable a) => Columnify (Maybe a) where
   toColumn' = OptionalColumn
 
+instance (Columnable a) => Columnify (VB.Vector a) where
+  toColumn' = GroupedBoxedColumn
+
+instance (Columnable a, VU.Unbox a) => Columnify (VU.Vector a) where
+  toColumn' = GroupedUnboxedColumn
+
 instance {-# INCOHERENT #-} (Columnable a) => Columnify a where
   toColumn' xs = case testEquality (typeRep @a) (typeRep @Int) of
     Just Refl -> UnboxedColumn (VU.convert xs)
