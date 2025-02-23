@@ -414,12 +414,6 @@ safeReduceColumn f (OptionalColumn (column :: c)) = do
   return $! f column
 {-# INLINE safeReduceColumn #-}
 
-longZipColumns :: Column -> Column -> Column
-longZipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (VB.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
-longZipColumns (BoxedColumn column) (UnboxedColumn other) = BoxedColumn (VB.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
-longZipColumns (UnboxedColumn column) (BoxedColumn other) = BoxedColumn (VB.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
-longZipColumns (UnboxedColumn column) (UnboxedColumn other) = BoxedColumn (VB.generate (max (VG.length column) (VG.length other)) (\i -> (column VG.!? i, other VG.!? i)))
-
 zipColumns :: Column -> Column -> Column
 zipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (VG.zip column other)
 zipColumns (BoxedColumn column) (UnboxedColumn other) = BoxedColumn (VB.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
@@ -458,3 +452,10 @@ freezeColumn' nulls (MutableUnboxedColumn col)
   | all (isNullish . snd) nulls = VU.unsafeFreeze col >>= \c -> return $ OptionalColumn $ VB.generate (VU.length c) (\i -> if i `elem` map fst nulls then Nothing else Just (c VU.! i))
   | otherwise  = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ VB.generate (VU.length c) (\i -> if i `elem` map fst nulls then Left (fromMaybe (error "") (lookup i nulls)) else Right (c VU.! i))
 {-# INLINE freezeColumn' #-}
+
+expandColumn :: Int -> Column -> Column
+expandColumn n (OptionalColumn col) = OptionalColumn $ col <> VB.replicate n Nothing
+expandColumn n (BoxedColumn col) = OptionalColumn $ VB.map Just col <> VB.replicate n Nothing
+expandColumn n (UnboxedColumn col) = OptionalColumn $ VB.map Just (VU.convert col) <> VB.replicate n Nothing
+expandColumn n (GroupedBoxedColumn col) = GroupedBoxedColumn $ col <> VB.replicate n VB.empty
+expandColumn n (GroupedUnboxedColumn col) = GroupedUnboxedColumn $ col <> VB.replicate n VU.empty
