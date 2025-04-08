@@ -13,9 +13,6 @@ Familiar with another dataframe library? Get started:
 * [Coming from Polars](./docs/coming_from_polars.md)
 * [Coming from dplyr](./docs/coming_from_dplyr.md)
 
-## Current status
-The library is still in active development with a v0.1 launch planned for March 2025.
-
 ## Example usage
 
 ### Code example
