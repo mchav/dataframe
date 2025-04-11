@@ -5,7 +5,7 @@ An intuitive, dynamically-typed DataFrame library.
 A tool for exploratory data analysis.
 
 ## Installing
-* Install Haskell (ghc + cabal) via [ghcup](https://www.haskell.org/ghcup/guide/) selecting all the default options.
+* Install Haskell (ghc + cabal) via [ghcup](https://www.haskell.org/ghcup/install/) selecting all the default options.
 * To install dataframe run `cabal update && cabal install dataframe`
 * Open a Haskell repl with dataframe loaded by running `cabal repl --build-depends dataframe`.
 * Follow along any one of the tutorials below.
