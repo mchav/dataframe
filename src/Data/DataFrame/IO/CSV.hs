@@ -30,6 +30,7 @@ import Data.DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, c
 import Data.DataFrame.Internal.DataFrame (DataFrame(..))
 import Data.DataFrame.Internal.Parsing
 import Data.DataFrame.Operations.Typing
+import Data.Foldable (fold)
 import Data.Function (on)
 import Data.IORef
 import Data.Maybe
@@ -184,27 +185,24 @@ field c =
    <?> "field"
 {-# INLINE field #-}
 
+unquotedTerminators :: Char -> S.Set Char
+unquotedTerminators sep = S.fromList [sep, '\n', '\r', '"']
+
 unquotedField :: Char -> Parser T.Text
 unquotedField sep =
-   takeWhile nonTerminal <?> "unquoted field"
-   where nonTerminal = (`S.notMember` S.fromList [sep, '\n', '\r', '"'])
+   takeWhile (not . (`S.member` terminators)) <?> "unquoted field"
+   where terminators = unquotedTerminators sep
 {-# INLINE unquotedField #-}
 
-insideQuotes :: Parser T.Text
-insideQuotes =
-   T.append <$> takeWhile (/= '"')
-            <*> (T.concat <$> many (T.cons <$> dquotes <*> insideQuotes))
-   <?> "inside of double quotes"
-   where
-      dquotes =
-         string "\"\"" >> return '"'
-         <?> "paired double quotes"
-{-# INLINE insideQuotes #-}
-
 quotedField :: Parser T.Text
-quotedField =
-   char '"' *> insideQuotes <* char '"'
-   <?> "quoted field"
+quotedField = char '"' *> contents <* char '"' <?> "quoted field"
+    where
+        contents = fold <$> many (unquote <|> unescape)
+            where
+                unquote = takeWhile1 (notInClass "\"\\")
+                unescape = char '\\' *> do
+                    T.singleton <$> do
+                        char '\\' <|> char '"'
 {-# INLINE quotedField #-}
 
 lineEnd :: Parser ()
@@ -226,7 +224,7 @@ countRows c path = withFile path ReadMode $! go 0 ""
                   Fail unconsumed ctx er -> do
                     erpos <- hTell h
                     fail $ "Failed to parse CSV file around " <> show erpos <> " byte; due: "
-                      <> show er <> "; context: " <> show ctx
+                      <> show er <> "; context: " <> show ctx <> " " <> show unconsumed
                   Partial c -> do
                     fail $ "Partial handler is called; n = " <> show n
                   Done (unconsumed :: T.Text) _ ->
