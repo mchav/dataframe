@@ -12,13 +12,13 @@ A tool for exploratory data analysis.
 
 
 ## What is exploratory data analysis?
-We provide a primer [here](./docs/exploratory_data_analysis_primer.md) and show how to do some common analyses.
+We provide a primer [here](https://github.com/mchav/dataframe/blob/main/docs/exploratory_data_analysis_primer.md) and show how to do some common analyses.
 
 ## Coming from other dataframe libraries
 Familiar with another dataframe library? Get started:
-* [Coming from Pandas](./docs/coming_from_pandas.md)
-* [Coming from Polars](./docs/coming_from_polars.md)
-* [Coming from dplyr](./docs/coming_from_dplyr.md)
+* [Coming from Pandas](https://github.com/mchav/dataframe/blob/main/docs/coming_from_pandas.md)
+* [Coming from Polars](https://github.com/mchav/dataframe/blob/main/docs/coming_from_polars.md)
+* [Coming from dplyr](https://github.com/mchav/dataframe/blob/main/docs/coming_from_dplyr.md)
 
 ## Example usage
 
