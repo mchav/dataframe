@@ -114,7 +114,8 @@ applyStatistic f name df = do
       if columnTypeString column == "Double"
       then safeReduceColumn f column
       else do
-        matching <- asum [ transform (fromIntegral :: Int -> Double) column,
+        matching <- asum [transform (fromIntegral :: Int -> Double) column,
+                          transform (fromIntegral :: Integer -> Double) column,
                           transform (realToFrac :: Float -> Double) column,
                           Just column ]
         safeReduceColumn f matching
