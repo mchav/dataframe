@@ -19,7 +19,9 @@ import Data.DataFrame.Internal.Function (Function(..), funcApply)
 import Data.DataFrame.Internal.Row (mkRowFromArgs)
 import Data.DataFrame.Internal.Types (Columnable, RowValue, toRowValue, transform)
 import Data.DataFrame.Operations.Core
+import Data.Maybe
 import Type.Reflection (typeRep, typeOf)
+import Data.Graph (dff)
 
 -- | O(k) Apply a function to a given column in a dataframe.
 apply ::
@@ -148,3 +150,15 @@ applyAtIndex i f columnName df = case getColumn columnName df of
   Just column -> case itransform (\index value -> if index == i then f value else value) column of
     Nothing -> throw $ TypeMismatchException' (typeRep @a) (columnTypeString column) columnName "applyAtIndex"
     column' -> insertColumn' columnName column' df
+
+impute ::
+  forall b .
+  (Columnable b) =>
+  T.Text    ->
+  b         ->
+  DataFrame ->
+  DataFrame
+impute columnName value df = case getColumn columnName df of
+  Nothing -> throw $ ColumnNotFoundException columnName "applyAtIndex" (map fst $ M.toList $ columnIndices df)
+  Just (OptionalColumn _) -> apply (fromMaybe value) columnName df
+  _ -> error "Cannot impute to a non-Empty column"
