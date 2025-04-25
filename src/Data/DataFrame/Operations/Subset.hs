@@ -65,6 +65,8 @@ clip :: Int -> Int -> Int -> Int
 clip n left right = min right $ max n left
 
 -- | O(n * k) Filter rows by a given condition.
+--
+-- filter "x" even df
 filter ::
   forall a.
   (Columnable a) =>
@@ -84,9 +86,16 @@ filter filterColumnName condition df = case getColumn filterColumnName df of
         pick idxs col = atIndices idxs <$> col
       in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
 
+-- | O(k) a version of filter where the predicate comes first.
+--
+-- > filterBy even "x" df
 filterBy :: (Columnable a) => (a -> Bool) -> T.Text -> DataFrame -> DataFrame
 filterBy = flip filter
 
+-- | O(k) filters the dataframe with a row predicate. The arguments in the function
+--   must appear in the same order as they do in the list.
+--
+-- > filterWhere (["x", "y"], func (\x y -> x + y > 5)) df
 filterWhere :: ([T.Text], Function) -> DataFrame -> DataFrame
 filterWhere (args, f) df = let
     indexes = VG.ifoldl' (\s i row -> if funcApply @Bool row f then S.insert i s else s) S.empty $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
@@ -95,11 +104,20 @@ filterWhere (args, f) df = let
   in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
 
 
+-- | O(k) removes all rows with `Nothing` in a given column from the dataframe.
+--
+-- > filterJust df
 filterJust :: T.Text -> DataFrame -> DataFrame
 filterJust name df = case getColumn name df of
-  Nothing -> throw $ ColumnNotFoundException name "extractNonEmpty" (map fst $ M.toList $ columnIndices df)
+  Nothing -> throw $ ColumnNotFoundException name "filterJust" (map fst $ M.toList $ columnIndices df)
   Just column@(OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isJust df & apply @(Maybe a) fromJust name
-  Just column -> error $ "Column " ++ T.unpack name ++ " is not of type Maybe a"
+  Just column -> df
+
+-- | O(n * k) removes all rows with `Nothing` from the dataframe.
+--
+-- > filterJust df
+filterAllJust :: DataFrame -> DataFrame
+filterAllJust df = foldr filterJust df (columnNames df)
 
 -- | O(k) cuts the dataframe in a cube of size (a, b) where
 --   a is the length and b is the width.   
