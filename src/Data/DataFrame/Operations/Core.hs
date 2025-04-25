@@ -217,6 +217,9 @@ partiallyParsed _ = 0
 fromList :: [(T.Text, Column)] -> DataFrame
 fromList = L.foldl' (\df (!name, !column) -> insertColumn' name (Just $! column) df) empty
 
+fromColumnList :: [Column] -> DataFrame
+fromColumnList = fromList . zip (map (T.pack . show) [0..])
+
 -- | O (k * n) Counts the occurences of each value in a given column.
 valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Int)]
 valueCounts columnName df = case getColumn columnName df of
