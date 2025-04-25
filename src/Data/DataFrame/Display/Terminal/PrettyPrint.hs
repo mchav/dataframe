@@ -51,3 +51,13 @@ showTable header types rows =
       separator = T.intercalate "-|-" [T.replicate width (T.singleton '-') | width <- widths]
       fillCols fill cols = T.intercalate " | " [fill c width col | (c, width, col) <- zip3 cs widths cols]
    in T.unlines $ border : fillCols colTitleFill header : separator : fillCols colTitleFill types : separator : map (fillCols colValueFill) rows
+
+showTableProperMarkdown :: [T.Text] -> [T.Text] -> [[T.Text]] -> T.Text
+showTableProperMarkdown header types rows =
+  let headerWithTypes = zipWith (\h t -> h <> "<br>" <> t) header types
+      cs = map (\h -> ColDesc center h left) headerWithTypes
+      widths = [maximum $ map T.length col | col <- transpose $ headerWithTypes : rows]
+      border = T.intercalate "---" [T.replicate width (T.singleton '-') | width <- widths]
+      separator = T.intercalate "-|-" [T.replicate width (T.singleton '-') | width <- widths]
+      fillCols fill cols = T.intercalate " | " [fill c width col | (c, width, col) <- zip3 cs widths cols]
+   in T.unlines $ border : fillCols colTitleFill headerWithTypes : separator : map (fillCols colValueFill) rows

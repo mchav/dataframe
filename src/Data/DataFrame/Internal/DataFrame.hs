@@ -39,10 +39,10 @@ instance Eq DataFrame where
 
 instance Show DataFrame where
   show :: DataFrame -> String
-  show d = T.unpack (asText d)
+  show d = T.unpack (asText d False)
 
-asText :: DataFrame -> T.Text
-asText d =
+asText :: DataFrame -> Bool -> T.Text
+asText d properMarkdown =
   let header = "index" : map fst (sortBy (compare `on` snd) $ M.toList (columnIndices d))
       types = V.toList $ V.filter (/= "") $ V.map getType (columns d)
       getType Nothing = ""
@@ -68,7 +68,7 @@ asText d =
       rows =
         transpose $
           zipWith (curry (V.toList . getTextColumnFromFrame d)) [0..] header
-   in showTable header ("Int":types) rows
+   in (if properMarkdown then showTableProperMarkdown else showTable) header ("Int":types) rows
 
 -- | O(1) Creates an empty dataframe
 empty :: DataFrame
