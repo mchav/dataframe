@@ -92,6 +92,18 @@ mkRowRep df names i = hash $ V.ifoldl' go [] (columns df)
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
+    go acc k (Just (OptionalColumn (c :: V.Vector (Maybe a)))) =
+      if S.notMember (indexMap M.! k) names
+        then acc
+        else case c V.!? i of
+          Just e -> hash' @(Maybe a) e : acc
+          Nothing ->
+            error $
+              "Column "
+                ++ T.unpack (indexMap M.! k)
+                ++ " has less items than "
+                ++ "the other columns at index "
+                ++ show i
     go acc k (Just (UnboxedColumn (c :: VU.Vector a))) =
       if S.notMember (indexMap M.! k) names
         then acc
@@ -121,6 +133,9 @@ mkGroupedColumns indices df acc name =
   case (V.!) (columns df) (columnIndices df M.! name) of
     Nothing -> error "Unexpected"
     (Just (BoxedColumn column)) ->
+      let vs = indices `getIndices` column
+       in insertColumn name vs acc
+    (Just (OptionalColumn column)) ->
       let vs = indices `getIndices` column
        in insertColumn name vs acc
     (Just (UnboxedColumn column)) ->
@@ -225,3 +240,6 @@ appendWithFrontMin x xs@(f:rest)
   | x < f = x:xs
   | otherwise = f:x:rest
 {-# INLINE appendWithFrontMin #-}
+
+distinct :: DataFrame -> DataFrame
+distinct df = groupBy (columnNames df) df
