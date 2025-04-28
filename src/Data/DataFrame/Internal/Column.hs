@@ -34,6 +34,9 @@ import Data.Type.Equality (type (:~:)(Refl), TestEquality (..))
 import Data.Typeable (Typeable)
 import Data.Word
 import Type.Reflection
+import Unsafe.Coerce (unsafeCoerce)
+import Data.DataFrame.Errors
+import Control.Exception (throw)
 
 -- | Our representation of a column is a GADT that can store data in either
 -- a vector with boxed elements or
@@ -465,3 +468,25 @@ expandColumn n (BoxedColumn col) = OptionalColumn $ VB.map Just col <> VB.replic
 expandColumn n (UnboxedColumn col) = OptionalColumn $ VB.map Just (VU.convert col) <> VB.replicate n Nothing
 expandColumn n (GroupedBoxedColumn col) = GroupedBoxedColumn $ col <> VB.replicate n VB.empty
 expandColumn n (GroupedUnboxedColumn col) = GroupedUnboxedColumn $ col <> VB.replicate n VU.empty
+
+toVector :: forall a . Columnable a => Column -> VB.Vector a
+toVector column@(OptionalColumn (col :: VB.Vector b)) =
+  case testEquality (typeRep @a) (typeRep @b) of
+    Just Refl -> col
+    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
+toVector (BoxedColumn (col :: VB.Vector b)) =
+  case testEquality (typeRep @a) (typeRep @b) of
+    Just Refl -> col
+    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
+toVector (UnboxedColumn (col :: VU.Vector b)) =
+  case testEquality (typeRep @a) (typeRep @b) of
+    Just Refl -> VB.convert col
+    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
+toVector (GroupedBoxedColumn (col :: VB.Vector b)) =
+  case testEquality (typeRep @a) (typeRep @b) of
+    Just Refl -> col
+    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
+toVector (GroupedUnboxedColumn (col :: VB.Vector b)) =
+  case testEquality (typeRep @a) (typeRep @b) of
+    Just Refl -> col
+    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
