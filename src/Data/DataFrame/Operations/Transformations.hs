@@ -21,7 +21,6 @@ import Data.DataFrame.Internal.Types (Columnable, RowValue, toRowValue, transfor
 import Data.DataFrame.Operations.Core
 import Data.Maybe
 import Type.Reflection (typeRep, typeOf)
-import Data.Graph (dff)
 
 -- | O(k) Apply a function to a given column in a dataframe.
 apply ::
@@ -159,6 +158,6 @@ impute ::
   DataFrame ->
   DataFrame
 impute columnName value df = case getColumn columnName df of
-  Nothing -> throw $ ColumnNotFoundException columnName "applyAtIndex" (map fst $ M.toList $ columnIndices df)
+  Nothing -> throw $ ColumnNotFoundException columnName "impute" (map fst $ M.toList $ columnIndices df)
   Just (OptionalColumn _) -> apply (fromMaybe value) columnName df
   _ -> error "Cannot impute to a non-Empty column"
