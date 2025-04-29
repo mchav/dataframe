@@ -177,20 +177,20 @@ columnInfo df = empty & insertColumn' "Column Name" (Just $! toColumn (map nameO
         countPartial = partiallyParsed col
         columnType = T.pack $ show $ typeRep @a
         unique = S.size $ VG.foldr S.insert S.empty c
-      in if cname == Nothing then acc else ColumnInfo (fromMaybe "" cname) (columnLength col - countNulls) countNulls countPartial unique columnType : acc
+      in if isNothing cname then acc else ColumnInfo (fromMaybe "" cname) (columnLength col - countNulls) countNulls countPartial unique columnType : acc
     go acc i (Just col@(BoxedColumn (c :: V.Vector a))) = let
         cname = columnName i
         countPartial = partiallyParsed col
         columnType = T.pack $ show $ typeRep @a
         unique = S.size $ VG.foldr S.insert S.empty c
-      in if cname == Nothing then acc else ColumnInfo (fromMaybe "" cname) (columnLength col) 0 countPartial unique columnType : acc
+      in if isNothing cname then acc else ColumnInfo (fromMaybe "" cname) (columnLength col) 0 countPartial unique columnType : acc
     go acc i (Just col@(UnboxedColumn c)) = let
         cname = columnName i
         columnType = T.pack $ columnTypeString col
         unique = S.size $ VG.foldr S.insert S.empty c
         -- Unboxed columns cannot have nulls since Maybe
         -- is not an instance of Unbox a
-      in if cname == Nothing then acc else ColumnInfo (fromMaybe "" cname) (columnLength col) 0 0 unique columnType : acc
+      in if isNothing cname then acc else ColumnInfo (fromMaybe "" cname) (columnLength col) 0 0 unique columnType : acc
 
 nulls :: Column -> Int
 nulls (OptionalColumn xs) = VG.length $ VG.filter isNothing xs
