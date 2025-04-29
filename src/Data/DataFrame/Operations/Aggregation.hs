@@ -149,6 +149,9 @@ groupColumns indices df acc name =
     (Just (BoxedColumn column)) ->
       let vs = V.map (`getIndices` column) indices
        in insertColumn' name (Just $ GroupedBoxedColumn vs) acc
+    (Just (OptionalColumn column)) ->
+      let vs = V.map (`getIndices` column) indices
+       in insertColumn' name (Just $ GroupedBoxedColumn vs) acc
     (Just (UnboxedColumn column)) ->
       let vs = V.map (`getIndicesUnboxed` column) indices
        in insertColumn' name (Just $ GroupedUnboxedColumn vs) acc
