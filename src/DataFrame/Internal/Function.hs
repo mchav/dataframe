@@ -9,12 +9,12 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-module Data.DataFrame.Internal.Function where
+module DataFrame.Internal.Function where
 
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
-import Data.DataFrame.Internal.Types
+import DataFrame.Internal.Types
 import Data.Typeable ( Typeable, type (:~:)(Refl) )
 import Data.Type.Equality (TestEquality(testEquality))
 import Type.Reflection (typeRep, typeOf)

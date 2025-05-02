@@ -4,13 +4,13 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Data.DataFrame.Errors where
+module DataFrame.Errors where
 
 import qualified Data.Text as T
 
 import Control.Exception
 import Data.Array
-import Data.DataFrame.Display.Terminal.Colours
+import DataFrame.Display.Terminal.Colours
 import Data.Typeable (Typeable)
 import Type.Reflection (TypeRep)
 

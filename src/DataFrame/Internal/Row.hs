@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Data.DataFrame.Internal.Row where
+module DataFrame.Internal.Row where
 
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -12,10 +12,10 @@ import qualified Data.Vector.Algorithms.Merge as VA
 
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
-import Data.DataFrame.Errors (DataFrameException(..))
-import Data.DataFrame.Internal.Column
-import Data.DataFrame.Internal.DataFrame
-import Data.DataFrame.Internal.Types
+import DataFrame.Errors (DataFrameException(..))
+import DataFrame.Internal.Column
+import DataFrame.Internal.DataFrame
+import DataFrame.Internal.Types
 import Data.Function (on)
 
 type Row = V.Vector RowValue

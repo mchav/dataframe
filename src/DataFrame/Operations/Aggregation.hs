@@ -4,7 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-module Data.DataFrame.Operations.Aggregation where
+module DataFrame.Operations.Aggregation where
 
 import qualified Data.Set as S
 
@@ -22,13 +22,13 @@ import qualified Statistics.Sample as SS
 import Control.Exception (throw)
 import Control.Monad (foldM_)
 import Control.Monad.ST (runST)
-import Data.DataFrame.Internal.Column (Column(..), toColumn', getIndicesUnboxed, getIndices)
-import Data.DataFrame.Internal.DataFrame (DataFrame(..), empty, getColumn)
-import Data.DataFrame.Internal.Parsing
-import Data.DataFrame.Internal.Types
-import Data.DataFrame.Errors
-import Data.DataFrame.Operations.Core
-import Data.DataFrame.Operations.Subset
+import DataFrame.Internal.Column (Column(..), toColumn', getIndicesUnboxed, getIndices)
+import DataFrame.Internal.DataFrame (DataFrame(..), empty, getColumn)
+import DataFrame.Internal.Parsing
+import DataFrame.Internal.Types
+import DataFrame.Errors
+import DataFrame.Operations.Core
+import DataFrame.Operations.Subset
 import Data.Function ((&))
 import Data.Hashable
 import Data.Maybe

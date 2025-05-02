@@ -2,7 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-module Data.DataFrame.Operations.Transformations where
+module DataFrame.Operations.Transformations where
 
 import qualified Data.List as L
 import qualified Data.Text as T
@@ -12,13 +12,13 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
-import Data.DataFrame.Errors (DataFrameException(..))
-import Data.DataFrame.Internal.Column (Column(..), columnTypeString, itransform, ifoldrColumn)
-import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn)
-import Data.DataFrame.Internal.Function (Function(..), funcApply)
-import Data.DataFrame.Internal.Row (mkRowFromArgs)
-import Data.DataFrame.Internal.Types (Columnable, RowValue, toRowValue, transform)
-import Data.DataFrame.Operations.Core
+import DataFrame.Errors (DataFrameException(..))
+import DataFrame.Internal.Column (Column(..), columnTypeString, itransform, ifoldrColumn)
+import DataFrame.Internal.DataFrame (DataFrame(..), getColumn)
+import DataFrame.Internal.Function (Function(..), funcApply)
+import DataFrame.Internal.Row (mkRowFromArgs)
+import DataFrame.Internal.Types (Columnable, RowValue, toRowValue, transform)
+import DataFrame.Operations.Core
 import Data.Maybe
 import Type.Reflection (typeRep, typeOf)
 

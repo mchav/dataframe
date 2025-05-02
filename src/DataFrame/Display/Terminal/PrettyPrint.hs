@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Data.DataFrame.Display.Terminal.PrettyPrint where
+module DataFrame.Display.Terminal.PrettyPrint where
 
 import qualified Data.Text as T
 

@@ -5,7 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
-module Data.DataFrame.Operations.Statistics where
+module DataFrame.Operations.Statistics where
 
 import qualified Data.List as L
 import qualified Data.Text as T
@@ -18,11 +18,11 @@ import qualified Statistics.Sample as SS
 import Prelude as P
 
 import Control.Exception (throw)
-import Data.DataFrame.Errors (DataFrameException(..))
-import Data.DataFrame.Internal.Column
-import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
-import Data.DataFrame.Internal.Types (Columnable, transform)
-import Data.DataFrame.Operations.Core
+import DataFrame.Errors (DataFrameException(..))
+import DataFrame.Internal.Column
+import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
+import DataFrame.Internal.Types (Columnable, transform)
+import DataFrame.Operations.Core
 import Data.Foldable (asum)
 import Data.Maybe (isJust, fromMaybe)
 import Data.Function ((&))

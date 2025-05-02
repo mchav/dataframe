@@ -26,7 +26,7 @@ Univariate non-graphical analysis should give us a sense of the distribution of 
 For categorical data the best univariate non-graphical analysis is a tabulation of the frequency of each category.
 
 ```haskell
-ghci> import qualified Data.DataFrame as D
+ghci> import qualified DataFrame as D
 ghci> D.frequencies "ocean_proximity" df
 
 ------------------------------------------------------------------------------

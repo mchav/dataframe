@@ -1,7 +1,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-import qualified Data.DataFrame as D
+import qualified DataFrame as D
 import qualified Data.Vector.Unboxed as VU
 
 import Control.Monad (replicateM)

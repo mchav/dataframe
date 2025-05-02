@@ -7,7 +7,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE Strict #-}
-module Data.DataFrame.IO.CSV where
+module DataFrame.IO.CSV where
 
 import qualified Data.ByteString.Char8 as C
 import qualified Data.List as L
@@ -26,10 +26,10 @@ import Control.Applicative ((<$>), (<|>), (<*>), (<*), (*>), many)
 import Control.Monad (forM_, zipWithM_, unless, void)
 import Data.Attoparsec.Text
 import Data.Char
-import Data.DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, columnLength)
-import Data.DataFrame.Internal.DataFrame (DataFrame(..))
-import Data.DataFrame.Internal.Parsing
-import Data.DataFrame.Operations.Typing
+import DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, columnLength)
+import DataFrame.Internal.DataFrame (DataFrame(..))
+import DataFrame.Internal.Parsing
+import DataFrame.Operations.Typing
 import Data.Foldable (fold)
 import Data.Function (on)
 import Data.IORef

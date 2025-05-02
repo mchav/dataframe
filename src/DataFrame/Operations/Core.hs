@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE BangPatterns #-}
-module Data.DataFrame.Operations.Core where
+module DataFrame.Operations.Core where
 
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -18,11 +18,11 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception ( throw )
-import Data.DataFrame.Errors
-import Data.DataFrame.Internal.Column ( Column(..), toColumn', toColumn, columnLength, columnTypeString, expandColumn )
-import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn, null, empty)
-import Data.DataFrame.Internal.Parsing (isNullish)
-import Data.DataFrame.Internal.Types (Columnable)
+import DataFrame.Errors
+import DataFrame.Internal.Column ( Column(..), toColumn', toColumn, columnLength, columnTypeString, expandColumn )
+import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, null, empty)
+import DataFrame.Internal.Parsing (isNullish)
+import DataFrame.Internal.Types (Columnable)
 import Data.Either
 import Data.Function (on, (&))
 import Data.Maybe

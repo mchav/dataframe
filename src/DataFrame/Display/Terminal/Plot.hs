@@ -5,7 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TupleSections #-}
-module Data.DataFrame.Display.Terminal.Plot where
+module DataFrame.Display.Terminal.Plot where
 
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -18,11 +18,11 @@ import qualified Type.Reflection as Ref
 import Control.Monad ( forM_, forM )
 import Data.Bifunctor ( first )
 import Data.Char ( ord, chr )
-import Data.DataFrame.Display.Terminal.Colours
-import Data.DataFrame.Internal.Column (Column(..))
-import Data.DataFrame.Internal.DataFrame (DataFrame(..))
-import Data.DataFrame.Internal.Types (Columnable)
-import Data.DataFrame.Operations.Core
+import DataFrame.Display.Terminal.Colours
+import DataFrame.Internal.Column (Column(..))
+import DataFrame.Internal.DataFrame (DataFrame(..))
+import DataFrame.Internal.Types (Columnable)
+import DataFrame.Operations.Core
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import Data.Type.Equality

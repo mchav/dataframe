@@ -1,16 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Data.DataFrame.Operations.Sorting where
+module DataFrame.Operations.Sorting where
 
 import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Control.Exception (throw)
-import Data.DataFrame.Errors (DataFrameException(..))
-import Data.DataFrame.Internal.Column
-import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn)
-import Data.DataFrame.Internal.Row
-import Data.DataFrame.Operations.Core
+import DataFrame.Errors (DataFrameException(..))
+import DataFrame.Internal.Column
+import DataFrame.Internal.DataFrame (DataFrame(..), getColumn)
+import DataFrame.Internal.Row
+import DataFrame.Operations.Core
 
 -- | Sort order taken as a parameter by the sortby function.
 data SortOrder = Ascending | Descending deriving (Eq)

@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Operations.Take where
 
-import qualified Data.DataFrame as D
-import qualified Data.DataFrame as DI
+import qualified DataFrame as D
+import qualified DataFrame as DI
 
 import Test.HUnit
 

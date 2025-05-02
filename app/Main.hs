@@ -6,8 +6,8 @@
 
 module Main where
 
-import qualified Data.DataFrame as D
-import Data.DataFrame (dimensions, (|>))
+import qualified DataFrame as D
+import DataFrame (dimensions, (|>))
 import Data.List (delete)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import qualified Data.Text as T

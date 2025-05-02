@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE Strict #-}
-module Data.DataFrame.Internal.Types where
+module DataFrame.Internal.Types where
 
 import Data.Int ( Int8, Int16, Int32, Int64 )
 import Data.Kind (Type)

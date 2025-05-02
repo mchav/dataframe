@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
-module Data.DataFrame.Operations.Subset where
+module DataFrame.Operations.Subset where
 
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -16,14 +16,14 @@ import qualified Data.Vector.Generic as VG
 import qualified Prelude
 
 import Control.Exception (throw)
-import Data.DataFrame.Errors (DataFrameException(..))
-import Data.DataFrame.Internal.Column
-import Data.DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
-import Data.DataFrame.Internal.Function
-import Data.DataFrame.Internal.Row (mkRowFromArgs)
-import Data.DataFrame.Internal.Types (Columnable, RowValue, toRowValue)
-import Data.DataFrame.Operations.Core
-import Data.DataFrame.Operations.Transformations (apply)
+import DataFrame.Errors (DataFrameException(..))
+import DataFrame.Internal.Column
+import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
+import DataFrame.Internal.Function
+import DataFrame.Internal.Row (mkRowFromArgs)
+import DataFrame.Internal.Types (Columnable, RowValue, toRowValue)
+import DataFrame.Operations.Core
+import DataFrame.Operations.Transformations (apply)
 import Data.Function ((&))
 import Data.Maybe (isJust, fromJust, fromMaybe)
 import Prelude hiding (filter, take)

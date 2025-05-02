@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StrictData #-}
-module Data.DataFrame.Internal.DataFrame where
+module DataFrame.Internal.DataFrame where
 
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -13,8 +13,8 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
 import Control.Monad (join)
-import Data.DataFrame.Display.Terminal.PrettyPrint
-import Data.DataFrame.Internal.Column
+import DataFrame.Display.Terminal.PrettyPrint
+import DataFrame.Internal.Column
 import Data.Function (on)
 import Data.List (sortBy, transpose)
 import Data.Maybe (isJust)

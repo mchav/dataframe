@@ -3,16 +3,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-module Data.DataFrame.Operations.Typing where
+module DataFrame.Operations.Typing where
 
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
-import Data.DataFrame.Internal.Column (Column(..))
-import Data.DataFrame.Internal.DataFrame (DataFrame(..))
-import Data.DataFrame.Internal.Parsing
+import DataFrame.Internal.Column (Column(..))
+import DataFrame.Internal.DataFrame (DataFrame(..))
+import DataFrame.Internal.Parsing
 import Data.Either
 import Data.Maybe
 import Data.Time

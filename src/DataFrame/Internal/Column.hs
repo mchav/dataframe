@@ -10,7 +10,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-module Data.DataFrame.Internal.Column where
+module DataFrame.Internal.Column where
 
 import qualified Data.ByteString.Char8 as C
 import qualified Data.List as L
@@ -24,9 +24,9 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Monad.ST (runST)
-import Data.DataFrame.Internal.Function
-import Data.DataFrame.Internal.Types
-import Data.DataFrame.Internal.Parsing
+import DataFrame.Internal.Function
+import DataFrame.Internal.Types
+import DataFrame.Internal.Parsing
 import Data.Int
 import Data.Maybe
 import Data.Text.Encoding (decodeUtf8Lenient)
@@ -35,7 +35,7 @@ import Data.Typeable (Typeable)
 import Data.Word
 import Type.Reflection
 import Unsafe.Coerce (unsafeCoerce)
-import Data.DataFrame.Errors
+import DataFrame.Errors
 import Control.Exception (throw)
 
 -- | Our representation of a column is a GADT that can store data in either

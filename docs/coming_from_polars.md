@@ -36,7 +36,7 @@ As a standalone dataframe script this would look like.
 
 
 ```haskell
-import qualified Data.DataFrame as D
+import qualified DataFrame as D
 import Data.Time.Calendar
 
 main :: IO
@@ -111,10 +111,10 @@ Would be written as:
 ```haskell
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-import qualified Data.DataFrame as D
+import qualified DataFrame as D
 import qualified Data.Text as T
 
-import Data.DataFrame.Operations ( (|>) )
+import DataFrame.Operations ( (|>) )
 import Data.Time.Calendar
 
 main :: IO ()
@@ -133,10 +133,10 @@ Or, more clearly:
 ```haskell
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-import qualified Data.DataFrame as D
+import qualified DataFrame as D
 import qualified Data.Text as T
 
-import Data.DataFrame.Operations ( (|>) )
+import DataFrame ( (|>) )
 import Data.Time.Calendar
 
 main :: IO ()

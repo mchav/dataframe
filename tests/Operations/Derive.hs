@@ -3,9 +3,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Operations.Derive where
 
-import qualified Data.DataFrame as D
-import qualified Data.DataFrame as DI
-import qualified Data.DataFrame as DE
+import qualified DataFrame as D
+import qualified DataFrame as DI
+import qualified DataFrame as DE
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU

@@ -58,7 +58,7 @@ python> df
 ```
 
 ```haskell
-ghci> import qualified Data.DataFrame as D
+ghci> import qualified DataFrame as D
 ghci> import qualified Data.Vector as V
 ghci> import System.Random (randomRIO)
 ghci> import Control.Monad (replicateM)

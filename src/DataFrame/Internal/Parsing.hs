@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Strict #-}
-module Data.DataFrame.Internal.Parsing where
+module DataFrame.Internal.Parsing where
 
 import qualified Data.ByteString.Char8 as C
 import qualified Data.Set as S
