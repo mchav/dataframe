@@ -24,9 +24,9 @@ Familiar with another dataframe library? Get started:
 
 ### Code example
 ```haskell
-import qualified Data.DataFrame as D
+import qualified DataFrame as D
 
-import Data.DataFrame ((|>))
+import DataFrame ((|>))
 
 main :: IO ()
     df <- D.readTsv "./data/chipotle.tsv"
