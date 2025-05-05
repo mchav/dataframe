@@ -5,11 +5,16 @@ An intuitive, dynamically-typed DataFrame library.
 A tool for exploratory data analysis.
 
 ## Installing
+
+### CLI
 * Install Haskell (ghc + cabal) via [ghcup](https://www.haskell.org/ghcup/install/) selecting all the default options.
 * To install dataframe run `cabal update && cabal install dataframe`
 * Open a Haskell repl with dataframe loaded by running `cabal repl --build-depends dataframe`.
 * Follow along any one of the tutorials below.
 
+### Jupyter notebook
+* Jupyter notebook is still underway with some local tests/examples in the works.
+* For a preview check out the [California Housing](https://github.com/mchav/dataframe/blob/main/docs/California%20Housing.ipynb) notebook.
 
 ## What is exploratory data analysis?
 We provide a primer [here](https://github.com/mchav/dataframe/blob/main/docs/exploratory_data_analysis_primer.md) and show how to do some common analyses.
@@ -63,6 +68,7 @@ Full example in `./app` folder using many of the constructs in the API.
 ![Screencast of usage in GHCI](./static/example.gif)
 
 ## Future work
+* Jupyter/ihaskell support (soon)
 * Apache arrow and Parquet compatability
 * Integration with common data formats (currently only supports CSV)
 * Support windowed plotting (currently only supports ASCII plots)
