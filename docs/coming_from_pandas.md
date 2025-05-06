@@ -25,6 +25,7 @@ dtype: float64
 ```
 
 ```haskell
+ghci> import qualified DataFrame as D
 ghci> D.toColumn [1, 3, 5, read @Float "NaN", 6, 8]
 [1.0,3.0,5.0,NaN,6.0,8.0]
 ```
@@ -38,6 +39,7 @@ DatetimeIndex(['2013-01-01', '2013-01-02', '2013-01-03', '2013-01-04',
 ```
 
 ```haskell
+ghci> import Data.Time.Calendar
 ghci> dates = D.toColumn $ Prelude.take 6 $ [fromGregorian 2013 01 01..]
 ghci> dates
 [2013-01-01,2013-01-02,2013-01-03,2013-01-04,2013-01-05,2013-01-06]
@@ -58,7 +60,6 @@ python> df
 ```
 
 ```haskell
-ghci> import qualified DataFrame as D
 ghci> import qualified Data.Vector as V
 ghci> import System.Random (randomRIO)
 ghci> import Control.Monad (replicateM)
@@ -66,7 +67,7 @@ ghci> import Data.List (foldl')
 ghci> :set -XOverloadedStrings
 ghci> initDf = D.fromList [("date", dates)]
 ghci> ns <- replicateM 4 (replicateM 6 (randomRIO (-2.0, 2.0)))
-ghci> df = foldl' (\d (name, col) -> addColumn name (V.fromList col) d) initDf (zip ["A","B","C","D"] ns)
+ghci> df = foldl' (\d (name, col) -> D.insertColumn name (V.fromList col) d) initDf (zip ["A","B","C","D"] ns)
 ghci> df
 ------------------------------------------------------------------------------------------------------------
 index |    date    |          A          |          B           |          C           |          D         
