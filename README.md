@@ -13,7 +13,7 @@ A tool for exploratory data analysis.
 * Follow along any one of the tutorials below.
 
 ### Jupyter notebook
-* Jupyter notebook is still underway with some local tests/examples in the works.
+* Use the Dockerfile in the [ihaskell-dataframe](https://github.com/mchav/ihaskell-dataframe) to build and run an image with dataframe integration.
 * For a preview check out the [California Housing](https://github.com/mchav/dataframe/blob/main/docs/California%20Housing.ipynb) notebook.
 
 ## What is exploratory data analysis?
@@ -68,7 +68,6 @@ Full example in `./app` folder using many of the constructs in the API.
 ![Screencast of usage in GHCI](./static/example.gif)
 
 ## Future work
-* Jupyter/ihaskell support (soon)
 * Apache arrow and Parquet compatability
 * Integration with common data formats (currently only supports CSV)
 * Support windowed plotting (currently only supports ASCII plots)

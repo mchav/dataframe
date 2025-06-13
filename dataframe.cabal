@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               dataframe
-version:            0.1.0.3
+version:            0.2.0.0
 
 synopsis: An intuitive, dynamically-typed DataFrame library.
 
