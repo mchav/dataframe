@@ -23,3 +23,4 @@
 # 0.2.0.0
 * Remove `Function` adt with a column expression syntax.
 * Adds a coverage report to the repository (thanks to @oforero)
+* Convenience functions for comparisons
