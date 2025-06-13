@@ -111,7 +111,7 @@ starwars
   |> D.selectRange ("name", "mass")
   -- mass and height are optionals so we combine them with
   -- Haskell's Applicative operators.
-  |> D.deriveFrom (["mass", "height"], D.func (\w h -> bmi <$> w <*> h)) "bmi" 
+  |> D.derive "bmi" (lift2 (/) (lift fromIntegral (col @Int "mass")) (lift fromIntegral (col@ Int "height")))
   |> D.take 10
 ```
 

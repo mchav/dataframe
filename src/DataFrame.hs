@@ -5,6 +5,7 @@ module DataFrame
 where
 
 import DataFrame.Internal.Types as D
+import DataFrame.Internal.Expression as D
 import DataFrame.Internal.Function as D
 import DataFrame.Internal.Parsing as D
 import DataFrame.Internal.Column as D

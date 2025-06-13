@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
 module DataFrame.Operations.Transformations where
 
 import qualified Data.List as L
@@ -13,11 +14,12 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
 import DataFrame.Errors (DataFrameException(..))
-import DataFrame.Internal.Column (Column(..), columnTypeString, itransform, ifoldrColumn)
+import DataFrame.Internal.Column (Column(..), columnTypeString, itransform, ifoldrColumn, TypedColumn (TColumn), Columnable, transform, unwrapTypedColumn)
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn)
+import DataFrame.Internal.Expression
 import DataFrame.Internal.Function (Function(..), funcApply)
 import DataFrame.Internal.Row (mkRowFromArgs)
-import DataFrame.Internal.Types (Columnable, RowValue, toRowValue, transform)
+import DataFrame.Internal.Types (RowValue, toRowValue)
 import DataFrame.Operations.Core
 import Data.Maybe
 import Type.Reflection (typeRep, typeOf)
@@ -41,41 +43,11 @@ apply f columnName d = case getColumn columnName d of
 
 -- | O(k) Apply a function to a combination of columns in a dataframe and
 -- add the result into `alias` column.
-deriveFrom :: ([T.Text], Function) -> T.Text -> DataFrame -> DataFrame
-deriveFrom (args, f) name df = case f of
-  (F4 (f' :: a -> b -> c -> d -> e)) -> let
-      xs = VG.map (\row -> funcApply @e row f) $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
-    in insertColumn name xs df
-  (F3 (f' :: a -> b -> c -> d)) -> let
-      xs = VG.map (\row -> funcApply @d row f) $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
-    in insertColumn name xs df
-  (F2 (f' :: a -> b -> c)) -> let
-      xs = VG.map (\row -> funcApply @c row f) $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
-    in insertColumn name xs df
-  (F1 (f' :: a -> b)) -> let
-      xs = VG.map (\row -> funcApply @b row f) $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
-    in insertColumn name xs df
+derive :: forall a . Columnable a => T.Text -> Expr a -> DataFrame -> DataFrame
+derive name expr df = let
+    value = interpret @a df expr
+  in insertColumn' name (Just (unwrapTypedColumn value)) df
 
--- | O(k) Apply a function to a given column in a dataframe and
--- add the result into alias column.
-
-derive ::
-  forall b c.
-  (Columnable b, Columnable c) =>
-  -- | New name
-  T.Text ->
-  -- | function to apply
-  (b -> c) ->
-  -- | Derivative column name
-  T.Text ->
-  -- | DataFrame to apply operation to
-  DataFrame ->
-  DataFrame
-derive alias f columnName d = case getColumn columnName d of
-  Nothing -> throw $ ColumnNotFoundException columnName "derive" (map fst $ M.toList $ columnIndices d)
-  Just column -> case transform f column of
-    Nothing  -> throw $ TypeMismatchException (typeOf column) (typeRep @b) columnName "derive"
-    Just res -> insertColumn' alias (Just res) d
 
 -- | O(k * n) Apply a function to given column names in a dataframe.
 applyMany ::

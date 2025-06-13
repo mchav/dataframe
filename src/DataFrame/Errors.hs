@@ -22,8 +22,8 @@ data DataFrameException where
                           -> T.Text    -- ^ call point
                           -> DataFrameException
     TypeMismatchException' :: forall a . (Typeable a)
-                           => TypeRep a -- ^ expected type
-                           -> String    -- ^ given type
+                           => TypeRep a -- ^ given type
+                           -> String    -- ^ expected type
                            -> T.Text    -- ^ column name
                            -> T.Text    -- ^ call point
                            -> DataFrameException

@@ -21,10 +21,10 @@ import Data.Type.Equality (TestEquality(..))
 
 -- We need an "Object" type as an intermediate representation
 -- for rows. Useful for things like sorting and function application.
-type Columnable a = (Typeable a, Show a, Ord a, Eq a)
+type Columnable' a = (Typeable a, Show a, Ord a, Eq a)
 
 data RowValue where
-    Value :: (Columnable a) => a -> RowValue
+    Value :: (Columnable' a) => a -> RowValue
 
 instance Eq RowValue where
     (==) :: RowValue -> RowValue -> Bool
@@ -42,12 +42,8 @@ instance Show RowValue where
     show :: RowValue -> String
     show (Value a) = show a
 
-toRowValue :: forall a . (Columnable a) => a -> RowValue
+toRowValue :: forall a . (Columnable' a) => a -> RowValue
 toRowValue =  Value
-
--- | Essentially a "functor" instance of our type-erased Column.
-class Transformable a where
-  transform :: forall b c . (Columnable b, Columnable c) => (b -> c) -> a -> Maybe a
 
 -- Convenience functions for types.
 unboxableTypes :: TypeRepList '[Int, Int8, Int16, Int32, Int64,

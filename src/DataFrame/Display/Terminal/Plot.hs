@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE FlexibleContexts #-}
 module DataFrame.Display.Terminal.Plot where
 
 import qualified Data.List as L
@@ -19,9 +20,8 @@ import Control.Monad ( forM_, forM )
 import Data.Bifunctor ( first )
 import Data.Char ( ord, chr )
 import DataFrame.Display.Terminal.Colours
-import DataFrame.Internal.Column (Column(..))
+import DataFrame.Internal.Column (Column(..), Columnable)
 import DataFrame.Internal.DataFrame (DataFrame(..))
-import DataFrame.Internal.Types (Columnable)
 import DataFrame.Operations.Core
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)

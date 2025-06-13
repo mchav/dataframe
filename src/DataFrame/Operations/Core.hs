@@ -19,10 +19,9 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception ( throw )
 import DataFrame.Errors
-import DataFrame.Internal.Column ( Column(..), toColumn', toColumn, columnLength, columnTypeString, expandColumn )
+import DataFrame.Internal.Column ( Column(..), toColumn', toColumn, columnLength, columnTypeString, expandColumn, Columnable)
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, null, empty)
 import DataFrame.Internal.Parsing (isNullish)
-import DataFrame.Internal.Types (Columnable)
 import Data.Either
 import Data.Function (on, (&))
 import Data.Maybe
@@ -43,7 +42,7 @@ columnNames = map fst . L.sortBy (compare `on` snd). M.toList . columnIndices
 -- | /O(n)/ Adds a vector to the dataframe.
 insertColumn ::
   forall a.
-  (Columnable a) =>
+  Columnable a =>
   -- | Column Name
   T.Text ->
   -- | Vector to add to column
