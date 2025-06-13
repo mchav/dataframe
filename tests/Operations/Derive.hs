@@ -23,13 +23,13 @@ values = [ ("test1", DI.toColumn ([1..26] :: [Int]))
 testData :: D.DataFrame
 testData = D.fromList values
 
-deriveFromWAI :: Test
-deriveFromWAI = TestCase (assertEqual "deriveFrom works when function args align"
+deriveWAI :: Test
+deriveWAI = TestCase (assertEqual "derive works with column expression"
                                 (Just $ DI.BoxedColumn (V.fromList (zipWith (\n c -> show n ++ [c]) [1..26] ['a'..'z'])))
-                                (DI.getColumn "test4" $ D.deriveFrom (
-                                    ["test1", "test3"],
-                                    D.func (\(n :: Int) (c :: Char) -> show n ++ [c])) "test4" testData))
+                                (DI.getColumn "test4" $ D.derive "test4" (
+                                    D.lift2 (++) (D.lift show (D.col @Int "test1")) (D.lift (: ([] :: [Char])) (D.col @Char "test3"))
+                                    ) testData))
 
 tests :: [Test]
-tests = [ TestLabel "deriveFromWAI" deriveFromWAI
+tests = [ TestLabel "deriveWAI" deriveWAI
         ]

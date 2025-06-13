@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
 module DataFrame.Operations.Aggregation where
 
 import qualified Data.Set as S
@@ -22,7 +23,7 @@ import qualified Statistics.Sample as SS
 import Control.Exception (throw)
 import Control.Monad (foldM_)
 import Control.Monad.ST (runST)
-import DataFrame.Internal.Column (Column(..), toColumn', getIndicesUnboxed, getIndices)
+import DataFrame.Internal.Column (Column(..), toColumn', getIndicesUnboxed, getIndices, Columnable)
 import DataFrame.Internal.DataFrame (DataFrame(..), empty, getColumn)
 import DataFrame.Internal.Parsing
 import DataFrame.Internal.Types

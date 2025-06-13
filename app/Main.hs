@@ -101,8 +101,7 @@ chipotle = do
   print $ D.take 10 f
 
   -- Create a total_price column that is quantity * item_price
-  let multiply (a :: Int) (b :: Double) = fromIntegral a * b
-  let withTotalPrice = D.deriveFrom (["quantity", "item_price"], D.func multiply) "total_price" f
+  let withTotalPrice = D.derive "total_price" (D.lift fromIntegral (D.col @Int "quantity") * D.col @Double"item_price") f
 
   -- sample a filtered subset of the dataframe
   putStrLn "Sample dataframe"

@@ -24,6 +24,7 @@ source-repository head
 library
     exposed-modules: DataFrame
     other-modules: DataFrame.Internal.Types,
+                   DataFrame.Internal.Expression,
                    DataFrame.Internal.Function,
                    DataFrame.Internal.Parsing,
                    DataFrame.Internal.Column,
@@ -60,6 +61,7 @@ executable dataframe
     main-is:       Main.hs
     other-modules: DataFrame,
                    DataFrame.Internal.Types,
+                   DataFrame.Internal.Expression,
                    DataFrame.Internal.Function,
                    DataFrame.Internal.Parsing,
                    DataFrame.Internal.Column,

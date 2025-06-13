@@ -4,6 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleContexts #-}
 module DataFrame.Operations.Subset where
 
 import qualified Data.List as L
@@ -21,7 +22,7 @@ import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
 import DataFrame.Internal.Function
 import DataFrame.Internal.Row (mkRowFromArgs)
-import DataFrame.Internal.Types (Columnable, RowValue, toRowValue)
+import DataFrame.Internal.Types (RowValue, toRowValue)
 import DataFrame.Operations.Core
 import DataFrame.Operations.Transformations (apply)
 import Data.Function ((&))

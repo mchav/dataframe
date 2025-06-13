@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE FlexibleContexts #-}
 module DataFrame.Operations.Statistics where
 
 import qualified Data.List as L
@@ -21,7 +22,6 @@ import Control.Exception (throw)
 import DataFrame.Errors (DataFrameException(..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
-import DataFrame.Internal.Types (Columnable, transform)
 import DataFrame.Operations.Core
 import Data.Foldable (asum)
 import Data.Maybe (isJust, fromMaybe)
