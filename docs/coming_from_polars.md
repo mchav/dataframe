@@ -122,9 +122,8 @@ main = do
     ...
     let year = (\(YearMonthDay y _ _) -> y)
     print $ df_csv
-          |> D.derive "birth_year" year "birthdate"
-          |> D.deriveFrom (["weight", "height"], D.func (\(w :: Double) (h :: Double) -> w / h ** 2))
-                       "bmi"
+          |> D.derive "birth_year" (lift year (D.col @Date "birthdate"))
+          |> D.derive "bmi" ((D.col @Double "weight") / (D.lift2 (**) (D.col @Double "height") (D.lit 2)))
           |> D.select ["name", "birth_year", "bmi"]
 ```
 
@@ -146,8 +145,8 @@ main = do
     let bmi :: Double -> Double -> Double
         bmi w h = w / h ** 2
     print $ df_csv
-          |> D.derive "birth_year" year "birthdate"
-          |> D.deriveFrom (["weight", "height"], D.func bmi) "bmi"
+          |> D.derive "birth_year" (lift year (D.col @Date "birthdate"))
+          |> D.derive "bmi" ((D.col @Double "weight") / (D.lift2 (**) (D.col @Double "height") (D.lit 2)))
           |> D.select ["name", "birth_year", "bmi"]
 ```
 
@@ -186,9 +185,8 @@ We instead write this two `applyWithAlias` calls:
 
 ```haskell
 df_csv
-    |> D.derive "weight-5%" (*0.95) "weight"
-    -- Alternatively we can use the `as` function.
-    |> D.as "height-5%" D.apply (*0.95) "height"
+    |> D.derive "weight-5%" ((col @Double "weight") * (lit 0.95))
+    |> D.derive "height-5%" ((col @Double "height") * (lit 0.95))
     |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
@@ -207,7 +205,7 @@ index |      name      |     height-5%      |     weight-5%
 However we can make our program shorter by using regular Haskell and folding over the dataframe.
 
 ```haskell
-let reduce name = D.derive (name <> "-5%") (*0.95) name
+let reduce name = D.derive (name <> "-5%") ((col @Double name) * (lit 0.95))
 df_csv
     |> D.fold reduce ["weight", "height"]
     |> D.select ["name", "weight-5%", "height-5%"]
@@ -324,7 +322,7 @@ print(result)
 ```haskell
 decade = (*10) . flip div 10 . year
 df_csv
-    |> D.derive "decade" decade "birthdate"
+    |> D.derive "decade" (lift decade (col @date "birthdate"))
     |> D.groupByAgg D.Count ["decade"]
     |> D.aggregate [("height", D.Maximum), ("weight", D.Mean)]
     |> D.select ["decade", "sampleSize", "Mean_weight", "Maximum_height"]

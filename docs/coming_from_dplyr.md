@@ -105,13 +105,15 @@ starwars %>%
 Our logic is more explicit about what's going on. Because both our fields are nullable/optional we have to specify the type.
 
 ```haskell
-bmi (w :: Int) (h :: Int) = (fromIntegral w) / (fromIntegral h / 100) ** 2 :: Double
+convertEitherToDouble name d = D.apply (either (\unparsed -> if unparsed == "NA" then Nothing else D.readDouble unparsed) (Just . (fromIntegral @Int))) name d
 
 starwars
+  |> D.fold convertEitherToDouble ["mass", "height"]
   |> D.selectRange ("name", "mass")
-  -- mass and height are optionals so we combine them with
-  -- Haskell's Applicative operators.
-  |> D.derive "bmi" (lift2 (/) (lift fromIntegral (col @Int "mass")) (lift fromIntegral (col@ Int "height")))
+  -- Remove Nothing/empty rows.
+  |> D.filterJust "mass"
+  |> D.filterJust "height"
+  |> D.derive "bmi" ((D.col @Double "mass") / (D.lift2 (**) (D.col @Double "height") (D.lit 2)))
   |> D.take 10
 ```
 
@@ -221,8 +223,7 @@ starwars |> D.select ["species", "mass"]
          -- Always better to be explcit about types for
          -- numbers but you can also turn on defaults
          -- to save keystrokes.
-         |> D.filterWhere (["Count", "Mean_mass"],
-                           D.func (\(n :: Int) (mass :: Double) -> n > 1 && mass > 50))
+         |> D.filterWhere (D.lift2 (&&) (D.lift (>1) (D.col @Int "Count")) (D.lift (>50) (D.col @Int "Mean_mass")))
 ```
 
 ```
