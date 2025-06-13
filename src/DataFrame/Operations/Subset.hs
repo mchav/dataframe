@@ -20,7 +20,7 @@ import Control.Exception (throw)
 import DataFrame.Errors (DataFrameException(..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
-import DataFrame.Internal.Function
+import DataFrame.Internal.Expression
 import DataFrame.Internal.Row (mkRowFromArgs)
 import DataFrame.Internal.Types (RowValue, toRowValue)
 import DataFrame.Operations.Core
@@ -97,9 +97,10 @@ filterBy = flip filter
 --   must appear in the same order as they do in the list.
 --
 -- > filterWhere (["x", "y"], func (\x y -> x + y > 5)) df
-filterWhere :: ([T.Text], Function) -> DataFrame -> DataFrame
-filterWhere (args, f) df = let
-    indexes = VG.ifoldl' (\s i row -> if funcApply @Bool row f then S.insert i s else s) S.empty $ V.generate (fst (dimensions df)) (mkRowFromArgs args df)
+filterWhere :: Expr Bool -> DataFrame -> DataFrame
+filterWhere expr df = let
+    (TColumn col) = interpret @Bool df expr
+    (Just indexes) = ifoldlColumn (\s i satisfied -> if satisfied then S.insert i s else s) S.empty col
     c' = snd $ dataframeDimensions df
     pick idxs col = atIndices idxs <$> col
   in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}

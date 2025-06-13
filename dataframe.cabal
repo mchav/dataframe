@@ -25,7 +25,6 @@ library
     exposed-modules: DataFrame
     other-modules: DataFrame.Internal.Types,
                    DataFrame.Internal.Expression,
-                   DataFrame.Internal.Function,
                    DataFrame.Internal.Parsing,
                    DataFrame.Internal.Column,
                    DataFrame.Display.Terminal.PrettyPrint,
@@ -62,7 +61,6 @@ executable dataframe
     other-modules: DataFrame,
                    DataFrame.Internal.Types,
                    DataFrame.Internal.Expression,
-                   DataFrame.Internal.Function,
                    DataFrame.Internal.Parsing,
                    DataFrame.Internal.Column,
                    DataFrame.Display.Terminal.PrettyPrint,

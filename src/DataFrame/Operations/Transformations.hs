@@ -17,7 +17,6 @@ import DataFrame.Errors (DataFrameException(..))
 import DataFrame.Internal.Column (Column(..), columnTypeString, itransform, ifoldrColumn, TypedColumn (TColumn), Columnable, transform, unwrapTypedColumn)
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn)
 import DataFrame.Internal.Expression
-import DataFrame.Internal.Function (Function(..), funcApply)
 import DataFrame.Internal.Row (mkRowFromArgs)
 import DataFrame.Internal.Types (RowValue, toRowValue)
 import DataFrame.Operations.Core
