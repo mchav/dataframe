@@ -1,7 +1,7 @@
 # Revision history for dataframe
 
 ## 0.2.0.0
-### Remove `Function` adt with a column expression syntax.
+### Replace `Function` adt with a column expression syntax.
 
 Previously, we tried to stay as close to Haskell as possible. We used the explicit
 ordering of the column names in the first part of the tuple to determine the function
