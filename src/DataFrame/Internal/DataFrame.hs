@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE FlexibleContexts #-}
 module DataFrame.Internal.DataFrame where
 
 import qualified Data.Map as M
@@ -45,6 +46,7 @@ asText :: DataFrame -> Bool -> T.Text
 asText d properMarkdown =
   let header = "index" : map fst (sortBy (compare `on` snd) $ M.toList (columnIndices d))
       types = V.toList $ V.filter (/= "") $ V.map getType (columns d)
+      getType :: Maybe Column -> T.Text
       getType Nothing = ""
       getType (Just (BoxedColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
       getType (Just (UnboxedColumn (column :: VU.Vector a))) = T.pack $ show (typeRep @a)
@@ -53,6 +55,7 @@ asText d properMarkdown =
       getType (Just (GroupedUnboxedColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
       -- Separate out cases dynamically so we don't end up making round trip string
       -- copies.
+      get :: Maybe Column -> V.Vector T.Text
       get (Just (BoxedColumn (column :: V.Vector a))) = case testEquality (typeRep @a) (typeRep @T.Text) of
               Just Refl -> column
               Nothing -> case testEquality (typeRep @a) (typeRep @String) of

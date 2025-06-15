@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE InstanceSigs #-}
 module DataFrame.Internal.Row where
 
 import qualified Data.List as L
@@ -17,6 +21,33 @@ import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame
 import DataFrame.Internal.Types
 import Data.Function (on)
+import Data.Maybe (fromMaybe)
+import Data.Typeable (Typeable, type (:~:) (..))
+import Data.Word ( Word8, Word16, Word32, Word64 )
+import Type.Reflection (TypeRep, typeOf, typeRep)
+import Data.Type.Equality (TestEquality(..))
+
+data RowValue where
+    Value :: (Columnable' a) => a -> RowValue
+
+instance Eq RowValue where
+    (==) :: RowValue -> RowValue -> Bool
+    (Value a) == (Value b) = fromMaybe False $ do
+        Refl <- testEquality (typeOf a) (typeOf b)
+        return $ a == b
+
+instance Ord RowValue where
+    (<=) :: RowValue -> RowValue -> Bool
+    (Value a) <= (Value b) = fromMaybe False $ do
+        Refl <- testEquality (typeOf a) (typeOf b)
+        return $ a <= b
+
+instance Show RowValue where
+    show :: RowValue -> String
+    show (Value a) = show a
+
+toRowValue :: forall a . (Columnable' a) => a -> RowValue
+toRowValue =  Value
 
 type Row = V.Vector RowValue
 
