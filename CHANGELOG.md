@@ -2,6 +2,7 @@
 
 ## 0.2.0.1
 * Fix bug with new comparison expressions. gt and geq were actually implemented as lt and leq.
+* Changes to make library work with ghc 9.10.1 and 9.12.2
 
 ## 0.2.0.0
 ### Replace `Function` adt with a column expression syntax.
