@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.2.0.1
+* Fix bug with new comparison expressions. gt and geq were actually implemented as lt and leq.
+
 ## 0.2.0.0
 ### Replace `Function` adt with a column expression syntax.
 

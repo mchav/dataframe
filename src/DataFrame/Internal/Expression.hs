@@ -126,10 +126,10 @@ lt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
 lt = BinOp "lt" (<)
 
 gt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-gt = BinOp "gt" (<)
+gt = BinOp "gt" (>)
 
 leq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
 leq = BinOp "leq" (<=)
 
 geq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-geq = BinOp "geq" (<=)
+geq = BinOp "geq" (>=)
