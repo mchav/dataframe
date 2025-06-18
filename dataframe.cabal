@@ -40,13 +40,15 @@ library
                    DataFrame.Operations.Typing,
                    DataFrame.Operations.Aggregation,
                    DataFrame.Display.Terminal.Plot,
-                   DataFrame.IO.CSV
+                   DataFrame.IO.CSV,
+                   DataFrame.Lazy.Internal.Column
     build-depends:    base >= 4.17.2.0 && < 4.22,
                       array ^>= 0.5,
                       attoparsec >= 0.12 && <= 0.14.4,
                       bytestring >= 0.11 && <= 0.12.2.0,
                       containers >= 0.6.7 && < 0.8,
                       directory >= 1.3.0.0 && <= 1.3.9.0,
+                      filepath >= 1.0.0.0 && <= 1.5.4.0,
                       hashable >= 1.2 && <= 1.5.0.0,
                       statistics >= 0.16.2.1 && <= 0.16.3.0,
                       text >= 2.0 && <= 2.1.2,

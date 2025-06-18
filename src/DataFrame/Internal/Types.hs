@@ -19,4 +19,4 @@ import Data.Word ( Word8, Word16, Word32, Word64 )
 import Type.Reflection (TypeRep, typeOf, typeRep)
 import Data.Type.Equality (TestEquality(..))
 
-type Columnable' a = (Typeable a, Show a, Ord a, Eq a)
+type Columnable' a = (Typeable a, Show a, Ord a, Eq a, Read a)
