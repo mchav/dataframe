@@ -288,7 +288,7 @@ Polars's `groupBy` does an implicit select. In dataframe the select is written e
 We implicitly create a `Count` variable as the result of grouping by an aggregate. In general when for a `groupByAgg` we create a variable with the same name as the aggregation to store the aggregation in. 
 
 ```haskell
-let decade = (*10) . flip div 10 . year
+let decade d = (year d) `div` 10 * 10
 df_csv
     |> D.derive "decade" (lift decade (col @date "birthdate"))
     |> D.select ["decade"]
