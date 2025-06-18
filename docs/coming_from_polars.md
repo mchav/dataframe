@@ -290,7 +290,7 @@ We implicitly create a `Count` variable as the result of grouping by an aggregat
 ```haskell
 let decade = (*10) . flip div 10 . year
 df_csv
-    |> D.derive "decade" decade "birthdate"
+    |> D.derive "decade" (lift decade (col @date "birthdate"))
     |> D.select ["decade"]
     |> D.groupByAgg D.Count ["decade"]
 ```
