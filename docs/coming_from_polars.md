@@ -122,7 +122,7 @@ main = do
     ...
     let year = (\(YearMonthDay y _ _) -> y)
     print $ df_csv
-          |> D.derive "birth_year" (lift year (D.col @Date "birthdate"))
+          |> D.derive "birth_year" (lift year (D.col @Day "birthdate"))
           |> D.derive "bmi" ((D.col @Double "weight") / (D.lift2 (**) (D.col @Double "height") (D.lit 2)))
           |> D.select ["name", "birth_year", "bmi"]
 ```
@@ -145,7 +145,7 @@ main = do
     let bmi :: Double -> Double -> Double
         bmi w h = w / h ** 2
     print $ df_csv
-          |> D.derive "birth_year" (lift year (D.col @Date "birthdate"))
+          |> D.derive "birth_year" (lift year (D.col @Day "birthdate"))
           |> D.derive "bmi" ((D.col @Double "weight") / (D.lift2 (**) (D.col @Double "height") (D.lit 2)))
           |> D.select ["name", "birth_year", "bmi"]
 ```
@@ -290,7 +290,7 @@ We implicitly create a `Count` variable as the result of grouping by an aggregat
 ```haskell
 let decade d = (year d) `div` 10 * 10
 df_csv
-    |> D.derive "decade" (lift decade (col @date "birthdate"))
+    |> D.derive "decade" (lift decade (col @Day "birthdate"))
     |> D.select ["decade"]
     |> D.groupByAgg D.Count ["decade"]
 ```
@@ -322,7 +322,7 @@ print(result)
 ```haskell
 decade = (*10) . flip div 10 . year
 df_csv
-    |> D.derive "decade" (lift decade (col @date "birthdate"))
+    |> D.derive "decade" (lift decade (col @Day "birthdate"))
     |> D.groupByAgg D.Count ["decade"]
     |> D.aggregate [("height", D.Maximum), ("weight", D.Mean)]
     |> D.select ["decade", "sampleSize", "Mean_weight", "Maximum_height"]
