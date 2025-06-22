@@ -23,7 +23,7 @@ import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Applicative ((<$>), (<|>), (<*>), (<*), (*>), many)
-import Control.Monad (forM_, zipWithM_, unless, void)
+import Control.Monad (forM_, zipWithM_, unless, void, replicateM_)
 import Data.Attoparsec.Text
 import Data.Char
 import DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, columnLength)
@@ -48,13 +48,15 @@ import Type.Reflection
 data ReadOptions = ReadOptions {
     hasHeader :: Bool,
     inferTypes :: Bool,
-    safeRead :: Bool
+    safeRead :: Bool,
+    rowRange :: Maybe (Int, Int),  -- (start, length)
+    seekPos :: Maybe Integer
 }
 
 -- | By default we assume the file has a header, we infer the types on read
 -- and we convert any rows with nullish objects into Maybe (safeRead).
 defaultOptions :: ReadOptions
-defaultOptions = ReadOptions { hasHeader = True, inferTypes = True, safeRead = True }
+defaultOptions = ReadOptions { hasHeader = True, inferTypes = True, safeRead = True, rowRange = Nothing, seekPos = Nothing }
 
 -- | Reads a CSV file from the given path.
 -- Note this file stores intermediate temporary files
@@ -71,7 +73,9 @@ readTsv = readSeparated '\t' defaultOptions
 -- | Reads a character separated file into a dataframe using mutable vectors.
 readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
 readSeparated c opts path = do
-    totalRows <- countRows c path
+    (begin, len) <- case rowRange opts of
+            Nothing           -> countRows c path >>= \totalRows -> return (0, if hasHeader opts then totalRows - 1 else totalRows)
+            Just (start, len) -> return (start, len)
     withFile path ReadMode $ \handle -> do
         firstRow <- map T.strip . parseSep c <$> TIO.hGetLine handle
         let columnNames = if hasHeader opts
@@ -80,9 +84,12 @@ readSeparated c opts path = do
         -- If there was no header rewind the file cursor.
         unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
 
+        -- skip columns till `begin`
+        _ <- replicateM_ begin (TIO.hGetLine handle >> return () )
+
         -- Initialize mutable vectors for each column
         let numColumns = length columnNames
-        let numRows = if hasHeader opts then totalRows - 1 else totalRows
+        let numRows = len 
         -- Use this row to infer the types of the rest of the column.
         -- TODO: this isn't robust but in so far as this is a guess anyway
         -- it's probably fine. But we should probably sample n rows and pick
@@ -102,6 +109,7 @@ readSeparated c opts path = do
         -- Freeze the mutable vectors into immutable ones
         nulls' <- V.unsafeFreeze nullIndices
         cols <- V.mapM (freezeColumn mutableCols nulls' opts) (V.generate numColumns id)
+
         return $ DataFrame {
                 columns = cols,
                 freeIndices = [],
@@ -134,7 +142,7 @@ inferValueType s = let
 fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
 fillColumns n c mutableCols nullIndices handle = do
     input <- newIORef (mempty :: T.Text)
-    forM_ [1..n] $ \i -> do
+    forM_ [1..(n - 1)] $ \i -> do
         isEOF <- hIsEOF handle
         input' <- readIORef input
         unless (isEOF && input' == mempty) $ do

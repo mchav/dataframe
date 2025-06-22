@@ -33,6 +33,7 @@ library
                    DataFrame.Internal.Row,
                    DataFrame.Errors,
                    DataFrame.Operations.Core,
+                   DataFrame.Operations.Merge,
                    DataFrame.Operations.Subset,
                    DataFrame.Operations.Sorting,
                    DataFrame.Operations.Statistics,
@@ -41,7 +42,7 @@ library
                    DataFrame.Operations.Aggregation,
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
-                   DataFrame.Lazy.Internal.Column
+                   DataFrame.Lazy.Internal.DataFrame
     build-depends:    base >= 4.17.2.0 && < 4.22,
                       array ^>= 0.5,
                       attoparsec >= 0.12 && <= 0.14.4,
