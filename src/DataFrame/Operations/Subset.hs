@@ -99,10 +99,10 @@ filterBy = flip filter
 filterWhere :: Expr Bool -> DataFrame -> DataFrame
 filterWhere expr df = let
     (TColumn col) = interpret @Bool df expr
-    (Just indexes) = ifoldlColumn (\s i satisfied -> if satisfied then S.insert i s else s) S.empty col
+    (Just indexes) = VU.convert . V.map (fromMaybe 0) . V.filter isJust . toVector @(Maybe Int) <$> itransform (\i satisfied -> if satisfied then Just i else Nothing) col
     c' = snd $ dataframeDimensions df
-    pick idxs col = atIndices idxs <$> col
-  in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
+    pick idxs col = atIndicesStable idxs <$> col
+  in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (VU.length indexes, c')}
 
 
 -- | O(k) removes all rows with `Nothing` in a given column from the dataframe.

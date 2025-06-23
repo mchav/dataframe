@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE Strict #-}
 module DataFrame.Operations.Core where
 
 import qualified Data.List as L

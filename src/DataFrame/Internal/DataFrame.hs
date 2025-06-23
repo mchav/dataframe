@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE StrictData #-}
+{-# LANGUAGE Strict #-}
 {-# LANGUAGE FlexibleContexts #-}
 module DataFrame.Internal.DataFrame where
 
