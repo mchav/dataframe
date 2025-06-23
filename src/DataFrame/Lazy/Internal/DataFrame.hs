@@ -23,7 +23,7 @@ import qualified DataFrame.Operations.Core as D
 import           DataFrame.Operations.Merge
 import qualified DataFrame.Operations.Subset as D
 import qualified DataFrame.Operations.Transformations as D
-import qualified DataFrame.IO.CSV as D
+import qualified DataFrame.Lazy.IO.CSV as D
 import           System.FilePath
 
 data LazyOperation where

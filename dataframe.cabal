@@ -43,6 +43,7 @@ library
                    DataFrame.Operations.Aggregation,
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
+                   DataFrame.Lazy.IO.CSV,
                    DataFrame.Lazy.Internal.DataFrame
     build-depends:    base >= 4.17.2.0 && < 4.22,
                       array ^>= 0.5,
@@ -80,7 +81,8 @@ executable dataframe
                    DataFrame.Operations.Typing,
                    DataFrame.Operations.Aggregation,
                    DataFrame.Display.Terminal.Plot,
-                   DataFrame.IO.CSV
+                   DataFrame.IO.CSV,
+                   DataFrame.Lazy.IO.CSV
     build-depends:    base >= 4.17.2.0 && < 4.22,
                       array ^>= 0.5,
                       attoparsec >= 0.12 && <= 0.14.4,

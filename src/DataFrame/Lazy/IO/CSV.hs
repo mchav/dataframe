@@ -7,7 +7,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE Strict #-}
-module DataFrame.IO.CSV where
+module DataFrame.Lazy.IO.CSV where
 
 import qualified Data.ByteString.Char8 as C
 import qualified Data.List as L
@@ -23,7 +23,7 @@ import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Applicative ((<$>), (<|>), (<*>), (<*), (*>), many)
-import Control.Monad (forM_, zipWithM_, unless, void)
+import Control.Monad (forM_, zipWithM_, unless, when, void, replicateM_)
 import Data.Attoparsec.Text
 import Data.Char
 import DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, columnLength)
@@ -48,30 +48,40 @@ import Type.Reflection
 data ReadOptions = ReadOptions {
     hasHeader :: Bool,
     inferTypes :: Bool,
-    safeRead :: Bool
+    safeRead :: Bool,
+    rowRange :: !(Maybe (Int, Int)),  -- (start, length)
+    seekPos :: !(Maybe Integer),
+    totalRows :: !(Maybe Int),
+    leftOver :: !T.Text,
+    rowsRead :: !Int
 }
 
 -- | By default we assume the file has a header, we infer the types on read
 -- and we convert any rows with nullish objects into Maybe (safeRead).
 defaultOptions :: ReadOptions
-defaultOptions = ReadOptions { hasHeader = True, inferTypes = True, safeRead = True }
+defaultOptions = ReadOptions { hasHeader = True, inferTypes = True, safeRead = True, rowRange = Nothing, seekPos = Nothing, totalRows = Nothing, leftOver = "", rowsRead = 0 }
 
 -- | Reads a CSV file from the given path.
 -- Note this file stores intermediate temporary files
 -- while converting the CSV from a row to a columnar format.
 readCsv :: String -> IO DataFrame
-readCsv = readSeparated ',' defaultOptions
+readCsv path = fst <$> readSeparated ',' defaultOptions path
 
 -- | Reads a tab separated file from the given path.
 -- Note this file stores intermediate temporary files
 -- while converting the CSV from a row to a columnar format.
 readTsv :: String -> IO DataFrame
-readTsv = readSeparated '\t' defaultOptions
+readTsv path = fst <$> readSeparated '\t' defaultOptions path
 
 -- | Reads a character separated file into a dataframe using mutable vectors.
-readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
+readSeparated :: Char -> ReadOptions -> String -> IO (DataFrame, (Integer, T.Text, Int))
 readSeparated c opts path = do
-    totalRows <- countRows c path
+    totalRows <- case totalRows opts of
+        Nothing -> countRows c path >>= \total -> if hasHeader opts then return (total - 1) else return total
+        Just n -> if hasHeader opts then return (n - 1) else return n
+    let (begin, len) = case rowRange opts of
+            Nothing           -> (0, totalRows)
+            Just (start, len) -> (start, min len (totalRows - rowsRead opts))
     withFile path ReadMode $ \handle -> do
         firstRow <- map T.strip . parseSep c <$> TIO.hGetLine handle
         let columnNames = if hasHeader opts
@@ -80,14 +90,18 @@ readSeparated c opts path = do
         -- If there was no header rewind the file cursor.
         unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
 
+        currPos <- hTell handle
+        when (isJust $ seekPos opts) $ hSeek handle AbsoluteSeek (fromMaybe currPos (seekPos opts))
+
         -- Initialize mutable vectors for each column
         let numColumns = length columnNames
-        let numRows = if hasHeader opts then totalRows - 1 else totalRows
+        let numRows = len
         -- Use this row to infer the types of the rest of the column.
         -- TODO: this isn't robust but in so far as this is a guess anyway
         -- it's probably fine. But we should probably sample n rows and pick
         -- the most likely type from the sample.
-        dataRow <- map T.strip . parseSep c <$> TIO.hGetLine handle
+        -- dataRow <- map T.strip . parseSep c . (<>) (leftOver opts) <$> TIO.hGetLine handle
+        (!dataRow, !remainder) <- readSingleLine c (leftOver opts) handle
 
         -- This array will track the indices of all null values for each column.
         -- If any exist then the column will be an optional type.
@@ -97,17 +111,19 @@ readSeparated c opts path = do
         getInitialDataVectors numRows mutableCols dataRow
 
         -- Read rows into the mutable vectors
-        fillColumns numRows c mutableCols nullIndices handle
+        (!unconsumed, !r) <- fillColumns numRows c mutableCols nullIndices remainder handle
 
         -- Freeze the mutable vectors into immutable ones
         nulls' <- V.unsafeFreeze nullIndices
         cols <- V.mapM (freezeColumn mutableCols nulls' opts) (V.generate numColumns id)
-        return $ DataFrame {
+        pos <- hTell handle
+
+        return (DataFrame {
                 columns = cols,
                 freeIndices = [],
                 columnIndices = M.fromList (zip columnNames [0..]),
                 dataframeDimensions = (maybe 0 columnLength (cols V.! 0), V.length cols)
-            }
+            }, (pos, unconsumed, r + 1))
 {-# INLINE readSeparated #-}
 
 getInitialDataVectors :: Int -> VM.IOVector Column -> [T.Text] -> IO ()
@@ -130,11 +146,23 @@ inferValueType s = let
             Nothing -> "Other"
 {-# INLINE inferValueType #-}
 
+readSingleLine :: Char -> T.Text -> Handle -> IO ([T.Text], T.Text)
+readSingleLine c unused handle = parseWith (TIO.hGetChunk handle) (parseRow c) unused >>= \case
+                Fail unconsumed ctx er -> do
+                  erpos <- hTell handle
+                  fail $ "Failed to parse CSV file around " <> show erpos <> " byte; due: "
+                    <> show er <> "; context: " <> show ctx
+                Partial c -> do
+                  fail "Partial handler is called"
+                Done (unconsumed :: T.Text) (row :: [T.Text]) -> do
+                  return (row, unconsumed)
+
 -- | Reads rows from the handle and stores values in mutable vectors.
-fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
-fillColumns n c mutableCols nullIndices handle = do
-    input <- newIORef (mempty :: T.Text)
-    forM_ [1..n] $ \i -> do
+fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> T.Text -> Handle -> IO (T.Text, Int)
+fillColumns n c mutableCols nullIndices unused handle = do
+    input <- newIORef unused
+    rowsRead <- newIORef (0 :: Int)
+    forM_ [1..(n - 1)] $ \i -> do
         isEOF <- hIsEOF handle
         input' <- readIORef input
         unless (isEOF && input' == mempty) $ do
@@ -147,7 +175,11 @@ fillColumns n c mutableCols nullIndices handle = do
                   fail "Partial handler is called"
                 Done (unconsumed :: T.Text) (row :: [T.Text]) -> do
                   writeIORef input unconsumed
+                  modifyIORef rowsRead (+1)
                   zipWithM_ (writeValue mutableCols nullIndices i) [0..] row
+    l <- readIORef input
+    r <- readIORef rowsRead
+    pure (l, r)
 {-# INLINE fillColumns #-}
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
