@@ -32,7 +32,7 @@ data Expr a where
     Apply :: (Columnable a, Columnable b) => T.Text -> (b -> a) -> Expr b -> Expr a
     BinOp :: (Columnable c, Columnable b, Columnable a) => T.Text -> (c -> b -> a) -> Expr c -> Expr b -> Expr a
 
-interpret :: forall a b . (Columnable a) => DataFrame -> Expr a -> TypedColumn a
+interpret :: forall a . (Columnable a) => DataFrame -> Expr a -> TypedColumn a
 interpret df (Lit value) = TColumn $ toColumn' $ V.replicate (fst $ dataframeDimensions df) value
 interpret df (Col name) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)

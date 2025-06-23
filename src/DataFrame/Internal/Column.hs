@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StrictData #-}
+{-# LANGUAGE Strict #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -520,6 +520,31 @@ expandColumn n (BoxedColumn col) = OptionalColumn $ VB.map Just col <> VB.replic
 expandColumn n (UnboxedColumn col) = OptionalColumn $ VB.map Just (VU.convert col) <> VB.replicate n Nothing
 expandColumn n (GroupedBoxedColumn col) = GroupedBoxedColumn $ col <> VB.replicate n VB.empty
 expandColumn n (GroupedUnboxedColumn col) = GroupedUnboxedColumn $ col <> VB.replicate n VU.empty
+
+leftExpandColumn :: Int -> Column -> Column
+leftExpandColumn n (OptionalColumn col) = OptionalColumn $ VB.replicate n Nothing <> col
+leftExpandColumn n (BoxedColumn col) = OptionalColumn $ VB.replicate n Nothing <> VB.map Just col
+leftExpandColumn n (UnboxedColumn col) = OptionalColumn $ VB.replicate n Nothing <> VB.map Just (VU.convert col)
+leftExpandColumn n (GroupedBoxedColumn col) = GroupedBoxedColumn $ VB.replicate n VB.empty <> col
+leftExpandColumn n (GroupedUnboxedColumn col) = GroupedUnboxedColumn $ VB.replicate n VU.empty <> col
+
+concatColumns :: Column -> Column -> Maybe Column
+concatColumns (OptionalColumn left) (OptionalColumn right) = case testEquality (typeOf left) (typeOf right) of
+  Nothing   -> Nothing
+  Just Refl -> Just (OptionalColumn $ left <> right)
+concatColumns (BoxedColumn left) (BoxedColumn right) = case testEquality (typeOf left) (typeOf right) of
+  Nothing   -> Nothing
+  Just Refl -> Just (BoxedColumn $ left <> right)
+concatColumns (UnboxedColumn left) (UnboxedColumn right) = case testEquality (typeOf left) (typeOf right) of
+  Nothing   -> Nothing
+  Just Refl -> Just (UnboxedColumn $ left <> right)
+concatColumns (GroupedBoxedColumn left) (GroupedBoxedColumn right) = case testEquality (typeOf left) (typeOf right) of
+  Nothing   -> Nothing
+  Just Refl -> Just (GroupedBoxedColumn $ left <> right)
+concatColumns (GroupedUnboxedColumn left) (GroupedUnboxedColumn right) = case testEquality (typeOf left) (typeOf right) of
+  Nothing   -> Nothing
+  Just Refl -> Just (GroupedUnboxedColumn $ left <> right)
+concatColumns _ _ = Nothing
 
 toVector :: forall a . Columnable a => Column -> VB.Vector a
 toVector column@(OptionalColumn (col :: VB.Vector b)) =

@@ -3,6 +3,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE Strict #-}
+{-# LANGUAGE StrictData #-}
 module DataFrame.Operations.Transformations where
 
 import qualified Data.List as L
