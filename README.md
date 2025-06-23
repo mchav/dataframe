@@ -71,7 +71,6 @@ Full example in `./app` folder using many of the constructs in the API.
 * Apache arrow and Parquet compatability
 * Integration with common data formats (currently only supports CSV)
 * Support windowed plotting (currently only supports ASCII plots)
-* Create a lazy API that builds an execution graph instead of running eagerly (will be used to compute on files larger than RAM)
 
 ## Contributing
 * Please first submit an issue and we can discuss there.
