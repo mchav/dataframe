@@ -408,12 +408,10 @@ readEncryptionAlgorithm buf pos lastFieldId fieldStack = do
     Nothing -> return ENCRYPTION_ALGORITHM_UNKNOWN
     Just (elemType, identifier) -> case identifier of
       1 -> do
-        aesGcmV1 <- readAesGcmV1 (AesGcmV1 {aadPrefix = [], aadFileUnique = [], supplyAadPrefix = False}) buf pos 0 []
-        return aesGcmV1
+        readAesGcmV1 (AesGcmV1 {aadPrefix = [], aadFileUnique = [], supplyAadPrefix = False}) buf pos 0 []
       2 -> do
-        aesGcmCtrV1 <- readAesGcmCtrV1 (AesGcmCtrV1 {aadPrefix = [], aadFileUnique = [], supplyAadPrefix = False}) buf pos 0 []
-        return aesGcmCtrV1
-      _ -> return ENCRYPTION_ALGORITHM_UNKNOWN
+        readAesGcmCtrV1 (AesGcmCtrV1 {aadPrefix = [], aadFileUnique = [], supplyAadPrefix = False}) buf pos 0 []
+      n -> return ENCRYPTION_ALGORITHM_UNKNOWN
 
 readAesGcmV1 :: EncryptionAlgorithm -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
 readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFieldId fieldStack = do
@@ -456,7 +454,8 @@ readColumnOrder buf pos lastFieldId fieldStack = do
     Nothing -> return COLUMN_ORDER_UNKNOWN
     Just (elemType, identifier) -> case identifier of
       1 -> do
-        readTypeOrder buf pos 0 []
+        _ <- replicateM_ 2 (readTypeOrder buf pos 0 [])
+        return TYPE_ORDER
       _ -> return COLUMN_ORDER_UNKNOWN
 
 readTypeOrder :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO ColumnOrder
@@ -464,7 +463,9 @@ readTypeOrder buf pos lastFieldId fieldStack = do
   fieldContents <- readField buf pos lastFieldId fieldStack
   case fieldContents of
     Nothing -> return TYPE_ORDER
-    Just (elemType, identifier) -> readTypeOrder buf pos identifier fieldStack
+    Just (elemType, identifier) -> if elemType == STOP
+                                   then return TYPE_ORDER 
+                                   else readTypeOrder buf pos identifier fieldStack
 
 data SchemaElement = SchemaElement
   { elementName :: T.Text,
@@ -774,7 +775,7 @@ readColumnChunk c buf pos lastFieldId fieldStack = do
         readColumnChunk (c {columnChunkMetadataFileOffset = columnChunkMetadataFileOffset}) buf pos identifier fieldStack
       3 -> do
         columnMetadata <- readColumnMetadata emptyColumnMetadata buf pos 0 []
-        return c
+        readColumnChunk (c {columnMetaData = columnMetadata}) buf pos identifier fieldStack 
       4 -> do
         columnOffsetIndexOffset <- readIntFromBuffer @Int64 buf pos
         readColumnChunk (c {columnChunkOffsetIndexOffset = columnOffsetIndexOffset}) buf pos identifier fieldStack
