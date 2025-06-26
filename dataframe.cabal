@@ -43,6 +43,7 @@ library
                    DataFrame.Operations.Aggregation,
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
+                   DataFrame.IO.Parquet,
                    DataFrame.Lazy.IO.CSV,
                    DataFrame.Lazy.Internal.DataFrame
     build-depends:    base >= 4.17.2.0 && < 4.22,
@@ -82,6 +83,7 @@ executable dataframe
                    DataFrame.Operations.Aggregation,
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
+                   DataFrame.IO.Parquet,
                    DataFrame.Lazy.IO.CSV
     build-depends:    base >= 4.17.2.0 && < 4.22,
                       array ^>= 0.5,
