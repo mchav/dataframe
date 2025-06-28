@@ -304,8 +304,30 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
   when (magicString /= "PAR1") $ error "Invalid Parquet file"
 
   metadata <- readMetadata handle size
-  print metadata
+  -- print metadata
+  forM_ (rowGroups metadata) $ \r -> do
+    forM_ (rowGroupColumns r) $ \c -> do
+      -- print c
+      let metadata = columnMetaData c
+      let colDataPageOffset = columnDataPageOffset metadata
+      let colDictionaryPageOffset = columnDictionaryPageOffset metadata
+      let colStart = if colDictionaryPageOffset > 0 && colDataPageOffset > colDictionaryPageOffset
+                     then colDictionaryPageOffset
+                     else colDataPageOffset
+      let colLength = columnTotalCompressedSize metadata
+      -- print (colStart, colLength)
+      columnBytes <-readBytes handle colStart colLength
+      print $ columnBytes
   return DI.empty
+
+readBytes :: Handle -> Int64 -> Int64 -> IO [Word8]
+readBytes handle colStart colLen = do
+  buf <- mallocBytes (fromIntegral colLen) :: IO (Ptr Word8)
+  hSeek handle AbsoluteSeek (fromIntegral colStart)
+  _ <- hGetBuf handle buf (fromIntegral colLen) 
+  columnBytes <- readByteString' buf colLen
+  free buf
+  pure columnBytes
 
 numBytesInFile :: Handle -> IO Integer
 numBytesInFile handle = do
@@ -958,6 +980,9 @@ readByteString buf pos = do
   size <- readVarIntFromBuffer @Int buf pos
   replicateM size (readAndAdvance pos buf)
 
+readByteString' :: Ptr Word8 -> Int64 -> IO [Word8]
+readByteString' buf size = mapM (`readSingleByte` buf) [0..(size - 1)]
+
 readField :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO (Maybe (TType, Int16))
 readField buf pos lastFieldId fieldStack = do
   t <- readAndAdvance pos buf
@@ -978,6 +1003,9 @@ readAndAdvance bufferPos buffer = do
   b <- peekByteOff buffer pos :: IO Word8
   modifyIORef bufferPos (+ 1)
   return b
+
+readSingleByte :: Int64 -> Ptr b -> IO Word8
+readSingleByte pos buffer = peekByteOff buffer (fromIntegral pos)
 
 readNoAdvance :: IORef Int -> Ptr b -> IO Word8
 readNoAdvance bufferPos buffer = do
