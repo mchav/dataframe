@@ -4,9 +4,11 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module DataFrame.IO.Parquet where
 
+import Codec.Compression.Zstd.Streaming
 import Control.Monad
 import qualified Data.ByteString as BSO
 import qualified Data.ByteString.Char8 as BS
@@ -282,7 +284,7 @@ data FileMetadata = FileMetaData
     encryptionAlgorithm :: EncryptionAlgorithm,
     footerSigningKeyMetadata :: [Word8]
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 defaultMetadata :: FileMetadata
 defaultMetadata =
@@ -307,7 +309,6 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
   -- print metadata
   forM_ (rowGroups metadata) $ \r -> do
     forM_ (rowGroupColumns r) $ \c -> do
-      -- print c
       let metadata = columnMetaData c
       let colDataPageOffset = columnDataPageOffset metadata
       let colDictionaryPageOffset = columnDictionaryPageOffset metadata
@@ -315,10 +316,95 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                      then colDictionaryPageOffset
                      else colDataPageOffset
       let colLength = columnTotalCompressedSize metadata
-      -- print (colStart, colLength)
       columnBytes <-readBytes handle colStart colLength
-      print $ columnBytes
+      let (hdr, rem) = readPageHeader emptyPageHeader columnBytes 0
+      let compressed = take (fromIntegral $ compressedPageSize hdr) rem
+      
+      -- Weird round about way to uncompress zstd files compressed using the
+      -- streaming API
+      Consume dFunc <- decompress
+      Consume dFunc' <- dFunc (BSO.pack compressed)
+      Done res <- dFunc' BSO.empty
+      print $ BSO.length res
+      print $ hdr
+      putStrLn ""
+
   return DI.empty
+
+data PageHeader = PageHeader { pageHeaderPageType :: PageType
+                             , uncompressedPageSize :: Int32
+                             , compressedPageSize ::Int32
+                             , pageHeaderCrcChecksum :: Int32
+                             , pageTypeHeader :: PageTypeHeader
+                             } deriving (Show, Eq)
+
+
+emptyPageHeader = PageHeader PAGE_TYPE_UNKNOWN 0 0 0  PAGE_TYPE_HEADER_UNKNOWN
+
+data PageTypeHeader = DataPageHeader { dataPageHeaderNumValues :: Int32
+                                     , dataPageHeaderEncoding :: ParquetEncoding
+                                     , definitionLevelEncoding :: ParquetEncoding
+                                     , repetitionLevelEncoding :: ParquetEncoding
+                                     , dataPageHeaderStatistics :: ColumnStatistics
+                                     }
+                    | DataPageHeaderV2 { dataPageHeaderV2NumValues :: Int32
+                                         , dataPageHeaderV2NumNulls :: Int32
+                                         , dataPageHeaderV2NumRows :: Int32
+                                         , dataPageHeaderV2Encoding :: ParquetEncoding
+                                         , definitionLevelByteLength :: Int32
+                                         , repetitionLevelByteLength :: Int32
+                                         , dataPageHeaderV2IsCompressed :: Bool
+                                         , dataPageHeaderV2Statistics :: ColumnStatistics
+                                         }
+                    | DictionaryPageHeader { dictionaryPageHeaderNumValues :: Int32
+                                            , dictionaryPageHeaderEncoding :: ParquetEncoding
+                                            , dictionaryPageIsSorted :: Bool 
+                                            }
+                    | INDEX_PAGE_HEADER
+                    | PAGE_TYPE_HEADER_UNKNOWN deriving (Show, Eq)
+
+emptyDictionaryPageHeader = DictionaryPageHeader 0 PARQUET_ENCODING_UNKNOWN False
+emptyDataPageHeader = DataPageHeader 0 PARQUET_ENCODING_UNKNOWN PARQUET_ENCODING_UNKNOWN PARQUET_ENCODING_UNKNOWN emptyColumnStatistics
+emptyDataPageHeaderV2 = DataPageHeaderV2 0 0 0 PARQUET_ENCODING_UNKNOWN 0 0 False emptyColumnStatistics 
+
+readPageHeader :: PageHeader -> [Word8] -> Int16 -> (PageHeader, [Word8])
+readPageHeader hdr [] _ = (hdr, [])
+readPageHeader hdr xs lastFieldId = let
+    fieldContents = readField' xs lastFieldId
+  in case fieldContents of
+      Nothing -> (hdr, tail xs)
+      Just (rem, elemType, identifier) -> case identifier of
+        1 -> let
+            (pType, rem') = readInt32FromBytes rem
+          in readPageHeader (hdr {pageHeaderPageType = pageTypeFromInt pType}) rem' identifier
+        2 -> let
+            (uncompressedPageSize, rem') = readInt32FromBytes rem
+          in readPageHeader (hdr {uncompressedPageSize = uncompressedPageSize}) rem' identifier
+        3 -> let
+            (compressedPageSize, rem') = readInt32FromBytes rem
+          in readPageHeader (hdr {compressedPageSize = compressedPageSize}) rem' identifier
+        7 -> let
+            (dictionaryPageHeader, rem') = readPageTypeHeader emptyDictionaryPageHeader rem 0
+          in readPageHeader (hdr {pageTypeHeader = dictionaryPageHeader}) rem' identifier
+        n -> error $ show n
+
+readPageTypeHeader :: PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
+readPageTypeHeader hdr [] _ = (hdr, [])
+readPageTypeHeader hdr@(DictionaryPageHeader {..}) xs lastFieldId = let
+    fieldContents = readField' xs lastFieldId
+  in case fieldContents of
+      Nothing -> (hdr, tail xs)
+      Just (rem, elemType, identifier) -> case identifier of
+        1 -> let
+            (numValues, rem') = readInt32FromBytes rem
+          in readPageTypeHeader (hdr {dictionaryPageHeaderNumValues = numValues}) rem' identifier
+        2 -> let
+            (enc, rem') = readInt32FromBytes rem
+          in readPageTypeHeader (hdr {dictionaryPageHeaderEncoding = parquetEncodingFromInt enc}) rem' identifier
+        3 -> let
+            (isSorted: rem') = rem
+          in readPageTypeHeader (hdr {dictionaryPageIsSorted = isSorted == compactBooleanTrue}) rem' identifier
+        n -> error $ show n
 
 readBytes :: Handle -> Int64 -> Int64 -> IO [Word8]
 readBytes handle colStart colLen = do
@@ -997,6 +1083,16 @@ readField buf pos lastFieldId fieldStack = do
       let elemType = toTType (t .&. 0x0f)
       pure $ Just (elemType, identifier)
 
+readField' :: [Word8] -> Int16 -> Maybe ([Word8], TType, Int16)
+readField' [] _ = Nothing
+readField' (x:xs) lastFieldId
+  | x .&. 0x0f == 0 = Nothing
+  | otherwise = let
+      modifier = fromIntegral ((x .&. 0xf0) `shiftR` 4) :: Int16
+      (identifier, rem) = if modifier == 0 then readIntFromBytes @Int16 xs else (lastFieldId + modifier, xs)
+      elemType = toTType (x .&. 0x0f)
+    in Just (rem, elemType, identifier)
+
 readAndAdvance :: IORef Int -> Ptr b -> IO Word8
 readAndAdvance bufferPos buffer = do
   pos <- readIORef bufferPos
@@ -1093,11 +1189,24 @@ readIntFromBuffer buf bufferPos = do
   let u = fromIntegral n :: Word32
   return $ fromIntegral $ (fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1))
 
+readIntFromBytes :: (Integral a) => [Word8] -> (a, [Word8])
+readIntFromBytes bs = let
+    (n, rem) = readVarIntFromBytes bs
+    u = fromIntegral n :: Word32
+  in (fromIntegral $ (fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1)), rem)
+
 readInt32FromBuffer :: Ptr b -> IORef Int -> IO Int32
 readInt32FromBuffer buf bufferPos = do
   n <- (fromIntegral <$> readVarIntFromBuffer @Int64 buf bufferPos) :: IO Int32
   let u = fromIntegral n :: Word32
   return $ (fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1))
+
+readInt32FromBytes :: [Word8] -> (Int32, [Word8])
+readInt32FromBytes bs = let
+    (n', rem) = readVarIntFromBytes @Int64 bs
+    n = fromIntegral n' :: Int32
+    u = fromIntegral n :: Word32
+  in ((fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1)), rem)
 
 readVarIntFromBuffer :: (Integral a) => Ptr b -> IORef Int -> IO a
 readVarIntFromBuffer buf bufferPos = do
@@ -1109,3 +1218,12 @@ readVarIntFromBuffer buf bufferPos = do
           then return res
           else loop (i + 1) (shift + 7) res
   fromIntegral <$> loop start 0 0
+
+readVarIntFromBytes :: (Integral a) => [Word8] -> (a, [Word8])
+readVarIntFromBytes bs = (fromIntegral n, rem)
+  where
+    (n, rem) = loop 0 0 bs
+    loop _ result [] = (result, [])
+    loop shift result (x:xs) = let
+        res = result .|. ((fromIntegral (x .&. 0x7f) :: Integer) `shiftL` shift)
+      in if (x .&. 0x80) /= 0x80 then (res, xs) else loop (shift + 7) res xs
