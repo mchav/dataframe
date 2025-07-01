@@ -587,7 +587,7 @@ data SchemaElement = SchemaElement
     precision :: Int32,
     logicalType :: LogicalType
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 data RepetitionType = REQUIRED | OPTIONAL | REPEATED | UNKNOWN_REPETITION_TYPE deriving (Eq, Show)
 
