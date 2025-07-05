@@ -19,7 +19,7 @@ import sys
 
 # -- Project information -----------------------------------------------------
 
-project = 'haskell-language-server'
+project = 'dataframe'
 
 # We want to take some of the metadata from the Cabal file, especially the version.
 # (otherwise it's very easy to forget to update it!)
@@ -29,7 +29,7 @@ author = None
 versionPattern = re.compile("^version:\s*([\d.]+)")
 copyrightPattern = re.compile("^copyright:\s*(.+)")
 authorPattern = re.compile("^author:\s*(.+)")
-for i, line in enumerate(open('../haskell-language-server.cabal')):
+for i, line in enumerate(open('../dataframe.cabal')):
     versionMatch = re.search(versionPattern, line)
     if versionMatch:
         release = versionMatch.group(1)
@@ -67,7 +67,7 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+exclude_patterns = ['_build']
 
 
 # -- Options for HTML output -------------------------------------------------
