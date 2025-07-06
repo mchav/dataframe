@@ -317,19 +317,24 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                      else colDataPageOffset
       let colLength = columnTotalCompressedSize metadata
       columnBytes <-readBytes handle colStart colLength
-      let (hdr, rem) = readPageHeader emptyPageHeader columnBytes 0
-      let compressed = take (fromIntegral $ compressedPageSize hdr) rem
-      
-      -- Weird round about way to uncompress zstd files compressed using the
-      -- streaming API
-      Consume dFunc <- decompress
-      Consume dFunc' <- dFunc (BSO.pack compressed)
-      Done res <- dFunc' BSO.empty
-      print $ BSO.length res
-      print $ hdr
-      putStrLn ""
+      readPage columnBytes
 
   return DI.empty
+
+readPage :: [Word8] -> IO ()
+readPage [] = pure ()
+readPage columnBytes = do
+  let (hdr, rem) = readPageHeader emptyPageHeader columnBytes 0
+  let compressed = take (fromIntegral $ compressedPageSize hdr) rem
+  
+  -- Weird round about way to uncompress zstd files compressed using the
+  -- streaming API
+  Consume dFunc <- decompress
+  Consume dFunc' <- dFunc (BSO.pack compressed)
+  Done res <- dFunc' BSO.empty
+  -- print $ BSO.length res
+  -- print $ hdr
+  if isDataPage (pageTypeHeader hdr) then (print hdr >> print "" >> print (BSO.unpack res) >> print "") else readPage (drop (fromIntegral $ compressedPageSize hdr) rem)
 
 data PageHeader = PageHeader { pageHeaderPageType :: PageType
                              , uncompressedPageSize :: Int32
@@ -340,6 +345,11 @@ data PageHeader = PageHeader { pageHeaderPageType :: PageType
 
 
 emptyPageHeader = PageHeader PAGE_TYPE_UNKNOWN 0 0 0  PAGE_TYPE_HEADER_UNKNOWN
+
+isDataPage :: PageTypeHeader -> Bool
+isDataPage DataPageHeader   {..} = True
+isDataPage DataPageHeaderV2 {..} = True
+isDataPage _                     = False
 
 data PageTypeHeader = DataPageHeader { dataPageHeaderNumValues :: Int32
                                      , dataPageHeaderEncoding :: ParquetEncoding
@@ -383,6 +393,9 @@ readPageHeader hdr xs lastFieldId = let
         3 -> let
             (compressedPageSize, rem') = readInt32FromBytes rem
           in readPageHeader (hdr {compressedPageSize = compressedPageSize}) rem' identifier
+        5 -> let
+            (dataPageHeader, rem') = readPageTypeHeader emptyDataPageHeader rem 0
+          in readPageHeader (hdr {pageTypeHeader = dataPageHeader}) rem' identifier
         7 -> let
             (dictionaryPageHeader, rem') = readPageTypeHeader emptyDictionaryPageHeader rem 0
           in readPageHeader (hdr {pageTypeHeader = dictionaryPageHeader}) rem' identifier
@@ -404,6 +417,59 @@ readPageTypeHeader hdr@(DictionaryPageHeader {..}) xs lastFieldId = let
         3 -> let
             (isSorted: rem') = rem
           in readPageTypeHeader (hdr {dictionaryPageIsSorted = isSorted == compactBooleanTrue}) rem' identifier
+        n -> error $ show n
+readPageTypeHeader hdr@(DataPageHeader {..}) xs lastFieldId = let
+    fieldContents = readField' xs lastFieldId
+  in case fieldContents of
+      Nothing -> (hdr, tail xs)
+      Just (rem, elemType, identifier) -> case identifier of
+        1 -> let
+            (numValues, rem') = readInt32FromBytes rem
+          in readPageTypeHeader (hdr {dataPageHeaderNumValues = numValues}) rem' identifier
+        2 -> let
+            (enc, rem') = readInt32FromBytes rem
+          in readPageTypeHeader (hdr {dataPageHeaderEncoding = parquetEncodingFromInt enc}) rem' identifier
+        3 -> let
+            (enc, rem') = readInt32FromBytes rem
+          in readPageTypeHeader (hdr {definitionLevelEncoding = parquetEncodingFromInt enc}) rem' identifier
+        4 -> let
+            (enc, rem') = readInt32FromBytes rem
+          in readPageTypeHeader (hdr {repetitionLevelEncoding = parquetEncodingFromInt enc}) rem' identifier
+        5 -> let
+            (stats, rem') = readStatisticsFromBytes emptyColumnStatistics rem 0
+          in readPageTypeHeader (hdr {dataPageHeaderStatistics = stats}) rem' identifier
+        n -> error $ show n
+
+readStatisticsFromBytes :: ColumnStatistics -> [Word8] -> Int16 -> (ColumnStatistics, [Word8])
+readStatisticsFromBytes cs xs lastFieldId = let
+    fieldContents = readField' xs lastFieldId
+  in case fieldContents of
+      Nothing -> (cs, tail xs)
+      Just (rem, elemType, identifier) -> case identifier of
+        1 -> let
+            (maxInBytes, rem') = readByteStringFromBytes rem
+          in readStatisticsFromBytes (cs {columnMax = maxInBytes}) rem' identifier
+        2 -> let
+            (minInBytes, rem') = readByteStringFromBytes rem
+          in readStatisticsFromBytes (cs {columnMin = minInBytes}) rem' identifier
+        3 -> let
+            (nullCount, rem') = readIntFromBytes @Int64 rem
+          in readStatisticsFromBytes (cs {columnNullCount = nullCount}) rem' identifier
+        4 -> let
+            (distinctCount, rem') = readIntFromBytes @Int64 rem
+          in readStatisticsFromBytes (cs {columnDistictCount = distinctCount}) rem' identifier
+        5 -> let
+            (maxInBytes, rem') = readByteStringFromBytes rem
+          in readStatisticsFromBytes (cs {columnMaxValue = maxInBytes}) rem' identifier
+        6 -> let
+            (minInBytes, rem') = readByteStringFromBytes rem
+          in readStatisticsFromBytes (cs {columnMinValue = minInBytes}) rem' identifier
+        7 -> let
+            (isMaxValueExact: rem') = rem
+          in readStatisticsFromBytes (cs {isColumnMaxValueExact = isMaxValueExact == compactBooleanTrue}) rem' identifier
+        8 -> let
+            (isMinValueExact: rem') = rem
+          in readStatisticsFromBytes (cs {isColumnMinValueExact = isMinValueExact == compactBooleanTrue}) rem' identifier
         n -> error $ show n
 
 readBytes :: Handle -> Int64 -> Int64 -> IO [Word8]
@@ -1060,6 +1126,11 @@ readString :: Ptr Word8 -> IORef Int -> IO String
 readString buf pos = do
   nameSize <- readVarIntFromBuffer @Int buf pos
   map (chr . fromIntegral) <$> replicateM nameSize (readAndAdvance pos buf)
+
+readByteStringFromBytes :: [Word8] -> ([Word8], [Word8])
+readByteStringFromBytes xs = let
+    (size, rem) = readVarIntFromBytes @Int xs
+  in (take size rem, drop size rem)
 
 readByteString :: Ptr Word8 -> IORef Int -> IO [Word8]
 readByteString buf pos = do
