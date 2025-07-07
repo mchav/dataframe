@@ -20,7 +20,7 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception ( throw )
 import DataFrame.Errors
-import DataFrame.Internal.Column ( Column(..), toColumn', toColumn, columnLength, columnTypeString, expandColumn, Columnable)
+import DataFrame.Internal.Column ( Column(..), fromVector, fromList, columnLength, columnTypeString, expandColumn, Columnable)
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, null, empty)
 import DataFrame.Internal.Parsing (isNullish)
 import Data.Either
@@ -51,7 +51,7 @@ insertColumn ::
   -- | DataFrame to add column to
   DataFrame ->
   DataFrame
-insertColumn name xs = insertColumn' name (Just (toColumn' xs))
+insertColumn name xs = insertColumn' name (Just (fromVector xs))
 {-# INLINE insertColumn #-}
 
 cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
@@ -97,7 +97,7 @@ insertColumn' name optCol@(Just column) d
           | r > 0 && l > r = let
               indexes = (map snd . L.sortBy (compare `on` snd). M.toList . columnIndices) d
               nonEmptyColumns = L.foldl' (\acc i -> acc ++ [maybe (error "Unexpected") (expandColumn diff) (columns d V.! i)]) [] indexes
-            in fromList (zip (columnNames d ++ [name]) (nonEmptyColumns ++ [column]))
+            in fromNamedColumns (zip (columnNames d ++ [name]) (nonEmptyColumns ++ [column]))
           | otherwise = let
                 (n:rest) = case freeIndices d of
                   [] -> [VG.length (columns d)..(VG.length (columns d) * 2 - 1)]
@@ -134,7 +134,7 @@ insertColumnWithDefault ::
 insertColumnWithDefault defaultValue name xs d =
   let (rows, _) = dataframeDimensions d
       values = xs V.++ V.replicate (rows - V.length xs) defaultValue
-   in insertColumn' name (Just $ toColumn' values) d
+   in insertColumn' name (Just $ fromVector values) d
 
 -- TODO: Add existence check in rename.
 rename :: T.Text -> T.Text -> DataFrame -> DataFrame
@@ -160,12 +160,12 @@ data ColumnInfo = ColumnInfo {
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
 columnInfo :: DataFrame -> DataFrame
-columnInfo df = empty & insertColumn' "Column Name" (Just $! toColumn (map nameOfColumn infos))
-                      & insertColumn' "# Non-null Values" (Just $! toColumn (map nonNullValues infos))
-                      & insertColumn' "# Null Values" (Just $! toColumn (map nullValues infos))
-                      & insertColumn' "# Partially parsed" (Just $! toColumn (map partiallyParsedValues infos))
-                      & insertColumn' "# Unique Values" (Just $! toColumn (map uniqueValues infos))
-                      & insertColumn' "Type" (Just $! toColumn (map typeOfColumn infos))
+columnInfo df = empty & insertColumn' "Column Name" (Just $! fromList (map nameOfColumn infos))
+                      & insertColumn' "# Non-null Values" (Just $! fromList (map nonNullValues infos))
+                      & insertColumn' "# Null Values" (Just $! fromList (map nullValues infos))
+                      & insertColumn' "# Partially parsed" (Just $! fromList (map partiallyParsedValues infos))
+                      & insertColumn' "# Unique Values" (Just $! fromList (map uniqueValues infos))
+                      & insertColumn' "Type" (Just $! fromList (map typeOfColumn infos))
   where
     infos = L.sortBy (compare `on` nonNullValues) (V.ifoldl' go [] (columns df)) :: [ColumnInfo]
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
@@ -214,32 +214,47 @@ partiallyParsed (BoxedColumn (xs :: V.Vector a)) =
     _ -> 0
 partiallyParsed _ = 0
 
-fromList :: [(T.Text, Column)] -> DataFrame
-fromList = L.foldl' (\df (!name, !column) -> insertColumn' name (Just $! column) df) empty
+fromNamedColumns :: [(T.Text, Column)] -> DataFrame
+fromNamedColumns = L.foldl' (\df (!name, !column) -> insertColumn' name (Just $! column) df) empty
 
-fromColumnList :: [Column] -> DataFrame
-fromColumnList = fromList . zip (map (T.pack . show) [0..])
+fromUnamedColumns :: [Column] -> DataFrame
+fromUnamedColumns = fromNamedColumns . zip (map (T.pack . show) [0..])
 
 -- | O (k * n) Counts the occurences of each value in a given column.
 valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Int)]
 valueCounts columnName df = case getColumn columnName df of
-      Nothing -> throw $ ColumnNotFoundException columnName "sortBy" (map fst $ M.toList $ columnIndices df)
+      Nothing -> throw $ ColumnNotFoundException columnName "valueCounts" (map fst $ M.toList $ columnIndices df)
       Just (BoxedColumn (column' :: V.Vector c)) ->
         let
           column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
         in case (typeRep @a) `testEquality` (typeRep @c) of
-              Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
+              Nothing -> throw $ TypeMismatchException (MkTypeErrorContext
+                                                          { userType = Right $ typeRep @a
+                                                          , expectedType = Right $ typeRep @c
+                                                          , errorColumnName = Just (T.unpack columnName)
+                                                          , callingFunctionName = Just "valueCounts"
+                                                          })
               Just Refl -> M.toAscList column
       Just (OptionalColumn (column' :: V.Vector c)) ->
         let
           column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
         in case (typeRep @a) `testEquality` (typeRep @c) of
-              Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
+              Nothing -> throw $ TypeMismatchException (MkTypeErrorContext
+                                                          { userType = Right $ typeRep @a
+                                                          , expectedType = Right $ typeRep @c
+                                                          , errorColumnName = Just (T.unpack columnName)
+                                                          , callingFunctionName = Just "valueCounts"
+                                                          })
               Just Refl -> M.toAscList column
       Just (UnboxedColumn (column' :: VU.Vector c)) -> let
           column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty (V.convert column')
         in case (typeRep @a) `testEquality` (typeRep @c) of
-          Nothing -> throw $ TypeMismatchException (typeRep @a) (typeRep @c) columnName "valueCounts"
+          Nothing -> throw $ TypeMismatchException (MkTypeErrorContext
+                                                          { userType = Right $ typeRep @a
+                                                          , expectedType = Right $ typeRep @c
+                                                          , errorColumnName = Just (T.unpack columnName)
+                                                          , callingFunctionName = Just "valueCounts"
+                                                          })
           Just Refl -> M.toAscList column
 
 fold :: (a -> DataFrame -> DataFrame) -> [a] -> DataFrame -> DataFrame

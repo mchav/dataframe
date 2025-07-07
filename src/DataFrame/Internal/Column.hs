@@ -44,8 +44,10 @@ import DataFrame.Errors
 import Control.Exception (throw)
 import Data.Kind (Type, Constraint)
 
--- | Our representation of a column is a GADT that can store data in either
--- a vector with boxed elements or
+-- | Our representation of a column is a GADT that can store data based on the underlying data.
+-- 
+-- This allows us to pattern match on data kinds and limit some operations to only some
+-- kinds of vectors. E.g. operations for missing data only happen in an OptionalColumn.
 data Column where
   BoxedColumn :: Columnable a => VB.Vector a -> Column
   UnboxedColumn :: (Columnable a, VU.Unbox a) => VU.Vector a -> Column
@@ -53,30 +55,45 @@ data Column where
   GroupedBoxedColumn :: Columnable a => VB.Vector (VB.Vector a) -> Column
   GroupedUnboxedColumn :: (Columnable a, VU.Unbox a) => VB.Vector (VU.Vector a) -> Column
   GroupedOptionalColumn :: (Columnable a) => VB.Vector (VB.Vector (Maybe a)) -> Column
+  -- These are used purely for I/O, not to store live data.
   MutableBoxedColumn :: Columnable a => VBM.IOVector a -> Column
   MutableUnboxedColumn :: (Columnable a, VU.Unbox a) => VUM.IOVector a -> Column
 
+-- | A TypedColumn is a wrapper around our type-erased column.
+-- It is used to type check expressions on columns.
 data TypedColumn a where
   TColumn :: Columnable a => Column -> TypedColumn a
 
+-- | Gets the underlying value from a TypedColumn.
 unwrapTypedColumn :: TypedColumn a -> Column
 unwrapTypedColumn (TColumn value) = value
 
--- Functions about column metadata.
+-- | An internal function that checks if a column
+-- can be used for aggregation.
 isGrouped :: Column -> Bool
 isGrouped (GroupedBoxedColumn column) = True
 isGrouped (GroupedUnboxedColumn column) = True
 isGrouped _ = False
 
+-- | An internal function that checks if a column can
+-- be used in missing value operations.
+isOptional :: Column -> Bool
+isOptional (OptionalColumn column) = True
+isOptional _ = False
+
+-- | An internal/debugging function to get the column type of a column.
 columnVersionString :: Column -> String
 columnVersionString column = case column of
-  BoxedColumn _ -> "Boxed"
-  UnboxedColumn _ -> "Unboxed"
-  OptionalColumn _ -> "Optional"
-  GroupedBoxedColumn _ -> "Grouped Boxed"
-  GroupedUnboxedColumn _ -> "Grouped Unboxed"
+  BoxedColumn _           -> "Boxed"
+  UnboxedColumn _         -> "Unboxed"
+  OptionalColumn _        -> "Optional"
+  GroupedBoxedColumn _    -> "Grouped Boxed"
+  GroupedUnboxedColumn _  -> "Grouped Unboxed"
   GroupedOptionalColumn _ -> "Grouped Optional"
+  _                       -> "Unknown column string"
 
+-- | An internal/debugging function to get the type stored in the outermost vector
+-- of a column.
 columnTypeString :: Column -> String
 columnTypeString column = case column of
   BoxedColumn (column :: VB.Vector a) -> show (typeRep @a)
@@ -127,6 +144,8 @@ instance Eq Column where
       Just Refl -> VB.map (L.sort . VG.toList) a == VB.map (L.sort . VG.toList) b
   (==) _ _ = False
 
+-- | A type with column representations used to select the
+-- "right" representation when specializing the `toColumn` function.
 data Rep
   = RBoxed
   | RUnboxed
@@ -135,10 +154,12 @@ data Rep
   | RGUnboxed
   | RGOptional
 
+-- | Type-level if statement.
 type family If (cond :: Bool) (yes :: k) (no :: k) :: k where
   If 'True  yes _  = yes
   If 'False _   no = no
 
+-- | All unboxable types (according to the `vector` package).
 type family Unboxable (a :: Type) :: Bool where
   Unboxable Int    = 'True
   Unboxable Int8   = 'True
@@ -163,9 +184,12 @@ type family KindOf a :: Rep where
   KindOf (VU.Vector a) = 'RGUnboxed
   KindOf a             = If (Unboxable a) 'RUnboxed 'RBoxed
 
+-- | A class for converting a vector to a column of the appropriate type.
+-- Given each Rep we tell the `toColumnRep` function which Column type to pick.
 class ColumnifyRep (r :: Rep) a where
   toColumnRep :: VB.Vector a -> Column
 
+-- | Constraint synonym for what we can put into columns.
 type Columnable a = (Columnable' a, ColumnifyRep (KindOf a) a, UnboxIf a, SBoolI (Unboxable a) )
 
 instance (Columnable a, VU.Unbox a)
@@ -188,15 +212,48 @@ instance (Columnable a, VU.Unbox a)
       => ColumnifyRep 'RGUnboxed (VU.Vector a) where
   toColumnRep = GroupedUnboxedColumn
 
-toColumn' ::
+{- | O(n) Convert a vector to a column. Automatically picks the best representation of a vector to store the underlying data in.
+
+__Examples:__
+
+@
+> import qualified Data.Vector as V
+> fromVector (V.fromList [(1 :: Int), 2, 3, 4])
+[1,2,3,4]
+@
+-}
+fromVector ::
   forall a. (Columnable a, ColumnifyRep (KindOf a) a)
   => VB.Vector a -> Column
-toColumn' = toColumnRep @(KindOf a)
+fromVector = toColumnRep @(KindOf a)
 
-toColumn ::
+{- | O(n) Convert an unboxed vector to a column. This avoids the extra conversion if you already have the data in an unboxed vector.
+
+__Examples:__
+
+@
+> import qualified Data.Vector.Unboxed as V
+> fromVector (V.fromList [(1 :: Int), 2, 3, 4])
+[1,2,3,4]
+@
+-}
+fromUnboxedVector :: forall a. (Columnable a, VU.Unbox a) => VU.Vector a -> Column
+fromUnboxedVector = UnboxedColumn
+
+{- | O(n) Convert a list to a column. Automatically picks the best representation of a vector to store the underlying data in.
+
+__Examples:__
+
+@
+> fromList [(1 :: Int), 2, 3, 4]
+[1,2,3,4]
+@
+-}
+fromList ::
   forall a. (Columnable a, ColumnifyRep (KindOf a) a)
   => [a] -> Column
-toColumn = toColumnRep @(KindOf a) . VB.fromList
+fromList = toColumnRep @(KindOf a) . VB.fromList
+
 
 data SBool (b :: Bool) where
   STrue  :: SBool 'True
@@ -217,52 +274,44 @@ type family When (flag :: Bool) (c :: Constraint) :: Constraint where
 
 type UnboxIf a = When (Unboxable a) (VU.Unbox a)
 
--- | Generic column transformation (no index).
-transform
+-- | An internal function to map a function over the values of a column.
+mapColumn
   :: forall b c.
      ( Columnable b
      , Columnable c
-     , UnboxIf c
-     , Typeable b
-     , Typeable c )
+     , UnboxIf c)
   => (b -> c)
   -> Column
   -> Maybe Column
-transform f = \case
+mapColumn f = \case
   BoxedColumn (col :: VB.Vector a)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
-    -> Just (toColumn' @c (VB.map f col))
+    -> Just (fromVector @c (VB.map f col))
     | otherwise -> Nothing
   OptionalColumn (col :: VB.Vector a)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
-    -> Just (toColumn' @c (VB.map f col))
+    -> Just (fromVector @c (VB.map f col))
     | otherwise -> Nothing
   UnboxedColumn (col :: VU.Vector a)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
     -> Just $ case sUnbox @c of
                 STrue  -> UnboxedColumn (VU.map f col)
-                SFalse -> toColumn' @c (VB.map f (VB.convert col))
+                SFalse -> fromVector @c (VB.map f (VB.convert col))
     | otherwise -> Nothing
   GroupedBoxedColumn (col :: VB.Vector (VB.Vector a))
     | Just Refl <- testEquality (typeRep @(VB.Vector a)) (typeRep @b)
-    -> Just (toColumn' @c (VB.map f col))
+    -> Just (fromVector @c (VB.map f col))
     | otherwise -> Nothing
   GroupedUnboxedColumn (col :: VB.Vector (VU.Vector a))
     | Just Refl <- testEquality (typeRep @(VU.Vector a)) (typeRep @b)
-    -> Just (toColumn' @c (VB.map f col))
+    -> Just (fromVector @c (VB.map f col))
     | otherwise -> Nothing
   GroupedOptionalColumn (col :: VB.Vector (VB.Vector a))
     | Just Refl <- testEquality (typeRep @(VB.Vector a)) (typeRep @b)
-    -> Just (toColumn' @c (VB.map f col))
+    -> Just (fromVector @c (VB.map f col))
     | otherwise -> Nothing
 
--- | Converts a an unboxed vector to a column making sure to put
--- the vector into an appropriate column type by reflection on the
--- vector's type parameter.
-toColumnUnboxed :: forall a. (Columnable a, VU.Unbox a) => VU.Vector a -> Column
-toColumnUnboxed = UnboxedColumn
 
--- Functions that don't depend on column type.
 -- | O(1) Gets the number of elements in the column.
 columnLength :: Column -> Int
 columnLength (BoxedColumn xs) = VG.length xs
@@ -273,6 +322,7 @@ columnLength (GroupedUnboxedColumn xs) = VG.length xs
 columnLength (GroupedOptionalColumn xs) = VG.length xs
 {-# INLINE columnLength #-}
 
+-- | O(n) Takes the first n values of a column.
 takeColumn :: Int -> Column -> Column
 takeColumn n (BoxedColumn xs) = BoxedColumn $ VG.take n xs
 takeColumn n (UnboxedColumn xs) = UnboxedColumn $ VG.take n xs
@@ -282,12 +332,12 @@ takeColumn n (GroupedUnboxedColumn xs) = GroupedUnboxedColumn $ VG.take n xs
 takeColumn n (GroupedOptionalColumn xs) = GroupedOptionalColumn $ VG.take n xs
 {-# INLINE takeColumn #-}
 
--- TODO: Maybe we can remvoe all this boilerplate and make
--- transform take in a generic vector function.
+-- | O(n) Takes the last n values of a column.
 takeLastColumn :: Int -> Column -> Column
 takeLastColumn n column = sliceColumn (columnLength column - n) n column
 {-# INLINE takeLastColumn #-}
 
+-- | O(n) Takes n values after a given column index.
 sliceColumn :: Int -> Int -> Column -> Column
 sliceColumn start n (BoxedColumn xs) = BoxedColumn $ VG.slice start n xs
 sliceColumn start n (UnboxedColumn xs) = UnboxedColumn $ VG.slice start n xs
@@ -297,7 +347,7 @@ sliceColumn start n (GroupedUnboxedColumn xs) = GroupedUnboxedColumn $ VG.slice 
 sliceColumn start n (GroupedOptionalColumn xs) = GroupedOptionalColumn $ VG.slice start n xs
 {-# INLINE sliceColumn #-}
 
--- TODO: We can probably generalize this to `applyVectorFunction`.
+-- | O(n) Selects the elements at a given set of indices. May change the order.
 atIndices :: S.Set Int -> Column -> Column
 atIndices indexes (BoxedColumn column) = BoxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
 atIndices indexes (OptionalColumn column) = OptionalColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
@@ -307,6 +357,7 @@ atIndices indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ VG.ifil
 atIndices indexes (GroupedOptionalColumn column) = GroupedOptionalColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
 {-# INLINE atIndices #-}
 
+-- | O(n) Selects the elements at a given set of indices. Does not change the order.
 atIndicesStable :: VU.Vector Int -> Column -> Column
 atIndicesStable indexes (BoxedColumn column) = BoxedColumn $ indexes `getIndices` column
 atIndicesStable indexes (UnboxedColumn column) = UnboxedColumn $ indexes `getIndicesUnboxed` column
@@ -316,14 +367,17 @@ atIndicesStable indexes (GroupedUnboxedColumn column) = GroupedUnboxedColumn $ i
 atIndicesStable indexes (GroupedOptionalColumn column) = GroupedOptionalColumn $ indexes `getIndices` column
 {-# INLINE atIndicesStable #-}
 
+-- | Internal helper to get indices in a boxed vector.
 getIndices :: VU.Vector Int -> VB.Vector a -> VB.Vector a
 getIndices indices xs = VB.generate (VU.length indices) (\i -> xs VB.! (indices VU.! i))
 {-# INLINE getIndices #-}
 
+-- | Internal helper to get indices in an unboxed vector.
 getIndicesUnboxed :: (VU.Unbox a) => VU.Vector Int -> VU.Vector a -> VU.Vector a
 getIndicesUnboxed indices xs = VU.generate (VU.length indices) (\i -> xs VU.! (indices VU.! i))
 {-# INLINE getIndicesUnboxed #-}
 
+-- | An internal function that returns a vector of how indexes change after a column is sorted.
 sortedIndexes :: Bool -> Column -> VU.Vector Int
 sortedIndexes asc (BoxedColumn column ) = runST $ do
   withIndexes <- VG.thaw $ VG.indexed column
@@ -358,32 +412,32 @@ sortedIndexes asc (GroupedOptionalColumn column) = runST $ do
 {-# INLINE sortedIndexes #-}
 
 -- | Applies a function that returns an unboxed result to an unboxed vector, storing the result in a column.
-itransform
-  :: forall b c. (Typeable b, Typeable c, Columnable b, Columnable c)
+imapColumn
+  :: forall b c. (Columnable b, Columnable c)
   => (Int -> b -> c) -> Column -> Maybe Column
-itransform f = \case
+imapColumn f = \case
   BoxedColumn (col :: VB.Vector a)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
-    -> Just (toColumn' @c (VB.imap f col))
+    -> Just (fromVector @c (VB.imap f col))
     | otherwise -> Nothing
   UnboxedColumn (col :: VU.Vector a)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
     -> Just $
         case sUnbox @c of
           STrue  -> UnboxedColumn (VU.imap f col)
-          SFalse -> toColumn' @c (VB.imap f (VB.convert col))
+          SFalse -> fromVector @c (VB.imap f (VB.convert col))
     | otherwise -> Nothing
   OptionalColumn (col :: VB.Vector a)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
-    -> Just (toColumn' @c (VB.imap f col))
+    -> Just (fromVector @c (VB.imap f col))
     | otherwise -> Nothing
   GroupedBoxedColumn (col :: VB.Vector a)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
-    -> Just (toColumn' @c (VB.imap f col))
+    -> Just (fromVector @c (VB.imap f col))
     | otherwise -> Nothing
   GroupedUnboxedColumn (col :: VB.Vector a)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
-    -> Just (toColumn' @c (VB.imap f col))
+    -> Just (fromVector @c (VB.imap f col))
     | otherwise -> Nothing
 
 -- | Filter column with index.
@@ -401,7 +455,7 @@ ifilterColumn f c@(GroupedUnboxedColumn (column :: VB.Vector b)) = do
   Refl <- testEquality (typeRep @a) (typeRep @b)
   return $ GroupedUnboxedColumn $ VG.ifilter f column
 
-
+-- | Fold (right) column with index.
 ifoldrColumn :: forall a b. (Columnable a, Columnable b) => (Int -> a -> b -> b) -> b -> Column -> Maybe b
 ifoldrColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
@@ -419,6 +473,7 @@ ifoldrColumn f acc c@(GroupedUnboxedColumn (column :: VB.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldr f acc column
 
+-- | Fold (left) column with index.
 ifoldlColumn :: forall a b . (Columnable a, Columnable b) => (b -> Int -> a -> b) -> b -> Column -> Maybe b
 ifoldlColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
@@ -436,33 +491,24 @@ ifoldlColumn f acc c@(GroupedUnboxedColumn (column :: VB.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldl' f acc column
 
-reduceColumn :: forall a b. Columnable a => (a -> b) -> Column -> b
+-- | Generic reduce function for all Column types.
+reduceColumn :: forall a b. Columnable a => (a -> b) -> Column -> Maybe b
 {-# SPECIALIZE reduceColumn ::
-    (VU.Vector (Double, Double) -> Double) -> Column -> Double,
-    (VU.Vector Double -> Double) -> Column -> Double #-}
-reduceColumn f (BoxedColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
-  Just Refl -> f column
-  Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
-reduceColumn f (UnboxedColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
-  Just Refl -> f column
-  Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
-reduceColumn f (OptionalColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
-  Just Refl -> f column
-  Nothing -> error $ "Can't reduce. Incompatible types: " ++ show (typeRep @a) ++ " " ++ show (typeRep @a)
+    (VU.Vector (Double, Double) -> Double) -> Column -> Maybe Double,
+    (VU.Vector Double -> Double) -> Column -> Maybe Double #-}
+reduceColumn f (BoxedColumn (column :: c)) = do
+  Refl <- testEquality (typeRep @c) (typeRep @a)
+  pure $ f column
+reduceColumn f (UnboxedColumn (column :: c)) = do
+  Refl <- testEquality (typeRep @c) (typeRep @a)
+  pure $ f column
+reduceColumn f (OptionalColumn (column :: c)) = do
+  Refl <- testEquality (typeRep @c) (typeRep @a)
+  pure $ f column
+reduceColumn _ _ = error "UNIMPLEMENTED"
 {-# INLINE reduceColumn #-}
 
-safeReduceColumn :: forall a b. (Typeable a) => (a -> b) -> Column -> Maybe b
-safeReduceColumn f (BoxedColumn (column :: c)) = do
-  Refl <- testEquality (typeRep @c) (typeRep @a)
-  return $! f column
-safeReduceColumn f (UnboxedColumn (column :: c)) = do
-  Refl <- testEquality (typeRep @c) (typeRep @a)
-  return $! f column
-safeReduceColumn f (OptionalColumn (column :: c)) = do
-  Refl <- testEquality (typeRep @c) (typeRep @a)
-  return $! f column
-{-# INLINE safeReduceColumn #-}
-
+-- | An internal, column version of zip.
 zipColumns :: Column -> Column -> Column
 zipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (VG.zip column other)
 zipColumns (BoxedColumn column) (UnboxedColumn other) = BoxedColumn (VB.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
@@ -470,20 +516,22 @@ zipColumns (UnboxedColumn column) (BoxedColumn other) = BoxedColumn (VB.generate
 zipColumns (UnboxedColumn column) (UnboxedColumn other) = UnboxedColumn (VG.zip column other)
 {-# INLINE zipColumns #-}
 
-zipWithColumns :: forall a b c . (Columnable a, Columnable b, Columnable c) => (a -> b -> c) -> Column -> Column -> Column
+-- | An internal, column version of zipWith.
+zipWithColumns :: forall a b c . (Columnable a, Columnable b, Columnable c) => (a -> b -> c) -> Column -> Column -> Maybe Column
 zipWithColumns f (UnboxedColumn (column :: VU.Vector d)) (UnboxedColumn (other :: VU.Vector e)) = case testEquality (typeRep @a) (typeRep @d) of
   Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
-    Just Refl -> toColumn' $ VB.zipWith f (VG.convert column) (VG.convert other)
-    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @e) "" "zipWithColumns"
-  Nothing -> throw $ TypeMismatchException' (typeRep @a) (show $ typeRep @d) "" "zipWithColumns"
+    Just Refl -> pure $ case sUnbox @c of
+                STrue  -> fromUnboxedVector (VU.zipWith f column other)
+                SFalse -> fromVector $ VB.zipWith f (VG.convert column) (VG.convert other)
+    Nothing -> Nothing
+  Nothing -> Nothing
 zipWithColumns f left right = let
     left' = toVector @a left
     right' = toVector @b right
-  in toColumn' $ VB.zipWith f left' right' 
+  in pure $ fromVector $ VB.zipWith f left' right' 
 {-# INLINE zipWithColumns #-}
 
 -- Functions for mutable columns (intended for IO).
--- Clean this up.
 writeColumn :: Int -> T.Text -> Column -> IO (Either T.Text Bool)
 writeColumn i value (MutableBoxedColumn (col :: VBM.IOVector a)) = let
   in case testEquality (typeRep @a) (typeRep @T.Text) of
@@ -514,13 +562,23 @@ freezeColumn' nulls (MutableUnboxedColumn col)
   | otherwise  = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ VB.generate (VU.length c) (\i -> if i `elem` map fst nulls then Left (fromMaybe (error "") (lookup i nulls)) else Right (c VU.! i))
 {-# INLINE freezeColumn' #-}
 
+-- | Fills the end of a column, up to n, with Nothing. Does nothing if column has length greater than n.
 expandColumn :: Int -> Column -> Column
 expandColumn n (OptionalColumn col) = OptionalColumn $ col <> VB.replicate n Nothing
-expandColumn n (BoxedColumn col) = OptionalColumn $ VB.map Just col <> VB.replicate n Nothing
-expandColumn n (UnboxedColumn col) = OptionalColumn $ VB.map Just (VU.convert col) <> VB.replicate n Nothing
-expandColumn n (GroupedBoxedColumn col) = GroupedBoxedColumn $ col <> VB.replicate n VB.empty
-expandColumn n (GroupedUnboxedColumn col) = GroupedUnboxedColumn $ col <> VB.replicate n VU.empty
+expandColumn n column@(BoxedColumn col)
+  | n < VG.length col = OptionalColumn $ VB.map Just col <> VB.replicate n Nothing
+  | otherwise         = column
+expandColumn n column@(UnboxedColumn col)
+  | n < VG.length col = OptionalColumn $ VB.map Just (VU.convert col) <> VB.replicate n Nothing
+  | otherwise         = column
+expandColumn n column@(GroupedBoxedColumn col)
+  | n < VG.length col = GroupedBoxedColumn $ col <> VB.replicate n VB.empty
+  | otherwise         = column
+expandColumn n column@(GroupedUnboxedColumn col)
+  | n < VG.length col = GroupedUnboxedColumn $ col <> VB.replicate n VU.empty
+  | otherwise         = column
 
+-- | Fills the beginning of a column, up to n, with Nothing. Does nothing if column has length greater than n.
 leftExpandColumn :: Int -> Column -> Column
 leftExpandColumn n (OptionalColumn col) = OptionalColumn $ VB.replicate n Nothing <> col
 leftExpandColumn n (BoxedColumn col) = OptionalColumn $ VB.replicate n Nothing <> VB.map Just col
@@ -528,6 +586,7 @@ leftExpandColumn n (UnboxedColumn col) = OptionalColumn $ VB.replicate n Nothing
 leftExpandColumn n (GroupedBoxedColumn col) = GroupedBoxedColumn $ VB.replicate n VB.empty <> col
 leftExpandColumn n (GroupedUnboxedColumn col) = GroupedUnboxedColumn $ VB.replicate n VU.empty <> col
 
+-- | Concatenates two columns.
 concatColumns :: Column -> Column -> Maybe Column
 concatColumns (OptionalColumn left) (OptionalColumn right) = case testEquality (typeOf left) (typeOf right) of
   Nothing   -> Nothing
@@ -546,24 +605,54 @@ concatColumns (GroupedUnboxedColumn left) (GroupedUnboxedColumn right) = case te
   Just Refl -> Just (GroupedUnboxedColumn $ left <> right)
 concatColumns _ _ = Nothing
 
+{- | O(n) Converts a column to a boxed vector. Throws an exception if the wrong type is specified.
+
+__Examples:__
+
+@
+> column = fromList [(1 :: Int), 2, 3, 4]
+> toVector @Int column
+[1,2,3,4]
+> toVector @Double column
+exception: ...
+-}
 toVector :: forall a . Columnable a => Column -> VB.Vector a
-toVector column@(OptionalColumn (col :: VB.Vector b)) =
+toVector = toVectorWithLabel "toVector"
+
+-- | An internal version of toVector that takes the calling function as an extra argument.
+toVectorWithLabel :: forall a . Columnable a => String -> Column -> VB.Vector a
+toVectorWithLabel label column@(OptionalColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> col
-    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
-toVector (BoxedColumn (col :: VB.Vector b)) =
+    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                               , expectedType = Right (typeRep @b)
+                                                               , callingFunctionName = Just label
+                                                               , errorColumnName = Nothing})
+toVectorWithLabel label (BoxedColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> col
-    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
-toVector (UnboxedColumn (col :: VU.Vector b)) =
+    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                               , expectedType = Right (typeRep @b)
+                                                               , callingFunctionName = Just label
+                                                               , errorColumnName = Nothing})
+toVectorWithLabel label (UnboxedColumn (col :: VU.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> VB.convert col
-    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
-toVector (GroupedBoxedColumn (col :: VB.Vector b)) =
+    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                               , expectedType = Right (typeRep @b)
+                                                               , callingFunctionName = Just label
+                                                               , errorColumnName = Nothing})
+toVectorWithLabel label (GroupedBoxedColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> col
-    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
-toVector (GroupedUnboxedColumn (col :: VB.Vector b)) =
+    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                               , expectedType = Right (typeRep @b)
+                                                               , callingFunctionName = Just label
+                                                               , errorColumnName = Nothing})
+toVectorWithLabel label (GroupedUnboxedColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> col
-    Nothing -> throw $ TypeMismatchException' (typeRep @b) (show $ typeRep @a) "" "toVector"
+    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                               , expectedType = Right (typeRep @b)
+                                                               , callingFunctionName = Just label
+                                                               , errorColumnName = Nothing})

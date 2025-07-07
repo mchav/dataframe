@@ -26,7 +26,7 @@ dtype: float64
 
 ```haskell
 ghci> import qualified DataFrame as D
-ghci> D.toColumn [1, 3, 5, read @Float "NaN", 6, 8]
+ghci> D.fromList [1, 3, 5, read @Float "NaN", 6, 8]
 [1.0,3.0,5.0,NaN,6.0,8.0]
 ```
 
@@ -40,7 +40,7 @@ DatetimeIndex(['2013-01-01', '2013-01-02', '2013-01-03', '2013-01-04',
 
 ```haskell
 ghci> import Data.Time.Calendar
-ghci> dates = D.toColumn $ Prelude.take 6 $ [fromGregorian 2013 01 01..]
+ghci> dates = D.fromList $ Prelude.take 6 $ [fromGregorian 2013 01 01..]
 ghci> dates
 [2013-01-01,2013-01-02,2013-01-03,2013-01-04,2013-01-05,2013-01-06]
 ```
@@ -65,7 +65,7 @@ ghci> import System.Random (randomRIO)
 ghci> import Control.Monad (replicateM)
 ghci> import Data.List (foldl')
 ghci> :set -XOverloadedStrings
-ghci> initDf = D.fromList [("date", dates)]
+ghci> initDf = D.fromNamedColumns [("date", dates)]
 ghci> ns <- replicateM 4 (replicateM 6 (randomRIO (-2.0, 2.0)))
 ghci> df = foldl' (\d (name, col) -> D.insertColumn name (V.fromList col) d) initDf (zip ["A","B","C","D"] ns)
 ghci> df
@@ -82,7 +82,7 @@ index |    date    |          A          |          B           |          C    
 5     | 2013-01-06 | -0.5541246187320041 | -1.5791034339829042  | -1.5650415391333796  | -1.7802523632196152
 ```
 
-As hinted in the previous example we can create a dataframe with `fromList`. This function takes in a list of tuples. We don't broadast values like python does i.e if you put in a single value into a column all other values will be null/nothing. But we'll detail how to get the same functionality.
+As hinted in the previous example we can create a dataframe with `fromNamedColumns`. This function takes in a list of tuples. We don't broadast values like python does i.e if you put in a single value into a column all other values will be null/nothing. But we'll detail how to get the same functionality.
 
 ```python
 df2 = pd.DataFrame(
@@ -110,13 +110,13 @@ df2 = pd.DataFrame(
 -- All our data types must be printable and orderable.
 data Transport = Test | Train deriving (Show, Ord, Eq)
 ghci> :{
-ghci| df = D.fromList [
-ghci|        ("A", D.toColumn (replicate 4 1.0)),
-ghci|        ("B", D.toColumn (replicate 4 (fromGregorian 2013 01 02))),
-ghci|        ("C", D.toColumn (replicate 4 (1.0 :: Float))),
-ghci|        ("D", D.toColumn (replicate 4 (3 :: Int))),
-ghci|        ("E", D.toColumn (take 4 $ cycle [Test, Train])),
-ghci|        ("F", D.toColumn (replicate 4 "foo"))]
+ghci| df = D.fromNamedColumns [
+ghci|        ("A", D.fromList (replicate 4 1.0)),
+ghci|        ("B", D.fromList (replicate 4 (fromGregorian 2013 01 02))),
+ghci|        ("C", D.fromList (replicate 4 (1.0 :: Float))),
+ghci|        ("D", D.fromList (replicate 4 (3 :: Int))),
+ghci|        ("E", D.fromList (take 4 $ cycle [Test, Train])),
+ghci|        ("F", D.fromList (replicate 4 "foo"))]
 ghci|:}
 ghci> df
 --------------------------------------------------------------

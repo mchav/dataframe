@@ -10,30 +10,30 @@ import qualified Data.Text as T
 
 import Control.Exception
 import Data.Array
+import Data.Either
 import DataFrame.Display.Terminal.Colours
 import Data.Typeable (Typeable)
 import Type.Reflection (TypeRep)
 
+data TypeErrorContext a b = MkTypeErrorContext
+  { userType            :: Either String (TypeRep a)
+  , expectedType        :: Either String (TypeRep b)
+  , errorColumnName     :: Maybe String
+  , callingFunctionName :: Maybe String
+  }
+
 data DataFrameException where
     TypeMismatchException :: forall a b. (Typeable a, Typeable b)
-                          => TypeRep a -- ^ given type
-                          -> TypeRep b -- ^ expected type
-                          -> T.Text    -- ^ column name
-                          -> T.Text    -- ^ call point
+                          => TypeErrorContext a b
                           -> DataFrameException
-    TypeMismatchException' :: forall a . (Typeable a)
-                           => TypeRep a -- ^ given type
-                           -> String    -- ^ expected type
-                           -> T.Text    -- ^ column name
-                           -> T.Text    -- ^ call point
-                           -> DataFrameException
     ColumnNotFoundException :: T.Text -> T.Text -> [T.Text] -> DataFrameException
     deriving (Exception)
 
 instance Show DataFrameException where
     show :: DataFrameException -> String
-    show (TypeMismatchException a b columnName callPoint) = addCallPointInfo columnName (Just callPoint) (typeMismatchError a b)
-    show (TypeMismatchException' a b columnName callPoint) = addCallPointInfo columnName (Just callPoint) (typeMismatchError' (show a) b)
+    show (TypeMismatchException context) = let
+        errorString = typeMismatchError (either id show (userType context)) (either id show (expectedType context))
+      in addCallPointInfo (errorColumnName context) (callingFunctionName context) errorString
     show (ColumnNotFoundException columnName callPoint availableColumns) = columnNotFound columnName callPoint availableColumns
 
 columnNotFound :: T.Text -> T.Text -> [T.Text] -> String
@@ -47,51 +47,46 @@ columnNotFound name callPoint columns =
     ++ T.unpack (guessColumnName name columns)
     ++ "?\n\n"
 
-typeMismatchError ::
-  Type.Reflection.TypeRep a ->
-  Type.Reflection.TypeRep b ->
-  String
-typeMismatchError a b = typeMismatchError' (show a) (show b)
-
-typeMismatchError' :: String -> String -> String
-typeMismatchError' givenType expectedType =
+typeMismatchError :: String -> String -> String
+typeMismatchError givenType expectedType =
   red $
     red "\n\n[Error]: Type Mismatch"
       ++ "\n\tWhile running your code I tried to "
       ++ "get a column of type: "
       ++ red (show givenType)
-      ++ " but column was of type: "
+      ++ " but the column in the dataframe was actually of type: "
       ++ green (show expectedType)
 
-addCallPointInfo :: T.Text -> Maybe T.Text -> String -> String
-addCallPointInfo name (Just cp) err =
+addCallPointInfo :: Maybe String -> Maybe String -> String -> String
+addCallPointInfo (Just name) (Just cp) err =
   err
     ++ ( "\n\tThis happened when calling function "
-           ++ brightGreen (T.unpack cp)
+           ++ brightGreen cp
            ++ " on the column "
-           ++ brightGreen (T.unpack name)
+           ++ brightGreen name
            ++ "\n\n"
-           ++ typeAnnotationSuggestion (T.unpack cp)
+           ++ typeAnnotationSuggestion cp
        )
-addCallPointInfo name Nothing err =
+addCallPointInfo Nothing (Just cp) err = err ++ "\n" ++ typeAnnotationSuggestion cp
+addCallPointInfo (Just name) Nothing err =
   err
     ++ ( "\n\tOn the column "
-           ++ T.unpack name
+           ++ name
            ++ "\n\n"
-           ++ typeAnnotationSuggestion "<function>"
        )
+addCallPointInfo Nothing Nothing err = err
 
 typeAnnotationSuggestion :: String -> String
 typeAnnotationSuggestion cp =
   "\n\n\tTry adding a type at the end of the function e.g "
     ++ "change\n\t\t"
-    ++ red (cp ++ " arg1 arg2")
+    ++ red (cp ++ " ...")
     ++ " to \n\t\t"
-    ++ green ("(" ++ cp ++ " arg1 arg2 :: <Type>)")
+    ++ green ("(" ++ cp ++ " ... :: <Type>)")
     ++ "\n\tor add "
     ++ "{-# LANGUAGE TypeApplications #-} to the top of your "
     ++ "file then change the call to \n\t\t"
-    ++ brightGreen (cp ++ " @<Type> arg1 arg2")
+    ++ brightGreen (cp ++ " @<Type> ....")
 
 guessColumnName :: T.Text -> [T.Text] -> T.Text
 guessColumnName userInput columns = case map (\k -> (editDistance userInput k, k)) columns of

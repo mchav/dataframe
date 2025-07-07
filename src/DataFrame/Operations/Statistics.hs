@@ -9,6 +9,7 @@
 module DataFrame.Operations.Statistics where
 
 import qualified Data.List as L
+import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector as V
@@ -32,6 +33,7 @@ import Type.Reflection (typeRep)
 
 frequencies :: T.Text -> DataFrame -> DataFrame
 frequencies name df = case getColumn name df of
+  Nothing -> throw $ ColumnNotFoundException name "frequencies" (map fst $ M.toList $ columnIndices df)
   Just ((BoxedColumn (column :: V.Vector a))) -> let
       counts = valueCounts @a name df
       total = P.sum $ map snd counts
@@ -88,7 +90,7 @@ correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
 correlation first second df = do
   f <- _getColumnAsDouble first df
   s <- _getColumnAsDouble second df
-  return $ SS.correlation (VG.zip f s)
+  return $ SS.correlation2 f s
 
 _getColumnAsDouble :: T.Text -> DataFrame -> Maybe (VU.Vector Double)
 _getColumnAsDouble name df = case getColumn name df of
@@ -101,24 +103,24 @@ _getColumnAsDouble name df = case getColumn name df of
 
 sum :: T.Text -> DataFrame -> Maybe Double
 sum name df = case getColumn name df of
+  Nothing -> throw $ ColumnNotFoundException name "sum" (map fst $ M.toList $ columnIndices df)
   Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
     Just Refl -> Just $ VG.sum (VU.map fromIntegral column)
     Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
       Just Refl -> Just $ VG.sum column
       Nothing -> Nothing
-  Nothing -> Nothing
 
 applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
 applyStatistic f name df = do
       column <- getColumn name df
       if columnTypeString column == "Double"
-      then safeReduceColumn f column
+      then reduceColumn f column
       else do
-        matching <- asum [transform (fromIntegral :: Int -> Double) column,
-                          transform (fromIntegral :: Integer -> Double) column,
-                          transform (realToFrac :: Float -> Double) column,
+        matching <- asum [mapColumn (fromIntegral :: Int -> Double) column,
+                          mapColumn (fromIntegral :: Integer -> Double) column,
+                          mapColumn (realToFrac :: Float -> Double) column,
                           Just column ]
-        safeReduceColumn f matching
+        reduceColumn f matching
 
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
 applyStatistics f name df = case getColumn name df of
@@ -132,7 +134,7 @@ applyStatistics f name df = case getColumn name df of
   _ -> Nothing
 
 summarize :: DataFrame -> DataFrame
-summarize df = fold columnStats (columnNames df) (fromList [("Statistic", toColumn ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
+summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic", fromList ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
   where columnStats name d = if all isJust (stats name) then insertUnboxedColumn name (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
         stats name = let
             quantiles = applyStatistics (SS.quantilesVec SS.medianUnbiased (VU.fromList [0,1,2,3,4]) 4) name df

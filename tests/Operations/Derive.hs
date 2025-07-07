@@ -15,13 +15,13 @@ import Test.HUnit
 import Type.Reflection (typeRep)
 
 values :: [(T.Text, DI.Column)]
-values = [ ("test1", DI.toColumn ([1..26] :: [Int]))
-         , ("test2", DI.toColumn (map show ['a'..'z']))
-         , ("test3", DI.toColumn ['a'..'z'])
+values = [ ("test1", DI.fromList ([1..26] :: [Int]))
+         , ("test2", DI.fromList (map show ['a'..'z']))
+         , ("test3", DI.fromList ['a'..'z'])
          ]
 
 testData :: D.DataFrame
-testData = D.fromList values
+testData = D.fromNamedColumns values
 
 deriveWAI :: Test
 deriveWAI = TestCase (assertEqual "derive works with column expression"

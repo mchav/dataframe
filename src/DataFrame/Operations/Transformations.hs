@@ -15,14 +15,14 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
-import DataFrame.Errors (DataFrameException(..))
-import DataFrame.Internal.Column (Column(..), columnTypeString, itransform, ifoldrColumn, TypedColumn (TColumn), Columnable, transform, unwrapTypedColumn)
+import DataFrame.Errors (DataFrameException(..), TypeErrorContext(..))
+import DataFrame.Internal.Column (Column(..), columnTypeString, imapColumn, ifoldrColumn, TypedColumn (TColumn), Columnable, mapColumn, unwrapTypedColumn)
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn)
 import DataFrame.Internal.Expression
 import DataFrame.Internal.Row (mkRowFromArgs, RowValue, toRowValue)
 import DataFrame.Operations.Core
 import Data.Maybe
-import Type.Reflection (typeRep, typeOf)
+import Type.Reflection (typeRep, typeOf, TypeRep)
 
 -- | O(k) Apply a function to a given column in a dataframe.
 apply ::
@@ -35,11 +35,31 @@ apply ::
   -- | DataFrame to apply operation to
   DataFrame ->
   DataFrame
-apply f columnName d = case getColumn columnName d of
-  Nothing -> throw $ ColumnNotFoundException columnName "apply" (map fst $ M.toList $ columnIndices d)
-  Just column -> case transform f column of
-    Nothing -> throw $ TypeMismatchException' (typeRep @b) (columnTypeString column) columnName "apply"
-    column' -> insertColumn' columnName column' d
+apply f columnName d = case safeApply f columnName d of
+  Left exception -> throw exception
+  Right df       -> df
+
+-- | O(k) Safe version of the apply function. Returns (instead of throwing) the error.
+safeApply ::
+  forall b c.
+  (Columnable b, Columnable c) =>
+  -- | function to apply
+  (b -> c) ->
+  -- | Column name
+  T.Text ->
+  -- | DataFrame to apply operation to
+  DataFrame ->
+  Either DataFrameException DataFrame
+safeApply f columnName d = case getColumn columnName d of
+  Nothing -> Left $ ColumnNotFoundException columnName "apply" (map fst $ M.toList $ columnIndices d)
+  Just column -> case mapColumn f column of
+    Nothing -> Left $ TypeMismatchException (MkTypeErrorContext
+                                                    { userType = Right $ typeRep @b
+                                                    , expectedType = Left (columnTypeString column) :: Either String (TypeRep ()) 
+                                                    , errorColumnName = Just (T.unpack columnName)
+                                                    , callingFunctionName = Just "apply"
+                                                    })
+    column' -> Right $ insertColumn' columnName column' d
 
 -- | O(k) Apply a function to a combination of columns in a dataframe and
 -- add the result into `alias` column.
@@ -98,7 +118,12 @@ applyWhere ::
 applyWhere condition filterColumnName f columnName df = case getColumn filterColumnName df of
   Nothing -> throw $ ColumnNotFoundException filterColumnName "applyWhere" (map fst $ M.toList $ columnIndices df)
   Just column -> case ifoldrColumn (\i val acc -> if condition val then V.cons i acc else acc) V.empty column of
-      Nothing -> throw $ TypeMismatchException' (typeRep @a) (columnTypeString column) filterColumnName "applyWhere"
+      Nothing -> throw $ TypeMismatchException (MkTypeErrorContext
+                                                        { userType = Right $ typeRep @a
+                                                        , expectedType = Left (columnTypeString column) :: Either String (TypeRep ()) 
+                                                        , errorColumnName = Just (T.unpack columnName)
+                                                        , callingFunctionName = Just "applyWhere"
+                                                        })
       Just indexes -> if V.null indexes
                       then df
                       else L.foldl' (\d i -> applyAtIndex i f columnName d) df indexes
@@ -118,8 +143,13 @@ applyAtIndex ::
   DataFrame
 applyAtIndex i f columnName df = case getColumn columnName df of
   Nothing -> throw $ ColumnNotFoundException columnName "applyAtIndex" (map fst $ M.toList $ columnIndices df)
-  Just column -> case itransform (\index value -> if index == i then f value else value) column of
-    Nothing -> throw $ TypeMismatchException' (typeRep @a) (columnTypeString column) columnName "applyAtIndex"
+  Just column -> case imapColumn (\index value -> if index == i then f value else value) column of
+    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext
+                                                        { userType = Right $ typeRep @a
+                                                        , expectedType = Left (columnTypeString column) :: Either String (TypeRep ()) 
+                                                        , errorColumnName = Just (T.unpack columnName)
+                                                        , callingFunctionName = Just "applyAtIndex"
+                                                        })
     column' -> insertColumn' columnName column' df
 
 impute ::
@@ -131,5 +161,8 @@ impute ::
   DataFrame
 impute columnName value df = case getColumn columnName df of
   Nothing -> throw $ ColumnNotFoundException columnName "impute" (map fst $ M.toList $ columnIndices df)
-  Just (OptionalColumn _) -> apply (fromMaybe value) columnName df
+  Just (OptionalColumn _) -> case safeApply (fromMaybe value) columnName df of
+    Left (TypeMismatchException context) -> throw $ TypeMismatchException (context { callingFunctionName = Just "impute" })
+    Left exception -> throw exception
+    Right res      -> res
   _ -> error "Cannot impute to a non-Empty column"

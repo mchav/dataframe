@@ -13,9 +13,9 @@ stats n = do
   ns <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
   xs <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
   ys <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
-  let df = D.fromList [("first", D.UnboxedColumn ns),
-                       ("second", D.UnboxedColumn xs),
-                       ("third", D.UnboxedColumn ys)]
+  let df = D.fromNamedColumns [("first", D.UnboxedColumn ns),
+                               ("second", D.UnboxedColumn xs),
+                               ("third", D.UnboxedColumn ys)]
   
   print $ D.mean "first" df
   print $ D.variance "second" df

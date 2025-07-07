@@ -42,16 +42,16 @@ import Data.Time.Calendar
 main :: IO
 main = do
     let df = D.fromList [
-        ("name", D.toColumn [ "Alice Archer"
+        ("name", D.fromList [ "Alice Archer"
                             , "Ben Brown"
                             , "Chloe Cooper"
                             , "Daniel Donovan"])
-        , ("birthdate", D.toColumn [ fromGregorian 1997 01 10
+        , ("birthdate", D.fromList [ fromGregorian 1997 01 10
                                    , fromGregorian 1985 02 15
                                    , fromGregorian 1983 03 22
                                    , fromGregorian 1981 04 30])
-        , ("weight", D.toColumn [57.9, 72.5, 53.6, 83.1])
-        , ("height", D.toColumn [1.56, 1.77, 1.65, 1.75])]
+        , ("weight", D.fromList [57.9, 72.5, 53.6, 83.1])
+        , ("height", D.fromList [1.56, 1.77, 1.65, 1.75])]
     print df
     D.writeCsv "./data/output.csv" df
     let df_csv = D.readCsv "./data/output.csv"
@@ -88,12 +88,7 @@ Notice that the type of the string column changes from `[Char]` (Haskell's defau
 
 ## Expressions
 
-Our equivalent to expressions is a tuple that contains a list of the column names followed by a
-function where the arguments correspond to the order of column names. We use a special function
-wrapper to make our dataframes accept functions with any number of arguments. This is done using
-the `func` function.
-
-This is a mouthful and is probably easier to see in action/comparison.
+We support expressions similar to Polars and PySpark. These expressions help us write row-level computations.
 
 For example:
 
@@ -122,31 +117,8 @@ main = do
     ...
     let year = (\(YearMonthDay y _ _) -> y)
     print $ df_csv
-          |> D.derive "birth_year" (lift year (D.col @Day "birthdate"))
-          |> D.derive "bmi" ((D.col @Double "weight") / (D.lift2 (**) (D.col @Double "height") (D.lit 2)))
-          |> D.select ["name", "birth_year", "bmi"]
-```
-
-Or, more clearly:
-
-```haskell
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-import qualified DataFrame as D
-import qualified Data.Text as T
-
-import DataFrame ( (|>) )
-import Data.Time.Calendar
-
-main :: IO ()
-main = do
-    ...
-    let year = (\(YearMonthDay y _ _) -> y)
-    let bmi :: Double -> Double -> Double
-        bmi w h = w / h ** 2
-    print $ df_csv
-          |> D.derive "birth_year" (lift year (D.col @Day "birthdate"))
-          |> D.derive "bmi" ((D.col @Double "weight") / (D.lift2 (**) (D.col @Double "height") (D.lit 2)))
+          |> D.derive "birth_year" (D.lift year (D.col @Day "birthdate"))
+          |> D.derive "bmi" ((D.col @Double "weight") / (D.col @Double "height" ** D.lit 2))
           |> D.select ["name", "birth_year", "bmi"]
 ```
 
@@ -164,12 +136,15 @@ index |      name      | birth_year |        bmi
 3     | Daniel Donovan | 1981       | 27.13469387755102 
 ```
 
-The dataframe implementation can be read top down. `apply` a function that gets the year to the `birthdate`;
-store the result in the `birth_year` column; combine `weight` and `height` into the bmi column using the
-formula `w / h ** 2`; then select the `name`, `birth_year` and `bmi` fields.
 
-Dataframe focuses on splitting transformations into transformations on the whole dataframe so it's easily usable
-in a repl-like environment.
+The Haskell implementation can be read top down:
+* Create a column called `birth_year` by getting the year from the `birthdate` column.
+* Create a column called `bmi`which is computed as `weight / height ** 2`, 
+* then select the `name`, `birth_year` and `bmi` fields.
+
+`lift` takes a regular, unary (one argument) Haskell function and applied it to a column. To apply a binary function to two columns we use `lift2`.
+
+The Polars column type can be a single column or a list of columns. This means that applying a single transformation to many columns can be written as follows:
 
 In the example Polars expression expansion example:
 
@@ -181,7 +156,7 @@ result = df.select(
 print(result)
 ```
 
-We instead write this two `applyWithAlias` calls:
+In Haskell, we don't provide a way of doing this out of the box. So you'd have to write something more explicit:
 
 ```haskell
 df_csv
@@ -202,7 +177,7 @@ index |      name      |     height-5%      |     weight-5%
 3     | Daniel Donovan | 1.6624999999999999 | 78.945
 ```
 
-However we can make our program shorter by using regular Haskell and folding over the dataframe.
+We can use standard Haskell machinery to make the program short without sactificing readability.
 
 ```haskell
 let reduce name = D.derive (name <> "-5%") ((col @Double name) * (lit 0.95))
@@ -211,15 +186,18 @@ df_csv
     |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
-Or alternatively,
+Or alternatively, if our transformation only involves the variable we are modifying we can write the same code as follows:
 
 ```haskell
 addSuffix suffix name = D.rename name (name <> suffix)
 df_csv
   |> D.applyMany ["weight", "height"] (*0.95)
+  -- We have to rename the fields so they match what we had before.
   |> D.fold (addSuffix "-5%")
   |> D.select ["name", "weight-5%", "height-5%"]
 ```
+
+This means that we can still rely on the expressive power of Haskell itself without relying entirely on the column expressions. This keeps our implementation more flexible.
 
 Filtering looks much the same:
 

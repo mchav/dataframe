@@ -26,7 +26,7 @@ instance Semigroup D.DataFrame where
                         optB = D.getColumn name b'
                     in case optB of
                         Nothing -> case optA of
-                            Nothing  -> D.insertColumn' name (Just (D.toColumn ([] :: [T.Text]))) df
+                            Nothing  -> D.insertColumn' name (Just (D.fromList ([] :: [T.Text]))) df
                             Just a'' -> D.insertColumn' name (Just (D.expandColumn numColumnsB a'')) df
                         Just b'' -> case optA of
                             Nothing  -> D.insertColumn' name (Just (D.leftExpandColumn numColumnsA b'')) df

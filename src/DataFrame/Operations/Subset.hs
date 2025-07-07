@@ -17,7 +17,7 @@ import qualified Data.Vector.Generic as VG
 import qualified Prelude
 
 import Control.Exception (throw)
-import DataFrame.Errors (DataFrameException(..))
+import DataFrame.Errors (DataFrameException(..), TypeErrorContext(..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
 import DataFrame.Internal.Expression
@@ -80,7 +80,11 @@ filter ::
 filter filterColumnName condition df = case getColumn filterColumnName df of
   Nothing -> throw $ ColumnNotFoundException filterColumnName "filter" (map fst $ M.toList $ columnIndices df)
   Just column -> case ifoldlColumn (\s i v -> if condition v then S.insert i s else s) S.empty column of
-    Nothing -> throw $ TypeMismatchException' (typeRep @a) (columnTypeString column) filterColumnName "filter"
+    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext
+                                                        { userType = Right $ typeRep @a
+                                                        , expectedType = Left (columnTypeString column) :: Either String (TypeRep ()) 
+                                                        , errorColumnName = Just (T.unpack filterColumnName)
+                                                        , callingFunctionName = Just "filter"})
     Just indexes -> let
         c' = snd $ dataframeDimensions df
         pick idxs col = atIndices idxs <$> col
@@ -99,7 +103,7 @@ filterBy = flip filter
 filterWhere :: Expr Bool -> DataFrame -> DataFrame
 filterWhere expr df = let
     (TColumn col) = interpret @Bool df expr
-    (Just indexes) = VU.convert . V.map (fromMaybe 0) . V.filter isJust . toVector @(Maybe Int) <$> itransform (\i satisfied -> if satisfied then Just i else Nothing) col
+    (Just indexes) = VU.convert . V.map (fromMaybe 0) . V.filter isJust . toVector @(Maybe Int) <$> imapColumn (\i satisfied -> if satisfied then Just i else Nothing) col
     c' = snd $ dataframeDimensions df
     pick idxs col = atIndicesStable idxs <$> col
   in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (VU.length indexes, c')}

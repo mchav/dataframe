@@ -33,17 +33,18 @@ data Expr a where
     BinOp :: (Columnable c, Columnable b, Columnable a) => T.Text -> (c -> b -> a) -> Expr c -> Expr b -> Expr a
 
 interpret :: forall a . (Columnable a) => DataFrame -> Expr a -> TypedColumn a
-interpret df (Lit value) = TColumn $ toColumn' $ V.replicate (fst $ dataframeDimensions df) value
+interpret df (Lit value) = TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
 interpret df (Col name) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
     Just col -> TColumn col
 interpret df (Apply _ (f :: c -> d) value) = let
         (TColumn value') = interpret @c df value
-    in TColumn $ fromMaybe (error "transform returned nothing") (transform f value')
+    -- TODO: Handle this gracefully.
+    in TColumn $ fromMaybe (error "mapColumn returned nothing") (mapColumn f value')
 interpret df (BinOp _ (f :: c -> d -> e) left right) = let
         (TColumn left') = interpret @c df left
         (TColumn right') = interpret @d df right
-    in TColumn $ zipWithColumns f left' right'
+    in TColumn $ fromMaybe (error "mapColumn returned nothing") (zipWithColumns f left' right')
 
 instance (Num a, Columnable a) => Num (Expr a) where
     (+) :: Expr a -> Expr a -> Expr a

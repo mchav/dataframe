@@ -12,14 +12,14 @@ import Assertions
 import Test.HUnit
 
 testData :: D.DataFrame
-testData = D.fromList [ ("test1", DI.toColumn ([1..26] :: [Int]))
-                      , ("test2", DI.toColumn ['a'..'z'])
-                      , ("test3", DI.toColumn ([1..26] :: [Int]))
-                      , ("test4", DI.toColumn ['a'..'z'])
-                      , ("test5", DI.toColumn ([1..26] :: [Int]))
-                      , ("test6", DI.toColumn ['a'..'z'])
-                      , ("test7", DI.toColumn ([1..26] :: [Int]))
-                      , ("test8", DI.toColumn ['a'..'z'])
+testData = D.fromNamedColumns [ ("test1", DI.fromList([1..26] :: [Int]))
+                      , ("test2", DI.fromList['a'..'z'])
+                      , ("test3", DI.fromList([1..26] :: [Int]))
+                      , ("test4", DI.fromList['a'..'z'])
+                      , ("test5", DI.fromList([1..26] :: [Int]))
+                      , ("test6", DI.fromList['a'..'z'])
+                      , ("test7", DI.fromList([1..26] :: [Int]))
+                      , ("test8", DI.fromList['a'..'z'])
                       ]
 
 -- Adding a boxed vector to an empty dataframe creates a new column boxed containing the vector elements.
@@ -30,8 +30,8 @@ addBoxedColumn = TestCase (assertEqual "Two columns should be equal"
 
 addBoxedColumn' :: Test
 addBoxedColumn' = TestCase (assertEqual "Two columns should be equal"
-                            (Just $ DI.toColumn ["Thuba" :: T.Text, "Zodwa", "Themba"])
-                            (DI.getColumn "new" $ D.insertColumn' "new" (Just $ DI.toColumn ["Thuba" :: T.Text, "Zodwa", "Themba"]) D.empty))
+                            (Just $ DI.fromList["Thuba" :: T.Text, "Zodwa", "Themba"])
+                            (DI.getColumn "new" $ D.insertColumn' "new" (Just $ DI.fromList["Thuba" :: T.Text, "Zodwa", "Themba"]) D.empty))
 
 -- Adding an boxed vector with an unboxable type (Int/Double) to an empty dataframe creates a new column boxed containing the vector elements.
 addUnboxedColumn :: Test
@@ -41,8 +41,8 @@ addUnboxedColumn = TestCase (assertEqual "Value should be boxed"
 
 addUnboxedColumn' :: Test
 addUnboxedColumn' = TestCase (assertEqual "Value should be boxed"
-                            (Just $ DI.toColumn [1 :: Int, 2, 3])
-                            (DI.getColumn "new" $ D.insertColumn' "new" (Just $ DI.toColumn [1 :: Int, 2, 3]) D.empty))
+                            (Just $ DI.fromList[1 :: Int, 2, 3])
+                            (DI.getColumn "new" $ D.insertColumn' "new" (Just $ DI.fromList[1 :: Int, 2, 3]) D.empty))
 
 -- Adding a column with less values than the current DF dimensions adds column with optionals.
 addSmallerColumnBoxed :: Test
@@ -76,16 +76,16 @@ insertColumnWithDefaultFillsLargerNoop = TestCase (
 addLargerColumnBoxed :: Test
 addLargerColumnBoxed =
   TestCase (assertEqual "Smaller lists should grow and contain optionals"
-                    (D.fromList [("new", D.toColumn [Just "a" :: Maybe T.Text, Just "b", Just "c", Nothing, Nothing]),
-                                 ("newer", D.toColumn ["a" :: T.Text, "b", "c", "d", "e"])])
+                    (D.fromNamedColumns [("new", D.fromList [Just "a" :: Maybe T.Text, Just "b", Just "c", Nothing, Nothing]),
+                                 ("newer", D.fromList ["a" :: T.Text, "b", "c", "d", "e"])])
                     (D.insertColumn "newer" (V.fromList ["a" :: T.Text, "b", "c", "d", "e"])
                             $ D.insertColumn "new" (V.fromList ["a" :: T.Text, "b", "c"]) D.empty))
 addLargerColumnUnboxed :: Test
 addLargerColumnUnboxed =
     TestCase (assertEqual "Smaller lists should grow and contain optionals"
-                    (D.fromList [("old", D.toColumn [Just 1 :: Maybe Int, Just 2, Nothing, Nothing, Nothing]),
-                                 ("new", D.toColumn [Just 1 :: Maybe Int, Just 2, Just 3, Nothing, Nothing]),
-                                 ("newer", D.toColumn [1 :: Int, 2, 3, 4, 5])])
+                    (D.fromNamedColumns [("old", D.fromList [Just 1 :: Maybe Int, Just 2, Nothing, Nothing, Nothing]),
+                                 ("new", D.fromList [Just 1 :: Maybe Int, Just 2, Just 3, Nothing, Nothing]),
+                                 ("newer", D.fromList [1 :: Int, 2, 3, 4, 5])])
                     (D.insertColumn "newer" (V.fromList [1 :: Int, 2, 3, 4, 5])
                      $ D.insertColumn "new" (V.fromList [1 :: Int, 2, 3]) $ 
                      D.insertColumn "old" (V.fromList [1 :: Int, 2]) D.empty))

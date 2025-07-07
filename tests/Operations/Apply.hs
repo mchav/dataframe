@@ -15,18 +15,18 @@ import Test.HUnit
 import Type.Reflection (typeRep)
 
 values :: [(T.Text, DI.Column)]
-values = [ ("test1", DI.toColumn ([1..26] :: [Int]))
-         , ("test2", DI.toColumn (map show ['a'..'z']))
-         , ("test3", DI.toColumn ([1..26] :: [Int]))
-         , ("test4", DI.toColumn ['a'..'z'])
-         , ("test5", DI.toColumn ([1..26] :: [Int]))
-         , ("test6", DI.toColumn ['a'..'z'])
-         , ("test7", DI.toColumn ([1..26] :: [Int]))
-         , ("test8", DI.toColumn ['a'..'z'])
+values = [ ("test1", DI.fromList ([1..26] :: [Int]))
+         , ("test2", DI.fromList (map show ['a'..'z']))
+         , ("test3", DI.fromList ([1..26] :: [Int]))
+         , ("test4", DI.fromList ['a'..'z'])
+         , ("test5", DI.fromList ([1..26] :: [Int]))
+         , ("test6", DI.fromList ['a'..'z'])
+         , ("test7", DI.fromList ([1..26] :: [Int]))
+         , ("test8", DI.fromList ['a'..'z'])
          ]
 
 testData :: D.DataFrame
-testData = D.fromList values
+testData = D.fromNamedColumns values
 
 applyBoxedToUnboxed :: Test
 applyBoxedToUnboxed = TestCase (assertEqual "Boxed apply unboxed when result is unboxed"
@@ -40,7 +40,7 @@ applyBoxedToBoxed = TestCase (assertEqual "Boxed apply remains in boxed vector"
 
 applyWrongType :: Test
 applyWrongType = TestCase (assertExpectException "[Error Case]"
-                                (DE.typeMismatchError (typeRep @Char) (typeRep @[Char]))
+                                (DE.typeMismatchError (show $ typeRep @Char) (show $ typeRep @[Char]))
                                 (print $ DI.getColumn "test2" $ D.apply @Char (const (1::Int)) "test2" testData))
 
 applyUnknownColumn :: Test
@@ -50,7 +50,7 @@ applyUnknownColumn = TestCase (assertExpectException "[Error Case]"
 
 applyManyOnlyGivenFields :: Test
 applyManyOnlyGivenFields = TestCase (assertEqual "Applies function to many fields"
-                                (D.fromList (map (, D.toColumn $ replicate 26 (1 :: Integer)) ["test4", "test6"] ++
+                                (D.fromNamedColumns (map (, D.fromList $ replicate 26 (1 :: Integer)) ["test4", "test6"] ++
                                             -- All other fields should have their original values.
                                             filter (\(name, col) -> name /= "test4" && name /= "test6") values))
                                 (D.applyMany @Char (const (1::Integer))
@@ -58,13 +58,13 @@ applyManyOnlyGivenFields = TestCase (assertEqual "Applies function to many field
 
 applyManyBoxedToBoxed :: Test
 applyManyBoxedToBoxed = TestCase (assertEqual "Applies function to many fields"
-                                (D.fromList (map (, D.toColumn $ replicate 26 (1 :: Integer)) ["test4", "test6", "test8"]))
+                                (D.fromNamedColumns (map (, D.fromList $ replicate 26 (1 :: Integer)) ["test4", "test6", "test8"]))
                                 (D.select ["test4", "test6", "test8"] $ D.applyMany @Char (const (1::Integer))
                                     ["test4", "test6", "test8"] testData))
 
 applyManyBoxedToUnboxed :: Test
 applyManyBoxedToUnboxed = TestCase (assertEqual "Unboxes fields when necessary"
-                                (D.fromList (map (, D.toColumn $ replicate 26 (1 :: Int)) ["test4", "test6", "test8"]))
+                                (D.fromNamedColumns (map (, D.fromList $ replicate 26 (1 :: Int)) ["test4", "test6", "test8"]))
                                 (D.select ["test4", "test6", "test8"] $ D.applyMany @Char (const (1::Int))
                                     ["test4", "test6", "test8"] testData))
 
@@ -76,17 +76,17 @@ applyManyColumnNotFound = TestCase (assertExpectException "[Error Case]"
 
 applyManyWrongType :: Test
 applyManyWrongType = TestCase (assertExpectException "[Error Case]"
-                                (DE.typeMismatchError (typeRep @Char) (typeRep @[Char]))
+                                (DE.typeMismatchError (show $ typeRep @Char) (show $ typeRep @[Char]))
                                 (print $ DI.getColumn "test2" $ D.applyMany @Char (const (1::Int)) ["test2"] testData))
 
 applyWhereWrongConditionType :: Test
 applyWhereWrongConditionType = TestCase (assertExpectException "[Error Case]"
-                                (DE.typeMismatchError (typeRep @Integer) (typeRep @Int))
+                                (DE.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
                                 (print $ D.applyWhere (even @Integer) "test1" ((+1) :: Int -> Int) "test5" testData))
 
 applyWhereWrongTargetType :: Test
 applyWhereWrongTargetType = TestCase (assertExpectException "[Error Case]"
-                                (DE.typeMismatchError (typeRep @Float) (typeRep @Int))
+                                (DE.typeMismatchError (show $ typeRep @Float) (show $ typeRep @Int))
                                 (print $ D.applyWhere (even @Int) "test1" ((+1) :: Float -> Float) "test5" testData))
 
 applyWhereConditionColumnNotFound :: Test

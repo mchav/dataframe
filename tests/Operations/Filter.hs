@@ -14,18 +14,18 @@ import Test.HUnit
 import Type.Reflection (typeRep)
 
 values :: [(T.Text, DI.Column)]
-values = [ ("test1", DI.toColumn ([1..26] :: [Int]))
-         , ("test2", DI.toColumn (map show ['a'..'z']))
-         , ("test3", DI.toColumn ([1..26] :: [Int]))
-         , ("test4", DI.toColumn ['a'..'z'])
-         , ("test5", DI.toColumn ([1..26] :: [Int]))
-         , ("test6", DI.toColumn ['a'..'z'])
-         , ("test7", DI.toColumn ([1..26] :: [Int]))
-         , ("test8", DI.toColumn ['a'..'z'])
+values = [ ("test1", DI.fromList ([1..26] :: [Int]))
+         , ("test2", DI.fromList (map show ['a'..'z']))
+         , ("test3", DI.fromList ([1..26] :: [Int]))
+         , ("test4", DI.fromList ['a'..'z'])
+         , ("test5", DI.fromList ([1..26] :: [Int]))
+         , ("test6", DI.fromList ['a'..'z'])
+         , ("test7", DI.fromList ([1..26] :: [Int]))
+         , ("test8", DI.fromList ['a'..'z'])
          ]
 
 testData :: D.DataFrame
-testData = D.fromList values
+testData = D.fromNamedColumns values
 
 filterColumnDoesNotExist :: Test
 filterColumnDoesNotExist = TestCase (assertExpectException "[Error Case]"
@@ -34,7 +34,7 @@ filterColumnDoesNotExist = TestCase (assertExpectException "[Error Case]"
 
 filterColumnWrongType :: Test
 filterColumnWrongType = TestCase (assertExpectException "[Error Case]"
-                                (DE.typeMismatchError (typeRep @Integer) (typeRep @Int))
+                                (DE.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
                                 (print $ D.filter @Integer "test1" even testData))
 
 filterByColumnDoesNotExist :: Test
@@ -44,7 +44,7 @@ filterByColumnDoesNotExist = TestCase (assertExpectException "[Error Case]"
 
 filterByColumnWrongType :: Test
 filterByColumnWrongType = TestCase (assertExpectException "[Error Case]"
-                                (DE.typeMismatchError (typeRep @Integer) (typeRep @Int))
+                                (DE.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
                                 (print $ D.filterBy @Integer even "test1" testData))
 
 filterColumnInexistentValues :: Test
@@ -59,8 +59,8 @@ filterColumnAllValues = TestCase (assertEqual "Filters all columns"
 
 filterJustWAI :: Test
 filterJustWAI = TestCase (assertEqual "Filters out Nothing and unwraps Maybe"
-                                (D.fromList [("test", D.toColumn $ replicate 5 (1 :: Int))])
-                                (D.filterJust "test" (D.fromList [("test", D.toColumn $ take 10 $ cycle [Just (1 :: Int), Nothing])])))
+                                (D.fromNamedColumns [("test", D.fromList $ replicate 5 (1 :: Int))])
+                                (D.filterJust "test" (D.fromNamedColumns [("test", D.fromList$ take 10 $ cycle [Just (1 :: Int), Nothing])])))
 
 tests :: [Test]
 tests = [ TestLabel "filterColumnDoesNotExist" filterColumnDoesNotExist

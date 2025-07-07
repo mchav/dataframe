@@ -18,23 +18,23 @@ import Test.HUnit
 values :: [(T.Text, DI.Column)]
 values = let
         ns = shuffle' [(1::Int)..26] 26 $ mkStdGen 252
-    in [ ("test1", DI.toColumn ns)
-       , ("test2", DI.toColumn (map (chr . (+96)) ns))
+    in [ ("test1", DI.fromList ns)
+       , ("test2", DI.fromList (map (chr . (+96)) ns))
        ]
 
 testData :: D.DataFrame
-testData = D.fromList values
+testData = D.fromNamedColumns values
 
 sortByAscendingWAI :: Test
 sortByAscendingWAI = TestCase (assertEqual "Sorting rows by ascending works as intended"
-                    (D.fromList [("test1", DI.toColumn [(1::Int)..26]),
-                                 ("test2", DI.toColumn ['a'..'z'])])
+                    (D.fromNamedColumns [("test1", DI.fromList [(1::Int)..26]),
+                                 ("test2", DI.fromList ['a'..'z'])])
                     (D.sortBy D.Ascending ["test1"] testData))
 
 sortByDescendingWAI :: Test
 sortByDescendingWAI = TestCase (assertEqual "Sorting rows by descending works as intended"
-                    (D.fromList [("test1", DI.toColumn $ reverse [(1::Int)..26]),
-                                 ("test2", DI.toColumn $ reverse ['a'..'z'])])
+                    (D.fromNamedColumns [("test1", DI.fromList $ reverse [(1::Int)..26]),
+                                 ("test2", DI.fromList $ reverse ['a'..'z'])])
                     (D.sortBy D.Descending ["test1"] testData))
 
 sortByColumnDoesNotExist :: Test

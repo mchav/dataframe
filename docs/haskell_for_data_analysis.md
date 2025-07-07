@@ -10,7 +10,7 @@ In Haskell, potentially missing values are represented by a "wrapper" type calle
 
 ```
 ghci> import qualified DataFrame as D
-ghci> let df = D.fromColumnList [D.toColumn [Just 1, Just 1, Nothing, Nothing], D.toColumn [Just 6.5, Nothing, Nothing, Just 6.5], D.toColumn [Just 3.0, Nothing, Nothing, Just 3.0]]
+ghci> let df = D.fromColumnList [D.fromList[Just 1, Just 1, Nothing, Nothing], D.fromList[Just 6.5, Nothing, Nothing, Just 6.5], D.fromList[Just 3.0, Nothing, Nothing, Just 3.0]]
 ghci> df
 ---------------------------------------------------
 index |       0       |      1       |      2      

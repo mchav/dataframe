@@ -7,16 +7,16 @@ import qualified DataFrame as DI
 import Test.HUnit
 
 testData :: D.DataFrame
-testData = D.fromList [ ("test1", DI.toColumn ([1..26] :: [Int]))
-                      , ("test2", DI.toColumn ['a'..'z'])
+testData = D.fromNamedColumns [ ("test1", DI.fromList ([1..26] :: [Int]))
+                      , ("test2", DI.fromList ['a'..'z'])
                       ]
 
 
 takeWAI :: Test
-takeWAI = TestCase (assertEqual "Gets first 10 numbers" (Just $ D.toColumn [(1 :: Int)..10]) (D.getColumn "test1" $ D.take 10 testData))
+takeWAI = TestCase (assertEqual "Gets first 10 numbers" (Just $ D.fromList [(1 :: Int)..10]) (D.getColumn "test1" $ D.take 10 testData))
 
 takeLastWAI :: Test
-takeLastWAI = TestCase (assertEqual "Gets first 10 numbers" (Just $ D.toColumn [(17 :: Int)..26]) (D.getColumn "test1" $ D.takeLast 10 testData))
+takeLastWAI = TestCase (assertEqual "Gets first 10 numbers" (Just $ D.fromList [(17 :: Int)..26]) (D.getColumn "test1" $ D.takeLast 10 testData))
 
 lengthEqualsTakeParam :: Test
 lengthEqualsTakeParam = TestCase (assertEqual "should be (5, 2)" (5, 2) (D.dimensions $ D.take 5 testData))
