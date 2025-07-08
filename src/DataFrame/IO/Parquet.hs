@@ -317,14 +317,32 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                      else colDataPageOffset
       let colLength = columnTotalCompressedSize metadata
       columnBytes <-readBytes handle colStart colLength
-      readPage columnBytes
+      print metadata
+      (maybePage, res) <- readPage columnBytes
+      case maybePage of
+        Just p -> if isDictionaryPage p
+                  then do
+                    (maybePage', res') <- readPage res
+                    let p' = fromMaybe (error "[UNEXPECTED] No data page found") maybePage'
+                    print $ readPageBytes (pageBytes p)
+                    print p'
+                  else print "Data???"
+        Nothing -> pure ()
 
   return DI.empty
 
-readPage :: [Word8] -> IO ()
-readPage [] = pure ()
+readPageBytes :: [Word8] -> [BSO.ByteString]
+readPageBytes [] = []
+readPageBytes xs = let
+    lenBytes = fromIntegral (littleEndianWord8 $ take 4 xs)
+    totalBytesRead = lenBytes + 4
+  in BSO.pack (take lenBytes (drop 4 xs)) : readPageBytes (drop totalBytesRead xs)
+
+readPage :: [Word8] -> IO (Maybe Page, [Word8])
+readPage [] = pure (Nothing, [])
 readPage columnBytes = do
   let (hdr, rem) = readPageHeader emptyPageHeader columnBytes 0
+  print hdr
   let compressed = take (fromIntegral $ compressedPageSize hdr) rem
   
   -- Weird round about way to uncompress zstd files compressed using the
@@ -332,9 +350,10 @@ readPage columnBytes = do
   Consume dFunc <- decompress
   Consume dFunc' <- dFunc (BSO.pack compressed)
   Done res <- dFunc' BSO.empty
-  -- print $ BSO.length res
-  -- print $ hdr
-  if isDataPage (pageTypeHeader hdr) then (print hdr >> print "" >> print (BSO.unpack res) >> print "") else readPage (drop (fromIntegral $ compressedPageSize hdr) rem)
+  pure $ (Just $ Page hdr (BSO.unpack res), drop (fromIntegral $ compressedPageSize hdr) rem)
+
+data Page = Page { pageHeader :: PageHeader
+                 , pageBytes :: [Word8] } deriving (Show, Eq)
 
 data PageHeader = PageHeader { pageHeaderPageType :: PageType
                              , uncompressedPageSize :: Int32
@@ -346,10 +365,16 @@ data PageHeader = PageHeader { pageHeaderPageType :: PageType
 
 emptyPageHeader = PageHeader PAGE_TYPE_UNKNOWN 0 0 0  PAGE_TYPE_HEADER_UNKNOWN
 
-isDataPage :: PageTypeHeader -> Bool
-isDataPage DataPageHeader   {..} = True
-isDataPage DataPageHeaderV2 {..} = True
-isDataPage _                     = False
+isDataPage :: Page -> Bool
+isDataPage page = case pageTypeHeader (pageHeader page) of
+                    DataPageHeader   {..} -> True
+                    DataPageHeaderV2 {..} -> True
+                    _                     -> False
+
+isDictionaryPage :: Page -> Bool
+isDictionaryPage page = case pageTypeHeader (pageHeader page) of
+                          DictionaryPageHeader {..} -> True
+                          _                         -> False
 
 data PageTypeHeader = DataPageHeader { dataPageHeaderNumValues :: Int32
                                      , dataPageHeaderEncoding :: ParquetEncoding
@@ -1298,3 +1323,15 @@ readVarIntFromBytes bs = (fromIntegral n, rem)
     loop shift result (x:xs) = let
         res = result .|. ((fromIntegral (x .&. 0x7f) :: Integer) `shiftL` shift)
       in if (x .&. 0x80) /= 0x80 then (res, xs) else loop (shift + 7) res xs
+
+-- // Uint32 returns the uint32 representation of b[0:4].
+-- func (littleEndian) Uint32(b []byte) uint32 {
+-- 	_ = b[3] // bounds check hint to compiler; see golang.org/issue/14808
+-- 	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
+-- }
+
+
+littleEndianWord8 :: [Word8] -> Word8
+littleEndianWord8 bytes
+  | length bytes == 4 = foldr (\v acc -> acc .|. v) 0 (zipWith (\b i -> b `shiftL` i) bytes [0,8..])
+  | otherwise = error "Expected exactly 4 bytes"
