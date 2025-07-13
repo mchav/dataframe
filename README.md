@@ -67,8 +67,12 @@ Full example in `./app` folder using many of the constructs in the API.
 ### Visual example
 ![Screencast of usage in GHCI](./static/example.gif)
 
+## Supported input formats
+* CSV
+* Apache Parquet (still buggy and experimental)
+
 ## Future work
-* Apache arrow and Parquet compatability
+* Apache arrow compatability
 * Integration with common data formats (currently only supports CSV)
 * Support windowed plotting (currently only supports ASCII plots)
 

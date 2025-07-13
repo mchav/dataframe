@@ -6,21 +6,28 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module DataFrame.IO.Parquet where
+module DataFrame.IO.Parquet (
+  readParquet
+  ) where
 
+import qualified Codec.Compression.Snappy as Snappy
 import Codec.Compression.Zstd.Streaming
 import Control.Monad
 import qualified Data.ByteString as BSO
 import qualified Data.ByteString.Char8 as BS
 import Data.Char
 import Data.Foldable
+import qualified Data.Vector.Unboxed as VU
 import Data.IORef
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
 import DataFrame.Internal.DataFrame (DataFrame)
 import qualified DataFrame.Internal.DataFrame as DI
+import qualified DataFrame.Internal.Column as DI
+import qualified DataFrame.Operations.Core as DI
 import Foreign
+import GHC.Float
 import GHC.IO (unsafePerformIO)
 import System.IO
 
@@ -305,9 +312,11 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
   (size, magicString) <- readMetadataSizeFromFooter handle
   when (magicString /= "PAR1") $ error "Invalid Parquet file"
 
-  metadata <- readMetadata handle size
-  -- print metadata
-  forM_ (rowGroups metadata) $ \r -> do
+  colMap <- newIORef (M.empty :: (M.Map T.Text DI.Column))
+  colNames <- newIORef ([] :: [T.Text])
+
+  fileMetadata <- readMetadata handle size
+  forM_ (rowGroups fileMetadata) $ \r -> do
     forM_ (rowGroupColumns r) $ \c -> do
       let metadata = columnMetaData c
       let colDataPageOffset = columnDataPageOffset metadata
@@ -317,40 +326,213 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                      else colDataPageOffset
       let colLength = columnTotalCompressedSize metadata
       columnBytes <-readBytes handle colStart colLength
-      print metadata
-      (maybePage, res) <- readPage columnBytes
+      (maybePage, res) <- readPage (columnCodec metadata) columnBytes
       case maybePage of
         Just p -> if isDictionaryPage p
                   then do
-                    (maybePage', res') <- readPage res
-                    let p' = fromMaybe (error "[UNEXPECTED] No data page found") maybePage'
-                    print $ readPageBytes (pageBytes p)
-                    print p'
-                  else print "Data???"
+                    (maybePage', res') <- readPage (columnCodec metadata) res
+                    let p' = fromMaybe (error "Empty page") maybePage'
+                    let schemaElem = filter (\se -> (elementName se) == (T.pack $ head (columnPathInSchema metadata))) (schema fileMetadata)
+                    let rep = if null schemaElem then UNKNOWN_REPETITION_TYPE else ((repetitionType . head) schemaElem)
+                    when (rep == REPEATED || rep == UNKNOWN_REPETITION_TYPE) (error $ "REPETITION TYPE NOT SUPPORTED: " ++ show rep)
+                    
+                    case ((definitionLevelEncoding . pageTypeHeader . pageHeader ) p') of
+                      ERLE -> do
+                        let rleColumn = case columnType metadata of
+                                            PBYTE_ARRAY -> readByteArrayColumn (pageBytes p)
+                                            PDOUBLE     -> readDoubleColumn (pageBytes p)
+                                            PINT32      -> readInt32Column (pageBytes p)
+                                            t           -> error $ "UNKNOWN TYPE: " ++ (show t)
+                        let nbytes = littleEndianInt32 (take 4 (pageBytes p'))
+                        let rleDecoder = MkRleDecoder (drop 4 (pageBytes p')) 1 0 0
+
+                        -- Create index decoder
+                        let lvlByteLen = (fromIntegral nbytes + 4)
+                        let rleBytes = drop lvlByteLen (pageBytes p')
+                        let bitWidth = head rleBytes
+                        let indexDecoder = MkRleDecoder (tail rleBytes) (fromIntegral bitWidth) 0 0
+
+                        let finalCol = DI.takeColumn ((fromIntegral . dataPageHeaderNumValues . pageTypeHeader . pageHeader) p') (decodeDictionary rleColumn rleDecoder indexDecoder)
+                        let colName = T.pack $ head (columnPathInSchema metadata)
+
+                        modifyIORef' colNames (++[colName]) 
+                        modifyIORef' colMap (\m -> M.insertWith (\l r -> fromMaybe (error "UNEXPECTED") (DI.concatColumns l r)) colName finalCol m)
+                      other -> error $ "UNSUPPORTED ENCODING: " ++ (show other)
+                  else (error "PLAIN DATA PAGES NOT SUPPORTED")
         Nothing -> pure ()
 
-  return DI.empty
+  c' <- readIORef colMap
+  colNames' <- readIORef colNames
+  let asscList = map (\name -> (name, c' M.! name)) colNames'
+  pure $ DI.fromNamedColumns asscList
 
-readPageBytes :: [Word8] -> [BSO.ByteString]
+decodeDictionary :: DI.Column -> RleDecoder -> RleDecoder -> DI.Column
+decodeDictionary col rleDecoder indexDecoder
+  | repCount indexDecoder > 0 = error "UNIMPLEMENTED: Repetition not supported"
+  | litCount indexDecoder > 0 = decodeDictionary (DI.atIndicesStable (VU.map fromIntegral (getIndices indexDecoder)) col) rleDecoder (indexDecoder { litCount = 0 })
+  | otherwise = let
+      (finished, indexDecoder') = advance indexDecoder
+    in if finished then col else decodeDictionary col rleDecoder indexDecoder'
+
+advance :: RleDecoder -> (Bool, RleDecoder)
+advance indexDecoder 
+  | (rleDecoderData indexDecoder) == [] = (True, indexDecoder)
+  | otherwise = let
+      (indicator, remaining) = readUVarInt (rleDecoderData indexDecoder)
+      isLiteral = (indicator .&. 1) /= 0
+      countValues = (fromIntegral (indicator `shiftR` 1) :: Int32)
+      litCount = if isLiteral then (countValues * 8) else 0
+    in if isLiteral then (False, indexDecoder { rleDecoderData = remaining, litCount = litCount }) else (True, indexDecoder) -- (error "NON-LITERAL TYPES NOT YET SUPPORTED")
+
+getIndices :: RleDecoder -> VU.Vector Word32
+getIndices indexDecoder
+  | rleBitWidth indexDecoder == 5 = unpackWidth5 (rleDecoderData indexDecoder)
+  | rleBitWidth indexDecoder == 1 = unpackWidth1 (rleDecoderData indexDecoder)
+  | rleBitWidth indexDecoder == 2 = unpackWidth2 (rleDecoderData indexDecoder)
+  | rleBitWidth indexDecoder == 3 = unpackWidth3 (rleDecoderData indexDecoder)
+  | otherwise = error $ "Unsupported bit width: " ++ (show (rleBitWidth indexDecoder))
+
+unpackWidth5 :: [Word8] -> VU.Vector Word32
+unpackWidth5 [] = VU.empty
+unpackWidth5 bytes = let
+    n0    = littleEndianWord32 $ take 4 bytes
+    n1    = littleEndianWord32 $ take 4 $ drop 4 bytes
+    n2    = littleEndianWord32 $ take 4 $ drop 8 bytes
+    n3    = littleEndianWord32 $ take 4 $ drop 12 bytes
+    n4    = littleEndianWord32 $ take 4 $ drop 16 bytes
+    out0  = (n0 .>>. 0) `mod` (1 .<<. 5)
+    out1  = (n0 .>>. 5) `mod` (1 .<<. 5)
+    out2  = (n0 .>>. 10) `mod` (1 .<<. 5)
+    out3  = (n0 .>>. 15) `mod` (1 .<<. 5)
+    out4  = (n0 .>>. 20) `mod` (1 .<<. 5)
+    out5  = (n0 .>>. 25) `mod` (1 .<<. 5)
+    out6  = (n0 .>>. 30) .|. ((n1 `mod` (1 .<<. 3)) .<<. (5 - 3))
+    out7  = (n1 .>>. 3) `mod` (1 .<<. 5)
+    out8  = (n1 .>>. 8) `mod` (1 .<<. 5)
+    out9  = (n1 .>>. 13) `mod` (1 .<<. 5)
+    out10 = (n1 .>>. 18) `mod` (1 .<<. 5)
+    out11 = (n1 .>>. 23) `mod` (1 .<<. 5)
+    out12 = (n1 .>>. 28) .|. (n2 `mod` (1 .<<. 1)) .<<. (5 - 1)
+    out13 = (n2 .>>. 1) `mod` (1 .<<. 5)
+    out14 = (n2 .>>. 6) `mod` (1 .<<. 5)
+    out15 = (n2 .>>. 11) `mod` (1 .<<. 5)
+    out16 = (n2 .>>. 16) `mod` (1 .<<. 5)
+    out17 = (n2 .>>. 21) `mod` (1 .<<. 5)
+    out18 = (n2 .>>. 26) `mod` (1 .<<. 5)
+    out19 = (n2 .>>. 31) .|. (n3 `mod` (1 .<<. 4)) .<<. (5 - 4)
+    out20 = (n3 .>>. 4) `mod` (1 .<<. 5)
+    out21 = (n3 .>>. 9) `mod` (1 .<<. 5)
+    out22 = (n3 .>>. 14) `mod` (1 .<<. 5)
+    out23 = (n3 .>>. 19) `mod` (1 .<<. 5)
+    out24 = (n3 .>>. 24) `mod` (1 .<<. 5)
+    out25 = (n3 .>>. 29) .|. (n4 `mod` (1 .<<. 2)) .<<. (5 - 2)
+    out26 = (n4 .>>. 2) `mod` (1 .<<. 5)
+    out27 = (n4 .>>. 7) `mod` (1 .<<. 5)
+    out28 = (n4 .>>. 12) `mod` (1 .<<. 5)
+    out29 = (n4 .>>. 17) `mod` (1 .<<. 5)
+    out30 = (n4 .>>. 22) `mod` (1 .<<. 5)
+    out31 = (n4 .>>. 27)
+  in (VU.fromList [out0,out1,out2,out3,out4,out5,out6,out7,out8,out9,out10,out11,out12,out13,out14,out15,out16,out17,out18,out19,out20,out21,out22,out23,out24,out25,out26,out27,out28,out29,out30,out31]) VU.++ (unpackWidth5 (drop 20 bytes))
+
+unpackWidth2, unpackWidth1, unpackWidth3 :: [Word8] -> VU.Vector Word32
+unpackWidth1 [] = VU.empty
+unpackWidth1 bytes = let
+    n = littleEndianWord32 $ take 4 bytes
+  in VU.fromList (map (\i -> (n .>>. i) .&. 1) [0..31]) VU.++ (unpackWidth1 (drop 4 bytes))
+unpackWidth2 [] = VU.empty
+unpackWidth2 bytes = let
+    n = littleEndianWord32 $ take 4 bytes
+  in VU.fromList (map (\i -> (n .>>. (i * 2)) .&. 1) [0..14] ++ [n .>>. 30]) VU.++ (unpackWidth2 (drop 4 bytes))
+unpackWidth3 [] = VU.empty
+unpackWidth3 bytes = let
+    n0    = littleEndianWord32 $ take 4 bytes
+    n1    = littleEndianWord32 $ take 4 $ drop 4 bytes
+    n2    = littleEndianWord32 $ take 4 $ drop 8 bytes
+    out0  = (n0 .>>. 0) `mod` (1 .<<. 3)
+    out1  = (n0 .>>. 3) `mod` (1 .<<. 3)
+    out2  = (n0 .>>. 6) `mod` (1 .<<. 3)
+    out3  = (n0 .>>. 9) `mod` (1 .<<. 3)
+    out4  = (n0 .>>. 12) `mod` (1 .<<. 3)
+    out5  = (n0 .>>. 15) `mod` (1 .<<. 3)
+    out6  = (n0 .>>. 18) `mod` (1 .<<. 3)
+    out7  = (n0 .>>. 21) `mod` (1 .<<. 3)
+    out8  = (n0 .>>. 24) `mod` (1 .<<. 3)
+    out9  = (n0 .>>. 27) `mod` (1 .<<. 3)
+    out10 = (n0 .>>. 30) .|. (n1 `mod` (1 .<<. 1)) .<<. (3 - 1)
+    out11 = (n1 .>>. 1) `mod` (1 .<<. 3)
+    out12 = (n1 .>>. 4) `mod` (1 .<<. 3)
+    out13 = (n1 .>>. 7) `mod` (1 .<<. 3)
+    out14 = (n1 .>>. 10) `mod` (1 .<<. 3)
+    out15 = (n1 .>>. 13) `mod` (1 .<<. 3)
+    out16 = (n1 .>>. 16) `mod` (1 .<<. 3)
+    out17 = (n1 .>>. 19) `mod` (1 .<<. 3)
+    out18 = (n1 .>>. 22) `mod` (1 .<<. 3)
+    out19 = (n1 .>>. 25) `mod` (1 .<<. 3)
+    out20 = (n1 .>>. 28) `mod` (1 .<<. 3)
+    out21 = ((n1 .>>. 31) `mod` (1 .<<. 3)) .|. (n2 `mod` (1 .<<. 2)) .<<. (3 - 2)
+    out22 = (n2 .>>. 2) `mod` (1 .<<. 3)
+    out23 = (n2 .>>. 5) `mod` (1 .<<. 3)
+    out24 = (n2 .>>. 8) `mod` (1 .<<. 3)
+    out25 = (n2 .>>. 11) `mod` (1 .<<. 3)
+    out26 = (n2 .>>. 14) `mod` (1 .<<. 3)
+    out27 = (n2 .>>. 17) `mod` (1 .<<. 3)
+    out28 = (n2 .>>. 20) `mod` (1 .<<. 3)
+    out29 = (n2 .>>. 23) `mod` (1 .<<. 3)
+    out30 = (n2 .>>. 26) `mod` (1 .<<. 3)
+    out31 = (n2 .>>. 29)
+  in (VU.fromList [out0,out1,out2,out3,out4,out5,out6,out7,out8,out9,out10,out11,out12,out13,out14,out15,out16,out17,out18,out19,out20,out21,out22,out23,out24,out25,out26,out27,out28,out29,out30,out31]) VU.++ (unpackWidth3 (drop 12 bytes))
+
+data RleDecoder = MkRleDecoder { rleDecoderData :: [Word8]
+                               , rleBitWidth :: Int32
+                               , repCount :: Int32
+                               , litCount :: Int32
+                               } deriving (Show, Eq)
+
+expandDictionary :: [Word8] -> [Word8]
+expandDictionary (bitWidth:rest) = rest
+
+readInt32Column :: [Word8] -> DI.Column
+readInt32Column = DI.fromList . readPageInt32
+
+readDoubleColumn :: [Word8] -> DI.Column
+readDoubleColumn = DI.fromList . readPageWord64
+
+readByteArrayColumn :: [Word8] -> DI.Column
+readByteArrayColumn = DI.fromList .readPageBytes
+
+readPageInt32 :: [Word8] -> [Int32]
+readPageInt32 [] = []
+readPageInt32 xs = (fromIntegral (littleEndianInt32 (take 4 xs))) : readPageInt32 (drop 4 xs)
+
+readPageWord64 :: [Word8] -> [Double]
+readPageWord64 [] = []
+readPageWord64 xs = (castWord64ToDouble (littleEndianWord64 (take 8 xs))) : readPageWord64 (drop 8 xs)
+
+readPageBytes :: [Word8] -> [T.Text]
 readPageBytes [] = []
 readPageBytes xs = let
     lenBytes = fromIntegral (littleEndianWord8 $ take 4 xs)
     totalBytesRead = lenBytes + 4
-  in BSO.pack (take lenBytes (drop 4 xs)) : readPageBytes (drop totalBytesRead xs)
+  in T.pack (map (chr . fromIntegral) $ take lenBytes (drop 4 xs)) : readPageBytes (drop totalBytesRead xs)
 
-readPage :: [Word8] -> IO (Maybe Page, [Word8])
-readPage [] = pure (Nothing, [])
-readPage columnBytes = do
+readPage :: CompressionCodec -> [Word8] -> IO (Maybe Page, [Word8])
+readPage c [] = pure (Nothing, [])
+readPage c columnBytes = do
   let (hdr, rem) = readPageHeader emptyPageHeader columnBytes 0
-  print hdr
   let compressed = take (fromIntegral $ compressedPageSize hdr) rem
   
   -- Weird round about way to uncompress zstd files compressed using the
   -- streaming API
-  Consume dFunc <- decompress
-  Consume dFunc' <- dFunc (BSO.pack compressed)
-  Done res <- dFunc' BSO.empty
-  pure $ (Just $ Page hdr (BSO.unpack res), drop (fromIntegral $ compressedPageSize hdr) rem)
+  fullData <- case c of
+    ZSTD -> do
+      Consume dFunc <- decompress
+      Consume dFunc' <- dFunc (BSO.pack compressed)
+      Done res <- dFunc' BSO.empty
+      pure res
+    SNAPPY -> pure $ Snappy.decompress (BSO.pack compressed)
+    UNCOMPRESSED -> pure (BSO.pack compressed)
+    comp -> error ("UNSUPPORTED_COMPRESSION TYPE: " ++ (show comp))
+  pure $ (Just $ Page hdr (BSO.unpack fullData), drop (fromIntegral $ compressedPageSize hdr) rem)
 
 data Page = Page { pageHeader :: PageHeader
                  , pageBytes :: [Word8] } deriving (Show, Eq)
@@ -1324,14 +1506,49 @@ readVarIntFromBytes bs = (fromIntegral n, rem)
         res = result .|. ((fromIntegral (x .&. 0x7f) :: Integer) `shiftL` shift)
       in if (x .&. 0x80) /= 0x80 then (res, xs) else loop (shift + 7) res xs
 
--- // Uint32 returns the uint32 representation of b[0:4].
--- func (littleEndian) Uint32(b []byte) uint32 {
--- 	_ = b[3] // bounds check hint to compiler; see golang.org/issue/14808
--- 	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
--- }
-
-
 littleEndianWord8 :: [Word8] -> Word8
 littleEndianWord8 bytes
   | length bytes == 4 = foldr (\v acc -> acc .|. v) 0 (zipWith (\b i -> b `shiftL` i) bytes [0,8..])
   | otherwise = error "Expected exactly 4 bytes"
+
+littleEndianWord32 :: [Word8] -> Word32
+littleEndianWord32 bytes
+  | length bytes == 4 = foldr (\v acc -> acc .|. v) 0 (zipWith (\b i -> (fromIntegral  b) `shiftL` i) bytes [0,8..])
+  | length bytes < 4  = littleEndianWord32 (take 4 $ bytes ++ (cycle[0]))
+  | otherwise = error $ "Expected exactly 4 bytes for Word32 but got " ++ (show bytes)
+
+littleEndianWord64 :: [Word8] -> Word64
+littleEndianWord64 bytes
+  | length bytes == 8 = foldr (\v acc -> acc .|. v) 0 (zipWith (\b i -> (fromIntegral  b) `shiftL` i) bytes [0,8..])
+  | otherwise = error "Expected exactly 8 bytes"
+
+littleEndianInt32 :: [Word8] -> Int32
+littleEndianInt32 bytes
+  | length bytes == 4 = foldr (\v acc -> acc .|. v) 0 (zipWith (\b i -> (fromIntegral  b) `shiftL` i) bytes [0,8..])
+  | otherwise = error "Expected exactly 4 bytes for Int32"
+
+readUVarInt :: [Word8] -> (Word64, [Word8])
+readUVarInt xs = loop xs 0 0 0
+  where loop bs x _ 10 = (x, bs)
+        loop (b:bs) x s i
+              | b < 0x80 = (x .|. ((fromIntegral b) `shiftL` s), bs)
+              | otherwise = loop bs (x .|. (fromIntegral ((b .&. 0x7f) `shiftL` s))) (s + 7) (i + 1)
+
+bitStream :: [Word8] -> [[Word8]]
+bitStream xs = map (reverse . toBits) xs
+
+toBits :: Word8 -> [Word8]
+toBits b = go 1 b
+  where
+    go 8 n = [(n .&. 1)]
+    go i n = (n .&. 1) : go (i + 1) (n .>>. 1)
+
+bitStreamToInt :: Word8 -> [Word8] -> [Int32]
+bitStreamToInt _ [] = []
+bitStreamToInt bitWidth bits = let
+    currBits = take (fromIntegral bitWidth) bits
+    remaining = drop (fromIntegral bitWidth) bits
+  in bitsToInt32 bitWidth currBits : bitStreamToInt bitWidth remaining
+
+bitsToInt32 :: Word8 -> [Word8] -> Int32
+bitsToInt32 bitWidth bits = fromIntegral $ foldr (.|.) 0 (zipWith (\s b -> b .<<. s) [0..] (reverse bits))
