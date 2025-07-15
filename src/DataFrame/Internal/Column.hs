@@ -233,7 +233,7 @@ __Examples:__
 
 @
 > import qualified Data.Vector.Unboxed as V
-> fromVector (V.fromList [(1 :: Int), 2, 3, 4])
+> fromUnboxedVector (V.fromList [(1 :: Int), 2, 3, 4])
 [1,2,3,4]
 @
 -}
@@ -617,42 +617,44 @@ __Examples:__
 exception: ...
 -}
 toVector :: forall a . Columnable a => Column -> VB.Vector a
-toVector = toVectorWithLabel "toVector"
+toVector xs = case toVectorSafe xs of
+  Left err  -> throw err
+  Right val -> val
 
--- | An internal version of toVector that takes the calling function as an extra argument.
-toVectorWithLabel :: forall a . Columnable a => String -> Column -> VB.Vector a
-toVectorWithLabel label column@(OptionalColumn (col :: VB.Vector b)) =
+-- | A safe version of toVector that returns an Either type.
+toVectorSafe :: forall a . Columnable a => Column -> Either DataFrameException (VB.Vector a)
+toVectorSafe column@(OptionalColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> col
-    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
-                                                               , expectedType = Right (typeRep @b)
-                                                               , callingFunctionName = Just label
-                                                               , errorColumnName = Nothing})
-toVectorWithLabel label (BoxedColumn (col :: VB.Vector b)) =
+    Just Refl -> Right col
+    Nothing -> Left $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                                 , expectedType = Right (typeRep @b)
+                                                                 , callingFunctionName = Just "toVectorSafe"
+                                                                 , errorColumnName = Nothing})
+toVectorSafe (BoxedColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> col
-    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
-                                                               , expectedType = Right (typeRep @b)
-                                                               , callingFunctionName = Just label
-                                                               , errorColumnName = Nothing})
-toVectorWithLabel label (UnboxedColumn (col :: VU.Vector b)) =
+    Just Refl -> Right col
+    Nothing -> Left $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                                 , expectedType = Right (typeRep @b)
+                                                                 , callingFunctionName = Just "toVectorSafe"
+                                                                 , errorColumnName = Nothing})
+toVectorSafe (UnboxedColumn (col :: VU.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> VB.convert col
-    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
-                                                               , expectedType = Right (typeRep @b)
-                                                               , callingFunctionName = Just label
-                                                               , errorColumnName = Nothing})
-toVectorWithLabel label (GroupedBoxedColumn (col :: VB.Vector b)) =
+    Just Refl -> Right $ VB.convert col
+    Nothing -> Left $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                                 , expectedType = Right (typeRep @b)
+                                                                 , callingFunctionName = Just "toVectorSafe"
+                                                                 , errorColumnName = Nothing})
+toVectorSafe (GroupedBoxedColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> col
-    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
-                                                               , expectedType = Right (typeRep @b)
-                                                               , callingFunctionName = Just label
-                                                               , errorColumnName = Nothing})
-toVectorWithLabel label (GroupedUnboxedColumn (col :: VB.Vector b)) =
+    Just Refl -> Right col
+    Nothing -> Left $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                                 , expectedType = Right (typeRep @b)
+                                                                 , callingFunctionName = Just "toVectorSafe"
+                                                                 , errorColumnName = Nothing})
+toVectorSafe (GroupedUnboxedColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> col
-    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
-                                                               , expectedType = Right (typeRep @b)
-                                                               , callingFunctionName = Just label
-                                                               , errorColumnName = Nothing})
+    Just Refl -> Right col
+    Nothing -> Left $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
+                                                                 , expectedType = Right (typeRep @b)
+                                                                 , callingFunctionName = Just "toVectorSafe"
+                                                                 , errorColumnName = Nothing})
