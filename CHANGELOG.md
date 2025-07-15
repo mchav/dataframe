@@ -1,5 +1,13 @@
 # Revision history for dataframe
 
+## 0.2.0.2
+* Experimental Apache Parquet support.
+* Rename conversion columns (changed from toColumn and toColumn' to fromVector and fromList).
+* Rename constructor for dataframe to fromNamedColumns
+* Create an error context for error messages so we can change the exceptions as they are thrown.
+* Provide safe versions of building block functions that allow us to build good traces.
+* Add readthedocs support.
+
 ## 0.2.0.1
 * Fix bug with new comparison expressions. gt and geq were actually implemented as lt and leq.
 * Changes to make library work with ghc 9.10.1 and 9.12.2
