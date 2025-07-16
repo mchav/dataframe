@@ -33,7 +33,6 @@ import DataFrame.Operations.Core
 import DataFrame.Operations.Subset
 import Data.Function ((&))
 import Data.Hashable
-import qualified Data.HashTable.ST.Basic as H
 import Data.Maybe
 import Data.Type.Equality (type (:~:)(Refl), TestEquality(..))
 import Type.Reflection (typeRep, typeOf)
