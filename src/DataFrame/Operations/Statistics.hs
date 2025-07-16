@@ -4,7 +4,6 @@
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE FlexibleContexts #-}
 module DataFrame.Operations.Statistics where
 
@@ -43,8 +42,8 @@ frequencies name df = case getColumn name df of
         Nothing -> case testEquality (typeRep @a) (typeRep @String) of
           Just Refl -> T.pack c'
           Nothing -> (T.pack . show) c'
-      initDf = empty & insertColumn "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-    in L.foldl' (\df (col, k) -> insertColumn (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+      initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
+    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
   Just ((OptionalColumn (column :: V.Vector a))) -> let
       counts = valueCounts @a name df
       total = P.sum $ map snd counts
@@ -54,8 +53,8 @@ frequencies name df = case getColumn name df of
         Nothing -> case testEquality (typeRep @a) (typeRep @String) of
           Just Refl -> T.pack c'
           Nothing -> (T.pack . show) c'
-      initDf = empty & insertColumn "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-    in L.foldl' (\df (col, k) -> insertColumn (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+      initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
+    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
   Just ((UnboxedColumn (column :: VU.Vector a))) -> let
       counts = valueCounts @a name df
       total = P.sum $ map snd counts
@@ -65,8 +64,8 @@ frequencies name df = case getColumn name df of
         Nothing -> case testEquality (typeRep @a) (typeRep @String) of
           Just Refl -> T.pack c'
           Nothing -> (T.pack . show) c'
-      initDf = empty & insertColumn "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-    in L.foldl' (\df (col, k) -> insertColumn (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+      initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
+    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
 
 mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic SS.mean
@@ -135,7 +134,7 @@ applyStatistics f name df = case getColumn name df of
 
 summarize :: DataFrame -> DataFrame
 summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic", fromList ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
-  where columnStats name d = if all isJust (stats name) then insertUnboxedColumn name (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
+  where columnStats name d = if all isJust (stats name) then insertUnboxedVector name (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
         stats name = let
             quantiles = applyStatistics (SS.quantilesVec SS.medianUnbiased (VU.fromList [0,1,2,3,4]) 4) name df
             min' = flip (VG.!) 0 <$> quantiles

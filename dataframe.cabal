@@ -22,6 +22,7 @@ source-repository head
   location: https://github.com/mchav/dataframe
 
 library
+    default-extensions: StrictData
     exposed-modules: DataFrame,
                      DataFrame.Lazy
     other-modules: DataFrame.Internal.Types,

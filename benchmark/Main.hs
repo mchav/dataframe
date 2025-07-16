@@ -10,21 +10,19 @@ import System.Random (randomRIO)
 
 stats :: Int -> IO ()
 stats n = do
-  ns <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
-  xs <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
-  ys <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
-  let df = D.fromNamedColumns [("first", D.UnboxedColumn ns),
-                               ("second", D.UnboxedColumn xs),
-                               ("third", D.UnboxedColumn ys)]
+  ns <- do
+    ns' <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
+    pure $ replicate 3 ns'
+  let df = D.fromUnamedColumns (map D.fromUnboxedVector ns)
   
-  print $ D.mean "first" df
-  print $ D.variance "second" df
-  print $ D.correlation "second" "third" df
-  print $ D.select ["first"] df D.|> D.take 1
+  print $ D.mean "0" df
+  print $ D.variance "1" df
+  print $ D.correlation "1" "2" df
+  print $ D.filter "0" (>= (19.9 :: Double)) df D.|> D.take 10
 
 main = defaultMain [
-  bgroup "stats" [ bench    "300_000" $ nfIO (stats 100_000)
+  bgroup "stats" [ bench    "300_000" $ toBenchmarkable  (stats 100_000)
                  , bench  "3_000_000" $ nfIO (stats 1_000_000)
-                 , bench "30_000_000" $ nfIO (stats 30_000_000)
+                 , bench "300_000_000" $ nfIO (stats 300_000_000)
                  ]
   ]

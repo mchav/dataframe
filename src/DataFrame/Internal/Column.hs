@@ -4,7 +4,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE Strict #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -254,17 +253,19 @@ fromList ::
   => [a] -> Column
 fromList = toColumnRep @(KindOf a) . VB.fromList
 
-
+-- | Type-level boolean for constraint/type comparison.
 data SBool (b :: Bool) where
   STrue  :: SBool 'True
   SFalse :: SBool 'False
 
+-- | The runtime witness for our type-level branching.
 class SBoolI (b :: Bool) where
-  sbool :: SBool b          -- the run-time witness
+  sbool :: SBool b
 
 instance SBoolI 'True  where sbool = STrue
 instance SBoolI 'False where sbool = SFalse
 
+-- | Type-level function to determine whether or not a type is unboxa
 sUnbox :: forall a. SBoolI (Unboxable a) => SBool (Unboxable a)
 sUnbox = sbool @(Unboxable a)
 
@@ -564,27 +565,37 @@ freezeColumn' nulls (MutableUnboxedColumn col)
 
 -- | Fills the end of a column, up to n, with Nothing. Does nothing if column has length greater than n.
 expandColumn :: Int -> Column -> Column
-expandColumn n (OptionalColumn col) = OptionalColumn $ col <> VB.replicate n Nothing
+expandColumn n (OptionalColumn col) = OptionalColumn $ col <> VB.replicate (n - VG.length col) Nothing
 expandColumn n column@(BoxedColumn col)
-  | n < VG.length col = OptionalColumn $ VB.map Just col <> VB.replicate n Nothing
+  | n > VG.length col = OptionalColumn $ VB.map Just col <> VB.replicate (n - VG.length col) Nothing
   | otherwise         = column
 expandColumn n column@(UnboxedColumn col)
-  | n < VG.length col = OptionalColumn $ VB.map Just (VU.convert col) <> VB.replicate n Nothing
+  | n > VG.length col = OptionalColumn $ VB.map Just (VU.convert col) <> VB.replicate (n - VG.length col) Nothing
   | otherwise         = column
 expandColumn n column@(GroupedBoxedColumn col)
-  | n < VG.length col = GroupedBoxedColumn $ col <> VB.replicate n VB.empty
+  | n > VG.length col = GroupedBoxedColumn $ col <> VB.replicate (n - VG.length col) VB.empty
   | otherwise         = column
 expandColumn n column@(GroupedUnboxedColumn col)
-  | n < VG.length col = GroupedUnboxedColumn $ col <> VB.replicate n VU.empty
+  | n > VG.length col = GroupedUnboxedColumn $ col <> VB.replicate (n - VG.length col) VU.empty
   | otherwise         = column
 
 -- | Fills the beginning of a column, up to n, with Nothing. Does nothing if column has length greater than n.
 leftExpandColumn :: Int -> Column -> Column
-leftExpandColumn n (OptionalColumn col) = OptionalColumn $ VB.replicate n Nothing <> col
-leftExpandColumn n (BoxedColumn col) = OptionalColumn $ VB.replicate n Nothing <> VB.map Just col
-leftExpandColumn n (UnboxedColumn col) = OptionalColumn $ VB.replicate n Nothing <> VB.map Just (VU.convert col)
-leftExpandColumn n (GroupedBoxedColumn col) = GroupedBoxedColumn $ VB.replicate n VB.empty <> col
-leftExpandColumn n (GroupedUnboxedColumn col) = GroupedUnboxedColumn $ VB.replicate n VU.empty <> col
+leftExpandColumn n column@(OptionalColumn col)
+  | n > VG.length col = OptionalColumn $ VG.replicate (n - VG.length col) Nothing <> col
+  | otherwise         = column
+leftExpandColumn n column@(BoxedColumn col)
+  | n > VG.length col = OptionalColumn $ VG.replicate (n - VG.length col) Nothing <> VG.map Just col
+  | otherwise         = column
+leftExpandColumn n column@(UnboxedColumn col)
+  | n > VG.length col = OptionalColumn $ VG.replicate (n - VG.length col) Nothing <> VG.map Just (VU.convert col)
+  | otherwise         = column
+leftExpandColumn n column@(GroupedBoxedColumn col)
+  | n > VG.length col = GroupedBoxedColumn $ VG.replicate (n - VG.length col) VB.empty <> col
+  | otherwise         = column
+leftExpandColumn n column@(GroupedUnboxedColumn col)
+  | n > VG.length col = GroupedUnboxedColumn $ VG.replicate (n - VG.length col) VU.empty <> col
+  | otherwise         = column
 
 -- | Concatenates two columns.
 concatColumns :: Column -> Column -> Maybe Column

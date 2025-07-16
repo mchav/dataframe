@@ -55,9 +55,8 @@ plotHistogramsBy col plotSet orientation df = do
         plotForColumnBy col cname byColumn plotColumn orientation df
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
-plotForColumnBy :: HasCallStack => T.Text -> T.Text -> Maybe Column -> Maybe Column -> HistogramOrientation -> DataFrame -> IO ()
-plotForColumnBy _ _ Nothing _ _ _ = return ()
-plotForColumnBy byCol cname (Just (BoxedColumn (byColumn :: V.Vector a))) (Just (BoxedColumn (plotColumn :: V.Vector b))) orientation df = do
+plotForColumnBy :: HasCallStack => T.Text -> T.Text -> Column -> Column -> HistogramOrientation -> DataFrame -> IO ()
+plotForColumnBy byCol cname (BoxedColumn (byColumn :: V.Vector a)) (BoxedColumn (plotColumn :: V.Vector b)) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) plotColumn byColumn
     let counts = countOccurrences zipped
     if null counts || length counts > 20
@@ -65,7 +64,7 @@ plotForColumnBy byCol cname (Just (BoxedColumn (byColumn :: V.Vector a))) (Just 
     else case orientation of
         VerticalHistogram -> error "Vertical histograms aren't yet supported"
         HorizontalHistogram -> plotGivenCounts' cname counts
-plotForColumnBy byCol cname (Just (UnboxedColumn byColumn)) (Just (BoxedColumn plotColumn)) orientation df = do
+plotForColumnBy byCol cname (UnboxedColumn byColumn) (BoxedColumn plotColumn) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) plotColumn (V.convert byColumn)
     let counts = countOccurrences zipped
     if null counts || length counts > 20
@@ -73,7 +72,7 @@ plotForColumnBy byCol cname (Just (UnboxedColumn byColumn)) (Just (BoxedColumn p
     else case orientation of
         VerticalHistogram -> error "Vertical histograms aren't yet supported"
         HorizontalHistogram -> plotGivenCounts' cname counts
-plotForColumnBy byCol cname (Just (BoxedColumn byColumn)) (Just (UnboxedColumn plotColumn)) orientation df = do
+plotForColumnBy byCol cname (BoxedColumn byColumn) (UnboxedColumn plotColumn) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) (V.convert plotColumn) (V.convert byColumn)
     let counts = countOccurrences zipped
     if null counts || length counts > 20
@@ -81,7 +80,7 @@ plotForColumnBy byCol cname (Just (BoxedColumn byColumn)) (Just (UnboxedColumn p
     else case orientation of
         -- VerticalHistogram -> plotVerticalGivenCounts cname counts
         HorizontalHistogram -> plotGivenCounts' cname counts
-plotForColumnBy byCol cname (Just (UnboxedColumn byColumn)) (Just (UnboxedColumn plotColumn)) orientation df = do
+plotForColumnBy byCol cname (UnboxedColumn byColumn) (UnboxedColumn plotColumn) orientation df = do
     let zipped = VG.zipWith (\left right -> (show left, show right)) (V.convert plotColumn) (V.convert byColumn)
     let counts = countOccurrences zipped
     if null counts || length counts > 20
@@ -93,9 +92,8 @@ plotForColumnBy byCol cname (Just (UnboxedColumn byColumn)) (Just (UnboxedColumn
 plotForColumnBy _ _ _ _ _ _ = return ()
 
 -- Plot code adapted from: https://alexwlchan.net/2018/ascii-bar-charts/
-plotForColumn :: HasCallStack => T.Text -> Maybe Column -> HistogramOrientation -> DataFrame -> IO ()
-plotForColumn _ Nothing _ _ = return ()
-plotForColumn cname (Just (BoxedColumn (column :: V.Vector a))) orientation df = do
+plotForColumn :: HasCallStack => T.Text -> Column -> HistogramOrientation -> DataFrame -> IO ()
+plotForColumn cname (BoxedColumn (column :: V.Vector a)) orientation df = do
     let repa :: Ref.TypeRep a = Ref.typeRep @a
         repText :: Ref.TypeRep T.Text = Ref.typeRep @T.Text
         repString :: Ref.TypeRep String = Ref.typeRep @String
@@ -110,7 +108,7 @@ plotForColumn cname (Just (BoxedColumn (column :: V.Vector a))) orientation df =
     else case orientation of
         VerticalHistogram -> plotVerticalGivenCounts cname counts
         HorizontalHistogram -> plotGivenCounts cname counts
-plotForColumn cname (Just (UnboxedColumn (column :: VU.Vector a))) orientation df = do
+plotForColumn cname (UnboxedColumn (column :: VU.Vector a)) orientation df = do
     let repa :: Ref.TypeRep a = Ref.typeRep @a
         repText :: Ref.TypeRep T.Text = Ref.typeRep @T.Text
         repString :: Ref.TypeRep String = Ref.typeRep @String

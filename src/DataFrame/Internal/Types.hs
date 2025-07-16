@@ -8,7 +8,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE Strict #-}
 module DataFrame.Internal.Types where
 
 import Data.Int ( Int8, Int16, Int32, Int64 )

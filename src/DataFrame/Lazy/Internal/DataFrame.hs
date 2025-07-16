@@ -3,8 +3,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE Strict #-}
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NumericUnderscores #-}
 module DataFrame.Lazy.Internal.DataFrame where
@@ -56,16 +54,16 @@ runDataFrame df = do
   let path = inputPath df
   totalRows <- D.countRows ',' path
   let batches = batchRanges totalRows (batchSize df)
-  (df', _) <- foldM (\(!accDf, (!pos, !unused, !r)) (!start, !end) -> do
+  (df', _) <- foldM (\(accDf, (pos, unused, r)) (start, end) -> do
     mapM_ putStr ["Scanning: ", show start, " to ", show end, " rows out of ", show totalRows, "\n"] 
 
-    (!sdf, (!pos', !unconsumed, !rowsRead)) <- D.readSeparated ',' (
+    (sdf, (pos', unconsumed, rowsRead)) <- D.readSeparated ',' (
       D.defaultOptions { D.rowRange = Just (start, batchSize df)
                        , D.totalRows = Just totalRows
                        , D.seekPos = pos
                        , D.rowsRead = r
                        , D.leftOver = unused}) path
-    let !rdf = L.foldl' (flip eval) sdf (operations df)
+    let rdf = L.foldl' (flip eval) sdf (operations df)
     return (accDf <> rdf, (Just pos', unconsumed, rowsRead + r)) ) (D.empty, (Nothing, "", 0)) batches
   return df'
 

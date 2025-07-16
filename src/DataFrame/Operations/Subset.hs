@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -31,32 +30,32 @@ import Type.Reflection
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
-take n d = d {columns = V.map (takeColumn n' <$>) (columns d), dataframeDimensions = (n', c)}
+take n d = d {columns = V.map (takeColumn n') (columns d), dataframeDimensions = (n', c)}
   where
     (r, c) = dataframeDimensions d
     n' = clip n 0 r
 
 takeLast :: Int -> DataFrame -> DataFrame
-takeLast n d = d {columns = V.map (takeLastColumn n' <$>) (columns d), dataframeDimensions = (n', c)}
+takeLast n d = d {columns = V.map (takeLastColumn n') (columns d), dataframeDimensions = (n', c)}
   where
     (r, c) = dataframeDimensions d
     n' = clip n 0 r
 
 drop :: Int -> DataFrame -> DataFrame
-drop n d = d {columns = V.map (sliceColumn n' (max (r - n') 0) <$>) (columns d), dataframeDimensions = (max (r - n') 0, c)}
+drop n d = d {columns = V.map (sliceColumn n' (max (r - n') 0)) (columns d), dataframeDimensions = (max (r - n') 0, c)}
   where
     (r, c) = dataframeDimensions d
     n' = clip n 0 r
 
 dropLast :: Int -> DataFrame -> DataFrame
-dropLast n d = d {columns = V.map (sliceColumn 0 n' <$>) (columns d), dataframeDimensions = (n', c)}
+dropLast n d = d {columns = V.map (sliceColumn 0 n') (columns d), dataframeDimensions = (n', c)}
   where
     (r, c) = dataframeDimensions d
     n' = clip (r - n) 0 r
 
 -- | O(k * n) Take a range of rows of a DataFrame.
 range :: (Int, Int) -> DataFrame -> DataFrame
-range (start, end) d = d {columns = V.map (sliceColumn (clip start 0 r) n' <$>) (columns d), dataframeDimensions = (n', c)}
+range (start, end) d = d {columns = V.map (sliceColumn (clip start 0 r) n') (columns d), dataframeDimensions = (n', c)}
   where
     (r, c) = dataframeDimensions d
     n' = clip (end - start) 0 r
@@ -87,7 +86,7 @@ filter filterColumnName condition df = case getColumn filterColumnName df of
                                                         , callingFunctionName = Just "filter"})
     Just indexes -> let
         c' = snd $ dataframeDimensions df
-        pick idxs col = atIndices idxs <$> col
+        pick idxs col = atIndices idxs col
       in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (S.size indexes, c')}
 
 -- | O(k) a version of filter where the predicate comes first.
@@ -105,7 +104,7 @@ filterWhere expr df = let
     (TColumn col) = interpret @Bool df expr
     (Just indexes) = VU.convert . V.map (fromMaybe 0) . V.filter isJust . toVector @(Maybe Int) <$> imapColumn (\i satisfied -> if satisfied then Just i else Nothing) col
     c' = snd $ dataframeDimensions df
-    pick idxs col = atIndicesStable idxs <$> col
+    pick idxs col = atIndicesStable idxs col
   in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (VU.length indexes, c')}
 
 
@@ -143,18 +142,9 @@ select cs df
   | any (`notElem` columnNames df) cs = throw $ ColumnNotFoundException (T.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
   | otherwise = L.foldl' addKeyValue empty cs
   where
-    cIndexAssoc = M.toList $ columnIndices df
-    remaining = L.filter (\(!c, _) -> c `elem` cs) cIndexAssoc
-    removed = cIndexAssoc L.\\ remaining
-    indexes = map snd remaining
-    (r, c) = dataframeDimensions df
-    addKeyValue d k =
-      d
-        { columns = V.imap (\i v -> if i `notElem` indexes then Nothing else v) (columns df),
-          columnIndices = M.fromList remaining,
-          freeIndices = map snd removed ++ freeIndices df,
-          dataframeDimensions = (r, L.length remaining)
-        }
+    addKeyValue d k = fromMaybe df $ do
+      col <- getColumn k df
+      pure $ insertColumn k col d
 
 -- | O(n) select columns by index range of column names.
 selectIntRange :: (Int, Int) -> DataFrame -> DataFrame

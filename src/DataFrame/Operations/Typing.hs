@@ -22,9 +22,8 @@ import Type.Reflection (typeRep)
 parseDefaults :: Bool -> DataFrame -> DataFrame
 parseDefaults safeRead df = df {columns = V.map (parseDefault safeRead) (columns df)}
 
-parseDefault :: Bool -> Maybe Column -> Maybe Column
-parseDefault _ Nothing = Nothing
-parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) = let
+parseDefault :: Bool -> Column -> Column
+parseDefault safeRead (BoxedColumn (c :: V.Vector a)) = let
     parseTimeOpt s = parseTimeM {- Accept leading/trailing whitespace -} True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Maybe Day
     unsafeParseTime s = parseTimeOrError {- Accept leading/trailing whitespace -} True defaultTimeLocale "%Y-%m-%d" (T.unpack s) :: Day
   in case (typeRep @a) `testEquality` (typeRep @T.Text) of
@@ -33,8 +32,8 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) = let
                 emptyToNothing v = if isNullish (T.pack v) then Nothing else Just v
                 safeVector = V.map emptyToNothing c
                 hasNulls = V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
-              in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
-            Nothing -> Just $ BoxedColumn c
+              in if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+            Nothing -> BoxedColumn c
         Just Refl ->
           let example = T.strip (V.head c)
               emptyToNothing v = if isNullish v then Nothing else Just v
@@ -42,12 +41,12 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) = let
                 Just _ ->
                   let safeVector = V.map ((=<<) readInt . emptyToNothing) c
                       hasNulls = V.elem Nothing safeVector
-                   in Just $ if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0  . (safeVector V.!)))
+                   in if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0  . (safeVector V.!)))
                 Nothing -> case readDouble example of
                   Just _ ->
                     let safeVector = V.map ((=<<) readDouble . emptyToNothing) c
                         hasNulls = V.elem Nothing safeVector
-                     in Just $ if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
+                     in if safeRead && hasNulls then BoxedColumn safeVector else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
                   Nothing -> case parseTimeOpt example of
                     Just d -> let
                         -- failed parse should be Either, nullish should be Maybe
@@ -60,7 +59,7 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) = let
                         toMaybe (Right value) = Just value
                         lefts = V.filter isLeft safeVector
                         onlyNulls = (not (V.null lefts) && V.all (isNullish . fromLeft "non-null") lefts)
-                      in Just $ if safeRead
+                      in if safeRead
                         then if onlyNulls
                              then BoxedColumn (V.map toMaybe safeVector)
                              else if V.any isLeft safeVector
@@ -70,5 +69,5 @@ parseDefault safeRead (Just (BoxedColumn (c :: V.Vector a))) = let
                     Nothing -> let
                         safeVector = V.map emptyToNothing c
                         hasNulls = V.any isNullish c
-                      in Just $ if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+                      in if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
 parseDefault safeRead column = column

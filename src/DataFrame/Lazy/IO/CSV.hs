@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -6,7 +5,6 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE Strict #-}
 module DataFrame.Lazy.IO.CSV where
 
 import qualified Data.ByteString.Char8 as C
@@ -100,8 +98,7 @@ readSeparated c opts path = do
         -- TODO: this isn't robust but in so far as this is a guess anyway
         -- it's probably fine. But we should probably sample n rows and pick
         -- the most likely type from the sample.
-        -- dataRow <- map T.strip . parseSep c . (<>) (leftOver opts) <$> TIO.hGetLine handle
-        (!dataRow, !remainder) <- readSingleLine c (leftOver opts) handle
+        (dataRow, remainder) <- readSingleLine c (leftOver opts) handle
 
         -- This array will track the indices of all null values for each column.
         -- If any exist then the column will be an optional type.
@@ -111,7 +108,7 @@ readSeparated c opts path = do
         getInitialDataVectors numRows mutableCols dataRow
 
         -- Read rows into the mutable vectors
-        (!unconsumed, !r) <- fillColumns numRows c mutableCols nullIndices remainder handle
+        (unconsumed, r) <- fillColumns numRows c mutableCols nullIndices remainder handle
 
         -- Freeze the mutable vectors into immutable ones
         nulls' <- V.unsafeFreeze nullIndices
@@ -120,9 +117,8 @@ readSeparated c opts path = do
 
         return (DataFrame {
                 columns = cols,
-                freeIndices = [],
                 columnIndices = M.fromList (zip columnNames [0..]),
-                dataframeDimensions = (maybe 0 columnLength (cols V.! 0), V.length cols)
+                dataframeDimensions = (maybe 0 columnLength (cols V.!? 0), V.length cols)
             }, (pos, unconsumed, r + 1))
 {-# INLINE readSeparated #-}
 
@@ -192,10 +188,10 @@ writeValue mutableCols nullIndices count colIndex value = do
 {-# INLINE writeValue #-}
 
 -- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
-freezeColumn :: VM.IOVector Column -> V.Vector [(Int, T.Text)] -> ReadOptions -> Int -> IO (Maybe Column)
+freezeColumn :: VM.IOVector Column -> V.Vector [(Int, T.Text)] -> ReadOptions -> Int -> IO Column
 freezeColumn mutableCols nulls opts colIndex = do
     col <- VM.unsafeRead mutableCols colIndex
-    Just <$> freezeColumn' (nulls V.! colIndex) col
+    freezeColumn' (nulls V.! colIndex) col
 {-# INLINE freezeColumn #-}
 
 parseSep :: Char -> T.Text -> [T.Text]
@@ -247,7 +243,7 @@ lineEnd =
 countRows :: Char -> FilePath -> IO Int
 countRows c path = withFile path ReadMode $! go 0 ""
    where
-      go !n !input h = do
+      go n input h = do
          isEOF <- hIsEOF h
          if isEOF && input == mempty
             then pure n
@@ -282,8 +278,7 @@ getRowAsText :: DataFrame -> Int -> [T.Text]
 getRowAsText df i = V.ifoldr go [] (columns df)
   where
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
-    go k Nothing acc = acc
-    go k (Just (BoxedColumn (c :: V.Vector a))) acc = case c V.!? i of
+    go k (BoxedColumn (c :: V.Vector a)) acc = case c V.!? i of
         Just e -> textRep : acc
             where textRep = case testEquality (typeRep @a) (typeRep @T.Text) of
                     Just Refl -> e
@@ -304,7 +299,7 @@ getRowAsText df i = V.ifoldr go [] (columns df)
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
-    go k (Just (UnboxedColumn c)) acc = case c VU.!? i of
+    go k (UnboxedColumn c) acc = case c VU.!? i of
         Just e -> T.pack (show e) : acc
         Nothing ->
             error $
@@ -313,7 +308,7 @@ getRowAsText df i = V.ifoldr go [] (columns df)
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
-    go k (Just (OptionalColumn (c :: V.Vector (Maybe a)))) acc = case c V.!? i of
+    go k (OptionalColumn (c :: V.Vector (Maybe a))) acc = case c V.!? i of
         Just e -> textRep : acc
             where textRep = case testEquality (typeRep @a) (typeRep @T.Text) of
                     Just Refl -> fromMaybe "Nothing" e

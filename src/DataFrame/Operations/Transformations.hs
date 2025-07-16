@@ -3,8 +3,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE Strict #-}
-{-# LANGUAGE StrictData #-}
 module DataFrame.Operations.Transformations where
 
 import qualified Data.List as L
@@ -59,14 +57,14 @@ safeApply f columnName d = case getColumn columnName d of
                                                     , errorColumnName = Just (T.unpack columnName)
                                                     , callingFunctionName = Just "apply"
                                                     })
-    column' -> Right $ insertColumn' columnName column' d
+    Just column' -> Right $ insertColumn columnName column' d
 
 -- | O(k) Apply a function to a combination of columns in a dataframe and
 -- add the result into `alias` column.
 derive :: forall a . Columnable a => T.Text -> Expr a -> DataFrame -> DataFrame
 derive name expr df = let
     value = interpret @a df expr
-  in insertColumn' name (Just (unwrapTypedColumn value)) df
+  in insertColumn name (unwrapTypedColumn value) df
 
 
 -- | O(k * n) Apply a function to given column names in a dataframe.
@@ -150,7 +148,7 @@ applyAtIndex i f columnName df = case getColumn columnName df of
                                                         , errorColumnName = Just (T.unpack columnName)
                                                         , callingFunctionName = Just "applyAtIndex"
                                                         })
-    column' -> insertColumn' columnName column' df
+    Just column' -> insertColumn columnName column' df
 
 impute ::
   forall b .

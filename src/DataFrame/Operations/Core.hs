@@ -5,8 +5,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE Strict #-}
 module DataFrame.Operations.Core where
 
 import qualified Data.List as L
@@ -41,7 +39,7 @@ columnNames = map fst . L.sortBy (compare `on` snd). M.toList . columnIndices
 {-# INLINE columnNames #-}
 
 -- | /O(n)/ Adds a vector to the dataframe.
-insertColumn ::
+insertVector ::
   forall a.
   Columnable a =>
   -- | Column Name
@@ -51,16 +49,16 @@ insertColumn ::
   -- | DataFrame to add column to
   DataFrame ->
   DataFrame
-insertColumn name xs = insertColumn' name (Just (fromVector xs))
-{-# INLINE insertColumn #-}
+insertVector name xs = insertColumn name (fromVector xs)
+{-# INLINE insertVector #-}
 
 cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
 cloneColumn original new df = fromMaybe (throw $ ColumnNotFoundException original "cloneColumn" (map fst $ M.toList $ columnIndices df)) $ do
   column <- getColumn original df
-  return $ insertColumn' new (Just column) df
+  return $ insertColumn new column df
 
 -- | /O(n)/ Adds an unboxed vector to the dataframe.
-insertUnboxedColumn ::
+insertUnboxedVector ::
   forall a.
   (Columnable a, VU.Unbox a) =>
   -- | Column Name
@@ -70,56 +68,29 @@ insertUnboxedColumn ::
   -- | DataFrame to add to column
   DataFrame ->
   DataFrame
-insertUnboxedColumn name xs = insertColumn' name (Just (UnboxedColumn xs))
+insertUnboxedVector name xs = insertColumn name (UnboxedColumn xs)
 
 -- -- | /O(n)/ Add a column to the dataframe. Not meant for external use.
-insertColumn' ::
+insertColumn ::
   -- | Column Name
   T.Text ->
   -- | Column to add
-  Maybe Column ->
+  Column ->
   -- | DataFrame to add to column
   DataFrame ->
   DataFrame
-insertColumn' _ Nothing d = d
-insertColumn' name optCol@(Just column) d
-    | M.member name (columnIndices d) = let
-        i = (M.!) (columnIndices d) name
-      in d { columns = columns d V.// [(i, optCol)] }
-    | otherwise = insertNewColumn
-      where
-        l = columnLength column
-        (r, c) = dataframeDimensions d
-        diff = abs (l - r)
-        insertNewColumn
-          -- If we have a non-empty dataframe and we have more rows in the new column than the other column
-          -- we should make all the other columns have null and then add the new column. 
-          | r > 0 && l > r = let
-              indexes = (map snd . L.sortBy (compare `on` snd). M.toList . columnIndices) d
-              nonEmptyColumns = L.foldl' (\acc i -> acc ++ [maybe (error "Unexpected") (expandColumn diff) (columns d V.! i)]) [] indexes
-            in fromNamedColumns (zip (columnNames d ++ [name]) (nonEmptyColumns ++ [column]))
-          | otherwise = let
-                (n:rest) = case freeIndices d of
-                  [] -> [VG.length (columns d)..(VG.length (columns d) * 2 - 1)]
-                  lst -> lst
-                columns' = if L.null (freeIndices d)
-                          then columns d V.++ V.replicate (VG.length (columns d)) Nothing
-                          else columns d
-                xs'
-                  | diff <= 0 || null d = optCol
-                  | otherwise = expandColumn diff <$> optCol
-            in d
-                  { columns = columns' V.// [(n, xs')],
-                    columnIndices = M.insert name n (columnIndices d),
-                    freeIndices = rest,
-                    dataframeDimensions = (max l r, c + 1)
-                  }
+insertColumn name column d = let
+    (r, c) = dataframeDimensions d
+    n = max (columnLength column) r
+  in case M.lookup name (columnIndices d) of
+    Just i  -> DataFrame (V.map (expandColumn n) (columns d V.// [(i, column)])) (columnIndices d) (n, c)
+    Nothing -> DataFrame (V.map (expandColumn n) (columns d `V.snoc` column)) (M.insert name c (columnIndices d)) (n, c + 1)
 
 -- | /O(k)/ Add a column to the dataframe providing a default.
 -- This constructs a new vector and also may convert it
 -- to an unboxed vector if necessary. Since columns are usually
 -- large the runtime is dominated by the length of the list, k.
-insertColumnWithDefault ::
+insertVectorWithDefault ::
   forall a.
   (Columnable a) =>
   -- | Default Value
@@ -131,10 +102,10 @@ insertColumnWithDefault ::
   -- | DataFrame to add to column
   DataFrame ->
   DataFrame
-insertColumnWithDefault defaultValue name xs d =
+insertVectorWithDefault defaultValue name xs d =
   let (rows, _) = dataframeDimensions d
       values = xs V.++ V.replicate (rows - V.length xs) defaultValue
-   in insertColumn' name (Just $ fromVector values) d
+   in insertColumn name (fromVector values) d
 
 -- TODO: Add existence check in rename.
 rename :: T.Text -> T.Text -> DataFrame -> DataFrame
@@ -160,31 +131,30 @@ data ColumnInfo = ColumnInfo {
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
 columnInfo :: DataFrame -> DataFrame
-columnInfo df = empty & insertColumn' "Column Name" (Just $! fromList (map nameOfColumn infos))
-                      & insertColumn' "# Non-null Values" (Just $! fromList (map nonNullValues infos))
-                      & insertColumn' "# Null Values" (Just $! fromList (map nullValues infos))
-                      & insertColumn' "# Partially parsed" (Just $! fromList (map partiallyParsedValues infos))
-                      & insertColumn' "# Unique Values" (Just $! fromList (map uniqueValues infos))
-                      & insertColumn' "Type" (Just $! fromList (map typeOfColumn infos))
+columnInfo df = empty & insertColumn "Column Name" (fromList (map nameOfColumn infos))
+                      & insertColumn "# Non-null Values" (fromList (map nonNullValues infos))
+                      & insertColumn "# Null Values" (fromList (map nullValues infos))
+                      & insertColumn "# Partially parsed" (fromList (map partiallyParsedValues infos))
+                      & insertColumn "# Unique Values" (fromList (map uniqueValues infos))
+                      & insertColumn "Type" (fromList (map typeOfColumn infos))
   where
     infos = L.sortBy (compare `on` nonNullValues) (V.ifoldl' go [] (columns df)) :: [ColumnInfo]
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
     columnName i = M.lookup i indexMap
-    go acc i Nothing = acc
-    go acc i (Just col@(OptionalColumn (c :: V.Vector a))) = let
+    go acc i col@(OptionalColumn (c :: V.Vector a)) = let
         cname = columnName i
         countNulls = nulls col
         countPartial = partiallyParsed col
         columnType = T.pack $ show $ typeRep @a
         unique = S.size $ VG.foldr S.insert S.empty c
       in if isNothing cname then acc else ColumnInfo (fromMaybe "" cname) (columnLength col - countNulls) countNulls countPartial unique columnType : acc
-    go acc i (Just col@(BoxedColumn (c :: V.Vector a))) = let
+    go acc i col@(BoxedColumn (c :: V.Vector a)) = let
         cname = columnName i
         countPartial = partiallyParsed col
         columnType = T.pack $ show $ typeRep @a
         unique = S.size $ VG.foldr S.insert S.empty c
       in if isNothing cname then acc else ColumnInfo (fromMaybe "" cname) (columnLength col) 0 countPartial unique columnType : acc
-    go acc i (Just col@(UnboxedColumn c)) = let
+    go acc i col@(UnboxedColumn c) = let
         cname = columnName i
         columnType = T.pack $ columnTypeString col
         unique = S.size $ VG.foldr S.insert S.empty c
@@ -215,7 +185,7 @@ partiallyParsed (BoxedColumn (xs :: V.Vector a)) =
 partiallyParsed _ = 0
 
 fromNamedColumns :: [(T.Text, Column)] -> DataFrame
-fromNamedColumns = L.foldl' (\df (!name, !column) -> insertColumn' name (Just $! column) df) empty
+fromNamedColumns = L.foldl' (\df (name, column) -> insertColumn name column df) empty
 
 fromUnamedColumns :: [Column] -> DataFrame
 fromUnamedColumns = fromNamedColumns . zip (map (T.pack . show) [0..])

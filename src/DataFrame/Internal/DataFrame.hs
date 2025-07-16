@@ -4,7 +4,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE Strict #-}
 {-# LANGUAGE FlexibleContexts #-}
 module DataFrame.Internal.DataFrame where
 
@@ -25,11 +24,9 @@ import Type.Reflection (typeRep)
 data DataFrame = DataFrame
   { -- | Our main data structure stores a dataframe as
     -- a vector of columns. This improv
-    columns :: V.Vector (Maybe Column),
+    columns :: V.Vector Column,
     -- | Keeps the column names in the order they were inserted in.
     columnIndices :: M.Map T.Text Int,
-    -- | Next free index that we insert a column into.
-    freeIndices :: [Int],
     dataframeDimensions :: (Int, Int)
   }
 
@@ -46,13 +43,12 @@ asText :: DataFrame -> Bool -> T.Text
 asText d properMarkdown =
   let header = "index" : map fst (sortBy (compare `on` snd) $ M.toList (columnIndices d))
       types = V.toList $ V.filter (/= "") $ V.map getType (columns d)
-      getType :: Maybe Column -> T.Text
-      getType Nothing = ""
-      getType (Just (BoxedColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
-      getType (Just (UnboxedColumn (column :: VU.Vector a))) = T.pack $ show (typeRep @a)
-      getType (Just (OptionalColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
-      getType (Just (GroupedBoxedColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
-      getType (Just (GroupedUnboxedColumn (column :: V.Vector a))) = T.pack $ show (typeRep @a)
+      getType :: Column -> T.Text
+      getType (BoxedColumn (column :: V.Vector a)) = T.pack $ show (typeRep @a)
+      getType (UnboxedColumn (column :: VU.Vector a)) = T.pack $ show (typeRep @a)
+      getType (OptionalColumn (column :: V.Vector a)) = T.pack $ show (typeRep @a)
+      getType (GroupedBoxedColumn (column :: V.Vector a)) = T.pack $ show (typeRep @a)
+      getType (GroupedUnboxedColumn (column :: V.Vector a)) = T.pack $ show (typeRep @a)
       -- Separate out cases dynamically so we don't end up making round trip string
       -- copies.
       get :: Maybe Column -> V.Vector T.Text
@@ -67,7 +63,7 @@ asText d properMarkdown =
       get (Just (GroupedUnboxedColumn column)) = V.map (T.pack . show) column
       getTextColumnFromFrame df (i, name) = if i == 0
                                             then V.fromList (map (T.pack . show) [0..(fst (dataframeDimensions df) - 1)])
-                                            else get $ (V.!) (columns d) ((M.!) (columnIndices d) name)
+                                            else get $ (V.!?) (columns d) ((M.!) (columnIndices d) name)
       rows =
         transpose $
           zipWith (curry (V.toList . getTextColumnFromFrame d)) [0..] header
@@ -75,24 +71,14 @@ asText d properMarkdown =
 
 -- | O(1) Creates an empty dataframe
 empty :: DataFrame
-empty = DataFrame {columns = V.replicate initialColumnSize Nothing,
+empty = DataFrame {columns = V.empty,
                    columnIndices = M.empty,
-                   freeIndices = [0..(initialColumnSize - 1)],
                    dataframeDimensions = (0, 0) }
-
-initialColumnSize :: Int
-initialColumnSize = 8
 
 getColumn :: T.Text -> DataFrame -> Maybe Column
 getColumn name df = do
   i <- columnIndices df M.!? name
-  join $ columns df V.!? i
+  columns df V.!? i
 
 null :: DataFrame -> Bool
-null df = dataframeDimensions df == (0, 0)
-
-metadata :: DataFrame -> String
-metadata df = show (columnIndices df) ++ "\n" ++
-              show (V.map (fmap columnVersionString) (columns df)) ++ "\n" ++
-              show (freeIndices df) ++ "\n" ++
-              show (dataframeDimensions df)
+null df = V.null (columns df)

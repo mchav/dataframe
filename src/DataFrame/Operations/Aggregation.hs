@@ -80,8 +80,7 @@ mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Int
 mkRowRep df names i = hash $ V.ifoldl' go [] (columns df)
   where
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
-    go acc k Nothing = acc
-    go acc k (Just (BoxedColumn (c :: V.Vector a))) =
+    go acc k (BoxedColumn (c :: V.Vector a)) =
       if S.notMember (indexMap M.! k) names
         then acc
         else case c V.!? i of
@@ -93,7 +92,7 @@ mkRowRep df names i = hash $ V.ifoldl' go [] (columns df)
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
-    go acc k (Just (OptionalColumn (c :: V.Vector (Maybe a)))) =
+    go acc k (OptionalColumn (c :: V.Vector (Maybe a))) =
       if S.notMember (indexMap M.! k) names
         then acc
         else case c V.!? i of
@@ -105,7 +104,7 @@ mkRowRep df names i = hash $ V.ifoldl' go [] (columns df)
                 ++ " has less items than "
                 ++ "the other columns at index "
                 ++ show i
-    go acc k (Just (UnboxedColumn (c :: VU.Vector a))) =
+    go acc k (UnboxedColumn (c :: VU.Vector a)) =
       if S.notMember (indexMap M.! k) names
         then acc
         else case c VU.!? i of
@@ -132,30 +131,28 @@ hash' value = case testEquality (typeOf value) (typeRep @Double) of
 mkGroupedColumns :: VU.Vector Int -> DataFrame -> DataFrame -> T.Text -> DataFrame
 mkGroupedColumns indices df acc name =
   case (V.!) (columns df) (columnIndices df M.! name) of
-    Nothing -> error "Unexpected"
-    (Just (BoxedColumn column)) ->
+    BoxedColumn column ->
       let vs = indices `getIndices` column
-       in insertColumn name vs acc
-    (Just (OptionalColumn column)) ->
+       in insertVector name vs acc
+    OptionalColumn column ->
       let vs = indices `getIndices` column
-       in insertColumn name vs acc
-    (Just (UnboxedColumn column)) ->
+       in insertVector name vs acc
+    UnboxedColumn column ->
       let vs = indices `getIndicesUnboxed` column
-       in insertUnboxedColumn name vs acc
+       in insertUnboxedVector name vs acc
 
 groupColumns :: V.Vector (VU.Vector Int) -> DataFrame -> DataFrame -> T.Text -> DataFrame
 groupColumns indices df acc name =
   case (V.!) (columns df) (columnIndices df M.! name) of
-    Nothing -> df
-    (Just (BoxedColumn column)) ->
+    BoxedColumn column ->
       let vs = V.map (`getIndices` column) indices
-       in insertColumn' name (Just $ GroupedBoxedColumn vs) acc
-    (Just (OptionalColumn column)) ->
+       in insertColumn name (GroupedBoxedColumn vs) acc
+    OptionalColumn column ->
       let vs = V.map (`getIndices` column) indices
-       in insertColumn' name (Just $ GroupedBoxedColumn vs) acc
-    (Just (UnboxedColumn column)) ->
+       in insertColumn name (GroupedBoxedColumn vs) acc
+    UnboxedColumn column ->
       let vs = V.map (`getIndicesUnboxed` column) indices
-       in insertColumn' name (Just $ GroupedUnboxedColumn vs) acc
+       in insertColumn name (GroupedUnboxedColumn vs) acc
 
 data Aggregation = Count
                  | Mean
@@ -167,7 +164,7 @@ data Aggregation = Count
 groupByAgg :: Aggregation -> [T.Text] -> DataFrame -> DataFrame
 groupByAgg agg columnNames df = let
   in case agg of
-    Count -> insertColumnWithDefault @Int 1 (T.pack (show agg)) V.empty df
+    Count -> insertVectorWithDefault @Int 1 (T.pack (show agg)) V.empty df
            & groupBy columnNames
            & reduceBy @Int VG.length "Count"
     _ -> error "UNIMPLEMENTED"
@@ -181,10 +178,10 @@ reduceBy ::
   DataFrame
 reduceBy f name df = case getColumn name df of
     Just ((GroupedBoxedColumn (column :: V.Vector (V.Vector a')))) -> case testEquality (typeRep @a) (typeRep @a') of
-      Just Refl -> insertColumn' name (Just $ fromVector (VG.map f column)) df
+      Just Refl -> insertColumn name (fromVector (VG.map f column)) df
       Nothing -> error "Type error"
     Just ((GroupedUnboxedColumn (column :: V.Vector (VU.Vector a')))) -> case testEquality (typeRep @a) (typeRep @a') of
-      Just Refl -> insertColumn' name (Just $ fromVector (VG.map f column)) df
+      Just Refl -> insertColumn name (fromVector (VG.map f column)) df
       Nothing -> error "Type error"
     _ -> error "Column is ungrouped"
 
@@ -194,40 +191,40 @@ reduceByAgg :: Aggregation
             -> DataFrame
 reduceByAgg agg name df = case agg of
   Count   -> case getColumn name df of
-    Just ((GroupedBoxedColumn (column :: V.Vector (V.Vector a')))) ->  insertColumn' name (Just $ fromVector (VG.map VG.length column)) df
-    Just ((GroupedUnboxedColumn (column :: V.Vector (VU.Vector a')))) ->  insertColumn' name (Just $ fromVector (VG.map VG.length column)) df
+    Just ((GroupedBoxedColumn (column :: V.Vector (V.Vector a')))) ->  insertColumn name (fromVector (VG.map VG.length column)) df
+    Just ((GroupedUnboxedColumn (column :: V.Vector (VU.Vector a')))) ->  insertColumn name (fromVector (VG.map VG.length column)) df
     _ -> error $ "Cannot count ungrouped Column: " ++ T.unpack name 
   Mean    -> case getColumn name df of
     Just ((GroupedBoxedColumn (column :: V.Vector (V.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-      Just Refl -> insertColumn' name (Just $ fromVector (VG.map (SS.mean . VG.map fromIntegral) column)) df
+      Just Refl -> insertColumn name (fromVector (VG.map (SS.mean . VG.map fromIntegral) column)) df
       Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-        Just Refl -> insertColumn' name (Just $ fromVector (VG.map SS.mean column)) df
+        Just Refl -> insertColumn name (fromVector (VG.map SS.mean column)) df
         Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
-          Just Refl -> insertColumn' name (Just $ fromVector (VG.map (SS.mean . VG.map realToFrac) column)) df
+          Just Refl -> insertColumn name (fromVector (VG.map (SS.mean . VG.map realToFrac) column)) df
           Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
     Just ((GroupedUnboxedColumn (column :: V.Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-      Just Refl -> insertColumn' name (Just $ fromVector (VG.map (SS.mean . VG.map fromIntegral) column)) df
+      Just Refl -> insertColumn name (fromVector (VG.map (SS.mean . VG.map fromIntegral) column)) df
       Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-        Just Refl -> insertColumn' name (Just $ fromVector (VG.map SS.mean column)) df
+        Just Refl -> insertColumn name (fromVector (VG.map SS.mean column)) df
         Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
-          Just Refl -> insertColumn' name (Just $ fromVector (VG.map (SS.mean . VG.map realToFrac) column)) df
+          Just Refl -> insertColumn name (fromVector (VG.map (SS.mean . VG.map realToFrac) column)) df
           Nothing -> error $ "Cannot get mean of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
   Minimum -> case getColumn name df of
-    Just ((GroupedBoxedColumn (column :: V.Vector (V.Vector a')))) ->  insertColumn' name (Just $ fromVector (VG.map VG.minimum column)) df
-    Just ((GroupedUnboxedColumn (column :: V.Vector (VU.Vector a')))) ->  insertColumn' name (Just $ fromVector (VG.map VG.minimum column)) df
+    Just ((GroupedBoxedColumn (column :: V.Vector (V.Vector a')))) ->  insertColumn name (fromVector (VG.map VG.minimum column)) df
+    Just ((GroupedUnboxedColumn (column :: V.Vector (VU.Vector a')))) ->  insertColumn name (fromVector (VG.map VG.minimum column)) df
   Maximum -> case getColumn name df of
-    Just ((GroupedBoxedColumn (column :: V.Vector (V.Vector a')))) ->  insertColumn' name (Just $ fromVector (VG.map VG.maximum column)) df
-    Just ((GroupedUnboxedColumn (column :: V.Vector (VU.Vector a')))) ->  insertColumn' name (Just $ fromVector (VG.map VG.maximum column)) df
+    Just ((GroupedBoxedColumn (column :: V.Vector (V.Vector a')))) ->  insertColumn name (fromVector (VG.map VG.maximum column)) df
+    Just ((GroupedUnboxedColumn (column :: V.Vector (VU.Vector a')))) ->  insertColumn name (fromVector (VG.map VG.maximum column)) df
   Sum -> case getColumn name df of
     Just ((GroupedBoxedColumn (column :: V.Vector (V.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-      Just Refl -> insertColumn' name (Just $ fromVector (VG.map VG.sum column)) df
+      Just Refl -> insertColumn name (fromVector (VG.map VG.sum column)) df
       Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-        Just Refl -> insertColumn' name (Just $ fromVector (VG.map VG.sum column)) df
+        Just Refl -> insertColumn name (fromVector (VG.map VG.sum column)) df
         Nothing -> error $ "Cannot get sum of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
     Just ((GroupedUnboxedColumn (column :: V.Vector (VU.Vector a')))) -> case testEquality (typeRep @a') (typeRep @Int) of
-      Just Refl -> insertColumn' name (Just $ fromVector (VG.map VG.sum column)) df
+      Just Refl -> insertColumn name (fromVector (VG.map VG.sum column)) df
       Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-        Just Refl -> insertColumn' name (Just $ fromVector (VG.map VG.sum column)) df
+        Just Refl -> insertColumn name (fromVector (VG.map VG.sum column)) df
         Nothing -> error $ "Cannot get sum of non-numeric column: " ++ T.unpack name -- Not sure what to do with no numeric - return nothing???
   _ -> error "UNIMPLEMENTED"
 

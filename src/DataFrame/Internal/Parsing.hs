@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE Strict #-}
 module DataFrame.Internal.Parsing where
 
 import qualified Data.ByteString.Char8 as C
