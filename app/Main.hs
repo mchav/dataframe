@@ -38,17 +38,13 @@ main = do
   covid
   putStrLn $ replicate 100 '-'
 
-
-mean :: (Fractional a, VG.Vector v a) => v a -> a
-mean xs = VG.sum xs / fromIntegral (VG.length xs)
-
 oneBillingRowChallenge :: IO ()
 oneBillingRowChallenge = do
   parsed <- D.readSeparated ';' D.defaultOptions "./data/measurements.txt"
   print $
     parsed
       |> D.groupBy ["City"]
-      |> D.reduceBy (\v -> (VG.minimum v, mean @Double v, VG.maximum v)) "Measurement"
+      |> D.aggregate (zip (repeat "Measurement") [D.Minimum, D.Mean, D.Maximum])
       |> D.sortBy D.Ascending ["City"]
 
 housing :: IO ()
