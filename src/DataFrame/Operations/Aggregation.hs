@@ -17,6 +17,7 @@ import qualified Data.Vector.Generic as VG
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Algorithms.Merge as VA
 import qualified Statistics.Quantile as SS
 import qualified Statistics.Sample as SS
 
@@ -32,6 +33,7 @@ import DataFrame.Operations.Core
 import DataFrame.Operations.Subset
 import Data.Function ((&))
 import Data.Hashable
+import qualified Data.HashTable.ST.Basic as H
 import Data.Maybe
 import Data.Type.Equality (type (:~:)(Refl), TestEquality(..))
 import Type.Reflection (typeRep, typeOf)
@@ -46,29 +48,22 @@ groupBy names df
   | any (`notElem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
   | otherwise = L.foldl' insertColumns initDf groupingColumns
   where
-    insertOrAdjust k v m = if MS.notMember k m then MS.insert k [v] m else MS.adjust (appendWithFrontMin v) k m
-    -- Create a string representation of each row.
-    values = V.generate (fst (dimensions df)) (mkRowRep df (S.fromList names))
-    -- Create a mapping from the row representation to the list of indices that
-    -- have that row representation. This will allow us sortedIndexesto combine the indexes
-    -- where the rows are the same.
-    valueIndices = V.ifoldl' (\m index rowRep -> insertOrAdjust rowRep index m) M.empty values
-    -- Since the min is at the head this allows us to get the min in constant time and sort by it
-    -- That way we can recover the original order of the rows.
-    -- valueIndicesInitOrder = L.sortBy (compare `on` snd) $! MS.toList $ MS.map VU.head valueIndices
-    valueIndicesInitOrder = runST $ do
-      v <- VM.new (MS.size valueIndices)
-      foldM_ (\i idxs -> VM.write v i (VU.fromList idxs) >> return (i + 1)) 0 valueIndices
-      V.unsafeFreeze v
+    indicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` names) (columnIndices df)
+    rowRepresentations = VU.generate (fst (dimensions df)) (mkRowRep indicesToGroup df)
+
+    valueIndices = V.fromList $ map (VG.map fst) $ VG.groupBy (\a b -> snd a == snd b) (runST $ do
+      withIndexes <- VG.thaw $ VG.indexed rowRepresentations
+      VA.sortBy (\(a, b) (a', b') -> compare b b') withIndexes
+      VG.unsafeFreeze withIndexes)
 
     -- These are the indexes of the grouping/key rows i.e the minimum elements
     -- of the list.
-    keyIndices = VU.generate (VG.length valueIndicesInitOrder) (\i -> VG.head $ valueIndicesInitOrder VG.! i)
+    keyIndices = VU.generate (VG.length valueIndices) (\i -> VG.minimum $ valueIndices VG.! i)
     -- this will be our main worker function in the fold that takes all
     -- indices and replaces each value in a column with a list of
     -- the elements with the indices where the grouped row
     -- values are the same.
-    insertColumns = groupColumns valueIndicesInitOrder df
+    insertColumns = groupColumns valueIndices df
     -- Out initial DF will just be all the grouped rows added to an
     -- empty dataframe. The entries are dedued and are in their
     -- initial order.
@@ -76,46 +71,14 @@ groupBy names df
     -- All the rest of the columns that we are grouping by.
     groupingColumns = columnNames df L.\\ names
 
-mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Int
-mkRowRep df names i = hash $ V.ifoldl' go [] (columns df)
+mkRowRep :: [Int] -> DataFrame -> Int -> Int
+mkRowRep groupColumnIndices df i = hash (map mkHash groupColumnIndices)
   where
-    indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
-    go acc k (BoxedColumn (c :: V.Vector a)) =
-      if S.notMember (indexMap M.! k) names
-        then acc
-        else case c V.!? i of
-          Just e -> hash' @a e : acc
-          Nothing ->
-            error $
-              "Column "
-                ++ T.unpack (indexMap M.! k)
-                ++ " has less items than "
-                ++ "the other columns at index "
-                ++ show i
-    go acc k (OptionalColumn (c :: V.Vector (Maybe a))) =
-      if S.notMember (indexMap M.! k) names
-        then acc
-        else case c V.!? i of
-          Just e -> hash' @(Maybe a) e : acc
-          Nothing ->
-            error $
-              "Column "
-                ++ T.unpack (indexMap M.! k)
-                ++ " has less items than "
-                ++ "the other columns at index "
-                ++ show i
-    go acc k (UnboxedColumn (c :: VU.Vector a)) =
-      if S.notMember (indexMap M.! k) names
-        then acc
-        else case c VU.!? i of
-          Just e -> hash' @a e : acc
-          Nothing ->
-            error $
-              "Column "
-                ++ T.unpack (indexMap M.! k)
-                ++ " has less items than "
-                ++ "the other columns at index "
-                ++ show i
+    getHashedElem (BoxedColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
+    getHashedElem (UnboxedColumn (c :: VU.Vector a)) j = hash' @a (c VU.! j)
+    getHashedElem (OptionalColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
+    getHashedElem _ _ = 0
+    mkHash j = getHashedElem ((V.!) (columns df) j) i 
 
 -- | This hash function returns the hash when given a non numeric type but
 -- the value when given a numeric.
