@@ -21,8 +21,8 @@ stats n = do
   print $ D.filter "0" (>= (19.9 :: Double)) df D.|> D.take 10
 
 main = defaultMain [
-  bgroup "stats" [ bench    "300_000" $ toBenchmarkable  (stats 100_000)
-                 , bench  "3_000_000" $ nfIO (stats 1_000_000)
+  bgroup "stats" [ bench     "300_000" $ nfIO (stats 100_000)
+                 , bench   "3_000_000" $ nfIO (stats 1_000_000)
                  , bench "300_000_000" $ nfIO (stats 300_000_000)
                  ]
   ]
