@@ -6,10 +6,12 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Monad (replicateM)
 import Criterion.Main
+import Data.Time
 import System.Random (randomRIO)
 
 stats :: Int -> IO ()
 stats n = do
+  startTime <- getCurrentTime
   ns <- do
     ns' <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
     pure $ replicate 3 ns'
@@ -19,6 +21,9 @@ stats n = do
   print $ D.variance "1" df
   print $ D.correlation "1" "2" df
   print $ D.filter "0" (>= (19.9 :: Double)) df D.|> D.take 10
+  endTime <- getCurrentTime
+  let diff = diffUTCTime endTime startTime
+  putStrLn $ "Execution Time: " ++ (show diff)
 
 main = defaultMain [
   bgroup "stats" [ bench     "300_000" $ nfIO (stats 100_000)

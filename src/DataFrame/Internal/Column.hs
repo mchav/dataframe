@@ -378,6 +378,26 @@ getIndicesUnboxed :: (VU.Unbox a) => VU.Vector Int -> VU.Vector a -> VU.Vector a
 getIndicesUnboxed indices xs = VU.generate (VU.length indices) (\i -> xs VU.! (indices VU.! i))
 {-# INLINE getIndicesUnboxed #-}
 
+findIndices :: forall a. (Columnable a)
+            => (a -> Bool)
+            -> Column
+            -> Maybe (VU.Vector Int)
+findIndices pred (BoxedColumn (column :: VB.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  pure $ VG.convert (VG.findIndices pred column)
+findIndices pred (UnboxedColumn (column :: VU.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  pure $ VG.findIndices pred column
+findIndices pred (OptionalColumn (column :: VB.Vector (Maybe b))) = do
+  Refl <- testEquality (typeRep @a) (typeRep @(Maybe b))
+  pure $ VG.convert (VG.findIndices pred column)
+findIndices pred (GroupedBoxedColumn (column :: VB.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  pure $ VG.convert (VG.findIndices pred column)
+findIndices pred (GroupedUnboxedColumn (column :: VB.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  pure $ VG.convert (VG.findIndices pred column)
+
 -- | An internal function that returns a vector of how indexes change after a column is sorted.
 sortedIndexes :: Bool -> Column -> VU.Vector Int
 sortedIndexes asc (BoxedColumn column ) = runST $ do
