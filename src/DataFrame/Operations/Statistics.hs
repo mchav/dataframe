@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 module DataFrame.Operations.Statistics where
 
 import qualified Data.List as L
@@ -68,7 +69,7 @@ frequencies name df = case getColumn name df of
     in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
 
 mean :: T.Text -> DataFrame -> Maybe Double
-mean = applyStatistic SS.mean
+mean = applyStatistic mean'
 
 median :: T.Text -> DataFrame -> Maybe Double
 median = applyStatistic (SS.median SS.medianUnbiased)
@@ -80,7 +81,7 @@ skewness :: T.Text -> DataFrame -> Maybe Double
 skewness = applyStatistic SS.skewness
 
 variance :: T.Text -> DataFrame -> Maybe Double
-variance = applyStatistic SS.variance
+variance = applyStatistic variance'
 
 interQuartileRange :: T.Text -> DataFrame -> Maybe Double
 interQuartileRange = applyStatistic (SS.midspread SS.medianUnbiased 4)
@@ -154,3 +155,27 @@ summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic"
               skewness name df]
         roundTo :: Int -> Double -> Double
         roundTo n x = fromInteger (round $ x * (10^n)) / (10.0^^n)
+
+mean' :: VU.Vector Double -> Double
+mean' samp = let
+    (!total, !n) = VG.foldl' (\(!total, !n) v -> (total + v, n + 1))  (0 :: Double, 0 :: Int) samp
+  in total / fromIntegral n
+
+-- accumulator: count, mean, m2
+data VarAcc = VarAcc !Int !Double !Double  deriving Show
+
+step :: VarAcc -> Double -> VarAcc
+step (VarAcc !n !mean !m2) !x =
+  let !n'    = n + 1
+      !delta = x - mean
+      !mean' = mean + delta / fromIntegral n'
+      !m2'   = m2 + delta * (x - mean')
+  in  VarAcc n' mean' m2'
+
+computeVariance :: VarAcc -> Double
+computeVariance (VarAcc n _ m2)
+  | n < 2     = 0                -- or error "variance of <2 samples"
+  | otherwise = m2 / fromIntegral (n - 1)
+
+variance' :: VU.Vector Double -> Double
+variance' = computeVariance . VG.foldl' step (VarAcc 0 0 0)
