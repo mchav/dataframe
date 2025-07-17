@@ -73,6 +73,7 @@ groupBy names df
 mkRowRep :: [Int] -> DataFrame -> Int -> Int
 mkRowRep groupColumnIndices df i = hash (map mkHash groupColumnIndices)
   where
+    getHashedElem :: Column -> Int -> Int
     getHashedElem (BoxedColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
     getHashedElem (UnboxedColumn (c :: VU.Vector a)) j = hash' @a (c VU.! j)
     getHashedElem (OptionalColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
@@ -81,14 +82,14 @@ mkRowRep groupColumnIndices df i = hash (map mkHash groupColumnIndices)
 
 -- | This hash function returns the hash when given a non numeric type but
 -- the value when given a numeric.
-hash' :: Columnable a => a -> Double
+hash' :: Columnable a => a -> Int
 hash' value = case testEquality (typeOf value) (typeRep @Double) of
-  Just Refl -> value
+  Just Refl -> round $ value * 1000
   Nothing -> case testEquality (typeOf value) (typeRep @Int) of
-    Just Refl -> fromIntegral value
+    Just Refl -> value
     Nothing -> case testEquality (typeOf value) (typeRep @T.Text) of
-      Just Refl -> fromIntegral $ hash value
-      Nothing -> fromIntegral $ hash (show value)
+      Just Refl -> hash value
+      Nothing -> hash (show value)
 
 mkGroupedColumns :: VU.Vector Int -> DataFrame -> DataFrame -> T.Text -> DataFrame
 mkGroupedColumns indices df acc name =
