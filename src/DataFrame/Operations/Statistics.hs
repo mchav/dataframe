@@ -67,6 +67,7 @@ frequencies name df = case getColumn name df of
           Nothing -> (T.pack . show) c'
       initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
     in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+  _ -> error $ "There are ungrouped columns"
 
 mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic mean'
@@ -111,16 +112,16 @@ sum name df = case getColumn name df of
       Nothing -> Nothing
 
 applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
-applyStatistic f name df = do
-      column <- getColumn name df
-      if columnTypeString column == "Double"
-      then reduceColumn f column
-      else do
-        matching <- asum [mapColumn (fromIntegral :: Int -> Double) column,
-                          mapColumn (fromIntegral :: Integer -> Double) column,
-                          mapColumn (realToFrac :: Float -> Double) column,
-                          Just column ]
-        reduceColumn f matching
+applyStatistic f name df = case getColumn name df of
+      Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
+      Just column@(UnboxedColumn (col :: VU.Vector a)) -> case testEquality (typeRep @a) (typeRep @Double) of
+        Just Refl -> reduceColumn f column
+        Nothing -> do
+          matching <- asum [mapColumn (fromIntegral :: Int -> Double) column,
+                mapColumn (fromIntegral :: Integer -> Double) column,
+                mapColumn (realToFrac :: Float -> Double) column,
+                Just column ]
+          reduceColumn f matching
 
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
 applyStatistics f name df = case getColumn name df of
