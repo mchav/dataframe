@@ -22,7 +22,7 @@ fi
 
 case "$PROF_TYPE" in
   "eventlog")
-    cabal v2-run --enable-profiling dataframe -- +RTS -hy -l-agu
+    cabal v2-run --enable-profiling dataframe -- +RTS -hc -l-agu
     ;;
   "pprof")
     cabal v2-run --enable-profiling dataframe -- +RTS -pj -RTS
