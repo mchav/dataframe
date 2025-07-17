@@ -15,10 +15,7 @@ haskell :: IO ()
 haskell = do
   let n = 50_000_000
   startGeneration <- getCurrentTime
-  ns <- runST $ do
-    ns' <- VUM.new 50_000_000
-    
-    VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
+  ns <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
   xs <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
   ys <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
   let df = D.fromUnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
