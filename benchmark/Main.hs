@@ -75,8 +75,7 @@ groupByPandas = do
 
 main = do
   defaultMain [
-    bgroup "stats" [ 
-                   , bench  "simpleStatsHaskell" $ nfIO haskell
+    bgroup "stats" [ bench  "simpleStatsHaskell" $ nfIO haskell
                    , bench  "simpleStatsPandas" $ nfIO pandas
                    , bench  "simpleStatsPolars" $ nfIO polars
                    , bench  "groupByHaskell" $ nfIO groupByHaskell
