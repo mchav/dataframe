@@ -7,6 +7,7 @@ import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Monad (replicateM)
 import Criterion.Main
+import DataFrame ((|>))
 import Data.Time
 import System.Process
 import System.Random.Stateful
@@ -55,10 +56,31 @@ pandas = do
   output <- readProcess "./benchmark/dataframe_benchmark/bin/python3" ["./benchmark/pandas/pandas_benchmark.py"] ""
   putStrLn output
 
+groupByHaskell :: IO ()
+groupByHaskell = do
+  df <- D.readCsv "./data/housing.csv"
+  print $ df |> D.groupBy ["ocean_proximity"]
+             |> D.aggregate [("median_house_value", D.Minimum), ("median_house_value", D.Maximum)]
+             |> D.select ["ocean_proximity", "Minimum_median_house_value", "Maximum_median_house_value"]
+
+groupByPolars :: IO ()
+groupByPolars = do
+  output <- readProcess "./benchmark/dataframe_benchmark/bin/python3" ["./benchmark/polars/group_by.py"] ""
+  putStrLn output
+
+groupByPandas :: IO ()
+groupByPandas = do
+  output <- readProcess "./benchmark/dataframe_benchmark/bin/python3" ["./benchmark/pandas/group_by.py"] ""
+  putStrLn output
+
 main = do
   defaultMain [
-    bgroup "stats" [ bench  "haskell" $ nfIO haskell
-                   , bench  "polars"  $ nfIO polars
-                   , bench  "pandas"  $ nfIO pandas
+    bgroup "stats" [ 
+                   , bench  "simpleStatsHaskell" $ nfIO haskell
+                   , bench  "simpleStatsPandas" $ nfIO pandas
+                   , bench  "simpleStatsPolars" $ nfIO polars
+                   , bench  "groupByHaskell" $ nfIO groupByHaskell
+                   , bench  "groupByPolars"  $ nfIO groupByPolars
+                   , bench  "groupByPandas"  $ nfIO groupByPandas
                    ]
     ]
