@@ -43,7 +43,7 @@ haskell = do
   putStrLn $ "Filter Time: " ++ (show filterTime)
 
   let totalTime = diffUTCTime endFilter startGeneration
-  putStrLn $ "Total Time: " ++ (show filterTime)
+  putStrLn $ "Total Time: " ++ (show totalTime)
 
 polars :: IO ()
 polars = do
