@@ -9,15 +9,17 @@ import Control.Monad (replicateM)
 import Criterion.Main
 import Data.Time
 import System.Process
-import System.Random (randomRIO)
+import System.Random.Stateful
 
 haskell :: IO ()
 haskell = do
-  let n = 50_000_000
+  let n = 100_000_000
+  g <- newIOGenM =<< newStdGen
+  let range = (-20.0 :: Double, 20.0 :: Double)
   startGeneration <- getCurrentTime
-  ns <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
-  xs <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
-  ys <- VU.replicateM n (randomRIO (-20.0 :: Double, 20.0))
+  ns <- VU.replicateM n (uniformRM range g)
+  xs <- VU.replicateM n (uniformRM range g)
+  ys <- VU.replicateM n (uniformRM range g)
   let df = D.fromUnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
   endGeneration <- getCurrentTime
 

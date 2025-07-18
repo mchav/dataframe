@@ -4,7 +4,7 @@ import pandas as pd
 
 # ------------------------------------------------------------------------------
 
-SIZE: int = 50_000_000
+SIZE: int = 100_000_000
 
 first = datetime.datetime.now()
 df = pd.DataFrame({"normal": np.random.normal(size=SIZE),
