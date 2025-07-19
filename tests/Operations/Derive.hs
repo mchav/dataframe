@@ -4,6 +4,7 @@
 module Operations.Derive where
 
 import qualified DataFrame as D
+import qualified DataFrame.Functions as F
 import qualified DataFrame as DI
 import qualified DataFrame as DE
 import qualified Data.Text as T
@@ -27,7 +28,7 @@ deriveWAI :: Test
 deriveWAI = TestCase (assertEqual "derive works with column expression"
                                 (Just $ DI.BoxedColumn (V.fromList (zipWith (\n c -> show n ++ [c]) [1..26] ['a'..'z'])))
                                 (DI.getColumn "test4" $ D.derive "test4" (
-                                    D.lift2 (++) (D.lift show (D.col @Int "test1")) (D.lift (: ([] :: [Char])) (D.col @Char "test3"))
+                                    F.lift2 (++) (F.lift show (F.col @Int "test1")) (F.lift (: ([] :: [Char])) (F.col @Char "test3"))
                                     ) testData))
 
 tests :: [Test]

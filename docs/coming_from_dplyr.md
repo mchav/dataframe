@@ -113,7 +113,7 @@ starwars
   -- Remove Nothing/empty rows.
   |> D.filterJust "mass"
   |> D.filterJust "height"
-  |> D.derive "bmi" ((D.col @Double "mass") / (D.lift2 (**) (D.col @Double "height") (D.lit 2)))
+  |> D.derive "bmi" ((F.col @Double "mass") / (F.lift2 (**) (F.col @Double "height") (F.lit 2)))
   |> D.take 10
 ```
 
@@ -223,7 +223,7 @@ starwars |> D.select ["species", "mass"]
          -- Always better to be explcit about types for
          -- numbers but you can also turn on defaults
          -- to save keystrokes.
-         |> D.filterWhere (D.lift2 (&&) (D.lift (>1) (D.col @Int "Count")) (D.lift (>50) (D.col @Int "Mean_mass")))
+         |> D.filterWhere (F.lift2 (&&) (F.lift (>1) (F.col @Int "Count")) (F.lift (>50) (F.col @Int "Mean_mass")))
 ```
 
 ```

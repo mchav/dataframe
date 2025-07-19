@@ -24,7 +24,8 @@ source-repository head
 library
     -- default-extensions: StrictData
     exposed-modules: DataFrame,
-                     DataFrame.Lazy
+                     DataFrame.Lazy,
+                     DataFrame.Functions
     other-modules: DataFrame.Internal.Types,
                    DataFrame.Internal.Expression,
                    DataFrame.Internal.Parsing,
@@ -87,7 +88,8 @@ executable dataframe
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
                    DataFrame.IO.Parquet,
-                   DataFrame.Lazy.IO.CSV
+                   DataFrame.Lazy.IO.CSV,
+                   DataFrame.Functions
     build-depends:    base >= 4.17.2.0 && < 4.22,
                       array ^>= 0.5,
                       attoparsec >= 0.12 && <= 0.14.4,

@@ -105,7 +105,8 @@ ghci> m = fromMaybe 0 $ D.mean "median_house_value" df
 ghci> m
 206855.81690891474
 ghci> import DataFrame ((|>))
-ghci> df |> D.derive "deviation" (abs $ D.col "median_house_value" - D.lit m) |> D.select ["median_house_value", "deviation"] |> D.take 10
+ghci> import qualified DataFrame.Functions as F
+ghci> df |> D.derive "deviation" (abs $ F.col "median_house_value" - F.lit m) |> D.select ["median_house_value", "deviation"] |> D.take 10
 -----------------------------------------------
 index | median_house_value |     deviation     
 ------|--------------------|-------------------
@@ -128,7 +129,7 @@ Read left to right, we begin by calling `derive` which creates a new column comp
 This gives us a list of the deviations. From the small sample it does seem like there are some wild deviations. The first one is greater than the mean! How typical is this? Well to answer that we take the average of all these values.
 
 ```haskell
-ghci> withDeviation = df |> D.derive "deviation" (abs $ D.col "median_house_value" - D.lit m) |> D.select ["median_house_value", "deviation"]
+ghci> withDeviation = df |> D.derive "deviation" (abs $ F.col "median_house_value" - F.lit m) |> D.select ["median_house_value", "deviation"]
 ghci> D.mean "deviation" withDeviation
 Just 91170.43994367732
 ```
@@ -141,7 +142,7 @@ What if we give more weight to the further deviations?
 That's what standard deviation aims to do. Standard deviation considers the spread of outliers. Instead of calculating the absolute difference of each observation from the mean we calculate the square of the difference. This has the effect of exaggerating further outliers.
 
 ```haskell
-ghci> sumOfSqureDifferences = fromMaybe 0 $ D.sum "deviation^2" $ withDeviation |> D.derive "deviation^2" ((D.col "deviation") ** (D.lit 2))
+ghci> sumOfSqureDifferences = fromMaybe 0 $ D.sum "deviation^2" $ withDeviation |> D.derive "deviation^2" ((F.col "deviation") ** (F.lit 2))
 ghci> n = fromIntegral $ (fst $ D.dimensions df) - 1
 ghci> sqrt (sumOfSqureDifferences / n)
 115395.6158744

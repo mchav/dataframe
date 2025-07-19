@@ -1,7 +1,9 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
 import qualified DataFrame as D
+import qualified DataFrame.Functions as F
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
@@ -60,8 +62,8 @@ groupByHaskell :: IO ()
 groupByHaskell = do
   df <- D.readCsv "./data/housing.csv"
   print $ df |> D.groupBy ["ocean_proximity"]
-             |> D.aggregate [("median_house_value", D.Minimum), ("median_house_value", D.Maximum)]
-             |> D.select ["ocean_proximity", "Minimum_median_house_value", "Maximum_median_house_value"]
+             |> D.aggregate [ F.alias "minimum_median_house_value" (F.minimum @Double "median_house_value")
+                            , F.alias "maximum_median_house_value" (F.maximum @Double "median_house_value")]
 
 groupByPolars :: IO ()
 groupByPolars = do

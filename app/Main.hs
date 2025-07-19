@@ -7,6 +7,7 @@
 module Main where
 
 import qualified DataFrame as D
+import qualified DataFrame.Functions as F
 import DataFrame (dimensions, (|>))
 import Data.List (delete)
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -44,7 +45,9 @@ oneBillingRowChallenge = do
   print $
     parsed
       |> D.groupBy ["City"]
-      |> D.aggregate (zip (repeat "Measurement") [D.Minimum, D.Mean, D.Maximum])
+      |> D.aggregate [ F.alias "minimum" (F.minimum "Measurement")
+                     , F.alias "mean" (F.mean "Measurement")
+                     , F.alias "maximum" (F.maximum "Measurement")]
       |> D.sortBy D.Ascending ["City"]
 
 housing :: IO ()
@@ -72,7 +75,7 @@ covid = do
       |> D.filter "Direction" (== "Exports")
       |> D.select ["Direction", "Year", "Country", "Value"]
       |> D.groupBy ["Direction", "Year", "Country"]
-      |> D.reduceByAgg D.Sum "Value"
+      |> D.aggregate [F.alias "TotalValue" (F.sum "Value")]
 
 chipotle :: IO ()
 chipotle = do
@@ -97,7 +100,7 @@ chipotle = do
   print $ D.take 10 f
 
   -- Create a total_price column that is quantity * item_price
-  let withTotalPrice = D.derive "total_price" (D.lift fromIntegral (D.col @Int "quantity") * D.col @Double"item_price") f
+  let withTotalPrice = D.derive "total_price" (F.lift fromIntegral (F.col @Int "quantity") * F.col @Double"item_price") f
 
   -- sample a filtered subset of the dataframe
   putStrLn "Sample dataframe"
@@ -118,21 +121,20 @@ chipotle = do
       -- It's more efficient to filter before grouping.
       |> D.filter "item_name" (searchTerm ==)
       |> D.groupBy ["item_name"]
-      -- can also be written as:
-      --    D.aggregate (zip (repeat "quantity") [D.Sum, D.Maximum, D.Mean])
-      |> D.aggregate (map ("quantity",) [D.Sum, D.Maximum, D.Mean])
+      |> D.aggregate [ F.alias "sum" (F.sum "quantity")
+                     , F.alias "maximum" (F.maximum "quantity")
+                     , F.alias "mean" (F.mean "quantity")]
       -- Automatically create a variable called <Agg>_<variable>
-      |> D.sortBy D.Descending ["Sum_quantity"]
+      |> D.sortBy D.Descending ["sum "]
 
   -- Similarly, we can aggregate quantities by all rows.
   print $
     f
       |> D.select ["item_name", "quantity"]
       |> D.groupBy ["item_name"]
-      -- Aggregate written more explicitly.
-      -- We have the full expressiveness of Haskell and we needn't fall
-      -- use a DSL.
-      |> D.aggregate [("quantity", D.Maximum), ("quantity", D.Mean), ("quantity", D.Sum)]
+      |> D.aggregate [ F.alias "sum" (F.sum "quantity")
+                     , F.alias "maximum" (F.maximum "quantity")
+                     , F.alias "mean" (F.mean "quantity")]
       |> D.take 10
 
   let firstOrder =

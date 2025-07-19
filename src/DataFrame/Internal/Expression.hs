@@ -20,6 +20,7 @@ import DataFrame.Internal.Types
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Generic as VG
 import Type.Reflection (typeRep)
 import DataFrame.Errors (DataFrameException(ColumnNotFoundException))
 import Control.Exception (throw)
@@ -28,8 +29,41 @@ import Data.Maybe (fromMaybe)
 data Expr a where
     Col :: Columnable a => T.Text -> Expr a 
     Lit :: Columnable a => a -> Expr a
-    Apply :: (Columnable a, Columnable b) => T.Text -> (b -> a) -> Expr b -> Expr a
-    BinOp :: (Columnable c, Columnable b, Columnable a) => T.Text -> (c -> b -> a) -> Expr c -> Expr b -> Expr a
+    Apply :: (Columnable a,
+              Columnable b)
+          => T.Text -- Operation name
+         -> (b -> a)
+         -> Expr b
+         -> Expr a
+    BinOp :: (Columnable c, 
+              Columnable b, 
+              Columnable a)
+          => T.Text -- operation name
+          -> (c -> b -> a)
+          -> Expr c
+          -> Expr b 
+          -> Expr a
+    GeneralAggregate :: (Columnable a)
+              => T.Text     -- Column name
+              -> T.Text     -- Operation name
+              -> (forall v b. (VG.Vector v b, Columnable b) => v b -> a)
+              -> Expr a
+    ReductionAggregate :: (Columnable a)
+              => T.Text     -- Column name
+              -> T.Text     -- Operation name
+              -> (forall v a. (VG.Vector v a, Columnable a) => v a -> a)
+              -> Expr a
+    NumericAggregate :: (Columnable a,
+                         Columnable b,
+                         Num a,
+                         Num b)
+                     => T.Text     -- Column name
+                     -> T.Text     -- Operation name
+                     -> (VU.Vector b -> a) 
+                     -> Expr a
+
+data UExpr where
+    Wrap :: Columnable a => Expr a -> UExpr
 
 interpret :: forall a . (Columnable a) => DataFrame -> Expr a -> TypedColumn a
 interpret df (Lit value) = TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
@@ -44,6 +78,32 @@ interpret df (BinOp _ (f :: c -> d -> e) left right) = let
         (TColumn left') = interpret @c df left
         (TColumn right') = interpret @d df right
     in TColumn $ fromMaybe (error "mapColumn returned nothing") (zipWithColumns f left' right')
+interpret df (GeneralAggregate name op (f :: forall v b. (VG.Vector v b, Columnable b) => v b -> c)) = case getColumn name df of
+    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Just (GroupedBoxedColumn col) -> TColumn $ fromVector $ VG.map f col
+    Just (GroupedUnboxedColumn col) -> TColumn $ fromVector $ VG.map f col
+    Just (GroupedOptionalColumn col) -> TColumn $ fromVector $ VG.map f col
+    _ -> error ""
+interpret df (ReductionAggregate name op (f :: forall v a. (VG.Vector v a, Columnable a) => v a -> a)) = case getColumn name df of
+    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Just (GroupedBoxedColumn col) -> TColumn $ fromVector $ VG.map f col
+    Just (GroupedUnboxedColumn col) -> TColumn $ fromVector $ VG.map f col
+    Just (GroupedOptionalColumn col) -> TColumn $ fromVector $ VG.map f col
+    _ -> error ""
+interpret df (NumericAggregate name op (f :: VU.Vector b -> c)) = case getColumn name df of
+    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Just (GroupedUnboxedColumn (col :: V.Vector (VU.Vector d))) -> case testEquality (typeRep @b) (typeRep @d) of
+        Just Refl -> TColumn $ fromVector $ VG.map f col
+        -- Do the matching trick here.
+        Nothing -> case testEquality (typeRep @d) (typeRep @Int) of
+            Just Refl -> case testEquality (typeRep @b) (typeRep @Double) of
+                Just Refl -> TColumn $ fromVector $ VG.map (f . (VG.map fromIntegral)) col
+                Nothing -> error $ "Column not a number: " ++ (T.unpack name)
+            Nothing -> case testEquality (typeRep @d) (typeRep @Double) of
+                Just Refl -> case testEquality (typeRep @b) (typeRep @Int) of
+                    Just Refl -> TColumn $ fromVector $ VG.map (f . (VG.map round)) col
+                    Nothing -> error $ "Column not a number: " ++ (T.unpack name)
+    _ -> error "Cannot apply numeric aggregation to boxed column"
 
 instance (Num a, Columnable a) => Num (Expr a) where
     (+) :: Expr a -> Expr a -> Expr a
@@ -106,30 +166,3 @@ instance (Show a) => Show (Expr a) where
     show (Lit value) = show value
     show (Apply name f value) = T.unpack name ++ "(" ++ show value ++ ")"
     show (BinOp name f a b) = T.unpack name ++ "(" ++ show a ++ ", " ++ show b ++ ")" 
-
-col :: Columnable a => T.Text -> Expr a
-col = Col
-
-lit :: Columnable a => a -> Expr a
-lit = Lit
-
-lift :: (Columnable a, Columnable b) => (a -> b) -> Expr a -> Expr b
-lift = Apply "udf"
-
-lift2 :: (Columnable c, Columnable b, Columnable a) => (c -> b -> a) -> Expr c -> Expr b -> Expr a 
-lift2 = BinOp "udf"
-
-eq :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
-eq = BinOp "eq" (==)
-
-lt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-lt = BinOp "lt" (<)
-
-gt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-gt = BinOp "gt" (>)
-
-leq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-leq = BinOp "leq" (<=)
-
-geq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-geq = BinOp "geq" (>=)

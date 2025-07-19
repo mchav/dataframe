@@ -117,8 +117,8 @@ main = do
     ...
     let year = (\(YearMonthDay y _ _) -> y)
     print $ df_csv
-          |> D.derive "birth_year" (D.lift year (D.col @Day "birthdate"))
-          |> D.derive "bmi" ((D.col @Double "weight") / (D.col @Double "height" ** D.lit 2))
+          |> D.derive "birth_year" (F.lift year (F.col @Day "birthdate"))
+          |> D.derive "bmi" ((F.col @Double "weight") / (F.col @Double "height" ** F.lit 2))
           |> D.select ["name", "birth_year", "bmi"]
 ```
 
