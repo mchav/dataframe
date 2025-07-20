@@ -31,6 +31,7 @@ Familiar with another dataframe library? Get started:
 ### Code example
 ```haskell
 import qualified DataFrame as D
+import qualified DataFrame.Functions as F
 
 import DataFrame ((|>))
 
@@ -39,7 +40,9 @@ main :: IO ()
     print $ df
       |> D.select ["item_name", "quantity"]
       |> D.groupBy ["item_name"]
-      |> D.aggregate (zip (repeat "quantity") [D.Maximum, D.Mean, D.Sum])
+      |> D.aggregate [ F.alias "maximum_quanity" (F.maximum "quantity" :: Int)
+                     , F.alias "minimum_quanity" (F.minimum "quantity" :: Int)
+                     , F.alias "sum_quantity"    (F.sum "quantity" :: Int)]
       |> D.sortBy D.Descending ["Sum_quantity"]
 ```
 
