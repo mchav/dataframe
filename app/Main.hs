@@ -125,7 +125,7 @@ chipotle = do
                      , F.alias "maximum" (F.maximum "quantity")
                      , F.alias "mean" (F.mean "quantity")]
       -- Automatically create a variable called <Agg>_<variable>
-      |> D.sortBy D.Descending ["sum "]
+      |> D.sortBy D.Descending ["sum"]
 
   -- Similarly, we can aggregate quantities by all rows.
   print $

@@ -17,6 +17,7 @@ import DataFrame.Internal.Expression (Expr(..), UExpr(..))
 
 import qualified Data.Text as T
 import qualified Data.Vector.Generic as VG
+import qualified Data.Vector.Unboxed as VU
 
 col :: Columnable a => T.Text -> Expr a
 col = Col
@@ -51,14 +52,14 @@ geq = BinOp "geq" (>=)
 count :: T.Text -> Expr Int
 count name = GeneralAggregate name "count" VG.length
 
-minimum :: forall a . Columnable a => T.Text -> Expr a
+minimum :: Columnable a => T.Text -> Expr a
 minimum name = ReductionAggregate name "minimum" VG.minimum
 
-maximum :: forall a . Columnable a => T.Text -> Expr a
+maximum :: Columnable a => T.Text -> Expr a
 maximum name = ReductionAggregate name "maximum" VG.maximum
 
-sum :: T.Text -> Expr Int
-sum name = NumericAggregate name "count" VG.sum
+sum :: (Columnable a, Num a, VU.Unbox a) => T.Text -> Expr a
+sum name = NumericAggregate name "sum" VG.sum
 
 mean :: T.Text -> Expr Double
 mean name = let
