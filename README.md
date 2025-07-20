@@ -43,7 +43,7 @@ main :: IO ()
       |> D.aggregate [ F.alias "maximum_quanity" (F.maximum "quantity" :: Int)
                      , F.alias "minimum_quanity" (F.minimum "quantity" :: Int)
                      , F.alias "sum_quantity"    (F.sum "quantity" :: Int)]
-      |> D.sortBy D.Descending ["Sum_quantity"]
+      |> D.sortBy D.Descending ["sum_quantity"]
 ```
 
 Output:
