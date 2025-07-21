@@ -30,40 +30,45 @@ Familiar with another dataframe library? Get started:
 
 ### Code example
 ```haskell
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 
 import DataFrame ((|>))
 
 main :: IO ()
+main = do
     df <- D.readTsv "./data/chipotle.tsv"
     print $ df
       |> D.select ["item_name", "quantity"]
       |> D.groupBy ["item_name"]
-      |> D.aggregate [ F.alias "maximum_quanity" (F.maximum "quantity" :: Int)
-                     , F.alias "minimum_quanity" (F.minimum "quantity" :: Int)
-                     , F.alias "sum_quantity"    (F.sum "quantity" :: Int)]
+      |> D.aggregate [ F.alias "sum_quantity"    (F.sum @Int "quantity")
+                     , F.alias "mean_quanity"    (F.mean "quantity")
+                     , F.alias "maximum_quanity" (F.maximum @Int "quantity")
+                     ]
       |> D.sortBy D.Descending ["sum_quantity"]
+      |> D.take 10
 ```
 
 Output:
 
 ```
-----------------------------------------------------------------------------------------------------
-index |               item_name               | Sum_quantity |   Mean_quantity    | Maximum_quantity
-------|---------------------------------------|--------------|--------------------|-----------------
- Int  |                 Text                  |     Int      |       Double       |       Int       
-------|---------------------------------------|--------------|--------------------|-----------------
-0     | Chips and Fresh Tomato Salsa          | 130          | 1.1818181818181819 | 15              
-1     | Izze                                  | 22           | 1.1                | 3               
-2     | Nantucket Nectar                      | 31           | 1.1481481481481481 | 3               
-3     | Chips and Tomatillo-Green Chili Salsa | 35           | 1.1290322580645162 | 3               
-4     | Chicken Bowl                          | 761          | 1.0482093663911847 | 3               
-5     | Side of Chips                         | 110          | 1.0891089108910892 | 8               
-6     | Steak Burrito                         | 386          | 1.048913043478261  | 3               
-7     | Steak Soft Tacos                      | 56           | 1.018181818181818  | 2               
-8     | Chips and Guacamole                   | 506          | 1.0563674321503131 | 4               
-9     | Chicken Crispy Tacos                  | 50           | 1.0638297872340425 | 2
+------------------------------------------------------------------------------------------
+index |          item_name           | sum_quantity |    mean_quanity    | maximum_quanity
+------|------------------------------|--------------|--------------------|----------------
+ Int  |             Text             |     Int      |       Double       |       Int      
+------|------------------------------|--------------|--------------------|----------------
+0     | Chicken Bowl                 | 761          | 1.0482093663911847 | 3              
+1     | Chicken Burrito              | 591          | 1.0687160940325497 | 4              
+2     | Chips and Guacamole          | 506          | 1.0563674321503131 | 4              
+3     | Steak Burrito                | 386          | 1.048913043478261  | 3              
+4     | Canned Soft Drink            | 351          | 1.1661129568106312 | 4              
+5     | Chips                        | 230          | 1.0900473933649288 | 3              
+6     | Steak Bowl                   | 221          | 1.04739336492891   | 3              
+7     | Bottled Water                | 211          | 1.3024691358024691 | 10             
+8     | Chips and Fresh Tomato Salsa | 130          | 1.1818181818181819 | 15             
+9     | Canned Soda                  | 126          | 1.2115384615384615 | 4 
 ```
 
 Full example in `./app` folder using many of the constructs in the API.
