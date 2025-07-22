@@ -22,8 +22,8 @@ import qualified Data.Vector.Unboxed as VU
 col :: Columnable a => T.Text -> Expr a
 col = Col
 
-alias :: Columnable a => T.Text -> Expr a -> (T.Text, UExpr)
-alias name expr = (name, Wrap expr)
+as :: Columnable a => Expr a -> T.Text -> (T.Text, UExpr)
+as expr name = (name, Wrap expr)
 
 lit :: Columnable a => a -> Expr a
 lit = Lit

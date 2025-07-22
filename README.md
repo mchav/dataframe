@@ -43,9 +43,9 @@ main = do
     print $ df
       |> D.select ["item_name", "quantity"]
       |> D.groupBy ["item_name"]
-      |> D.aggregate [ F.alias "sum_quantity"    (F.sum @Int "quantity")
-                     , F.alias "mean_quanity"    (F.mean "quantity")
-                     , F.alias "maximum_quanity" (F.maximum @Int "quantity")
+      |> D.aggregate [ (F.sum @Int "quantity")     `F.as` "sum_quantity"
+                     , (F.mean "quantity")         `F.as` "mean_quantity"
+                     , (F.maximum @Int "quantity") `F.as` "maximum_quantity"
                      ]
       |> D.sortBy D.Descending ["sum_quantity"]
       |> D.take 10
