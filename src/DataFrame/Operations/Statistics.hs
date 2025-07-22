@@ -122,6 +122,7 @@ applyStatistic f name df = case getColumn name df of
                 mapColumn (realToFrac :: Float -> Double) column,
                 Just column ]
           reduceColumn f matching
+      _ -> Nothing
 
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
 applyStatistics f name df = case getColumn name df of
