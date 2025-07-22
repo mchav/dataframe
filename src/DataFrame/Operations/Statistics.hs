@@ -102,14 +102,12 @@ _getColumnAsDouble name df = case getColumn name df of
       Nothing -> Nothing
   _ -> Nothing
 
-sum :: T.Text -> DataFrame -> Maybe Double
+sum :: forall a. (Columnable a, Num a, VU.Unbox a) => T.Text -> DataFrame -> Maybe a
 sum name df = case getColumn name df of
   Nothing -> throw $ ColumnNotFoundException name "sum" (map fst $ M.toList $ columnIndices df)
-  Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
-    Just Refl -> Just $ VG.sum (VU.map fromIntegral column)
-    Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-      Just Refl -> Just $ VG.sum column
-      Nothing -> Nothing
+  Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @a) of
+    Just Refl -> Just $ VG.sum column
+    Nothing -> Nothing
 
 applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
 applyStatistic f name df = case getColumn name df of
