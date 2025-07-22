@@ -45,9 +45,9 @@ oneBillingRowChallenge = do
   print $
     parsed
       |> D.groupBy ["City"]
-      |> D.aggregate [ F.alias "minimum" (F.minimum "Measurement")
-                     , F.alias "mean" (F.mean "Measurement")
-                     , F.alias "maximum" (F.maximum "Measurement")]
+      |> D.aggregate [ (F.minimum "Measurement") `F.as` "minimum"
+                     , (F.mean "Measurement")    `F.as` "mean"
+                     , (F.maximum "Measurement") `F.as` "maximum"]
       |> D.sortBy D.Ascending ["City"]
 
 housing :: IO ()
@@ -75,7 +75,7 @@ covid = do
       |> D.filter "Direction" (== "Exports")
       |> D.select ["Direction", "Year", "Country", "Value"]
       |> D.groupBy ["Direction", "Year", "Country"]
-      |> D.aggregate [F.alias "TotalValue" (F.sum "Value")]
+      |> D.aggregate [(F.sum "Value") `F.as` "TotalValue"]
 
 chipotle :: IO ()
 chipotle = do
@@ -121,10 +121,9 @@ chipotle = do
       -- It's more efficient to filter before grouping.
       |> D.filter "item_name" (searchTerm ==)
       |> D.groupBy ["item_name"]
-      |> D.aggregate [ F.alias "sum" (F.sum "quantity")
-                     , F.alias "maximum" (F.maximum "quantity")
-                     , F.alias "mean" (F.mean "quantity")]
-      -- Automatically create a variable called <Agg>_<variable>
+      |> D.aggregate [ (F.sum "quantity")     `F.as` "sum"
+                     , (F.maximum "quantity") `F.as` "max"
+                     , (F.mean "quantity")    `F.as` "mean"]
       |> D.sortBy D.Descending ["sum"]
 
   -- Similarly, we can aggregate quantities by all rows.
@@ -132,9 +131,9 @@ chipotle = do
     f
       |> D.select ["item_name", "quantity"]
       |> D.groupBy ["item_name"]
-      |> D.aggregate [ F.alias "sum" (F.sum "quantity")
-                     , F.alias "maximum" (F.maximum "quantity")
-                     , F.alias "mean" (F.mean "quantity")]
+      |> D.aggregate [ (F.sum "quantity")     `F.as` "sum"
+                     , (F.maximum "quantity") `F.as` "maximum"
+                     , (F.mean "quantity")    `F.as` "mean"]
       |> D.take 10
 
   let firstOrder =
@@ -143,3 +142,4 @@ chipotle = do
           |> D.filterBy (("Chicken Bowl" :: T.Text) ==) "item_name"
 
   print $ D.take 10 firstOrder
+
