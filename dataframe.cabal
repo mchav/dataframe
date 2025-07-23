@@ -36,6 +36,7 @@ library
                    DataFrame.Internal.Row,
                    DataFrame.Errors,
                    DataFrame.Operations.Core,
+                   DataFrame.Operations.Join,
                    DataFrame.Operations.Merge,
                    DataFrame.Operations.Subset,
                    DataFrame.Operations.Sorting,
@@ -87,6 +88,8 @@ executable dataframe
                    DataFrame.Operations.Aggregation,
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
+                   DataFrame.Operations.Join,
+                   DataFrame.Operations.Merge,
                    DataFrame.IO.Parquet,
                    DataFrame.Lazy.IO.CSV,
                    DataFrame.Functions

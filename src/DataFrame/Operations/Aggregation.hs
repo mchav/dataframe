@@ -75,8 +75,9 @@ groupBy names df
     groupingColumns = columnNames df L.\\ names
 
 mkRowRep :: [Int] -> DataFrame -> Int -> Int
-mkRowRep groupColumnIndices df i = hash (map mkHash groupColumnIndices)
+mkRowRep groupColumnIndices df i = if length h == 1 then head h else hash h
   where
+    h = (map mkHash groupColumnIndices)
     getHashedElem :: Column -> Int -> Int
     getHashedElem (BoxedColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
     getHashedElem (UnboxedColumn (c :: VU.Vector a)) j = hash' @a (c VU.! j)

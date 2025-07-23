@@ -12,6 +12,8 @@ import DataFrame.Internal.DataFrame as D hiding (columnIndices, columns)
 import DataFrame.Internal.Row as D hiding (mkRowRep)
 import DataFrame.Errors as D
 import DataFrame.Operations.Core as D
+import DataFrame.Operations.Merge as D
+import DataFrame.Operations.Join as D
 import DataFrame.Operations.Subset as D
 import DataFrame.Operations.Sorting as D
 import DataFrame.Operations.Statistics as D
