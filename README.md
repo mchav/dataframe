@@ -11,6 +11,11 @@ A fast, safe, and intuitive DataFrame library.
 
 ## Installing
 
+### Jupyter notebook
+* We have a [hosted version of the Jupyter notebook](https://ihaskell-dataframe-crf7g5fvcpahdegz.westus2-01.azurewebsites.net/lab/) on azure sites.
+* Use the Dockerfile in the [ihaskell-dataframe](https://github.com/mchav/ihaskell-dataframe) to build and run an image with dataframe integration.
+* For a preview check out the [California Housing](https://ihaskell-dataframe-crf7g5fvcpahdegz.westus2-01.azurewebsites.net/lab/tree/California%20Housing.ipynb) notebook.
+
 ### CLI
 * Install Haskell (ghc + cabal) via [ghcup](https://www.haskell.org/ghcup/install/) selecting all the default options.
 * Install snappy (needed for Parquet support) by running: `sudo apt install libsnappy-dev`.
@@ -18,9 +23,6 @@ A fast, safe, and intuitive DataFrame library.
 * Open a Haskell repl with dataframe loaded by running `cabal repl --build-depends dataframe`.
 * Follow along any one of the tutorials below.
 
-### Jupyter notebook
-* Use the Dockerfile in the [ihaskell-dataframe](https://github.com/mchav/ihaskell-dataframe) to build and run an image with dataframe integration.
-* For a preview check out the [California Housing](https://github.com/mchav/dataframe/blob/main/docs/California%20Housing.ipynb) notebook.
 
 ## What is exploratory data analysis?
 We provide a primer [here](https://github.com/mchav/dataframe/blob/main/docs/exploratory_data_analysis_primer.md) and show how to do some common analyses.
@@ -89,6 +91,7 @@ Full example in `./app` folder using many of the constructs in the API.
 * Apache arrow compatability
 * Integration with common data formats (currently only supports CSV)
 * Support windowed plotting (currently only supports ASCII plots)
+* Host the whole library + Jupyter lab on Azure with auth and isolation.
 
 ## Contributing
 * Please first submit an issue and we can discuss there.
