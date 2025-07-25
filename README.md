@@ -1,3 +1,21 @@
+<h1 align="center">
+  <a href="https://dataframe.readthedocs.io/en/latest/">
+    <img src="https://raw.githubusercontent.com/mchav/dataframe/master/docs/_static/haskell-logo-png-transparent.png" alt="dataframe logo">
+  </a>
+</h1>
+
+<div align="center">
+  <a href="https://hackage.haskell.org/package/dataframe-0.2.0.2">
+    <img src="https://img.shields.io/hackage/v/dataframe" alt="hackage Latest Release"/>
+  </a>
+</div>
+
+<p align="center">
+  <a href="https://dataframe.readthedocs.io/en/latest/">User guide</a>
+  |
+  <a href="https://discord.gg/XJE5wKT2kb">Discord</a>
+</p>
+
 # DataFrame
 
 A fast, safe, and intuitive DataFrame library.
