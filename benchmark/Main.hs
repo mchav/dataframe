@@ -23,7 +23,7 @@ haskell = do
   ns <- VU.replicateM n (uniformRM range g)
   xs <- VU.replicateM n (uniformRM range g)
   ys <- VU.replicateM n (uniformRM range g)
-  let df = D.fromUnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
+  let df = D.fromUnnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
   endGeneration <- getCurrentTime
 
   let generationTime = diffUTCTime endGeneration startGeneration

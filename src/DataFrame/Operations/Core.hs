@@ -187,8 +187,8 @@ partiallyParsed _ = 0
 fromNamedColumns :: [(T.Text, Column)] -> DataFrame
 fromNamedColumns = L.foldl' (\df (name, column) -> insertColumn name column df) empty
 
-fromUnamedColumns :: [Column] -> DataFrame
-fromUnamedColumns = fromNamedColumns . zip (map (T.pack . show) [0..])
+fromUnnamedColumns :: [Column] -> DataFrame
+fromUnnamedColumns = fromNamedColumns . zip (map (T.pack . show) [0..])
 
 -- | O (k * n) Counts the occurences of each value in a given column.
 valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Int)]
