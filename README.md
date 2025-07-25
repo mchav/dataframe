@@ -1,6 +1,6 @@
 <h1 align="center">
   <a href="https://dataframe.readthedocs.io/en/latest/">
-    <img src="https://raw.githubusercontent.com/mchav/dataframe/master/docs/_static/haskell-logo.svg" alt="dataframe logo">
+    <img width="100" height="100" src="https://raw.githubusercontent.com/mchav/dataframe/master/docs/_static/haskell-logo.svg" alt="dataframe logo">
   </a>
 </h1>
 
