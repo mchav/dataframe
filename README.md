@@ -5,7 +5,7 @@ A fast, safe, and intuitive DataFrame library.
 ## Why use Haskell?
 
 * Having types around eliminates many kinds of bugs before you even run the code.
-* It's easy to write pipelines.
+* A highly composable programming model that makes it easy to write pipelines.
 * The Haskell compiler does a lot of optimization that makes code very fast.
 * The syntax is more approachable than other compiled languages' dataframes.
 
