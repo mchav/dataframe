@@ -90,11 +90,11 @@ index |     0     |    1    |    2
 6     | Sunday    | 26      | 15
 ```
 
-This function automatcally names columns with numbers 0 to n. This is generally bad practice (everything must havea descriptive name) but is useful for an initial entry where the columns are unknown/have no name.
+This function automatcally names columns with numbers 0 to n. This is generally bad practice (everything must have a descriptive name) but is useful for an initial entry where the columns are unknown/have no name.
 
 ### Getting the data from a file
 
-We can also get data froma CSV file using the `readCsv` function.
+Most times you encouter data it is in a file (or spread amon)
 
 ```haskell
 ghci> df <- D.readCsv "./data/housing.csv" 

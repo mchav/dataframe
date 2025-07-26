@@ -58,17 +58,27 @@ Familiar with another dataframe library? Get started:
 
 ### Code example
 ```haskell
+-- Useful Haskell extensions.
+
+-- Allow string literal to be interpreted as any other string type.
 {-# LANGUAGE OverloadedStrings #-}
+
+-- Convenience syntax for specifiying the type `sum a b :: Int` vs `sum @Int a b'. 
 {-# LANGUAGE TypeApplications #-}
+
+-- import for general functionality.
 import qualified DataFrame as D
+
+-- import for column expressions.
 import qualified DataFrame.Functions as F
 
+-- import chaining operator with unqualified.
 import DataFrame ((|>))
 
 main :: IO ()
 main = do
     df <- D.readTsv "./data/chipotle.tsv"
-    print $ df
+    print (df
       |> D.select ["item_name", "quantity"]
       |> D.groupBy ["item_name"]
       |> D.aggregate [ (F.sum @Int "quantity")     `F.as` "sum_quantity"
@@ -76,7 +86,7 @@ main = do
                      , (F.maximum @Int "quantity") `F.as` "maximum_quantity"
                      ]
       |> D.sortBy D.Descending ["sum_quantity"]
-      |> D.take 10
+      |> D.take 10)
 ```
 
 Output:
@@ -99,7 +109,7 @@ index |          item_name           | sum_quantity |    mean_quanity    | maxim
 9     | Canned Soda                  | 126          | 1.2115384615384615 | 4 
 ```
 
-Full example in `./app` folder using many of the constructs in the API.
+Full example in `./examples` folder using many of the constructs in the API.
 
 ### Visual example
 ![Screencast of usage in GHCI](./static/example.gif)
@@ -113,6 +123,3 @@ Full example in `./app` folder using many of the constructs in the API.
 * Integration with common data formats (currently only supports CSV)
 * Support windowed plotting (currently only supports ASCII plots)
 * Host the whole library + Jupyter lab on Azure with auth and isolation.
-
-## Contributing
-* Please first submit an issue and we can discuss there.
