@@ -1,6 +1,8 @@
+{-# LANGUAGE OverloadedStrings #-}
 module DataFrame
   ( module D,
-    (|>)
+    (|>),
+    sessionSchema
   )
 where
 
@@ -26,5 +28,21 @@ import DataFrame.IO.CSV as D
 import DataFrame.IO.Parquet as D
 
 import Data.Function
+import Data.List
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
 
 (|>) = (&)
+
+printSessionSchema :: D.DataFrame -> IO ()
+printSessionSchema df = T.putStrLn $ let
+    (lhs, rhs) = foldr go ([], []) (D.columnNames df)
+    columnRep name = let
+        colType = T.pack (D.columnTypeString (D.unsafeGetColumn name df))
+      in "F.col @(" <> colType <> ") \"" <> name <> "\""
+    go name (l, r) = (T.toLower name:l, columnRep name:r)
+  in T.unlines [":{", "{-# LANGUAGE TypeApplications #-}",
+                "import qualified DataFrame.Functions as F",
+                "import Data.Text (Text)",
+                "(" <> T.intercalate "," lhs <> ")" <> " = " <> "(" <> T.intercalate "," rhs <> ")",
+                ":}"]
