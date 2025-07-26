@@ -1,7 +1,9 @@
 :set -XOverloadedStrings
 :set -XTypeApplications
+:set -XTemplateHaskell
 
 import qualified Data.Text as Str
 
 default (Int, Str.Text, Double)
 
+:def! cols \s -> return ("_ = (); declareColumns " ++ s)

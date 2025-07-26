@@ -10,14 +10,23 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 module DataFrame.Functions where
 
-import DataFrame.Internal.Column (Columnable)
+import DataFrame.Internal.Column
+import DataFrame.Internal.DataFrame (DataFrame(..), unsafeGetColumn)
 import DataFrame.Internal.Expression (Expr(..), UExpr(..))
 
+import           Control.Monad
+import           Data.Function
+import qualified Data.List as L
+import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector as VB
+import           Language.Haskell.TH
+import qualified Language.Haskell.TH.Syntax as TH
 
 col :: Columnable a => T.Text -> Expr a
 col = Col
@@ -68,3 +77,31 @@ mean (Col name) = let
                 (!total, !n) = VG.foldl' (\(!total, !n) v -> (total + v, n + 1))  (0 :: Double, 0 :: Int) samp
             in total / fromIntegral n
     in NumericAggregate name "mean" mean'
+
+-- TODO: Enumerate universe of primitives.
+-- Maybe this should go in a separate module where people can add their
+-- universe of types.
+-- Or maybe make it easier to insert your on types here.
+typeFromString :: String -> Q Type
+typeFromString s = case s of
+  "Int"    -> [t| Int |]
+  "Double" -> [t| Double |]
+  "Bool"   -> [t| Bool |]
+  "Text"   -> [t| T.Text |]
+  "Maybe Int"    -> [t| Maybe Int |]
+  "Maybe Double" -> [t| Maybe Double |]
+  "Maybe Bool"   -> [t| Maybe Bool |]
+  "Maybe Text"   -> [t| Maybe T.Text |]
+  _        -> fail $ "Unsupported type: " ++ s
+
+declareColumns :: DataFrame -> DecsQ
+declareColumns df = let
+        names = (map fst . L.sortBy (compare `on` snd). M.toList . columnIndices) df
+        types = map (columnTypeString . (`unsafeGetColumn` df)) names
+        specs = zip names types
+    in fmap concat $ forM specs $ \(nm, tyStr) -> do
+        ty  <- typeFromString tyStr
+        let n  = mkName (T.unpack nm)
+        sig <- sigD n [t| Expr $(pure ty) |]
+        val <- valD (varP n) (normalB [| col $(TH.lift nm) |]) []
+        pure [sig, val]
