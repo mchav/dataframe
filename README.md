@@ -8,6 +8,9 @@
   <a href="https://hackage.haskell.org/package/dataframe-0.2.0.2">
     <img src="https://img.shields.io/hackage/v/dataframe" alt="hackage Latest Release"/>
   </a>
+  <a href="https://github.com/mchav/dataframe/actions/workflows/haskel-ci.yml">
+    <img src="https://github.com/mchav/dataframe/actions/workflows/haskell-ci.yml/badge.svg" alt="C/I"/>
+  </a>
 </div>
 
 <p align="center">
@@ -20,12 +23,12 @@
 
 A fast, safe, and intuitive DataFrame library.
 
-## Why use Haskell?
+## Why use this DataFrame library?
 
-* Having types around eliminates many kinds of bugs before you even run the code.
-* A highly composable programming model that makes it easy to write pipelines.
-* The Haskell compiler does a lot of optimization that makes code very fast.
-* The syntax is more approachable than other compiled languages' dataframes.
+* Encourages concise, declarative, and composable data pipelines through a powerful abstraction model.
+* Static typing makes code easier to reason about and catches many bugs at compile time—before your code ever runs.
+* Delivers high performance thanks to Haskell’s optimizing compiler and efficient memory model.
+* Designed for interactivity: expressive syntax, helpful error messages, and sensible defaults.
 
 ## Installing
 
