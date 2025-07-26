@@ -33,8 +33,8 @@ groupByHaskell :: IO ()
 groupByHaskell = do
   df <- D.readCsv "./data/housing.csv"
   print $ df |> D.groupBy ["ocean_proximity"]
-             |> D.aggregate [ (F.minimum @Double "median_house_value") `F.as` "minimum_median_house_value"
-                            , (F.maximum @Double "median_house_value") `F.as` "maximum_median_house_value"]
+             |> D.aggregate [ (F.minimum (F.col @Double "median_house_value")) `F.as` "minimum_median_house_value"
+                            , (F.maximum (F.col @Double "median_house_value")) `F.as` "maximum_median_house_value"]
 
 groupByPolars :: IO ()
 groupByPolars = do

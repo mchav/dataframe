@@ -49,20 +49,21 @@ leq = BinOp "leq" (<=)
 geq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
 geq = BinOp "geq" (>=)
 
-count :: T.Text -> Expr Int
-count name = GeneralAggregate name "count" VG.length
+count :: Columnable a => Expr a -> Expr Int
+count (Col name) = GeneralAggregate name "count" VG.length
+count _ = error "Argument can only be a column reference not an unevaluated expression"
 
-minimum :: Columnable a => T.Text -> Expr a
-minimum name = ReductionAggregate name "minimum" VG.minimum
+minimum :: Columnable a => Expr a -> Expr a
+minimum (Col name) = ReductionAggregate name "minimum" VG.minimum
 
-maximum :: Columnable a => T.Text -> Expr a
-maximum name = ReductionAggregate name "maximum" VG.maximum
+maximum :: Columnable a => Expr a -> Expr a
+maximum (Col name) = ReductionAggregate name "maximum" VG.maximum
 
-sum :: (Columnable a, Num a, VU.Unbox a) => T.Text -> Expr a
-sum name = NumericAggregate name "sum" VG.sum
+sum :: (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
+sum (Col name) = NumericAggregate name "sum" VG.sum
 
-mean :: T.Text -> Expr Double
-mean name = let
+mean :: (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr Double
+mean (Col name) = let
         mean' samp = let
                 (!total, !n) = VG.foldl' (\(!total, !n) v -> (total + v, n + 1))  (0 :: Double, 0 :: Int) samp
             in total / fromIntegral n

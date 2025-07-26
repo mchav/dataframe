@@ -1,28 +1,23 @@
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
 
-import qualified DataFrame as D
-import qualified DataFrame.Functions as F
-import qualified Data.Vector.Unboxed as VU
+-- Useful Haskell extensions.
+{-# LANGUAGE OverloadedStrings #-} -- Allow string literal to be interpreted as any other string type.
+{-# LANGUAGE TypeApplications #-} -- Convenience syntax for specifiying the type `sum a b :: Int` vs `sum @Int a b'. 
 
-import Control.Monad (replicateM)
-import DataFrame ((|>))
-import System.Random.Stateful
+import qualified DataFrame as D -- import for general functionality.
+import qualified DataFrame.Functions as F -- import for column expressions.
+
+import DataFrame ((|>)) -- import chaining operator with unqualified.
 
 main :: IO ()
-main =  do
-  let n = 100_000_000
-  g <- newIOGenM =<< newStdGen
-  
-  let range = (-20.0 :: Double, 20.0 :: Double)
-  ns <- VU.replicateM n (uniformRM range g)
-  xs <- VU.replicateM n (uniformRM range g)
-  ys <- VU.replicateM n (uniformRM range g)
-  
-  let df = D.fromUnnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
-  print $ D.mean "0" df
-  print $ D.variance "1" df
-  print $ D.correlation "1" "2" df
-
-  print $ D.filter "0" (>= (19.9 :: Double)) df D.|> D.take 10
+main = do
+    df <- D.readTsv "./data/chipotle.tsv"
+    let quantity = F.col "quantity" :: D.Expr Int -- A typed reference to a column.
+    print (df
+      |> D.select ["item_name", "quantity"]
+      |> D.groupBy ["item_name"]
+      |> D.aggregate [ (F.sum quantity)     `F.as` "sum_quantity"
+                     , (F.mean quantity)    `F.as` "mean_quantity"
+                     , (F.maximum quantity) `F.as` "maximum_quantity"
+                     ]
+      |> D.sortBy D.Descending ["sum_quantity"]
+      |> D.take 10)

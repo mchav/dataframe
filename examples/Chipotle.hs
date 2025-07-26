@@ -52,9 +52,9 @@ main = do
       -- It's more efficient to filter before grouping.
       |> D.filter "item_name" (searchTerm ==)
       |> D.groupBy ["item_name"]
-      |> D.aggregate [ (F.sum @Int "quantity")     `F.as` "sum"
-                     , (F.maximum @Int "quantity") `F.as` "max"
-                     , (F.mean "quantity")         `F.as` "mean"]
+      |> D.aggregate [ (F.sum (F.col @Int "quantity"))     `F.as` "sum"
+                     , (F.maximum (F.col @Int "quantity")) `F.as` "max"
+                     , (F.mean (F.col @Int "quantity"))    `F.as` "mean"]
       |> D.sortBy D.Descending ["sum"]
 
   -- Similarly, we can aggregate quantities by all rows.
@@ -62,9 +62,9 @@ main = do
     df
       |> D.select ["item_name", "quantity"]
       |> D.groupBy ["item_name"]
-      |> D.aggregate [ (F.sum @Int "quantity")     `F.as` "sum"
-                     , (F.maximum @Int "quantity") `F.as` "maximum"
-                     , (F.mean "quantity")         `F.as` "mean"]
+      |> D.aggregate [ (F.sum (F.col @Int "quantity"))     `F.as` "sum"
+                     , (F.maximum (F.col @Int "quantity")) `F.as` "maximum"
+                     , (F.mean (F.col @Int "quantity"))    `F.as` "mean"]
       |> D.take 10
 
   let firstOrder =

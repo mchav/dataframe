@@ -10,10 +10,11 @@ import DataFrame ((|>))
 main :: IO ()
 main = do
   parsed <- D.readSeparated ';' D.defaultOptions "./data/measurements.txt"
+  let measurement = (F.col @Double "Measurement")
   print $
     parsed
       |> D.groupBy ["City"]
-      |> D.aggregate [ (F.minimum @Double "Measurement") `F.as` "minimum"
-                     , (F.mean "Measurement")            `F.as` "mean"
-                     , (F.maximum @Double "Measurement") `F.as` "maximum"]
+      |> D.aggregate [ (F.minimum measurement) `F.as` "minimum"
+                     , (F.mean measurement)    `F.as` "mean"
+                     , (F.maximum measurement) `F.as` "maximum"]
       |> D.sortBy D.Ascending ["City"]
