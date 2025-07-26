@@ -80,5 +80,8 @@ getColumn name df = do
   i <- columnIndices df M.!? name
   columns df V.!? i
 
+unsafeGetColumn :: T.Text -> DataFrame -> Column
+unsafeGetColumn name df = columns df V.! (columnIndices df M.! name)
+
 null :: DataFrame -> Bool
 null df = V.null (columns df)
