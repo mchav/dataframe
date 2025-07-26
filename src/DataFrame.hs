@@ -2,7 +2,7 @@
 module DataFrame
   ( module D,
     (|>),
-    sessionSchema
+    printSessionSchema
   )
 where
 
