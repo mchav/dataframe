@@ -1,5 +1,5 @@
 {
-  description = "An intuitive, dynamically-typed DataFrame library";
+  description = "A fast, safe, and intuitive DataFrame library.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

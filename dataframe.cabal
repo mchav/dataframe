@@ -1,10 +1,10 @@
 cabal-version:      2.4
 name:               dataframe
-version:            0.2.0.2
+version:            0.2.0.3
 
-synopsis: An intuitive, dynamically-typed DataFrame library.
+synopsis: A fast, safe, and intuitive DataFrame library.
 
-description: An intuitive, dynamically-typed DataFrame library for exploratory data analysis.
+description: A fast, safe, and intuitive DataFrame library for exploratory data analysis.
 
 bug-reports: https://github.com/mchav/dataframe/issues
 license:            GPL-3.0-or-later

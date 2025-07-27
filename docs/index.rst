@@ -1,7 +1,7 @@
 dataframe
 =========
 
-An intuitive, dynamically-typed DataFrame library for exploratory data analysis.
+A fast, safe, and intuitive DataFrame library for exploratory data analysis.
 
 .. toctree::
    :maxdepth: 2

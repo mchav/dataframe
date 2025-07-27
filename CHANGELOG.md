@@ -1,5 +1,13 @@
 # Revision history for dataframe
 
+## 0.3.0.0
+* Now supports inner joins
+* Aggregations are now expressions allowing for more expressive aggregation logic.
+* In GHCI, you can now create type-safe bindings for each column and use those in expressions.
+* Added pandas and polars benchmarks.
+* Performance improvements to `groupBy`.
+* Various bug fixes.
+
 ## 0.2.0.2
 * Experimental Apache Parquet support.
 * Rename conversion columns (changed from toColumn and toColumn' to fromVector and fromList).
