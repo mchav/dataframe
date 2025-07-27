@@ -3,6 +3,7 @@
 :set -XTemplateHaskell
 
 import qualified Data.Text as Str
+import Data.Text (Text)
 
 default (Int, Str.Text, Double)
 

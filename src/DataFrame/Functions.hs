@@ -79,7 +79,6 @@ mean (Col name) = let
     in NumericAggregate name "mean" mean'
 
 typeFromString :: String -> Q Type
-typeFromString "Text" = [t| T.Text |]  -- TODO: We shouldn't special case this. Figure out how to keep imported types under control.
 typeFromString s = do
   maybeType <- lookupTypeName s
   case maybeType of
