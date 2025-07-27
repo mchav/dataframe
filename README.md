@@ -97,7 +97,7 @@ ghci> df |> D.derive "nonsense_feature" (latitude + ocean_proximity) |> D.take 1
 
 Key features in example:
 * Intuitive, SQL-like API to get from data to insights.
-* Create type-safe references to columns in a dataframe using `:exponseColumns`
+* Create type-safe references to columns in a dataframe using `:exposeColumns`
 * Type-safe column transformations for faster and safer exploration.
 * Fluid, chaining API that makes code easy to reason about.
 
