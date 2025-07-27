@@ -78,21 +78,25 @@ mean (Col name) = let
             in total / fromIntegral n
     in NumericAggregate name "mean" mean'
 
--- TODO: Enumerate universe of primitives.
--- Maybe this should go in a separate module where people can add their
--- universe of types.
--- Or maybe make it easier to insert your on types here.
 typeFromString :: String -> Q Type
-typeFromString s = case s of
-  "Int"    -> [t| Int |]
-  "Double" -> [t| Double |]
-  "Bool"   -> [t| Bool |]
-  "Text"   -> [t| T.Text |]
-  "Maybe Int"    -> [t| Maybe Int |]
-  "Maybe Double" -> [t| Maybe Double |]
-  "Maybe Bool"   -> [t| Maybe Bool |]
-  "Maybe Text"   -> [t| Maybe T.Text |]
-  _        -> fail $ "Unsupported type: " ++ s
+typeFromString "Text" = [t| T.Text |]  -- TODO: We shouldn't special case this. Figure out how to keep imported types under control.
+typeFromString s = do
+  maybeType <- lookupTypeName s
+  case maybeType of
+    Just name -> return (ConT name)
+    Nothing -> do
+      if "Maybe " `L.isPrefixOf` s
+        then do
+          let innerType = drop 6 s
+          inner <- typeFromString innerType
+          return (AppT (ConT ''Maybe) inner)
+        else if "Either " `L.isPrefixOf` s
+          then do
+            let (left: right:_) = tail (words s)
+            lhs <- typeFromString left
+            rhs <- typeFromString right
+            return (AppT (AppT (ConT ''Either) lhs) rhs)
+          else fail $ "Unsupported type: " ++ s
 
 declareColumns :: DataFrame -> DecsQ
 declareColumns df = let
