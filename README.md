@@ -99,8 +99,8 @@ Full example in `./examples` folder using many of the constructs in the API.
 * For a preview check out the [California Housing](https://ihaskell-dataframe-crf7g5fvcpahdegz.westus2-01.azurewebsites.net/lab/tree/California%20Housing.ipynb) notebook.
 
 ### CLI
-* Run the installation script `curl '=https' --tlsv1.2 -sSf https://github.com/mchav/dataframe/blob/main/scripts/install.sh | sh`
-* Download the run script with: `curl --output dataframe "https://github.com/mchav/dataframe/blob/main/scripts/install.sh"`
+* Run the installation script `curl '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mchav/dataframe/refs/heads/main/scripts/install.sh | sh`
+* Download the run script with: `curl --output dataframe "https://raw.githubusercontent.com/mchav/dataframe/refs/heads/main/scripts/dataframe.sh"`
 * Make the script executable: `chmod +x dataframe`
 * Add the script your path: `export PATH=$PATH:./dataframe`
 * Run the script with: `dataframe`
