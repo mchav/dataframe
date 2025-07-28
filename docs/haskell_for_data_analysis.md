@@ -35,6 +35,10 @@ They're a key tool for data scientists, analysts, and programmers when working w
 * The Haskell compiler has a lot of optimization that makes code very fast.
 * The syntax is more approachable than other compiled languages' dataframes.
 
+## Installing the tooling
+Check the [README](https://github.com/mchav/dataframe?tab=readme-ov-file#installing) for how to install the required tooling.
+
+
 ## Getting the data
 Data enters a computer program in one of two ways:
 * manual entry of the data by a human, or,
