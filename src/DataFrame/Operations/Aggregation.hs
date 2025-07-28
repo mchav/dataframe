@@ -144,4 +144,4 @@ distinctBy names df = let
       GroupedBoxedColumn (column :: V.Vector (V.Vector a)) -> (F.anyValue (F.col @a name)) `F.as` name
       GroupedUnboxedColumn (column :: V.Vector (VU.Vector a)) -> (F.anyValue (F.col @a name)) `F.as` name
       _ -> error $ "Column isn't grouped: " ++ (T.unpack name)
-  in aggregate (map aggF excluded) df'
+  in aggregate (map aggF excluded) distinctColumns
