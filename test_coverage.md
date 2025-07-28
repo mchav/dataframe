@@ -99,7 +99,7 @@
   - Sorts by multiple columns in descending order.
   - Throws an error if it doesn't exist. DONE
 
-* columnInfo
+* describeColumns
   - Return correct types and lengths.
 
 ## Plotting
