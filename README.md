@@ -29,6 +29,7 @@ A fast, safe, and intuitive DataFrame library.
 * Static typing makes code easier to reason about and catches many bugs at compile time—before your code ever runs.
 * Delivers high performance thanks to Haskell’s optimizing compiler and efficient memory model.
 * Designed for interactivity: expressive syntax, helpful error messages, and sensible defaults.
+* Works seamlessly in both command-line and notebook environments—great for exploration and scripting alike.
 
 ## Example usage
 
