@@ -7,7 +7,7 @@ main :: IO ()
 main = do
   parsed <- D.readCsv "./data/housing.csv"
 
-  print $ D.columnInfo parsed
+  print $ D.describeColumns parsed
 
   print $ D.take 5 parsed
 
