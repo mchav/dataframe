@@ -38,7 +38,7 @@ A fast, safe, and intuitive DataFrame library.
 
 Key features in example:
 * Intuitive, SQL-like API to get from data to insights.
-* Create type-safe references to columns in a dataframe using `:exposeColumns`
+* Create typed, completion-ready references to columns in a dataframe using `:exposeColumns`
 * Type-safe column transformations for faster and safer exploration.
 * Fluid, chaining API that makes code easy to reason about.
 
