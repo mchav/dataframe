@@ -2,9 +2,10 @@
 :set -XTypeApplications
 :set -XTemplateHaskell
 
-import           qualified Data.Text as Str
-import DataFrame.Functions (declareColumns)
+import qualified Data.Text as Str
+import           DataFrame.Functions (declareColumns)
 import           Data.Text (Text)
+import           DataFrame ((|>))
 
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
