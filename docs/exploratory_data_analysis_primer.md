@@ -126,7 +126,29 @@ index | median_house_value |     deviation
 
 Read left to right, we begin by calling `derive` which creates a new column computed from a given expression. The order of arguments is `derive <target column> <expression>  <dataframe>`. We then select only the two columns we want and take the first 10 rows.
 
-This gives us a list of the deviations. From the small sample it does seem like there are some wild deviations. The first one is greater than the mean! How typical is this? Well to answer that we take the average of all these values.
+This gives us a list of the deviations.
+
+* Dealing with nulls *
+Haskell's solution to potentially missing data is a type called `Maybe`. It can be in one of two states: `Just <value>` if the value exists or `Nothing` if the value is null.
+
+So an integer column with some missing values will be of type `Maybe Int`. And it's values will look like: `[Just 1, Nothing, Just 2]`.
+
+Since operations like addition and multiplication only work on integers, and not this wrapped integer type, we have to unwrap the data before we use it.
+
+This is where the function `fromMaybe` comes in. It takes a default value to return if the thing being inspected is null/Nothing.
+
+```haskell
+ghci> fromMaybe 0 (Just 2)
+2
+ghci> fromMaybe 0 Nothing
+0
+```
+
+In the above example, our mean function returns a `Maybe Double` since there is a chance you could call it on a non-numeric field. So we always have to unwrap the result before we use it.
+
+Now, returning to our previous example.
+
+From the small sample it does seem like there are some wild deviations. The first one is greater than the mean! How typical is this? Well to answer that we take the average of all these values.
 
 ```haskell
 ghci> withDeviation = df |> D.derive "deviation" (abs $ F.col "median_house_value" - F.lit m) |> D.select ["median_house_value", "deviation"]
