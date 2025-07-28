@@ -161,11 +161,11 @@ Full example in `./examples` folder using many of the constructs in the API.
 * For a preview check out the [California Housing](https://ihaskell-dataframe-crf7g5fvcpahdegz.westus2-01.azurewebsites.net/lab/tree/California%20Housing.ipynb) notebook.
 
 ### CLI
-* Install Haskell (ghc + cabal) via [ghcup](https://www.haskell.org/ghcup/install/) selecting all the default options.
-* Install snappy (needed for Parquet support) by running: `sudo apt install libsnappy-dev`.
-* To install dataframe run `cabal update && cabal install dataframe`
-* Open a Haskell repl with dataframe loaded by running `cabal repl --build-depends dataframe`.
-* Follow along any one of the tutorials below.
+* Run the installation script `curl '=https' --tlsv1.2 -sSf https://github.com/mchav/dataframe/blob/main/scripts/install.sh | sh`
+* Download the run script with: `curl --output dataframe "https://github.com/mchav/dataframe/blob/main/scripts/install.sh"`
+* Make the script executable: `chmod +x dataframe`
+* Add the script your path: `export PATH=$PATH:./dataframe`
+* Run the script with: `dataframe`
 
 
 ## What is exploratory data analysis?
