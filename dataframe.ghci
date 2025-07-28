@@ -26,6 +26,6 @@ putStrLn ""
 putStrLn "💡  Use prefix 'D' for core functionality."
 putStrLn ("        ● E.g. " ++ (__brightGreen "D.readCsv \"/path/to/file\""))
 putStrLn "💡  Use prefix 'F' for expression functions."
-putStrLn ("        ● E.g. " ++ (__brightGreen "F.sum (F.col @Int \"value\") \"/path/to/file\""))
+putStrLn ("        ● E.g. " ++ (__brightGreen "F.sum (F.col @Int \"value\")"))
 putStrLn ""
 putStrLn "📊  Let's talk to some data!"
