@@ -62,6 +62,9 @@ count :: Columnable a => Expr a -> Expr Int
 count (Col name) = GeneralAggregate name "count" VG.length
 count _ = error "Argument can only be a column reference not an unevaluated expression"
 
+anyValue :: Columnable a => Expr a -> Expr a
+anyValue (Col name) = ReductionAggregate name "anyValue" VG.head
+
 minimum :: Columnable a => Expr a -> Expr a
 minimum (Col name) = ReductionAggregate name "minimum" VG.minimum
 

@@ -8,6 +8,7 @@
 module DataFrame.Operations.Aggregation where
 
 import qualified Data.Set as S
+import qualified DataFrame.Functions as F
 
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -28,7 +29,7 @@ import DataFrame.Internal.Column (Column(..), fromVector,
                                   getIndicesUnboxed, getIndices, 
                                   Columnable, unwrapTypedColumn,
                                   columnVersionString)
-import DataFrame.Internal.DataFrame (DataFrame(..), empty, getColumn)
+import DataFrame.Internal.DataFrame (DataFrame(..), empty, getColumn, unsafeGetColumn)
 import DataFrame.Internal.Expression
 import DataFrame.Internal.Parsing
 import DataFrame.Internal.Types
@@ -37,6 +38,7 @@ import DataFrame.Operations.Core
 import DataFrame.Operations.Subset
 import Data.Function ((&))
 import Data.Hashable
+import Data.List ((\\))
 import Data.Maybe
 import Data.Type.Equality (type (:~:)(Refl), TestEquality(..))
 import Type.Reflection (typeRep, typeOf)
@@ -133,3 +135,13 @@ aggregate aggs df = let
 
 distinct :: DataFrame -> DataFrame
 distinct df = groupBy (columnNames df) df
+
+distinctBy :: [T.Text] -> DataFrame -> DataFrame
+distinctBy names df = let
+    excluded = (columnNames df) \\ names
+    distinctColumns = groupBy names df
+    aggF name = case unsafeGetColumn name distinctColumns of
+      GroupedBoxedColumn (column :: V.Vector (V.Vector a)) -> (F.anyValue (F.col @a name)) `F.as` name
+      GroupedUnboxedColumn (column :: V.Vector (VU.Vector a)) -> (F.anyValue (F.col @a name)) `F.as` name
+      _ -> error $ "Column isn't grouped: " ++ (T.unpack name)
+  in aggregate (map aggF excluded) df'
