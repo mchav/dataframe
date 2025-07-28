@@ -57,7 +57,7 @@ We can calculate sample statistics from the data such as the sample mean, sample
 Arguably the first thing to do when presented with a datset is check for null values.
 
 ```haskell
-ghci> D.columnInfo df
+ghci> D.describeColumns df
 -----------------------------------------------------------------------------
 index |    Column Name     | # Non-null Values | # Null Values |     Type    
 ------|--------------------|-------------------|---------------|-------------

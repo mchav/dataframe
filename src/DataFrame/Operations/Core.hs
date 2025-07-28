@@ -130,8 +130,8 @@ data ColumnInfo = ColumnInfo {
 
 -- | O(n) Returns the number of non-null columns in the dataframe and the type associated
 -- with each column.
-columnInfo :: DataFrame -> DataFrame
-columnInfo df = empty & insertColumn "Column Name" (fromList (map nameOfColumn infos))
+describeColumns :: DataFrame -> DataFrame
+describeColumns df = empty & insertColumn "Column Name" (fromList (map nameOfColumn infos))
                       & insertColumn "# Non-null Values" (fromList (map nonNullValues infos))
                       & insertColumn "# Null Values" (fromList (map nullValues infos))
                       & insertColumn "# Partially parsed" (fromList (map partiallyParsedValues infos))
