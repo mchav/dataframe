@@ -2,8 +2,16 @@
 
 ## 0.3.0.0
 * Now supports inner joins
-* Aggregations are now expressions allowing for more expressive aggregation logic.
+```haskell
+ghci> df |> D.innerJoin ["key_1", "key_2"] other
+```
+* Aggregations are now expressions allowing for more expressive aggregation logic. Previously: `D.aggregate [("quantity", D.Mean), ("price", D.Sum)] df` now ``D.aggregate [(F.sum (F.col @Double "label") / (F.count (F.col @Double "label")) `F.as` "positive_rate")]``
 * In GHCI, you can now create type-safe bindings for each column and use those in expressions.
+
+```haskell
+ghci> :exposeColumns df
+ghci> D.aggregate  [(F.sum label / F.count label) `F.as` "positive_rate"]
+```
 * Added pandas and polars benchmarks.
 * Performance improvements to `groupBy`.
 * Various bug fixes.
