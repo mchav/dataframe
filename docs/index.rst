@@ -16,6 +16,7 @@ Why use this DataFrame library?
 *************
 Example usage
 *************
+
 Looking through the structure of the columns.
 
 .. code-block:: haskell    
