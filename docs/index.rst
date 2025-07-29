@@ -16,7 +16,7 @@ Why use this DataFrame library?
 *************
 Example usage
 *************
-
+Looking through the structure of the columns.
 .. code-block:: haskell
     
     ghci> import qualified DataFrame as D
@@ -38,8 +38,14 @@ Example usage
     7     | housing_median_age | 20640             | 0             | 0                  | 52              | Double      
     8     | latitude           | 20640             | 0             | 0                  | 862             | Double      
     9     | longitude          | 20640             | 0             | 0                  | 844             | Double
+
+Automatically generate column names.
+.. code-block:: haskell
+    ghci> import DataFrame.Functions (declareColumns)
     ghci> :exposeColumns df
-    ghci> import qualified DataFrame.Functions as F
+
+Aggregation query.
+.. code-block:: haskell
     ghci> df |> D.groupBy ["ocean_proximity"] |> D.aggregate [(F.mean median_house_value) `F.as` "avg_house_value" ]
     --------------------------------------------
     index | ocean_proximity |  avg_house_value  
@@ -51,6 +57,9 @@ Example usage
     2     | ISLAND          | 380440.0          
     3     | NEAR BAY        | 259212.31179039303
     4     | NEAR OCEAN      | 249433.97742663656
+
+Create a new column based on other columns.
+.. code-block:: haskell
     ghci> df |> D.derive "rooms_per_household" (total_rooms / households) |> D.take 10
     --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     index | longitude | latitude | housing_median_age | total_rooms | total_bedrooms | population | households |   median_income    | median_house_value | ocean_proximity | rooms_per_household
@@ -67,6 +76,10 @@ Example usage
     7     | -122.25   | 37.84    | 52.0               | 3104.0      | Just 687.0     | 1157.0     | 647.0      | 3.12               | 241400.0           | NEAR BAY        | 4.797527047913447  
     8     | -122.26   | 37.84    | 42.0               | 2555.0      | Just 665.0     | 1206.0     | 595.0      | 2.0804             | 226700.0           | NEAR BAY        | 4.294117647058823  
     9     | -122.25   | 37.84    | 52.0               | 3549.0      | Just 707.0     | 1551.0     | 714.0      | 3.6912000000000003 | 261100.0           | NEAR BAY        | 4.970588235294118
+
+If two columns don't type check we catch this with a type error instead of a runtime error.
+
+.. code-block:: haskell
     ghci> df |> D.derive "nonsense_feature" (latitude + ocean_proximity) |> D.take 10
     
     <interactive>:14:47: error: [GHC-83865]
