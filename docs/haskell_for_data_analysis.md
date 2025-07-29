@@ -93,6 +93,64 @@ Functions in Haskell are slightly different from functions in other languages. I
 * To determine precedence (differentiating between `(not True) && False` vs `not (True && False)`)
 * To define a tuple. This is how they are used in the `fromNamedColumns` function. The argument in that function is a list of tuples.
 
+#### Aside: understanding error messages
+Programming is as much about how things can fail as much as it is about how they work. A lot more of your time will likely be spent understanding addressing errors in your code than will be spent coding. Hopefully, the Haskell compiler will be a good companion through this journey.
+
+Since Haskell prides itself in catching errors at compile time, it helps to understand the compiler's errors. These may change from release to release but the intuition of how to read these should be useful regardless.
+
+Not a lot of programming guides do this but I'd like to focus on what error messages you will typically see when small things go wrong. We'll keep this as an on going series as we go.
+
+##### Typo in the function name
+
+```haskell
+ghci> let df = D.fromUnamedColumns [D.fromList ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], D.fromList [24, 20, 22, 23, 25, 26, 26], D.fromList [14, 13, 13, 13, 14, 15, 15]]
+
+<interactive>:1:10: error: [GHC-76037]
+    Not in scope: ‘D.fromUnamedColumns’
+    Suggested fix:
+      Perhaps use one of these:
+        ‘D.fromUnnamedColumns’ (imported from DataFrame),
+        ‘D.fromNamedColumns’ (imported from DataFrame)
+```
+
+This is a subtle error. The above example is missing an extra `n` in `Unnamed`. What the error means is: given everything I have access to (the so-called "scope") there is nothing by the name of `D.fromUnamedColumns`. Haskell the suggests some names that look close to the name you typed. This is the easiest kind of error to read.
+
+##### Forgetting `D.fromList`
+`[1,2,3]` is a regular Haskell list. Out function `D.fromList` takes the list and converts it to a dataframe column. Forgetting to add the `fromList` results in a type error:
+
+```haskell
+ghci> let df = D.fromUnnamedColumns [["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], D.fromList [24, 20, 22, 23, 25, 26, 26], D.fromList [14, 13, 13, 13, 14, 15, 15]]
+
+<interactive>:4:32: error: [GHC-83865]
+    • Couldn't match expected type ‘D.Column’ with actual type ‘[a0]’
+    • In the expression:
+        ["Monday", "Tuesday", "Wednesday", "Thursday", ....]
+      In the first argument of ‘D.fromUnnamedColumns’, namely
+        ‘[["Monday", "Tuesday", "Wednesday", ....],
+          D.fromList [24, 20, ....], D.fromList [14, 13, ....]]’
+      In the expression:
+        D.fromUnnamedColumns
+          [["Monday", "Tuesday", "Wednesday", ....],
+           D.fromList [24, 20, ....], D.fromList [14, 13, ....]]
+```
+
+This is generally what the error messages will look like when you pass the wrong "kind" of thing into a function. E.g. a number into a function that expects words.
+
+We'll look more at types later but what this message says is: I expected a Column but you gave me a list with some `a0`'s (a0 is a placeholder for "something"). It then goes on to tell you where exactly the error occured. Each subsequent line "zooms out" where the problem is. So the order is: input with error -> function with error -> expression with error.
+
+We'll see more of these as we go and we'll unpack how to check them later.
+
+##### Forgetting quotation marks around Strings
+
+```haskell
+ghci> let df = D.fromUnnamedColumns [D.fromList ["Monday, "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], D.fromList [24, 20, 22, 23, 25, 26, 26], D.fromList [14, 13, 13, 13, 14, 15, 15]]
+
+<interactive>:8:203: error: [GHC-21231]
+    lexical error in string/character literal at end of input
+```
+
+This error is more opaque. It tells you that by the time it got to the end of reading your code something didn't balance. When you see this error, you should make sure to check for unclosed parentheses or quotes.
+
 ### Getting the data from a file
 
 Most times you encouter data it is in a file (or spread amongst many files). Naturally, a tool for analysing data must support fast and easy file processing. Comma-separated-value (CSV) files are easily the most popular format for tabular data. Reading them is as simple as calling the function `readCsv`.
@@ -119,7 +177,7 @@ index | longitude | latitude | housing_median_age | total_rooms | total_bedrooms
 
 We've introduced a new function in the example above. The `take` function, given a number `n` and a dataframe, cuts everything but the first `n` rows of a dataframe. We use the function so we can check a few rows of a dataframe.
 
-### Aside: checking the type of a function
+#### Aside: checking the type of a function
 When calling a function you always need to know:
 * What it takes in
 * The order in which it takes its inputs
@@ -134,7 +192,13 @@ ghci> :t D.take
 D.take :: Int -> DataFrame -> DataFrame
 ```
 
-As expected, `df` is a `DataFrame`. `take` is a function that accepts an integer, and a dataframe, and gives you a dataframe. The way you read Haskell function signatures is with the last arrow shows you what the result type is. The stuff before the last arrow is all the arguments to the function in the order they come. Typically languages have a more visible separation between argument types and return types.
+As expected, `df` is a `DataFrame`. `take` is a function that accepts an integer, and a dataframe, and gives you a dataframe.
+
+The above lets us inspect the type of a function. You'll hear this word a lot in the Haskell world. Types are pretty important. They are an agreement between you and the function that determine how you get the "right" result from a function. Getting the types wrong means breaking that agreement. Some languages let you break these promises (that's if they even require them) and tell you only when the damage is done. Haskell asks you to be clearer about the promises you make and constantly checks that you uphold your end of the agreement.
+
+What we call a promise (for example, `D.take :: Int -> DataFrame -> DataFrame`) is more typically called a function signature. So let's use that term more explicity.
+
+The way you read Haskell function signatures is with the last arrow shows you what the result type is. The stuff before the last arrow is all the arguments to the function in the order they come. Typically languages have a more visible separation between argument types and return types.
 
 For example in Java functions look like:
 
@@ -225,11 +289,51 @@ index | Statistic | longitude | latitude | housing_median_age | total_rooms | po
 
 Knowing the distribution of your data from a glimpse helps you get an initial read of what the data looks like. Coupled with plotting, such techniques are a vital part of exploratory data analysis.
 
+#### Aside: a look at type errors
+Type errors, as we said before, are probably the most common type of error you'll encounter when working with code in Haskell. When understood and used well they are a valuable tool for understanding the structure of your code. Errors, in this case, are not something to avoid or to be scared of. They are a conversation with the compiler about your code.
+
+Since Haskell's vocabulary for understanding your code is types some errors that don't even seem like type errors are interpreted as such. For example, suppose we forget to put a comma in the `fromUnnamedColumns` example.
+
+```haskell
+ghci> let df = D.fromUnnamedColumns [D.fromList ["Monday" "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], D.fromList [24, 20, 22, 23, 25, 26, 26], D.fromList [14, 13, 13, 13, 14, 15, 15]]
+
+<interactive>:13:44: error: [GHC-39999]
+    • No instance for ‘Data.String.IsString (Text -> Text)’
+        arising from the literal ‘"Monday"’
+        (maybe you haven't applied a function to enough arguments?)
+    • In the expression: "Monday" "Tuesday"
+      In the first argument of ‘D.fromList’, namely
+        ‘["Monday" "Tuesday", "Wednesday", "Thursday", "Friday", ....]’
+      In the expression:
+        D.fromList
+          ["Monday" "Tuesday", "Wednesday", "Thursday", "Friday", ....]
+```
+
+Here, we removed the comma between `"Monday"` and `"Tuesday"`. You would assume that the error message would be `missing ',' between "Monday" and "Tuesday"`. Instead, Haskell assumes `"Monday"` is a function being applied to the argument `"Tuesday"`. The rest of the list of items consists of text/strings. So what the error message means is that it couldn't make a string-like thing (`Data.String.IsString`) from a function (assuming `"Monday"` is a function of type `:: Text -> Text`).
+
+Granted, the user experience could be improved. But the view of everything as a function with well-defined types makes it easy to think through what's broken.
+
+Let's look at a more useful/general case: calling `take` with a string instead of a number.
+
+```haskell
+ghci> D.take '5' df
+
+<interactive>:20:8: error: [GHC-83865]
+    • Couldn't match expected type ‘Int’ with actual type ‘Char’
+    • In the first argument of ‘D.take’, namely ‘'5'’
+      In the expression: D.take '5' df
+      In an equation for ‘it’: it = D.take '5' df
+```
+
+This is a much clearer error message because the types are much simpler. The function expected an integer but got a character. Giving a number to the take function violates the promise you made to the function. Your agreement with the function was that you would give it an integer but instead you gave it a character.
+
+The compiler is just keeping you honest.
+
 ## Plotting
 <TODO>
 
 ## Data preparation
-Data in the wild doesn't always come in a form that's easy to work with. A data analysis tool should make preparing and cleaning data easy. There are a number of common issues that data analysis too must handle. We'll go through a few common ones and show how to deal with them in Haskell. 
+Data in the wild doesn't always come in a form that's easy to work with. A data analysis tool should make preparing and cleaning data easy. There are a number of common issues that data analysis too must handle. We'll go through a few common ones and show how to deal with them in Haskell.
 
 ### Handling missing data
 Data is oftentimes incomplete. Sometimes because of legitimate reasons, often times because of errors. Handling missing data is a foundational tasks in data analysis. In Haskell, potentially missing values are represented by a "wrapper" type called [`Maybe`](https://en.wikibooks.org/wiki/Haskell/Understanding_monads/Maybe).
@@ -293,7 +397,7 @@ index |    0    |      1       |      2
 There is no general way to replace ALL nothing values with a default since the default depends on the type. In fact, trying to apply the wrong type to a function throws an error:
 
 ```haskell
-ghci> D.impute @Double "0" 0 df
+ghci> D.impute "0" (0 :: Double) df
 *** Exception: 
 
 [Error]: Type Mismatch
@@ -309,6 +413,4 @@ ghci> D.impute @Double "0" 0 df
                 apply @<Type> arg1 arg2
 ```
 
-In general, Haskell would usually have a compile-time. But because dataframes are usually run in REPL-like environments which offer immediate feedback to users, `dataframe` is fine turning some of these into runtime exceptions.
-
-
+<TODO>
