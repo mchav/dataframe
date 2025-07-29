@@ -111,9 +111,9 @@ Key features in example:
 
 
 .. toctree::
-   :maxdepth: 2
+    :maxdepth: 2
 
-   haskell_for_data_analysis
-   exploratory_data_analysis_primer
-   coming_from_pandas
-   coming_from_polars
+    haskell_for_data_analysis
+    exploratory_data_analysis_primer
+    coming_from_pandas
+    coming_from_polars
