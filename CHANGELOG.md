@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.3.0.1
+* Temporarily remove Parquet support. I think it'll be worth creating a spin off of snappy that doesn't rely on C bindings. Also I'll probably spin Parquet off into a separate library.
+
 ## 0.3.0.0
 * Now supports inner joins
 ```haskell
