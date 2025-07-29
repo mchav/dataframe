@@ -22,7 +22,7 @@ Example usage
     ghci> import qualified DataFrame as D
     ghci> import DataFrame ((|>))
     ghci> df <- D.readCsv "./data/housing.csv"
-    ghci> D.columnInfo df
+    ghci> D.describeColumns df
     --------------------------------------------------------------------------------------------------------------------
     index |    Column Name     | # Non-null Values | # Null Values | # Partially parsed | # Unique Values |     Type    
     ------|--------------------|-------------------|---------------|--------------------|-----------------|-------------
