@@ -94,9 +94,9 @@ Full example in `./examples` folder using many of the constructs in the API.
 ## Installing
 
 ### Jupyter notebook
-* We have a [hosted version of the Jupyter notebook](https://ihaskell-dataframe-crf7g5fvcpahdegz.westus2-01.azurewebsites.net/lab/) on azure sites. This is hosted on Azure's free tier so it slow and is only available at best effort.
+* We have a [hosted version of the Jupyter notebook](https://ulwazi-exh9dbh2exbzgbc9.westus-01.azurewebsites.net/lab) on azure sites. This is hosted on Azure's free tier so it slow and is only available at best effort.
 * To get started quickly, use the Dockerfile in the [ihaskell-dataframe](https://github.com/mchav/ihaskell-dataframe) to build and run an image with dataframe integration.
-* For a preview check out the [California Housing](https://ihaskell-dataframe-crf7g5fvcpahdegz.westus2-01.azurewebsites.net/lab/tree/California%20Housing.ipynb) notebook.
+* For a preview check out the [California Housing](https://ulwazi-exh9dbh2exbzgbc9.westus-01.azurewebsites.net/lab/tree/California%20Housing.ipynb) notebook.
 
 ### CLI
 * Run the installation script `curl '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mchav/dataframe/refs/heads/main/scripts/install.sh | sh`
