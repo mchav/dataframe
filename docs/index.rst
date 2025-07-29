@@ -17,8 +17,9 @@ Why use this DataFrame library?
 Example usage
 *************
 Looking through the structure of the columns.
-.. code-block:: haskell
-    
+
+.. code-block:: haskell    
+
     ghci> import qualified DataFrame as D
     ghci> import DataFrame ((|>))
     ghci> df <- D.readCsv "./data/housing.csv"
@@ -40,11 +41,13 @@ Looking through the structure of the columns.
     9     | longitude          | 20640             | 0             | 0                  | 844             | Double
 
 Automatically generate column names.
+
 .. code-block:: haskell
     ghci> import DataFrame.Functions (declareColumns)
     ghci> :exposeColumns df
 
-Aggregation query.
+We can use the generated columns in expressions.
+
 .. code-block:: haskell
     ghci> df |> D.groupBy ["ocean_proximity"] |> D.aggregate [(F.mean median_house_value) `F.as` "avg_house_value" ]
     --------------------------------------------
@@ -58,7 +61,9 @@ Aggregation query.
     3     | NEAR BAY        | 259212.31179039303
     4     | NEAR OCEAN      | 249433.97742663656
 
+
 Create a new column based on other columns.
+
 .. code-block:: haskell
     ghci> df |> D.derive "rooms_per_household" (total_rooms / households) |> D.take 10
     --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -80,6 +85,7 @@ Create a new column based on other columns.
 If two columns don't type check we catch this with a type error instead of a runtime error.
 
 .. code-block:: haskell
+
     ghci> df |> D.derive "nonsense_feature" (latitude + ocean_proximity) |> D.take 10
     
     <interactive>:14:47: error: [GHC-83865]
@@ -93,6 +99,7 @@ If two columns don't type check we catch this with a type error instead of a run
             ‘derive "nonsense_feature" (latitude + ocean_proximity)’
 
 Key features in example:
+
 * Intuitive, SQL-like API to get from data to insights.
 * Create type-safe references to columns in a dataframe using :exponseColumns
 * Type-safe column transformations for faster and safer exploration.
