@@ -43,12 +43,14 @@ Looking through the structure of the columns.
 Automatically generate column names.
 
 .. code-block:: haskell
+
     ghci> import DataFrame.Functions (declareColumns)
     ghci> :exposeColumns df
 
 We can use the generated columns in expressions.
 
 .. code-block:: haskell
+
     ghci> df |> D.groupBy ["ocean_proximity"] |> D.aggregate [(F.mean median_house_value) `F.as` "avg_house_value" ]
     --------------------------------------------
     index | ocean_proximity |  avg_house_value  
@@ -65,6 +67,7 @@ We can use the generated columns in expressions.
 Create a new column based on other columns.
 
 .. code-block:: haskell
+
     ghci> df |> D.derive "rooms_per_household" (total_rooms / households) |> D.take 10
     --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     index | longitude | latitude | housing_median_age | total_rooms | total_bedrooms | population | households |   median_income    | median_house_value | ocean_proximity | rooms_per_household
