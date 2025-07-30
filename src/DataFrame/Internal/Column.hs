@@ -652,6 +652,22 @@ toVector xs = case toVectorSafe xs of
   Left err  -> throw err
   Right val -> val
 
+{- | O(n) Converts a column to a list. Throws an exception if the wrong type is specified.
+
+__Examples:__
+
+@
+> column = fromList [(1 :: Int), 2, 3, 4]
+> toList @Int column
+[1,2,3,4]
+> toList @Double column
+exception: ...
+-}
+toList :: forall a . Columnable a => Column -> [a]
+toList xs = case toVectorSafe xs of
+  Left err  -> throw err
+  Right val -> VG.toList val
+
 -- | A safe version of toVector that returns an Either type.
 toVectorSafe :: forall a . Columnable a => Column -> Either DataFrameException (VB.Vector a)
 toVectorSafe column@(OptionalColumn (col :: VB.Vector b)) =
