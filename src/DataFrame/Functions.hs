@@ -81,24 +81,23 @@ mean (Col name) = let
             in total / fromIntegral n
     in NumericAggregate name "mean" mean'
 
-typeFromString :: String -> Q Type
-typeFromString s = do
-  maybeType <- lookupTypeName s
+typeFromString :: [String] -> Q Type
+typeFromString []  = fail "No type specified"
+typeFromString [t] = do
+  maybeType <- lookupTypeName t
   case maybeType of
     Just name -> return (ConT name)
-    Nothing -> do
-      if "Maybe " `L.isPrefixOf` s
-        then do
-          let innerType = drop 6 s
-          inner <- typeFromString innerType
-          return (AppT (ConT ''Maybe) inner)
-        else if "Either " `L.isPrefixOf` s
-          then do
-            let (left: right:_) = tail (words s)
-            lhs <- typeFromString left
-            rhs <- typeFromString right
-            return (AppT (AppT (ConT ''Either) lhs) rhs)
-          else fail $ "Unsupported type: " ++ s
+    Nothing -> fail $ "Unsupported type: " ++ t
+typeFromString [tycon,t1] = do
+  outer <- typeFromString [tycon]
+  inner <- typeFromString [t1]
+  return (AppT outer inner)
+typeFromString [tycon,t1,t2] = do
+  outer <- typeFromString [tycon]
+  lhs <- typeFromString [t1]
+  rhs <- typeFromString [t2]
+  return (AppT (AppT outer lhs) rhs)
+typeFromString s = fail $ "Unsupported type: " ++ (unwords s)
 
 declareColumns :: DataFrame -> DecsQ
 declareColumns df = let
@@ -106,7 +105,7 @@ declareColumns df = let
         types = map (columnTypeString . (`unsafeGetColumn` df)) names
         specs = zip names types
     in fmap concat $ forM specs $ \(nm, tyStr) -> do
-        ty  <- typeFromString tyStr
+        ty  <- typeFromString (words tyStr)
         let n  = mkName (T.unpack nm)
         sig <- sigD n [t| Expr $(pure ty) |]
         val <- valD (varP n) (normalB [| col $(TH.lift nm) |]) []
