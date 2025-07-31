@@ -146,7 +146,7 @@ declareColumns df = let
         types = map (columnTypeString . (`unsafeGetColumn` df)) names
         specs = zipWith (\name type_ -> (sanitize name, type_)) names types
         sanitize t = if isValidIdentifier t
-                     then "_" <> T.filter Char.isAlpha t <> "_"
+                     then "_" <> T.filter Char.isAlphaNum t <> "_"
                      else t
     in fmap concat $ forM specs $ \(nm, tyStr) -> do
         ty  <- typeFromString (words tyStr)
