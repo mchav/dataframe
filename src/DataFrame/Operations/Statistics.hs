@@ -91,7 +91,7 @@ correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
 correlation first second df = do
   f <- _getColumnAsDouble first df
   s <- _getColumnAsDouble second df
-  return $ SS.correlation2 f s
+  return $ SS.correlation (zip f s)
 
 _getColumnAsDouble :: T.Text -> DataFrame -> Maybe (VU.Vector Double)
 _getColumnAsDouble name df = case getColumn name df of
