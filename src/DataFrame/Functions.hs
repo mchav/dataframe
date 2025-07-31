@@ -27,6 +27,7 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector as VB
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
+import qualified Data.Char as Char
 
 col :: Columnable a => T.Text -> Expr a
 col = Col
@@ -81,6 +82,46 @@ mean (Col name) = let
             in total / fromIntegral n
     in NumericAggregate name "mean" mean'
 
+-- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
+isReservedId :: T.Text -> Bool
+isReservedId t = case t of
+  "case"     -> True
+  "class"    -> True
+  "data"     -> True
+  "default"  -> True
+  "deriving" -> True
+  "do"       -> True
+  "else"     -> True
+  "foreign"  -> True
+  "if"       -> True
+  "import"   -> True
+  "in"       -> True
+  "infix"    -> True
+  "infixl"   -> True
+  "infixr"   -> True
+  "instance" -> True
+  "let"      -> True
+  "module"   -> True
+  "newtype"  -> True
+  "of"       -> True
+  "then"     -> True
+  "type"     -> True
+  "where"    -> True
+  _          -> False
+
+isVarId :: T.Text -> Bool
+isVarId t = case T.uncons t of
+-- We might want to check  c == '_' || Char.isLowerCase c
+-- since the haskell report considers '_' a lowercase character
+-- However, to prevent an edge case where a user may have a
+-- "Name" and an "_Name_" in the same scope, wherein we'd end up
+-- with duplicate "_Name_"s, we eschew the check for '_' here.
+  Just (c, _) -> Char.isLowerCase c && Char.isAlpha c
+  Nothing -> False
+
+isValidIdentifier :: T.Text -> Bool
+isValidIdentifier t =  not (isVarId t || isReservedId t)
+
 typeFromString :: [String] -> Q Type
 typeFromString []  = fail "No type specified"
 typeFromString [t] = do
@@ -103,7 +144,10 @@ declareColumns :: DataFrame -> DecsQ
 declareColumns df = let
         names = (map fst . L.sortBy (compare `on` snd). M.toList . columnIndices) df
         types = map (columnTypeString . (`unsafeGetColumn` df)) names
-        specs = zip names types
+        specs = zipWith (\name type_ -> (sanitize name, type_)) names types
+        sanitize t = if isValidIdentifier t
+                     then "_" <> T.filter Char.isAlpha t <> "_"
+                     else t
     in fmap concat $ forM specs $ \(nm, tyStr) -> do
         ty  <- typeFromString (words tyStr)
         let n  = mkName (T.unpack nm)
