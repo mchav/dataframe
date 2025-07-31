@@ -8,6 +8,7 @@
 {-# LANGUAGE BangPatterns #-}
 module DataFrame.Operations.Statistics where
 
+import Data.Bifunctor (second)
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -29,13 +30,16 @@ import Data.Maybe (isJust, fromMaybe)
 import Data.Function ((&))
 import Data.Type.Equality (type (:~:)(Refl), TestEquality (testEquality))
 import Type.Reflection (typeRep)
-
+import qualified Data.Bifunctor as Data
+import DataFrame.Internal.Row (toRowValue)
 
 frequencies :: T.Text -> DataFrame -> DataFrame
 frequencies name df = case getColumn name df of
   Nothing -> throw $ ColumnNotFoundException name "frequencies" (map fst $ M.toList $ columnIndices df)
   Just ((BoxedColumn (column :: V.Vector a))) -> let
-      counts = valueCounts @a name df
+      counts :: [(a, Double)]
+      counts =  second fromIntegral <$> valueCounts @a name df
+      total :: Double
       total = P.sum $ map snd counts
       vText :: forall a . (Columnable a) => a -> T.Text
       vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
@@ -44,9 +48,10 @@ frequencies name df = case getColumn name df of
           Just Refl -> T.pack c'
           Nothing -> (T.pack . show) c'
       initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList  [toRowValue k, toRowValue $ k * 100.0 / total]) df) initDf  counts
   Just ((OptionalColumn (column :: V.Vector a))) -> let
-      counts = valueCounts @a name df
+      counts =  second fromIntegral <$> valueCounts @a name df
+      total :: Double
       total = P.sum $ map snd counts
       vText :: forall a . (Columnable a) => a -> T.Text
       vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
@@ -55,9 +60,10 @@ frequencies name df = case getColumn name df of
           Just Refl -> T.pack c'
           Nothing -> (T.pack . show) c'
       initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [toRowValue k, toRowValue $ k * 100.0  / total]) df) initDf counts
   Just ((UnboxedColumn (column :: VU.Vector a))) -> let
-      counts = valueCounts @a name df
+      counts =  second fromIntegral <$> valueCounts @a name df
+      total :: Double
       total = P.sum $ map snd counts
       vText :: forall a . (Columnable a) => a -> T.Text
       vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
@@ -66,7 +72,9 @@ frequencies name df = case getColumn name df of
           Just Refl -> T.pack c'
           Nothing -> (T.pack . show) c'
       initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
+      
+    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList  [toRowValue k, toRowValue $ k * 100.0 / total]) df) initDf  counts
+  _ -> error "There are ungrouped columns"
 
 mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic mean'
