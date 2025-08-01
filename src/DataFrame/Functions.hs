@@ -120,7 +120,7 @@ isVarId t = case T.uncons t of
   Nothing -> False
 
 isValidIdentifier :: T.Text -> Bool
-isValidIdentifier t =  not (isVarId t || isReservedId t)
+isValidIdentifier t =  not (isVarId t) || isReservedId t
 
 typeFromString :: [String] -> Q Type
 typeFromString []  = fail "No type specified"
