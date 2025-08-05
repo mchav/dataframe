@@ -145,46 +145,6 @@ instance Eq Column where
       Just Refl -> VB.map (L.sort . VG.toList) a == VB.map (L.sort . VG.toList) b
   (==) _ _ = False
 
--- | A type with column representations used to select the
--- "right" representation when specializing the `toColumn` function.
-data Rep
-  = RBoxed
-  | RUnboxed
-  | ROptional
-  | RGBoxed
-  | RGUnboxed
-  | RGOptional
-
--- | Type-level if statement.
-type family If (cond :: Bool) (yes :: k) (no :: k) :: k where
-  If 'True  yes _  = yes
-  If 'False _   no = no
-
--- | All unboxable types (according to the `vector` package).
-type family Unboxable (a :: Type) :: Bool where
-  Unboxable Int    = 'True
-  Unboxable Int8   = 'True
-  Unboxable Int16  = 'True
-  Unboxable Int32  = 'True
-  Unboxable Int64  = 'True
-  Unboxable Word   = 'True
-  Unboxable Word8  = 'True
-  Unboxable Word16 = 'True
-  Unboxable Word32 = 'True
-  Unboxable Word64 = 'True
-  Unboxable Char   = 'True
-  Unboxable Bool   = 'True
-  Unboxable Double = 'True
-  Unboxable Float  = 'True
-  Unboxable _      = 'False
-
--- | Compute the column representation tag for any ‘a’.
-type family KindOf a :: Rep where
-  KindOf (Maybe a)     = 'ROptional
-  KindOf (VB.Vector a) = 'RGBoxed
-  KindOf (VU.Vector a) = 'RGUnboxed
-  KindOf a             = If (Unboxable a) 'RUnboxed 'RBoxed
-
 -- | A class for converting a vector to a column of the appropriate type.
 -- Given each Rep we tell the `toColumnRep` function which Column type to pick.
 class ColumnifyRep (r :: Rep) a where
@@ -254,28 +214,6 @@ fromList ::
   forall a. (Columnable a, ColumnifyRep (KindOf a) a)
   => [a] -> Column
 fromList = toColumnRep @(KindOf a) . VB.fromList
-
--- | Type-level boolean for constraint/type comparison.
-data SBool (b :: Bool) where
-  STrue  :: SBool 'True
-  SFalse :: SBool 'False
-
--- | The runtime witness for our type-level branching.
-class SBoolI (b :: Bool) where
-  sbool :: SBool b
-
-instance SBoolI 'True  where sbool = STrue
-instance SBoolI 'False where sbool = SFalse
-
--- | Type-level function to determine whether or not a type is unboxa
-sUnbox :: forall a. SBoolI (Unboxable a) => SBool (Unboxable a)
-sUnbox = sbool @(Unboxable a)
-
-type family When (flag :: Bool) (c :: Constraint) :: Constraint where
-  When 'True  c = c
-  When 'False c = ()          -- empty constraint
-
-type UnboxIf a = When (Unboxable a) (VU.Unbox a)
 
 -- | An internal function to map a function over the values of a column.
 mapColumn
