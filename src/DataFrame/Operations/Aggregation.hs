@@ -135,13 +135,3 @@ aggregate aggs df = let
 
 distinct :: DataFrame -> DataFrame
 distinct df = groupBy (columnNames df) df
-
-distinctBy :: [T.Text] -> DataFrame -> DataFrame
-distinctBy names df = let
-    excluded = (columnNames df) \\ names
-    distinctColumns = groupBy names df
-    aggF name = case unsafeGetColumn name distinctColumns of
-      GroupedBoxedColumn (column :: V.Vector (V.Vector a)) -> (F.anyValue (F.col @a name)) `F.as` name
-      GroupedUnboxedColumn (column :: V.Vector (VU.Vector a)) -> (F.anyValue (F.col @a name)) `F.as` name
-      _ -> error $ "Column isn't grouped: " ++ (T.unpack name)
-  in aggregate (map aggF excluded) distinctColumns
