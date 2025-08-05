@@ -113,7 +113,7 @@ instance Show Column where
   show (OptionalColumn column) = show column
   show (GroupedBoxedColumn column) = show column
   show (GroupedUnboxedColumn column) = show column
-  _ = error "Cannot show column"
+  show _ = error "Cannot show column"
 
 instance Eq Column where
   (==) :: Column -> Column -> Bool
