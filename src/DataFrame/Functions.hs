@@ -112,12 +112,12 @@ isReservedId t = case t of
 
 isVarId :: T.Text -> Bool
 isVarId t = case T.uncons t of
--- We might want to check  c == '_' || Char.isLowerCase c
+-- We might want to check  c == '_' || Char.isLower c
 -- since the haskell report considers '_' a lowercase character
 -- However, to prevent an edge case where a user may have a
 -- "Name" and an "_Name_" in the same scope, wherein we'd end up
 -- with duplicate "_Name_"s, we eschew the check for '_' here.
-  Just (c, _) -> Char.isLowerCase c && Char.isAlpha c
+  Just (c, _) -> Char.isLower c && Char.isAlpha c
   Nothing -> False
 
 isHaskellIdentifier :: T.Text -> Bool
