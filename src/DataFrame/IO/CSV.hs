@@ -24,7 +24,7 @@ import Control.Applicative ((<$>), (<|>), (<*>), (<*), (*>), many)
 import Control.Monad (forM_, zipWithM_, unless, void)
 import Data.Attoparsec.Text
 import Data.Char
-import DataFrame.Internal.Column (Column(..), freezeColumn', writeColumn, columnLength)
+import DataFrame.Internal.Column (Column(..), MutableColumn(..), freezeColumn', writeColumn, columnLength)
 import DataFrame.Internal.DataFrame (DataFrame(..))
 import DataFrame.Internal.Parsing
 import DataFrame.Operations.Typing
@@ -107,13 +107,13 @@ readSeparated c opts path = do
             }
 {-# INLINE readSeparated #-}
 
-getInitialDataVectors :: Int -> VM.IOVector Column -> [T.Text] -> IO ()
+getInitialDataVectors :: Int -> VM.IOVector MutableColumn -> [T.Text] -> IO ()
 getInitialDataVectors n mCol xs = do
     forM_ (zip [0..] xs) $ \(i, x) -> do
         col <- case inferValueType x of
-                "Int" -> MutableUnboxedColumn <$>  ((VUM.unsafeNew n :: IO (VUM.IOVector Int)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readInt x) >> return c)
-                "Double" -> MutableUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Double)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readDouble x) >> return c)
-                _ -> MutableBoxedColumn <$> ((VM.unsafeNew n :: IO (VM.IOVector T.Text)) >>= \c -> VM.unsafeWrite c 0 x >> return c)
+                "Int" -> MUnboxedColumn <$>  ((VUM.unsafeNew n :: IO (VUM.IOVector Int)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readInt x) >> return c)
+                "Double" -> MUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Double)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readDouble x) >> return c)
+                _ -> MBoxedColumn <$> ((VM.unsafeNew n :: IO (VM.IOVector T.Text)) >>= \c -> VM.unsafeWrite c 0 x >> return c)
         VM.unsafeWrite mCol i col
 {-# INLINE getInitialDataVectors #-}
 
@@ -128,7 +128,7 @@ inferValueType s = let
 {-# INLINE inferValueType #-}
 
 -- | Reads rows from the handle and stores values in mutable vectors.
-fillColumns :: Int -> Char -> VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
+fillColumns :: Int -> Char -> VM.IOVector MutableColumn -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
 fillColumns n c mutableCols nullIndices handle = do
     input <- newIORef (mempty :: T.Text)
     forM_ [1..n] $ \i -> do
@@ -148,7 +148,7 @@ fillColumns n c mutableCols nullIndices handle = do
 {-# INLINE fillColumns #-}
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
-writeValue :: VM.IOVector Column -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> T.Text -> IO ()
+writeValue :: VM.IOVector MutableColumn -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> T.Text -> IO ()
 writeValue mutableCols nullIndices count colIndex value = do
     col <- VM.unsafeRead mutableCols colIndex
     res <- writeColumn count value col
@@ -157,7 +157,7 @@ writeValue mutableCols nullIndices count colIndex value = do
 {-# INLINE writeValue #-}
 
 -- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
-freezeColumn :: VM.IOVector Column -> V.Vector [(Int, T.Text)] -> ReadOptions -> Int -> IO Column
+freezeColumn :: VM.IOVector MutableColumn -> V.Vector [(Int, T.Text)] -> ReadOptions -> Int -> IO Column
 freezeColumn mutableCols nulls opts colIndex = do
     col <- VM.unsafeRead mutableCols colIndex
     freezeColumn' (nulls V.! colIndex) col

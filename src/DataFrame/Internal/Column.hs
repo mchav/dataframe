@@ -54,9 +54,10 @@ data Column where
   GroupedBoxedColumn :: Columnable a => VB.Vector (VB.Vector a) -> Column
   GroupedUnboxedColumn :: (Columnable a, VU.Unbox a) => VB.Vector (VU.Vector a) -> Column
   GroupedOptionalColumn :: (Columnable a) => VB.Vector (VB.Vector (Maybe a)) -> Column
-  -- These are used purely for I/O, not to store live data.
-  MutableBoxedColumn :: Columnable a => VBM.IOVector a -> Column
-  MutableUnboxedColumn :: (Columnable a, VU.Unbox a) => VUM.IOVector a -> Column
+
+data MutableColumn where
+  MBoxedColumn :: Columnable a => VBM.IOVector a -> MutableColumn
+  MUnboxedColumn :: (Columnable a, VU.Unbox a) => VUM.IOVector a -> MutableColumn
 
 -- | A TypedColumn is a wrapper around our type-erased column.
 -- It is used to type check expressions on columns.
@@ -515,14 +516,14 @@ zipWithColumns f left right = let
 {-# INLINE zipWithColumns #-}
 
 -- Functions for mutable columns (intended for IO).
-writeColumn :: Int -> T.Text -> Column -> IO (Either T.Text Bool)
-writeColumn i value (MutableBoxedColumn (col :: VBM.IOVector a)) = let
+writeColumn :: Int -> T.Text -> MutableColumn -> IO (Either T.Text Bool)
+writeColumn i value (MBoxedColumn (col :: VBM.IOVector a)) = let
   in case testEquality (typeRep @a) (typeRep @T.Text) of
       Just Refl -> (if isNullish value
                     then VBM.unsafeWrite col i "" >> return (Left $! value)
                     else VBM.unsafeWrite col i value >> return (Right True))
       Nothing -> return (Left value)
-writeColumn i value (MutableUnboxedColumn (col :: VUM.IOVector a)) =
+writeColumn i value (MUnboxedColumn (col :: VUM.IOVector a)) =
   case testEquality (typeRep @a) (typeRep @Int) of
       Just Refl -> case readInt value of
         Just v -> VUM.unsafeWrite col i v >> return (Right True)
@@ -535,12 +536,12 @@ writeColumn i value (MutableUnboxedColumn (col :: VUM.IOVector a)) =
 writeColumn _ _ _ = error "Cannot write to immutable column"
 {-# INLINE writeColumn #-}
 
-freezeColumn' :: [(Int, T.Text)] -> Column -> IO Column
-freezeColumn' nulls (MutableBoxedColumn col)
+freezeColumn' :: [(Int, T.Text)] -> MutableColumn -> IO Column
+freezeColumn' nulls (MBoxedColumn col)
   | null nulls = BoxedColumn <$> VB.unsafeFreeze col
   | all (isNullish . snd) nulls = OptionalColumn . VB.imap (\i v -> if i `elem` map fst nulls then Nothing else Just v) <$> VB.unsafeFreeze col
   | otherwise  = BoxedColumn . VB.imap (\i v -> if i `elem` map fst nulls then Left (fromMaybe (error "") (lookup i nulls)) else Right v) <$> VB.unsafeFreeze col
-freezeColumn' nulls (MutableUnboxedColumn col)
+freezeColumn' nulls (MUnboxedColumn col)
   | null nulls = UnboxedColumn <$> VU.unsafeFreeze col
   | all (isNullish . snd) nulls = VU.unsafeFreeze col >>= \c -> return $ OptionalColumn $ VB.generate (VU.length c) (\i -> if i `elem` map fst nulls then Nothing else Just (c VU.! i))
   | otherwise  = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ VB.generate (VU.length c) (\i -> if i `elem` map fst nulls then Left (fromMaybe (error "") (lookup i nulls)) else Right (c VU.! i))
