@@ -119,8 +119,21 @@ isVarId t = case T.uncons t of
   Just (c, _) -> Char.isLowerCase c && Char.isAlpha c
   Nothing -> False
 
-isValidIdentifier :: T.Text -> Bool
-isValidIdentifier t =  not (isVarId t) || isReservedId t
+isHaskellIdentifier :: T.Text -> Bool
+isHaskellIdentifier t =  not (isVarId t) || isReservedId t
+
+sanitize :: T.Text -> T.Text
+sanitize t = if isHaskellIdentifier t'
+             then "_" <> t' <> "_"
+             else t'
+  where
+    t' = T.map replaceInvalidCharacters t
+    replaceInvalidCharacters c
+      | Char.isSpace c = '_'
+      | Char.isPunctuation c = '_' -- '-' will also become a '_'
+      | Char.isSymbol c = '_'
+      | Char.isAlphaNum c = c -- Blanket condition
+      | otherwise = '_' -- If we're unsure we'll default to an underscore
 
 typeFromString :: [String] -> Q Type
 typeFromString []  = fail "No type specified"
@@ -145,9 +158,6 @@ declareColumns df = let
         names = (map fst . L.sortBy (compare `on` snd). M.toList . columnIndices) df
         types = map (columnTypeString . (`unsafeGetColumn` df)) names
         specs = zipWith (\name type_ -> (sanitize name, type_)) names types
-        sanitize t = if isValidIdentifier t
-                     then "_" <> T.filter Char.isAlphaNum t <> "_"
-                     else t
     in fmap concat $ forM specs $ \(nm, tyStr) -> do
         ty  <- typeFromString (words tyStr)
         let n  = mkName (T.unpack nm)
