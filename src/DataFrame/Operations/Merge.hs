@@ -43,4 +43,5 @@ instance Semigroup D.DataFrame where
 instance Monoid D.DataFrame where
   mempty = D.empty
 
-
+(|||) :: D.DataFrame -> D.DataFrame -> D.DataFrame
+(|||) a b = D.fold (\name acc -> D.insertColumn name (D.unsafeGetColumn name b) acc) (D.columnNames b) a
