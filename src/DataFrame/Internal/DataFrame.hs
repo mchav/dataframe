@@ -16,9 +16,10 @@ import Control.Monad (join)
 import DataFrame.Display.Terminal.PrettyPrint
 import DataFrame.Internal.Column
 import Data.Function (on)
-import Data.List (sortBy, transpose)
+import Data.List (sortBy, transpose, (\\))
 import Data.Maybe (isJust)
 import Data.Type.Equality (type (:~:)(Refl), TestEquality (testEquality))
+import Text.Printf
 import Type.Reflection (typeRep)
 
 data DataFrame = DataFrame
@@ -29,6 +30,22 @@ data DataFrame = DataFrame
     columnIndices :: M.Map T.Text Int,
     dataframeDimensions :: (Int, Int)
   }
+
+data GroupedDataFrame = Grouped {
+  fullDataframe :: DataFrame,
+  groupedColumns :: [T.Text],
+  valueIndices :: VU.Vector Int,
+  offsets :: VU.Vector Int
+}
+
+instance Show GroupedDataFrame where
+  show (Grouped df cols indices os) = printf "{ keyColumns: %s groupedColumns: %s }" 
+                                             (show cols)
+                                             (show ((M.keys (columnIndices df)) \\ cols))
+
+instance Eq GroupedDataFrame where
+  (==) (Grouped df cols indices os) (Grouped df' cols' indices' os') = (df == df') && (cols == cols') 
+
 
 instance Eq DataFrame where
   (==) :: DataFrame -> DataFrame -> Bool
@@ -47,8 +64,6 @@ asText d properMarkdown =
       getType (BoxedColumn (column :: V.Vector a)) = T.pack $ show (typeRep @a)
       getType (UnboxedColumn (column :: VU.Vector a)) = T.pack $ show (typeRep @a)
       getType (OptionalColumn (column :: V.Vector a)) = T.pack $ show (typeRep @a)
-      getType (GroupedBoxedColumn (column :: V.Vector a)) = T.pack $ show (typeRep @a)
-      getType (GroupedUnboxedColumn (column :: V.Vector a)) = T.pack $ show (typeRep @a)
       -- Separate out cases dynamically so we don't end up making round trip string
       -- copies.
       get :: Maybe Column -> V.Vector T.Text
@@ -59,8 +74,6 @@ asText d properMarkdown =
                 Nothing -> V.map (T.pack . show) column
       get (Just (UnboxedColumn column)) = V.map (T.pack . show) (V.convert column)
       get (Just (OptionalColumn column)) = V.map (T.pack . show) column
-      get (Just (GroupedBoxedColumn column)) = V.map (T.pack . show) column
-      get (Just (GroupedUnboxedColumn column)) = V.map (T.pack . show) column
       getTextColumnFromFrame df (i, name) = if i == 0
                                             then V.fromList (map (T.pack . show) [0..(fst (dataframeDimensions df) - 1)])
                                             else get $ (V.!?) (columns d) ((M.!) (columnIndices d) name)

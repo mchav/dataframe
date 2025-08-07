@@ -27,14 +27,16 @@ import Control.Monad (foldM_)
 import Control.Monad.ST (runST)
 import DataFrame.Internal.Column (Column(..), fromVector,
                                   getIndicesUnboxed, getIndices, 
+                                  atIndicesStable,
                                   Columnable, unwrapTypedColumn,
                                   columnVersionString)
-import DataFrame.Internal.DataFrame (DataFrame(..), empty, getColumn, unsafeGetColumn)
+import DataFrame.Internal.DataFrame (GroupedDataFrame(..), DataFrame(..), empty, getColumn, unsafeGetColumn)
 import DataFrame.Internal.Expression
 import DataFrame.Internal.Parsing
 import DataFrame.Internal.Types
 import DataFrame.Errors
 import DataFrame.Operations.Core
+import DataFrame.Operations.Merge
 import DataFrame.Operations.Subset
 import Data.Function ((&))
 import Data.Hashable
@@ -48,33 +50,26 @@ import Type.Reflection (typeRep, typeOf)
 groupBy ::
   [T.Text] ->
   DataFrame ->
-  DataFrame
+  GroupedDataFrame
 groupBy names df
   | any (`notElem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
-  | otherwise = L.foldl' insertColumns initDf groupingColumns
+  | otherwise = Grouped df names (VG.map fst valueIndices) (VU.fromList (reverse (changingPoints valueIndices)))
   where
     indicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` names) (columnIndices df)
     rowRepresentations = VU.generate (fst (dimensions df)) (mkRowRep indicesToGroup df)
 
-    valueIndices = V.fromList $ map (VG.map fst) $ VG.groupBy (\a b -> snd a == snd b) (runST $ do
+    valueIndices = runST $ do
       withIndexes <- VG.thaw $ VG.indexed rowRepresentations
       VA.sortBy (\(a, b) (a', b') -> compare b b') withIndexes
-      VG.unsafeFreeze withIndexes)
+      VG.unsafeFreeze withIndexes
 
-    -- These are the indexes of the grouping/key rows i.e the minimum elements
-    -- of the list.
-    keyIndices = VU.generate (VG.length valueIndices) (\i -> VG.minimum $ valueIndices VG.! i)
-    -- this will be our main worker function in the fold that takes all
-    -- indices and replaces each value in a column with a list of
-    -- the elements with the indices where the grouped row
-    -- values are the same.
-    insertColumns = groupColumns valueIndices df
-    -- Out initial DF will just be all the grouped rows added to an
-    -- empty dataframe. The entries are dedued and are in their
-    -- initial order.
-    initDf = L.foldl' (mkGroupedColumns keyIndices df) empty names
-    -- All the rest of the columns that we are grouping by.
-    groupingColumns = columnNames df L.\\ names
+changingPoints :: (Eq a, VU.Unbox a) => VU.Vector (Int, a) -> [Int]
+changingPoints vs = VG.length vs : (fst (VU.ifoldl findChangePoints initialState vs))
+  where
+    initialState = ([0], snd (VG.head vs))
+    findChangePoints (offsets, currentVal) index (_, newVal)
+      | currentVal == newVal = (offsets, currentVal)
+      | otherwise = (index : offsets, newVal)
 
 mkRowRep :: [Int] -> DataFrame -> Int -> Int
 mkRowRep groupColumnIndices df i = if length h == 1 then head h else hash h
@@ -84,7 +79,6 @@ mkRowRep groupColumnIndices df i = if length h == 1 then head h else hash h
     getHashedElem (BoxedColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
     getHashedElem (UnboxedColumn (c :: VU.Vector a)) j = hash' @a (c VU.! j)
     getHashedElem (OptionalColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
-    getHashedElem _ _ = 0
     mkHash j = getHashedElem ((V.!) (columns df) j) i 
 
 -- | This hash function returns the hash when given a non numeric type but
@@ -111,27 +105,21 @@ mkGroupedColumns indices df acc name =
       let vs = indices `getIndicesUnboxed` column
        in insertUnboxedVector name vs acc
 
-groupColumns :: V.Vector (VU.Vector Int) -> DataFrame -> DataFrame -> T.Text -> DataFrame
-groupColumns indices df acc name =
-  case (V.!) (columns df) (columnIndices df M.! name) of
-    BoxedColumn column ->
-      let vs = V.map (`getIndices` column) indices
-       in insertColumn name (GroupedBoxedColumn vs) acc
-    OptionalColumn column ->
-      let vs = V.map (`getIndices` column) indices
-       in insertColumn name (GroupedBoxedColumn vs) acc
-    UnboxedColumn column ->
-      let vs = V.map (`getIndicesUnboxed` column) indices
-       in insertColumn name (GroupedUnboxedColumn vs) acc
-
-aggregate :: [(T.Text, UExpr)] -> DataFrame -> DataFrame
-aggregate aggs df = let
-    groupingColumns = Prelude.filter (\c -> not $ T.isPrefixOf "Grouped" (T.pack $ columnVersionString (fromMaybe (error "Unexpected") (getColumn c df)))) (columnNames df)
-    df' = select groupingColumns df
+aggregate :: [(T.Text, UExpr)] -> GroupedDataFrame -> DataFrame
+-- aggregate aggs df = undefined
+aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) = let
+    df' = selectIndices (VG.map (valueIndices VG.!) (VG.init offsets)) (select groupingColumns df)
+    groupedColumns = columnNames df L.\\ groupingColumns
     f (name, Wrap (expr :: Expr a)) d = let
-        value = interpret @a df expr
+        value = interpretAggregation @a gdf expr
       in insertColumn name (unwrapTypedColumn value) d
   in fold f aggs df'
 
+selectIndices :: VU.Vector Int -> DataFrame -> DataFrame
+selectIndices xs df = df { columns = VG.map (atIndicesStable xs) (columns df)
+                         , dataframeDimensions = (VG.length xs, VG.length (columns df))
+                         }
+
 distinct :: DataFrame -> DataFrame
-distinct df = groupBy (columnNames df) df
+distinct df = selectIndices (VG.map (indices VG.!) (VG.init os)) df
+  where (Grouped _ _ indices os) = groupBy (columnNames df) df

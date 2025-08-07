@@ -90,12 +90,6 @@ mkRowRep df names i = V.generate (S.size names) (\index -> get (names' V.! index
       Just (UnboxedColumn c) -> case c VU.!? i of
         Just e -> toRowValue e
         Nothing -> throwError name
-      Just (GroupedBoxedColumn c) -> case c V.!? i of
-        Just e -> toRowValue e
-        Nothing -> throwError name
-      Just (GroupedUnboxedColumn c) -> case c V.!? i of
-        Just e -> toRowValue e
-        Nothing -> throwError name
 
 sortedIndexes' :: Bool -> V.Vector Row -> VU.Vector Int
 sortedIndexes' asc rows = runST $ do

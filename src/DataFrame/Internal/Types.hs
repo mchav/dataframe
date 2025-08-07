@@ -33,9 +33,6 @@ data Rep
   = RBoxed
   | RUnboxed
   | ROptional
-  | RGBoxed
-  | RGUnboxed
-  | RGOptional
 
 -- | Type-level if statement.
 type family If (cond :: Bool) (yes :: k) (no :: k) :: k where
@@ -60,11 +57,25 @@ type family Unboxable (a :: Type) :: Bool where
   Unboxable Float  = 'True
   Unboxable _      = 'False
 
+-- | All unboxable types (according to the `vector` package).
+type family Numeric (a :: Type) :: Bool where
+  Numeric Int    = 'True
+  Numeric Int8   = 'True
+  Numeric Int16  = 'True
+  Numeric Int32  = 'True
+  Numeric Int64  = 'True
+  Numeric Word   = 'True
+  Numeric Word8  = 'True
+  Numeric Word16 = 'True
+  Numeric Word32 = 'True
+  Numeric Word64 = 'True
+  Numeric Double = 'True
+  Numeric Float  = 'True
+  Numeric _      = 'False
+
 -- | Compute the column representation tag for any ‘a’.
 type family KindOf a :: Rep where
   KindOf (Maybe a)     = 'ROptional
-  KindOf (VB.Vector a) = 'RGBoxed
-  KindOf (VU.Vector a) = 'RGUnboxed
   KindOf a             = If (Unboxable a) 'RUnboxed 'RBoxed
 
 -- | Type-level boolean for constraint/type comparison.
@@ -82,6 +93,9 @@ instance SBoolI 'False where sbool = SFalse
 -- | Type-level function to determine whether or not a type is unboxa
 sUnbox :: forall a. SBoolI (Unboxable a) => SBool (Unboxable a)
 sUnbox = sbool @(Unboxable a)
+
+sNumeric :: forall a. SBoolI (Numeric a) => SBool (Numeric a)
+sNumeric = sbool @(Numeric a)
 
 type family When (flag :: Bool) (c :: Constraint) :: Constraint where
   When 'True  c = c

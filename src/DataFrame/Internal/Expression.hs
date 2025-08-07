@@ -78,32 +78,84 @@ interpret df (BinOp _ (f :: c -> d -> e) left right) = let
         (TColumn left') = interpret @c df left
         (TColumn right') = interpret @d df right
     in TColumn $ fromMaybe (error "mapColumn returned nothing") (zipWithColumns f left' right')
-interpret df (GeneralAggregate name op (f :: forall v b. (VG.Vector v b, Columnable b) => v b -> c)) = case getColumn name df of
+interpret _ expr = error "Invalid operation for dataframe"
+
+interpretAggregation :: forall a . (Columnable a) => GroupedDataFrame -> Expr a -> TypedColumn a
+interpretAggregation gdf (Lit value) = TColumn $ fromVector $ V.replicate (VG.length (offsets gdf) - 1) value
+interpretAggregation gdf@(Grouped df names indices os) (Col name) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
-    Just (GroupedBoxedColumn col) -> TColumn $ fromVector $ VG.map f col
-    Just (GroupedUnboxedColumn col) -> TColumn $ fromVector $ VG.map f col
-    Just (GroupedOptionalColumn col) -> TColumn $ fromVector $ VG.map f col
-    _ -> error ""
-interpret df (ReductionAggregate name op (f :: forall v a. (VG.Vector v a, Columnable a) => v a -> a)) = case getColumn name df of
+    Just col -> TColumn $ atIndicesStable (VG.map (indices VG.!) (VG.init os)) col
+interpretAggregation gdf (Apply _ (f :: c -> d) expr) = let
+        (TColumn value) = interpretAggregation @c gdf expr
+    in case mapColumn f value of
+        Nothing -> error "Type error in interpretation"
+        Just col -> TColumn col
+interpretAggregation gdf (BinOp _ (f :: c -> d -> e) left right) = let
+        (TColumn left') = interpretAggregation @c gdf left
+        (TColumn right') = interpretAggregation @d gdf right
+    in case zipWithColumns f left' right' of
+        Nothing  -> error "Type error in binary operation"
+        Just col -> TColumn col
+interpretAggregation gdf@(Grouped df names indices os) (GeneralAggregate name op (f :: forall v b. (VG.Vector v b, Columnable b) => v b -> c)) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
-    Just (GroupedBoxedColumn col) -> TColumn $ fromVector $ VG.map f col
-    Just (GroupedUnboxedColumn col) -> TColumn $ fromVector $ VG.map f col
-    Just (GroupedOptionalColumn col) -> TColumn $ fromVector $ VG.map f col
-    _ -> error ""
-interpret df (NumericAggregate name op (f :: VU.Vector b -> c)) = case getColumn name df of
+    Just (BoxedColumn col) -> TColumn $ fromVector $
+                                V.generate (VG.length os - 1)
+                                    (\i -> f (V.generate (os VG.! (i + 1) - (os VG.! i))
+                                                (\j -> col VG.! (indices VG.! (j + (os VG.! i))))
+                                                )
+                                    )
+    Just (UnboxedColumn col) -> TColumn $ fromVector $
+                                V.generate (VG.length os - 1)
+                                    (\i -> f (VU.generate (os VG.! (i + 1) - (os VG.! i))
+                                                (\j -> col VG.! (indices VG.! (j + (os VG.! i))))
+                                                )
+                                    )
+    Just (OptionalColumn col) -> TColumn $ fromVector $
+                                V.generate (VG.length os - 1)
+                                    (\i -> f (V.generate (os VG.! (i + 1) - (os VG.! i))
+                                                (\j -> col VG.! (indices VG.! (j + (os VG.! i))))
+                                                )
+                                    )
+interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate name op (f :: forall v a. (VG.Vector v a, Columnable a) => v a -> a)) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
-    Just (GroupedUnboxedColumn (col :: V.Vector (VU.Vector d))) -> case testEquality (typeRep @b) (typeRep @d) of
-        Just Refl -> TColumn $ fromVector $ VG.map f col
-        -- Do the matching trick here.
-        Nothing -> case testEquality (typeRep @d) (typeRep @Int) of
-            Just Refl -> case testEquality (typeRep @b) (typeRep @Double) of
-                Just Refl -> TColumn $ fromVector $ VG.map (f . (VG.map fromIntegral)) col
-                Nothing -> error $ "Column not a number: " ++ (T.unpack name)
-            Nothing -> case testEquality (typeRep @d) (typeRep @Double) of
-                Just Refl -> case testEquality (typeRep @b) (typeRep @Int) of
-                    Just Refl -> TColumn $ fromVector $ VG.map (f . (VG.map round)) col
-                    Nothing -> error $ "Column not a number: " ++ (T.unpack name)
-    _ -> error "Cannot apply numeric aggregation to boxed column"
+    Just (BoxedColumn col) -> TColumn $ fromVector $
+                                V.generate (VG.length os - 1)
+                                    (\i -> f (V.generate (os VG.! (i + 1) - (os VG.! i))
+                                                (\j -> col VG.! (indices VG.! (j + (os VG.! i))))
+                                             )
+                                    )
+    Just (UnboxedColumn col) -> TColumn $ fromVector $
+                                V.generate (VG.length os - 1)
+                                    (\i -> f (VU.generate (os VG.! (i + 1) - (os VG.! i))
+                                                (\j -> col VG.! (indices VG.! (j + (os VG.! i))))
+                                             )
+                                    )
+    Just (OptionalColumn col) -> TColumn $ fromVector $
+                                V.generate (VG.length os - 1)
+                                    (\i -> f (V.generate (os VG.! (i + 1) - (os VG.! i))
+                                                (\j -> col VG.! (indices VG.! (j + (os VG.! i))))
+                                             )
+                                    )
+interpretAggregation gdf@(Grouped df names indices os) (NumericAggregate name op (f :: VU.Vector b -> c)) = case getColumn name df of
+    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Just (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @b) (typeRep @d) of
+        Nothing   -> error $ "Cannot apply numeric aggregation to non-numeric column: " ++ (T.unpack name)
+        Just Refl -> case sNumeric @d of
+            SFalse -> error $ "Cannot apply numeric aggregation to non-numeric column: " ++ (T.unpack name)
+            STrue  -> case sUnbox @c of
+                SFalse -> TColumn $ fromVector $
+                                    V.generate (VG.length os - 1)
+                                        (\i -> f (VU.generate (os VG.! (i + 1) - (os VG.! i))
+                                                    (\j -> col VG.! (indices VG.! (j + (os VG.! i))))
+                                                )
+                                        )
+                STrue  -> TColumn $ fromUnboxedVector $
+                                    VU.generate (VG.length os - 1)
+                                        (\i -> f (VU.generate (os VG.! (i + 1) - (os VG.! i))
+                                                    (\j -> col VG.! (indices VG.! (j + (os VG.! i))))
+                                                )
+                                        )
+    _ -> error $ "Cannot apply numeric aggregation to non-numeric column: " ++ (T.unpack name)
 
 instance (Num a, Columnable a) => Num (Expr a) where
     (+) :: Expr a -> Expr a -> Expr a

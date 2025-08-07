@@ -67,7 +67,6 @@ frequencies name df = case getColumn name df of
           Nothing -> (T.pack . show) c'
       initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
     in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [k, k * 100 `div` total]) df) initDf counts
-  _ -> error $ "There are ungrouped columns"
 
 mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic mean'
