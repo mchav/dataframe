@@ -16,6 +16,7 @@ import Test.HUnit
 
 import Assertions
 
+import qualified Functions
 import qualified Operations.Apply
 import qualified Operations.Derive
 import qualified Operations.Filter
@@ -76,6 +77,7 @@ tests = TestList $ dimensionsTest
                 ++ Operations.InsertColumn.tests
                 ++ Operations.Sort.tests
                 ++ Operations.Take.tests
+                ++ Functions.tests
                 ++ parseTests
 
 main :: IO ()

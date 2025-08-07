@@ -27,6 +27,8 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector as VB
 import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
+import qualified Data.Char as Char
+import Debug.Trace (traceShow)
 
 col :: Columnable a => T.Text -> Expr a
 col = Col
@@ -81,6 +83,73 @@ mean (Col name) = let
             in total / fromIntegral n
     in NumericAggregate name "mean" mean'
 
+-- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
+isReservedId :: T.Text -> Bool
+isReservedId t = case t of
+  "case"     -> True
+  "class"    -> True
+  "data"     -> True
+  "default"  -> True
+  "deriving" -> True
+  "do"       -> True
+  "else"     -> True
+  "foreign"  -> True
+  "if"       -> True
+  "import"   -> True
+  "in"       -> True
+  "infix"    -> True
+  "infixl"   -> True
+  "infixr"   -> True
+  "instance" -> True
+  "let"      -> True
+  "module"   -> True
+  "newtype"  -> True
+  "of"       -> True
+  "then"     -> True
+  "type"     -> True
+  "where"    -> True
+  _          -> False
+
+isVarId :: T.Text -> Bool
+isVarId t = case T.uncons t of
+-- We might want to check  c == '_' || Char.isLower c
+-- since the haskell report considers '_' a lowercase character
+-- However, to prevent an edge case where a user may have a
+-- "Name" and an "_Name_" in the same scope, wherein we'd end up
+-- with duplicate "_Name_"s, we eschew the check for '_' here.
+  Just (c, _) -> Char.isLower c && Char.isAlpha c
+  Nothing -> False
+
+isHaskellIdentifier :: T.Text -> Bool
+isHaskellIdentifier t =  not (isVarId t) || isReservedId t
+
+sanitize :: T.Text -> T.Text
+sanitize t
+  | isValid = t
+  | isHaskellIdentifier t' = "_" <> t' <> "_"
+  | otherwise = t'
+  where
+    isValid
+      =  not (isHaskellIdentifier t)
+      && isVarId t
+      && T.all Char.isAlphaNum t
+    t' = T.map replaceInvalidCharacters . T.filter (not . parentheses) $ t
+    replaceInvalidCharacters c
+      | Char.isUpper c = Char.toLower c
+      | Char.isSpace c = '_'
+      | Char.isPunctuation c = '_' -- '-' will also become a '_'
+      | Char.isSymbol c = '_'
+      | Char.isAlphaNum c = c -- Blanket condition
+      | otherwise = '_' -- If we're unsure we'll default to an underscore
+    parentheses c = case c of
+      '(' -> True
+      ')' -> True
+      '{' -> True
+      '}' -> True
+      '[' -> True
+      ']' -> True
+      _   -> False
+
 typeFromString :: [String] -> Q Type
 typeFromString []  = fail "No type specified"
 typeFromString [t] = do
@@ -103,8 +172,9 @@ declareColumns :: DataFrame -> DecsQ
 declareColumns df = let
         names = (map fst . L.sortBy (compare `on` snd). M.toList . columnIndices) df
         types = map (columnTypeString . (`unsafeGetColumn` df)) names
-        specs = zip names types
+        specs = zipWith (\name type_ -> (sanitize name, type_)) names types
     in fmap concat $ forM specs $ \(nm, tyStr) -> do
+        traceShow nm (pure ())
         ty  <- typeFromString (words tyStr)
         let n  = mkName (T.unpack nm)
         sig <- sigD n [t| Expr $(pure ty) |]
