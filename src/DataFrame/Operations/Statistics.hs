@@ -32,14 +32,16 @@ import Data.Type.Equality (type (:~:)(Refl), TestEquality (testEquality))
 import Type.Reflection (typeRep)
 import qualified Data.Bifunctor as Data
 import DataFrame.Internal.Row (toRowValue)
+import GHC.Float (int2Double)
+import Text.Printf (printf)
 
 frequencies :: T.Text -> DataFrame -> DataFrame
 frequencies name df = case getColumn name df of
   Nothing -> throw $ ColumnNotFoundException name "frequencies" (map fst $ M.toList $ columnIndices df)
   Just ((BoxedColumn (column :: V.Vector a))) -> let
-      counts :: [(a, Double)]
-      counts =  second fromIntegral <$> valueCounts @a name df
-      total :: Double
+      counts :: [(a, Int)]
+      counts =  valueCounts @a name df
+      total :: Int
       total = P.sum $ map snd counts
       vText :: forall a . (Columnable a) => a -> T.Text
       vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
@@ -48,10 +50,13 @@ frequencies name df = case getColumn name df of
           Just Refl -> T.pack c'
           Nothing -> (T.pack . show) c'
       initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList  [toRowValue k, toRowValue $ k * 100.0 / total]) df) initDf  counts
+
+      calculatePercentage k = toRowValue $ roundTo 2 (fromIntegral k * 100 / fromIntegral total)
+    in L.foldl' (\df (col, k) -> insertVector (vText col)(V.fromList [toRowValue k, calculatePercentage k]) df) initDf counts
   Just ((OptionalColumn (column :: V.Vector a))) -> let
-      counts =  second fromIntegral <$> valueCounts @a name df
-      total :: Double
+      counts :: [(a, Int)]
+      counts =  valueCounts @a name df
+      total :: Int
       total = P.sum $ map snd counts
       vText :: forall a . (Columnable a) => a -> T.Text
       vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
@@ -60,10 +65,12 @@ frequencies name df = case getColumn name df of
           Just Refl -> T.pack c'
           Nothing -> (T.pack . show) c'
       initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList [toRowValue k, toRowValue $ k * 100.0  / total]) df) initDf counts
+      calculatePercentage k = toRowValue $ roundTo 2 (fromIntegral k * 100 / fromIntegral total)
+    in L.foldl' (\df (col, k) -> insertVector (vText col)(V.fromList [toRowValue k, calculatePercentage k]) df) initDf counts
   Just ((UnboxedColumn (column :: VU.Vector a))) -> let
-      counts =  second fromIntegral <$> valueCounts @a name df
-      total :: Double
+      counts :: [(a, Int)]
+      counts =  valueCounts @a name df
+      total :: Int
       total = P.sum $ map snd counts
       vText :: forall a . (Columnable a) => a -> T.Text
       vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
@@ -72,9 +79,8 @@ frequencies name df = case getColumn name df of
           Just Refl -> T.pack c'
           Nothing -> (T.pack . show) c'
       initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-      
-    in L.foldl' (\df (col, k) -> insertVector (vText col) (V.fromList  [toRowValue k, toRowValue $ k * 100.0 / total]) df) initDf  counts
-  _ -> error "There are ungrouped columns"
+      calculatePercentage k = toRowValue $ roundTo 2 (fromIntegral k * 100 / fromIntegral total)
+    in L.foldl' (\df (col, k) -> insertVector (vText col)(V.fromList [toRowValue k, calculatePercentage k]) df) initDf counts
 
 mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic mean'
@@ -160,8 +166,10 @@ summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic"
               standardDeviation name df,
               iqr,
               skewness name df]
-        roundTo :: Int -> Double -> Double
-        roundTo n x = fromInteger (round $ x * (10^n)) / (10.0^^n)
+
+-- | Round a @Double@ to Specified Precision
+roundTo :: Int -> Double -> Double
+roundTo n x = fromInteger (round $ x * (10^n)) / (10.0^^n)
 
 mean' :: VU.Vector Double -> Double
 mean' samp = let
