@@ -29,6 +29,7 @@ import           Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
 import qualified Data.Char as Char
 import Debug.Trace (traceShow)
+import Type.Reflection (typeRep)
 
 col :: Columnable a => T.Text -> Expr a
 col = Col
@@ -64,16 +65,13 @@ count :: Columnable a => Expr a -> Expr Int
 count (Col name) = GeneralAggregate name "count" VG.length
 count _ = error "Argument can only be a column reference not an unevaluated expression"
 
-anyValue :: Columnable a => Expr a -> Expr a
-anyValue (Col name) = ReductionAggregate name "anyValue" VG.head
-
 minimum :: Columnable a => Expr a -> Expr a
-minimum (Col name) = ReductionAggregate name "minimum" VG.minimum
+minimum (Col name) = ReductionAggregate name "minimum" min
 
 maximum :: Columnable a => Expr a -> Expr a
-maximum (Col name) = ReductionAggregate name "maximum" VG.maximum
+maximum (Col name) = ReductionAggregate name "maximum" max
 
-sum :: (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
+sum :: forall a . (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
 sum (Col name) = NumericAggregate name "sum" VG.sum
 
 mean :: (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr Double
