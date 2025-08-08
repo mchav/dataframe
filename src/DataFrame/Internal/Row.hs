@@ -26,6 +26,9 @@ import Data.Typeable (Typeable, type (:~:) (..))
 import Data.Word ( Word8, Word16, Word32, Word64 )
 import Type.Reflection (TypeRep, typeOf, typeRep)
 import Data.Type.Equality (TestEquality(..))
+import Text.ParserCombinators.ReadPrec(ReadPrec)
+import Text.Read (Lexeme (Ident), lexP, parens, readListPrec, readListPrecDefault, readPrec)
+
 
 data RowValue where
     Value :: (Columnable' a) => a -> RowValue
@@ -45,6 +48,16 @@ instance Ord RowValue where
 instance Show RowValue where
     show :: RowValue -> String
     show (Value a) = show a
+
+instance Read RowValue where
+  readListPrec :: ReadPrec [RowValue]
+  readListPrec = readListPrecDefault
+
+  readPrec :: ReadPrec RowValue
+  readPrec = parens $ do
+    Ident "Value" <- lexP
+    readPrec
+
 
 toRowValue :: forall a . (Columnable' a) => a -> RowValue
 toRowValue =  Value
