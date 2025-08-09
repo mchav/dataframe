@@ -105,7 +105,7 @@ If two columns don't type check we catch this with a type error instead of a run
 Key features in example:
 
 * Intuitive, SQL-like API to get from data to insights.
-* Create type-safe references to columns in a dataframe using :exponseColumns
+* Create type-safe references to columns in a dataframe using :exposeColumns
 * Type-safe column transformations for faster and safer exploration.
 * Fluid, chaining API that makes code easy to reason about.
 
