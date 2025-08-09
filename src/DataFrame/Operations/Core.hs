@@ -107,13 +107,18 @@ insertVectorWithDefault defaultValue name xs d =
       values = xs V.++ V.replicate (rows - V.length xs) defaultValue
    in insertColumn name (fromVector values) d
 
--- TODO: Add existence check in rename.
 rename :: T.Text -> T.Text -> DataFrame -> DataFrame
-rename orig new df = fromMaybe (throw $ ColumnNotFoundException orig "rename" (map fst $ M.toList $ columnIndices df)) $ do
+rename orig new df = either throw id (renameSafe orig new df)
+
+renameMany :: [(T.Text, T.Text)] -> DataFrame -> DataFrame
+renameMany replacements df = fold (uncurry rename) replacements df
+
+renameSafe :: T.Text -> T.Text -> DataFrame -> Either DataFrameException DataFrame
+renameSafe orig new df = fromMaybe (Left $ ColumnNotFoundException orig "rename" (map fst $ M.toList $ columnIndices df)) $ do
   columnIndex <- M.lookup orig (columnIndices df)
   let origRemoved = M.delete orig (columnIndices df)
   let newAdded = M.insert new columnIndex origRemoved
-  return df { columnIndices = newAdded }
+  return (Right df { columnIndices = newAdded })
 
 -- | O(1) Get the number of elements in a given column.
 columnSize :: T.Text -> DataFrame -> Maybe Int
