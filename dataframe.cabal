@@ -34,6 +34,7 @@ library
                    DataFrame.Display.Terminal.Colours,
                    DataFrame.Internal.DataFrame,
                    DataFrame.Internal.Row,
+                   DataFrame.Internal.Schema,
                    DataFrame.Errors,
                    DataFrame.Operations.Core,
                    DataFrame.Operations.Join,
