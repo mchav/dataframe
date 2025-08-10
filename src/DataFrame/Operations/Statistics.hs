@@ -31,7 +31,7 @@ import Data.Function ((&))
 import Data.Type.Equality (type (:~:)(Refl), TestEquality (testEquality))
 import Type.Reflection (typeRep)
 import qualified Data.Bifunctor as Data
-import DataFrame.Internal.Row (toRowValue, showValue)
+import DataFrame.Internal.Row (toAny, showValue)
 import GHC.Float (int2Double)
 import Text.Printf (printf)
 
@@ -39,10 +39,10 @@ frequencies :: T.Text -> DataFrame -> DataFrame
 frequencies name df = let
     counts :: forall a . Columnable a => [(a, Int)]
     counts =  valueCounts name df
-    calculatePercentage cs k = toRowValue $ roundTo 2 (fromIntegral k * 100 / fromIntegral (P.sum $ map snd cs))
+    calculatePercentage cs k = toAny $ toPct2dp (fromIntegral k / fromIntegral (P.sum $ map snd cs))
     initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
     freqs :: forall v a . (VG.Vector v a, Columnable a) => v a -> DataFrame
-    freqs col = L.foldl' (\d (col, k) -> insertVector (showValue @a col) (V.fromList [toRowValue k, calculatePercentage (counts @a) k]) d) initDf counts
+    freqs col = L.foldl' (\d (col, k) -> insertVector (showValue @a col) (V.fromList [toAny k, calculatePercentage (counts @a) k]) d) initDf counts
   in case getColumn name df of
       Nothing -> throw $ ColumnNotFoundException name "frequencies" (map fst $ M.toList $ columnIndices df)
       Just ((BoxedColumn (column :: V.Vector a))) -> freqs column
@@ -137,6 +137,11 @@ summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic"
 -- | Round a @Double@ to Specified Precision
 roundTo :: Int -> Double -> Double
 roundTo n x = fromInteger (round $ x * (10^n)) / (10.0^^n)
+
+toPct2dp :: Double -> String
+toPct2dp x
+  | x < 0.00005 = "<0.01%"
+  | otherwise   = printf "%.2f%%" (x * 100)
 
 mean' :: VU.Vector Double -> Double
 mean' samp = let

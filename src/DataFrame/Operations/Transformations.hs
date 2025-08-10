@@ -17,7 +17,7 @@ import DataFrame.Errors (DataFrameException(..), TypeErrorContext(..))
 import DataFrame.Internal.Column (Column(..), columnTypeString, imapColumn, ifoldrColumn, TypedColumn (TColumn), Columnable, mapColumn, unwrapTypedColumn)
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn)
 import DataFrame.Internal.Expression
-import DataFrame.Internal.Row (mkRowFromArgs, RowValue, toRowValue)
+import DataFrame.Internal.Row (mkRowFromArgs, Any, toAny)
 import DataFrame.Operations.Core
 import Data.Maybe
 import Type.Reflection (typeRep, typeOf, TypeRep)

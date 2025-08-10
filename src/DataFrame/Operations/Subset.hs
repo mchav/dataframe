@@ -20,7 +20,7 @@ import DataFrame.Errors (DataFrameException(..), TypeErrorContext(..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
 import DataFrame.Internal.Expression
-import DataFrame.Internal.Row (mkRowFromArgs, RowValue, toRowValue)
+import DataFrame.Internal.Row (mkRowFromArgs, Any, toAny)
 import DataFrame.Operations.Core
 import DataFrame.Operations.Transformations (apply)
 import Data.Function ((&))

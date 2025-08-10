@@ -32,23 +32,23 @@ import Text.ParserCombinators.ReadPrec(ReadPrec)
 import Text.Read (Lexeme (Ident), lexP, parens, readListPrec, readListPrecDefault, readPrec)
 
 
-data RowValue where
-    Value :: (Columnable' a) => a -> RowValue
+data Any where
+    Value :: (Columnable' a) => a -> Any
 
-instance Eq RowValue where
-    (==) :: RowValue -> RowValue -> Bool
+instance Eq Any where
+    (==) :: Any -> Any -> Bool
     (Value a) == (Value b) = fromMaybe False $ do
         Refl <- testEquality (typeOf a) (typeOf b)
         return $ a == b
 
-instance Ord RowValue where
-    (<=) :: RowValue -> RowValue -> Bool
+instance Ord Any where
+    (<=) :: Any -> Any -> Bool
     (Value a) <= (Value b) = fromMaybe False $ do
         Refl <- testEquality (typeOf a) (typeOf b)
         return $ a <= b
 
-instance Show RowValue where
-    show :: RowValue -> String
+instance Show Any where
+    show :: Any -> String
     show (Value a) = T.unpack (showValue a)
 
 showValue :: forall a . (Columnable' a) => a -> T.Text
@@ -58,20 +58,20 @@ showValue v = case testEquality (typeRep @a) (typeRep @T.Text) of
     Just Refl -> T.pack v
     Nothing -> (T.pack . show) v
 
-instance Read RowValue where
-  readListPrec :: ReadPrec [RowValue]
+instance Read Any where
+  readListPrec :: ReadPrec [Any]
   readListPrec = readListPrecDefault
 
-  readPrec :: ReadPrec RowValue
+  readPrec :: ReadPrec Any
   readPrec = parens $ do
     Ident "Value" <- lexP
     readPrec
 
 
-toRowValue :: forall a . (Columnable' a) => a -> RowValue
-toRowValue =  Value
+toAny :: forall a . (Columnable' a) => a -> Any
+toAny =  Value
 
-type Row = V.Vector RowValue
+type Row = V.Vector Any
 
 toRowList :: [T.Text] -> DataFrame -> [Row]
 toRowList names df = let
@@ -88,9 +88,9 @@ mkRowFromArgs names df i = V.map get (V.fromList names)
   where
     get name = case getColumn name df of
       Nothing -> throw $ ColumnNotFoundException name "[INTERNAL] mkRowFromArgs" (map fst $ M.toList $ columnIndices df)
-      Just (BoxedColumn column) -> toRowValue (column V.! i)
-      Just (UnboxedColumn column) -> toRowValue (column VU.! i)
-      Just (OptionalColumn column) -> toRowValue (column V.! i)
+      Just (BoxedColumn column) -> toAny (column V.! i)
+      Just (UnboxedColumn column) -> toAny (column VU.! i)
+      Just (OptionalColumn column) -> toAny (column V.! i)
 
 mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Row
 mkRowRep df names i = V.generate (S.size names) (\index -> get (names' V.! index))
@@ -104,13 +104,13 @@ mkRowRep df names i = V.generate (S.size names) (\index -> get (names' V.! index
                 ++ show i
     get name = case getColumn name df of
       Just (BoxedColumn c) -> case c V.!? i of
-        Just e -> toRowValue e
+        Just e -> toAny e
         Nothing -> throwError name
       Just (OptionalColumn c) -> case c V.!? i of
-        Just e -> toRowValue e
+        Just e -> toAny e
         Nothing -> throwError name
       Just (UnboxedColumn c) -> case c VU.!? i of
-        Just e -> toRowValue e
+        Just e -> toAny e
         Nothing -> throwError name
 
 sortedIndexes' :: Bool -> V.Vector Row -> VU.Vector Int
