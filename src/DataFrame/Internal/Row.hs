@@ -3,6 +3,8 @@
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module DataFrame.Internal.Row where
 
 import qualified Data.List as L
@@ -47,7 +49,14 @@ instance Ord RowValue where
 
 instance Show RowValue where
     show :: RowValue -> String
-    show (Value a) = show a
+    show (Value a) = T.unpack (showValue a)
+
+showValue :: forall a . (Columnable' a) => a -> T.Text
+showValue v = case testEquality (typeRep @a) (typeRep @T.Text) of
+  Just Refl -> v
+  Nothing -> case testEquality (typeRep @a) (typeRep @String) of
+    Just Refl -> T.pack v
+    Nothing -> (T.pack . show) v
 
 instance Read RowValue where
   readListPrec :: ReadPrec [RowValue]

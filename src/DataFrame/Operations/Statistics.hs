@@ -31,56 +31,23 @@ import Data.Function ((&))
 import Data.Type.Equality (type (:~:)(Refl), TestEquality (testEquality))
 import Type.Reflection (typeRep)
 import qualified Data.Bifunctor as Data
-import DataFrame.Internal.Row (toRowValue)
+import DataFrame.Internal.Row (toRowValue, showValue)
 import GHC.Float (int2Double)
 import Text.Printf (printf)
 
 frequencies :: T.Text -> DataFrame -> DataFrame
-frequencies name df = case getColumn name df of
-  Nothing -> throw $ ColumnNotFoundException name "frequencies" (map fst $ M.toList $ columnIndices df)
-  Just ((BoxedColumn (column :: V.Vector a))) -> let
-      counts :: [(a, Int)]
-      counts =  valueCounts @a name df
-      total :: Int
-      total = P.sum $ map snd counts
-      vText :: forall a . (Columnable a) => a -> T.Text
-      vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
-        Just Refl -> c'
-        Nothing -> case testEquality (typeRep @a) (typeRep @String) of
-          Just Refl -> T.pack c'
-          Nothing -> (T.pack . show) c'
-      initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-
-      calculatePercentage k = toRowValue $ roundTo 2 (fromIntegral k * 100 / fromIntegral total)
-    in L.foldl' (\df (col, k) -> insertVector (vText col)(V.fromList [toRowValue k, calculatePercentage k]) df) initDf counts
-  Just ((OptionalColumn (column :: V.Vector a))) -> let
-      counts :: [(a, Int)]
-      counts =  valueCounts @a name df
-      total :: Int
-      total = P.sum $ map snd counts
-      vText :: forall a . (Columnable a) => a -> T.Text
-      vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
-        Just Refl -> c'
-        Nothing -> case testEquality (typeRep @a) (typeRep @String) of
-          Just Refl -> T.pack c'
-          Nothing -> (T.pack . show) c'
-      initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-      calculatePercentage k = toRowValue $ roundTo 2 (fromIntegral k * 100 / fromIntegral total)
-    in L.foldl' (\df (col, k) -> insertVector (vText col)(V.fromList [toRowValue k, calculatePercentage k]) df) initDf counts
-  Just ((UnboxedColumn (column :: VU.Vector a))) -> let
-      counts :: [(a, Int)]
-      counts =  valueCounts @a name df
-      total :: Int
-      total = P.sum $ map snd counts
-      vText :: forall a . (Columnable a) => a -> T.Text
-      vText c' = case testEquality (typeRep @a) (typeRep @T.Text) of
-        Just Refl -> c'
-        Nothing -> case testEquality (typeRep @a) (typeRep @String) of
-          Just Refl -> T.pack c'
-          Nothing -> (T.pack . show) c'
-      initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
-      calculatePercentage k = toRowValue $ roundTo 2 (fromIntegral k * 100 / fromIntegral total)
-    in L.foldl' (\df (col, k) -> insertVector (vText col)(V.fromList [toRowValue k, calculatePercentage k]) df) initDf counts
+frequencies name df = let
+    counts :: forall a . Columnable a => [(a, Int)]
+    counts =  valueCounts name df
+    calculatePercentage cs k = toRowValue $ roundTo 2 (fromIntegral k * 100 / fromIntegral (P.sum $ map snd cs))
+    initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text,  "Percentage (%)"])
+    freqs :: forall v a . (VG.Vector v a, Columnable a) => v a -> DataFrame
+    freqs col = L.foldl' (\d (col, k) -> insertVector (showValue @a col) (V.fromList [toRowValue k, calculatePercentage (counts @a) k]) d) initDf counts
+  in case getColumn name df of
+      Nothing -> throw $ ColumnNotFoundException name "frequencies" (map fst $ M.toList $ columnIndices df)
+      Just ((BoxedColumn (column :: V.Vector a))) -> freqs column
+      Just ((OptionalColumn (column :: V.Vector a))) -> freqs column
+      Just ((UnboxedColumn (column :: VU.Vector a))) -> freqs column
 
 mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic mean'
