@@ -4,6 +4,8 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ExplicitNamespaces #-}
 module DataFrame.Operations.Subset where
 
 import qualified Data.List as L
@@ -12,6 +14,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified Data.Vector.Generic as VG
 import qualified Prelude
 
@@ -21,12 +24,14 @@ import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
 import DataFrame.Internal.Expression
 import DataFrame.Internal.Row (mkRowFromArgs, Any, toAny)
+import Data.Type.Equality (type (:~:)(Refl), TestEquality (..))
 import DataFrame.Operations.Core
 import DataFrame.Operations.Transformations (apply)
 import Data.Function ((&))
 import Data.Maybe (isJust, fromJust, fromMaybe)
 import Prelude hiding (filter, take)
 import Type.Reflection
+import Control.Monad.ST
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
@@ -78,16 +83,34 @@ filter ::
   DataFrame
 filter filterColumnName condition df = case getColumn filterColumnName df of
   Nothing -> throw $ ColumnNotFoundException filterColumnName "filter" (map fst $ M.toList $ columnIndices df)
-  Just column -> case findIndices condition column of
-    Nothing -> throw $ TypeMismatchException (MkTypeErrorContext
-                                                        { userType = Right $ typeRep @a
-                                                        , expectedType = Left (columnTypeString column) :: Either String (TypeRep ()) 
-                                                        , errorColumnName = Just (T.unpack filterColumnName)
-                                                        , callingFunctionName = Just "filter"})
-    Just indexes -> let
-        c' = snd $ dataframeDimensions df
-        pick idxs col = atIndicesStable idxs col
-      in df {columns = V.map (pick indexes) (columns df), dataframeDimensions = (VG.length indexes, c')}
+  Just (BoxedColumn (column :: V.Vector b)) -> filterByVector filterColumnName column condition df
+  Just (OptionalColumn (column :: V.Vector b)) -> filterByVector filterColumnName column condition df
+  Just (UnboxedColumn (column :: VU.Vector b)) -> filterByVector filterColumnName column condition df
+
+filterByVector :: forall a b v . (VG.Vector v b, Columnable a, Columnable b) => T.Text -> v b -> (a -> Bool) -> DataFrame -> DataFrame
+filterByVector filterColumnName column condition df = case testEquality (typeRep @a) (typeRep @b) of
+    Nothing   -> throw $ TypeMismatchException (MkTypeErrorContext
+                                                          { userType = Right $ typeRep @a
+                                                          , expectedType = Right $ typeRep @b
+                                                          , errorColumnName = Just (T.unpack filterColumnName)
+                                                          , callingFunctionName = Just "filter"
+                                                          })
+    Just Refl -> let
+        ixs = indexes condition column
+      in df {columns = V.map (atIndicesStable ixs) (columns df), dataframeDimensions = (VG.length ixs, snd (dataframeDimensions df))}
+
+indexes :: (VG.Vector v a) => (a -> Bool) -> v a -> VU.Vector Int
+indexes condition cols = runST $ do
+  ixs <- VUM.new 8192
+  (!icount, _, _, !ixs') <- VG.foldM (\(!icount, !vcount, !cap, mv) v -> do
+    if not (condition v) then
+      pure (icount, vcount + 1, cap, mv)
+      else do
+        let shouldGrow = icount == cap
+        mv' <- if shouldGrow then VUM.grow mv cap else pure mv
+        VUM.write mv' icount vcount
+        pure (icount + 1, vcount + 1, cap + (cap * fromEnum shouldGrow), mv')) (0, 0, 8192, ixs) cols
+  VU.freeze (VUM.slice 0 icount ixs')
 
 -- | O(k) a version of filter where the predicate comes first.
 --
