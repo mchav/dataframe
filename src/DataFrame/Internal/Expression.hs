@@ -81,7 +81,14 @@ interpret df (BinOp _ (f :: c -> d -> e) left right) = let
         (TColumn left') = interpret @c df left
         (TColumn right') = interpret @d df right
     in TColumn $ fromMaybe (error "mapColumn returned nothing") (zipWithColumns f left' right')
-interpret _ expr = error "Invalid operation for dataframe"
+interpret df (ReductionAggregate name op (f :: forall a . Columnable a => a -> a -> a)) = let
+        (TColumn column) = interpret @a df (Col name)
+    in case headColumn @a column of
+        Nothing -> error "Invalid operation"
+        Just h  -> case ifoldlColumn (\acc _ v -> f acc v) h column of
+            Nothing    -> error "Invalid operation"
+            Just value -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
+interpret _ expr = error ("Invalid operation for dataframe: " ++ show expr)
 
 interpretAggregation :: forall a . (Columnable a) => GroupedDataFrame -> Expr a -> TypedColumn a
 interpretAggregation gdf (Lit value) = TColumn $ fromVector $ V.replicate (VG.length (offsets gdf) - 1) value

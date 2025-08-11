@@ -337,6 +337,17 @@ ifoldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = do
   Refl <- testEquality (typeRep @a) (typeRep @d)
   return $ VG.ifoldl' f acc column
 
+headColumn :: forall a . Columnable a => Column -> Maybe a
+headColumn (BoxedColumn (col :: VB.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  pure (VG.head col)
+headColumn (UnboxedColumn (col :: VU.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  pure (VG.head col)
+headColumn (OptionalColumn (col :: VB.Vector b)) = do
+  Refl <- testEquality (typeRep @a) (typeRep @b)
+  pure (VG.head col)
+
 -- | Generic reduce function for all Column types.
 reduceColumn :: forall a b. Columnable a => (a -> b) -> Column -> Maybe b
 {-# SPECIALIZE reduceColumn ::
@@ -477,29 +488,29 @@ __Examples:__
 exception: ...
 -}
 toList :: forall a . Columnable a => Column -> [a]
-toList xs = case toVectorSafe xs of
+toList xs = case toVectorSafe @a xs of
   Left err  -> throw err
-  Right val -> VG.toList val
+  Right val -> VB.toList val
 
 -- | A safe version of toVector that returns an Either type.
-toVectorSafe :: forall a . Columnable a => Column -> Either DataFrameException (VB.Vector a)
+toVectorSafe :: forall a v . (VG.Vector v a, Columnable a) => Column -> Either DataFrameException (v a)
 toVectorSafe column@(OptionalColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> Right col
+    Just Refl -> Right $ VG.convert col
     Nothing -> Left $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
                                                                  , expectedType = Right (typeRep @b)
                                                                  , callingFunctionName = Just "toVectorSafe"
                                                                  , errorColumnName = Nothing})
 toVectorSafe (BoxedColumn (col :: VB.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> Right col
+    Just Refl -> Right $ VG.convert col
     Nothing -> Left $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
                                                                  , expectedType = Right (typeRep @b)
                                                                  , callingFunctionName = Just "toVectorSafe"
                                                                  , errorColumnName = Nothing})
 toVectorSafe (UnboxedColumn (col :: VU.Vector b)) =
   case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> Right $ VB.convert col
+    Just Refl -> Right $ VG.convert col
     Nothing -> Left $ TypeMismatchException (MkTypeErrorContext { userType = Right (typeRep @a)
                                                                  , expectedType = Right (typeRep @b)
                                                                  , callingFunctionName = Just "toVectorSafe"
