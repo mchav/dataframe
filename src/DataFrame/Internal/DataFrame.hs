@@ -11,6 +11,7 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Generic as VG
 
 import Control.Monad (join)
 import DataFrame.Display.Terminal.PrettyPrint
@@ -98,3 +99,20 @@ unsafeGetColumn name df = columns df V.! (columnIndices df M.! name)
 
 null :: DataFrame -> Bool
 null df = V.null (columns df)
+
+toMatrix :: DataFrame -> V.Vector (VU.Vector Float)
+toMatrix df = let
+    m = V.map (toVector @Double) (columns df)
+  in V.generate (fst (dataframeDimensions df)) (\i -> foldl (\acc j -> acc `VU.snoc` (realToFrac ((m V.! j) V.! i))) VU.empty [0..(V.length m - 1)])
+
+columnAsVector :: forall a . Columnable a => T.Text -> DataFrame -> V.Vector a
+columnAsVector name df = case unsafeGetColumn name df of
+  (BoxedColumn (col :: V.Vector b))    -> case testEquality (typeRep @a) (typeRep @b) of
+    Nothing   -> error "Type error"
+    Just Refl -> col
+  (OptionalColumn (col :: V.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
+    Nothing   -> error "Type error"
+    Just Refl -> col
+  (UnboxedColumn (col :: VU.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
+    Nothing   -> error "Type error"
+    Just Refl -> VG.convert col
