@@ -72,7 +72,9 @@ changingPoints vs = VG.length vs : (fst (VU.ifoldl findChangePoints initialState
       | otherwise = (index : offsets, newVal)
 
 mkRowRep :: [Int] -> DataFrame -> Int -> Int
-mkRowRep groupColumnIndices df i = if length h == 1 then head h else hash h
+mkRowRep groupColumnIndices df i = case h of
+  (x:[]) -> x
+  xs     -> hash h
   where
     h = (map mkHash groupColumnIndices)
     getHashedElem :: Column -> Int -> Int
