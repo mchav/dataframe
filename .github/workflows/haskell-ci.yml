@@ -59,11 +59,9 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common libtinfo6 libncurses-dev
-          export XDG_CACHE_HOME=/tmp/xdg-cache
+          source ./set_hasktorch_env
+          export LIBTORCH_HOME=$XDG_CACHE_HOME/libtorch
           echo "XDG_CACHE_HOME=$XDG_CACHE_HOME" >> "$GITHUB_ENV"
-          export HASKTORCH_LIB_PATH="$XDG_CACHE_HOME/libtorch/lib:$XDG_CACHE_HOME/mklml/lib/:$XDG_CACHE_HOME/libtokenizers/lib"
-          export LD_LIBRARY_PATH=$HASKTORCH_LIB_PATH:$LD_LIBRARY_PATH
-          export LIBTORCH_HOME=/opt/libtorch
           echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
           echo "LIBTORCH_HOME=$LIBTORCH_HOME" >> "$GITHUB_ENV"
       - name: Install GHCup
