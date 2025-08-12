@@ -43,21 +43,15 @@ right = fillRight ' '
 center :: Int -> T.Text -> T.Text
 center = fillCenter ' '
 
-showTable :: [T.Text] -> [T.Text] -> [[T.Text]] -> T.Text
-showTable header types rows =
-  let cs = map (\h -> ColDesc center h left) header
-      widths = [maximum $ map T.length col | col <- transpose $ header : types : rows]
+showTable :: Bool -> [T.Text] -> [T.Text] -> [[T.Text]] -> T.Text
+showTable properMarkdown header types rows =
+  let consolidatedHeader = if properMarkdown then zipWith (\h t -> h <> "<br>" <> t) header types else header
+      cs = map (\h -> ColDesc center h left) consolidatedHeader
+      widths = [maximum $ map T.length col | col <- transpose $ consolidatedHeader : types : rows]
       border = T.intercalate "---" [T.replicate width (T.singleton '-') | width <- widths]
       separator = T.intercalate "-|-" [T.replicate width (T.singleton '-') | width <- widths]
       fillCols fill cols = T.intercalate " | " [fill c width col | (c, width, col) <- zip3 cs widths cols]
-   in T.unlines $ border : fillCols colTitleFill header : separator : fillCols colTitleFill types : separator : map (fillCols colValueFill) rows
-
-showTableProperMarkdown :: [T.Text] -> [T.Text] -> [[T.Text]] -> T.Text
-showTableProperMarkdown header types rows =
-  let headerWithTypes = zipWith (\h t -> h <> "<br>" <> t) header types
-      cs = map (\h -> ColDesc center h left) headerWithTypes
-      widths = [maximum $ map T.length col | col <- transpose $ headerWithTypes : rows]
-      border = T.intercalate "---" [T.replicate width (T.singleton '-') | width <- widths]
-      separator = T.intercalate "-|-" [T.replicate width (T.singleton '-') | width <- widths]
-      fillCols fill cols = T.intercalate " | " [fill c width col | (c, width, col) <- zip3 cs widths cols]
-   in T.unlines $ border : fillCols colTitleFill headerWithTypes : separator : map (fillCols colValueFill) rows
+      lines = if properMarkdown
+        then border : fillCols colTitleFill consolidatedHeader : separator : map (fillCols colValueFill) rows
+        else border : fillCols colTitleFill consolidatedHeader : separator : fillCols colTitleFill types : separator : map (fillCols colValueFill) rows
+   in T.unlines lines
