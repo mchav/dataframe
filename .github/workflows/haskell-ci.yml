@@ -69,7 +69,7 @@ jobs:
           echo "LIBTORCH_HOME=$LIBTORCH_HOME" >> "$GITHUB_ENV"
           export PYTHON=python3
           git clone https://github.com/pytorch/pytorch.git
-          pushd ./pytorch
+          cd ./pytorch
           export VERSION=2.5.0
           git pull origin v$VERSION
           git checkout v$VERSION
@@ -83,7 +83,7 @@ jobs:
           sed -i -e "s/ name: t$/ name: 't'/g" -e "s/ name: T$/ name: 'T'/g" build/aten/src/ATen/Declarations.yaml
           sed -i -e "s/ name: y$/ name: 'y'/g" -e "s/ name: Y$/ name: 'Y'/g" build/aten/src/ATen/Declarations.yaml
           sed -i -e "s/ default: \([^'].*\)$/ default: '\1'/g" build/aten/src/ATen/Declarations.yaml
-          popd
+          cd ..
           ln -fs ./pytorch/build/aten/src/ATen/Declarations.yaml
       - name: Install GHCup
         run: |
