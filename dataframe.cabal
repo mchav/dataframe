@@ -109,6 +109,7 @@ executable chipotle
     hs-source-dirs:   examples,
                       src
     default-language: Haskell2010
+    ghc-options: -dynamic
 
 executable california_housing
     main-is:       CaliforniaHousing.hs
