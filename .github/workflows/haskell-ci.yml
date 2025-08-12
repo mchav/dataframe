@@ -68,9 +68,9 @@ jobs:
           echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
           echo "LIBTORCH_HOME=$LIBTORCH_HOME" >> "$GITHUB_ENV"
           export PYTHON=python3
-          git config pull.rebase true
           git clone https://github.com/pytorch/pytorch.git
           cd ./pytorch
+          git config pull.rebase true
           export VERSION=2.5.0
           git pull origin v$VERSION
           git checkout v$VERSION
