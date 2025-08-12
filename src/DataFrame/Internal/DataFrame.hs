@@ -81,7 +81,7 @@ asText d properMarkdown =
       rows =
         transpose $
           zipWith (curry (V.toList . getTextColumnFromFrame d)) [0..] header
-   in (if properMarkdown then showTableProperMarkdown else showTable) header ("Int":types) rows
+   in showTable properMarkdown header ("Int":types) rows
 
 -- | O(1) Creates an empty dataframe
 empty :: DataFrame
