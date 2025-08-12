@@ -55,8 +55,11 @@ jobs:
             allow-failure: false
       fail-fast: false
     steps:
-      - name: apt-get install
+      - name: checkout
         uses: actions/checkout@v4
+        with:
+          path: source
+      - name: apt-get install
         run: |
           apt-get update
           apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common libtinfo6 libncurses-dev
