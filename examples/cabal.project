@@ -1,0 +1,3 @@
+package *
+    shared: True
+    executable-dynamic: True
