@@ -56,7 +56,7 @@ jobs:
       fail-fast: false
     steps:
       - name: apt-get install
-      - uses: actions/checkout@v4
+        uses: actions/checkout@v4
         run: |
           apt-get update
           apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common libtinfo6 libncurses-dev
