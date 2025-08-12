@@ -70,9 +70,8 @@ jobs:
           export PYTHON=python3
           git clone https://github.com/pytorch/pytorch.git
           cd ./pytorch
-          git config pull.rebase true
           export VERSION=2.5.0
-          git pull origin v$VERSION
+          git pull --rebase origin v$VERSION
           git checkout v$VERSION
           mkdir build
           $PYTHON -m pip install --user pyyaml
