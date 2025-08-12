@@ -206,6 +206,13 @@ columnLength (UnboxedColumn xs) = VG.length xs
 columnLength (OptionalColumn xs) = VG.length xs
 {-# INLINE columnLength #-}
 
+-- | O(n) Gets the number of elements in the column.
+numElements :: Column -> Int
+numElements (BoxedColumn xs) = VG.length xs
+numElements (UnboxedColumn xs) = VG.length xs
+numElements (OptionalColumn xs) = VG.foldl' (\acc x -> acc + (fromEnum (isJust x))) 0 xs
+{-# INLINE numElements #-}
+
 -- | O(n) Takes the first n values of a column.
 takeColumn :: Int -> Column -> Column
 takeColumn n (BoxedColumn xs) = BoxedColumn $ VG.take n xs

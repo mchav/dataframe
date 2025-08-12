@@ -23,8 +23,9 @@ import Prelude as P
 import Control.Exception (throw)
 import DataFrame.Errors (DataFrameException(..))
 import DataFrame.Internal.Column
-import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty)
+import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty, unsafeGetColumn)
 import DataFrame.Operations.Core
+import DataFrame.Operations.Subset (filterJust)
 import Data.Foldable (asum)
 import Data.Maybe (isJust, fromMaybe)
 import Data.Function ((&))
@@ -90,7 +91,7 @@ sum name df = case getColumn name df of
     Nothing -> Nothing
 
 applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
-applyStatistic f name df = case getColumn name df of
+applyStatistic f name df = case getColumn name (filterJust name df) of
       Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
       Just column@(UnboxedColumn (col :: VU.Vector a)) -> case testEquality (typeRep @a) (typeRep @Double) of
         Just Refl -> reduceColumn f column
@@ -103,7 +104,7 @@ applyStatistic f name df = case getColumn name df of
       _ -> Nothing
 
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
-applyStatistics f name df = case getColumn name df of
+applyStatistics f name df = case getColumn name (filterJust name df) of
   Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
     Just Refl -> Just $! f (VU.map fromIntegral column)
     Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
@@ -114,9 +115,10 @@ applyStatistics f name df = case getColumn name df of
   _ -> Nothing
 
 summarize :: DataFrame -> DataFrame
-summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic", fromList ["Mean" :: T.Text, "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
+summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic", fromList ["Count" :: T.Text, "Mean", "Minimum", "25%" ,"Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
   where columnStats name d = if all isJust (stats name) then insertUnboxedVector name (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
         stats name = let
+            count = fromIntegral . numElements <$> getColumn name df
             quantiles = applyStatistics (SS.quantilesVec SS.medianUnbiased (VU.fromList [0,1,2,3,4]) 4) name df
             min' = flip (VG.!) 0 <$> quantiles
             quartile1 = flip (VG.!) 1 <$> quantiles
@@ -124,7 +126,8 @@ summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic"
             quartile3 = flip (VG.!) 3 <$> quantiles
             max' = flip (VG.!) 4 <$> quantiles
             iqr = (-) <$> quartile3 <*> quartile1
-          in [mean name df,
+          in [count,
+              mean name df,
               min',
               quartile1,
               median',
