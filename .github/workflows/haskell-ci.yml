@@ -28,6 +28,11 @@ jobs:
     strategy:
       matrix:
         include:
+          - compiler: ghc-9.4.8
+            compilerKind: ghc
+            compilerVersion: 9.4.8
+            setup-method: ghcup
+            allow-failure: false
           - compiler: ghc-9.8.3
             compilerKind: ghc
             compilerVersion: 9.8.3
@@ -43,6 +48,11 @@ jobs:
             compilerVersion: 9.6.6
             setup-method: ghcup
             allow-failure: false
+          - compiler: ghc-9.12.1
+            compilerKind: ghc
+            compilerVersion: 9.12.1
+            setup-method: ghcup
+            allow-failure: false
       fail-fast: false
     steps:
       - name: checkout
@@ -52,26 +62,7 @@ jobs:
       - name: apt-get install
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common libtinfo6 libncurses-dev python3 sed python3-pip python3-venv
-          export LIBTORCH_HOME=$XDG_CACHE_HOME/libtorch
-          echo "XDG_CACHE_HOME=$XDG_CACHE_HOME" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
-          echo "LIBTORCH_HOME=$LIBTORCH_HOME" >> "$GITHUB_ENV"
-          export PYTHON=python3
-          git clone --branch v2.5.0 --depth 1 --recurse-submodules https://github.com/pytorch/pytorch.git
-          cd ./pytorch
-          mkdir build
-          $PYTHON -m pip install --user pyyaml
-          $PYTHON -m pip install --user dataclasses
-          $PYTHON -m pip install --user typing_extensions
-          $PYTHON -m torchgen.gen -s aten/src/ATen -d build/aten/src/ATen
-          sed -i -e "s/::std::/std::/g" build/aten/src/ATen/Declarations.yaml
-          sed -i -e "s/ name: n$/ name: 'n'/g" -e "s/ name: N$/ name: 'N'/g" build/aten/src/ATen/Declarations.yaml
-          sed -i -e "s/ name: t$/ name: 't'/g" -e "s/ name: T$/ name: 'T'/g" build/aten/src/ATen/Declarations.yaml
-          sed -i -e "s/ name: y$/ name: 'y'/g" -e "s/ name: Y$/ name: 'Y'/g" build/aten/src/ATen/Declarations.yaml
-          sed -i -e "s/ default: \([^'].*\)$/ default: '\1'/g" build/aten/src/ATen/Declarations.yaml
-          cd ..
-          ln -fs ./pytorch/build/aten/src/ATen/Declarations.yaml
+          apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common
       - name: Install GHCup
         run: |
           mkdir -p "$HOME/.ghcup/bin"
@@ -203,7 +194,7 @@ jobs:
           cat cabal.project.local
       - name: dump install plan
         run: |
-          $CABAL v2-build --enable-shared --enable-executable-dynamic $ARG_COMPILER $ARG_TESTS $ARG_BENCH --dry-run all
+          $CABAL v2-build $ARG_COMPILER $ARG_TESTS $ARG_BENCH --dry-run all
           cabal-plan
       - name: restore cache
         uses: actions/cache/restore@v4
@@ -213,17 +204,17 @@ jobs:
           restore-keys: ${{ runner.os }}-${{ matrix.compiler }}-
       - name: install dependencies
         run: |
-          $CABAL v2-build --enable-shared --enable-executable-dynamic $ARG_COMPILER --disable-tests --disable-benchmarks --dependencies-only -j2 all
-          $CABAL v2-build --enable-shared --enable-executable-dynamic $ARG_COMPILER $ARG_TESTS $ARG_BENCH --dependencies-only -j2 all
+          $CABAL v2-build $ARG_COMPILER --disable-tests --disable-benchmarks --dependencies-only -j2 all
+          $CABAL v2-build $ARG_COMPILER $ARG_TESTS $ARG_BENCH --dependencies-only -j2 all
       - name: build w/o tests
         run: |
-          $CABAL v2-build --enable-shared --enable-executable-dynamic $ARG_COMPILER --disable-tests --disable-benchmarks all
+          $CABAL v2-build $ARG_COMPILER --disable-tests --disable-benchmarks all
       - name: build
         run: |
-          $CABAL v2-build --enable-shared --enable-executable-dynamic $ARG_COMPILER $ARG_TESTS $ARG_BENCH all --write-ghc-environment-files=always
+          $CABAL v2-build $ARG_COMPILER $ARG_TESTS $ARG_BENCH all --write-ghc-environment-files=always
       - name: tests
         run: |
-          $CABAL v2-test --enable-shared --enable-executable-dynamic $ARG_COMPILER $ARG_TESTS $ARG_BENCH all --test-show-details=direct
+          $CABAL v2-test $ARG_COMPILER $ARG_TESTS $ARG_BENCH all --test-show-details=direct
       - name: cabal check
         run: |
           cd ${PKGDIR_dataframe} || false
@@ -234,7 +225,7 @@ jobs:
       - name: unconstrained build
         run: |
           rm -f cabal.project.local
-          $CABAL v2-build --enable-shared --enable-executable-dynamic $ARG_COMPILER --disable-tests --disable-benchmarks all
+          $CABAL v2-build $ARG_COMPILER --disable-tests --disable-benchmarks all
       - name: save cache
         if: always()
         uses: actions/cache/save@v4
