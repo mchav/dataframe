@@ -164,3 +164,14 @@ impute columnName value df = case getColumn columnName df of
     Left exception -> throw exception
     Right res      -> res
   _ -> error "Cannot impute to a non-Empty column"
+
+imputeExpr :: forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> DataFrame
+--imputeExpr = undefined
+imputeExpr columnName expr df =
+  case getColumn columnName df of
+    Nothing -> throw $ ColumnNotFoundException columnName "impute" (map fst $ M.toList $ columnIndices df)
+    Just (OptionalColumn _) ->
+      case expr of
+        Col a -> impute columnName a df
+        _ -> error "Cannot impute a non Col Expression"
+    _ -> error "Cannot impute to a non-Empty column"
