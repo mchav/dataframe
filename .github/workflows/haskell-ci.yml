@@ -62,7 +62,7 @@ jobs:
       - name: apt-get install
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common libtinfo6 libncurses-dev python3 sed
+          apt-get install -y --no-install-recommends gnupg ca-certificates dirmngr curl git software-properties-common libtinfo6 libncurses-dev python3 sed python3-pip python3-venv
           export LIBTORCH_HOME=$XDG_CACHE_HOME/libtorch
           echo "XDG_CACHE_HOME=$XDG_CACHE_HOME" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
@@ -71,9 +71,9 @@ jobs:
           git clone --branch v2.5.0 --depth 1 --recurse-submodules https://github.com/pytorch/pytorch.git
           cd ./pytorch
           mkdir build
-          $PYTHON -m pip3 install --user pyyaml
-          $PYTHON -m pip3 install --user dataclasses
-          $PYTHON -m pip3 install --user typing_extensions
+          $PYTHON -m pip install --user pyyaml
+          $PYTHON -m pip install --user dataclasses
+          $PYTHON -m pip install --user typing_extensions
           $PYTHON -m torchgen.gen -s aten/src/ATen -d build/aten/src/ATen
           sed -i -e "s/::std::/std::/g" build/aten/src/ATen/Declarations.yaml
           sed -i -e "s/ name: n$/ name: 'n'/g" -e "s/ name: N$/ name: 'N'/g" build/aten/src/ATen/Declarations.yaml
