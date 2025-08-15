@@ -68,13 +68,10 @@ jobs:
           echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
           echo "LIBTORCH_HOME=$LIBTORCH_HOME" >> "$GITHUB_ENV"
           export PYTHON=python3
-          git clone https://github.com/pytorch/pytorch.git
-          cd ./pytorch
-          export VERSION=2.5.0
           git config user.name "Michael Chavinda"
           git config user.email "mschavinda@gmail.com"
-          git pull --rebase origin v$VERSION
-          git checkout v$VERSION
+          git clone --branch v2.5.0 --depth 1 --recurse-submodules https://github.com/pytorch/pytorch.git
+          cd ./pytorch
           mkdir build
           $PYTHON -m pip install --user pyyaml
           $PYTHON -m pip install --user dataclasses
