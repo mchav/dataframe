@@ -19,7 +19,7 @@ import DataFrame ((|>))
 main :: IO ()
 main = do
     {- Feature ingestion and engineering -}
-    df <- D.readCsv "./data/housing.csv"
+    df <- D.readCsv "../data/housing.csv"
 
     let cleaned = df |> D.impute "total_bedrooms" (fromMaybe 0 (D.mean "total_bedrooms" df))
                      |> D.exclude ["median_house_value"]

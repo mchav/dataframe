@@ -9,7 +9,7 @@ import DataFrame ((|>))
 
 main :: IO ()
 main = do
-  parsed <- D.readSeparated ';' D.defaultOptions "./data/measurements.txt"
+  parsed <- D.readSeparated ';' D.defaultOptions "../data/measurements.txt"
   let measurement = (F.col @Double "Measurement")
   print $
     parsed

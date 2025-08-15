@@ -10,7 +10,7 @@ import DataFrame ((|>))
 
 main :: IO ()
 main = do
-  raw <- D.readTsv "./data/chipotle.tsv"
+  raw <- D.readTsv "../data/chipotle.tsv"
   print $ D.dimensions raw
 
   -- -- Sampling the dataframe
