@@ -24,6 +24,7 @@ import DataFrame.Operations.Typing as D
 import DataFrame.Operations.Aggregation as D
 import DataFrame.Display.Terminal.Plot as D
 import DataFrame.IO.CSV as D
+import DataFrame.IO.Parquet as D
 
 import Data.Function
 import Data.List
