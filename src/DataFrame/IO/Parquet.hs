@@ -31,109 +31,14 @@ import           GHC.Float
 import           GHC.IO (unsafePerformIO)
 import           System.IO
 
+import           DataFrame.IO.Parquet.ColumnStatistics
+import           DataFrame.IO.Parquet.Compression
+import           DataFrame.IO.Parquet.Encoding
+import           DataFrame.IO.Parquet.Page
+import           DataFrame.IO.Parquet.Types
+
 footerSize :: Integer
 footerSize = 8
-
-data ParquetType
-  = PBOOLEAN
-  | PINT32
-  | PINT64
-  | PINT96
-  | PFLOAT
-  | PDOUBLE
-  | PBYTE_ARRAY
-  | PFIXED_LEN_BYTE_ARRAY
-  | PARQUET_TYPE_UNKNOWN
-  deriving (Show, Eq)
-
-parquetTypeFromInt :: Int32 -> ParquetType
-parquetTypeFromInt 0 = PBOOLEAN
-parquetTypeFromInt 1 = PINT32
-parquetTypeFromInt 2 = PINT64
-parquetTypeFromInt 3 = PINT96
-parquetTypeFromInt 4 = PFLOAT
-parquetTypeFromInt 5 = PDOUBLE
-parquetTypeFromInt 6 = PBYTE_ARRAY
-parquetTypeFromInt 7 = PFIXED_LEN_BYTE_ARRAY
-parquetTypeFromInt _ = PARQUET_TYPE_UNKNOWN
-
-data ParquetEncoding
-  = EPLAIN
-  | EPLAIN_DICTIONARY
-  | ERLE
-  | EBIT_PACKED
-  | EDELTA_BINARY_PACKED
-  | EDELTA_LENGTH_BYTE_ARRAY
-  | EDELTA_BYTE_ARRAY
-  | ERLE_DICTIONARY
-  | EBYTE_STREAM_SPLIT
-  | PARQUET_ENCODING_UNKNOWN
-  deriving (Show, Eq)
-
-parquetEncodingFromInt :: Int32 -> ParquetEncoding
-parquetEncodingFromInt 0 = EPLAIN
-parquetEncodingFromInt 2 = EPLAIN_DICTIONARY
-parquetEncodingFromInt 3 = ERLE
-parquetEncodingFromInt 4 = EBIT_PACKED
-parquetEncodingFromInt 5 = EDELTA_BINARY_PACKED
-parquetEncodingFromInt 6 = EDELTA_LENGTH_BYTE_ARRAY
-parquetEncodingFromInt 7 = EDELTA_BYTE_ARRAY
-parquetEncodingFromInt 8 = ERLE_DICTIONARY
-parquetEncodingFromInt 9 = EBYTE_STREAM_SPLIT
-parquetEncodingFromInt _ = PARQUET_ENCODING_UNKNOWN
-
-data CompressionCodec
-  = UNCOMPRESSED
-  | SNAPPY
-  | GZIP
-  | LZO
-  | BROTLI
-  | LZ4
-  | ZSTD
-  | LZ4_RAW
-  | COMPRESSION_CODEC_UNKNOWN
-  deriving (Show, Eq)
-
-compressionCodecFromInt :: Int32 -> CompressionCodec
-compressionCodecFromInt 0 = UNCOMPRESSED
-compressionCodecFromInt 1 = SNAPPY
-compressionCodecFromInt 2 = GZIP
-compressionCodecFromInt 3 = LZO
-compressionCodecFromInt 4 = BROTLI
-compressionCodecFromInt 5 = LZ4
-compressionCodecFromInt 6 = ZSTD
-compressionCodecFromInt 7 = LZ4_RAW
-compressionCodecFromInt _ = COMPRESSION_CODEC_UNKNOWN
-
-data ColumnStatistics = ColumnStatistics
-  { columnMin :: [Word8],
-    columnMax :: [Word8],
-    columnNullCount :: Int64,
-    columnDistictCount :: Int64,
-    columnMinValue :: [Word8],
-    columnMaxValue :: [Word8],
-    isColumnMaxValueExact :: Bool,
-    isColumnMinValueExact :: Bool
-  }
-  deriving (Show, Eq)
-
-emptyColumnStatistics :: ColumnStatistics
-emptyColumnStatistics = ColumnStatistics [] [] 0 0 [] [] False False
-
-data PageType
-  = DATA_PAGE
-  | INDEX_PAGE
-  | DICTIONARY_PAGE
-  | DATA_PAGE_V2
-  | PAGE_TYPE_UNKNOWN
-  deriving (Show, Eq)
-
-pageTypeFromInt :: Int32 -> PageType
-pageTypeFromInt 0 = DATA_PAGE
-pageTypeFromInt 1 = INDEX_PAGE
-pageTypeFromInt 2 = DICTIONARY_PAGE
-pageTypeFromInt 3 = DATA_PAGE_V2
-pageTypeFromInt _ = PAGE_TYPE_UNKNOWN
 
 data PageEncodingStats = PageEncodingStats
   { pageEncodingPageType :: PageType,
@@ -346,11 +251,15 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                         let nbytes = littleEndianInt32 (take 4 (pageBytes p'))
                         let rleDecoder = MkRleDecoder (drop 4 (pageBytes p')) 1 0 0
 
-                        -- Create index decoder
-                        let lvlByteLen = (fromIntegral nbytes + 4)
-                        let rleBytes = drop lvlByteLen (pageBytes p')
-                        let bitWidth = head rleBytes
-                        let indexDecoder = MkRleDecoder (tail rleBytes) (fromIntegral bitWidth) 0 0
+                        let bytesAfterLevels =
+                                  case rep of
+                                    REQUIRED -> pageBytes p'                  -- no def-levels to skip
+                                    OPTIONAL ->                               -- skip def-level RLE block (len + payload)
+                                      let nbytes = littleEndianInt32 (take 4 (pageBytes p'))
+                                      in  drop (fromIntegral nbytes + 4) (pageBytes p')
+                                    REPEATED -> error "REPEATED not supported"
+                        let bitWidth = head bytesAfterLevels
+                        let indexDecoder = MkRleDecoder (tail bytesAfterLevels) (fromIntegral bitWidth) 0 0
 
                         let finalCol = DI.takeColumn ((fromIntegral . dataPageHeaderNumValues . pageTypeHeader . pageHeader) p') (decodeDictionary rleColumn rleDecoder indexDecoder)
                         let colName = T.pack $ head (columnPathInSchema metadata)
@@ -358,13 +267,113 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                         modifyIORef' colNames (++[colName]) 
                         modifyIORef' colMap (\m -> M.insertWith (\l r -> fromMaybe (error "UNEXPECTED") (DI.concatColumns l r)) colName finalCol m)
                       other -> error $ "UNSUPPORTED ENCODING: " ++ (show other)
-                  else (error "PLAIN DATA PAGES NOT SUPPORTED")
+                  else do
+                    -- p is the first page we read; since it’s not a dictionary page, it must be a Data Page
+                    let schemaElem = filter (\se -> (elementName se) == (T.pack $ head (columnPathInSchema metadata))) (schema fileMetadata)
+                    let rep = if null schemaElem then UNKNOWN_REPETITION_TYPE else ((repetitionType . head) schemaElem)
+                    when (rep == REPEATED || rep == UNKNOWN_REPETITION_TYPE) (error $ "REPETITION TYPE NOT SUPPORTED: " ++ show rep)
+
+                    -- Determine how many values to read from this page
+                    let nVals = case pageTypeHeader (pageHeader p) of
+                                  DataPageHeader{..}   -> fromIntegral dataPageHeaderNumValues
+                                  DataPageHeaderV2{..} -> fromIntegral dataPageHeaderV2NumValues
+                                  _                    -> error "Unexpected page header for data page"
+
+                    -- For REQUIRED fields there are no level streams to skip in Data Page v1.
+                    -- For Data Page v2, def/rep sections are at the front; REQUIRED => both lengths are 0.
+                    let bytesAfterLevels = case pageTypeHeader (pageHeader p) of
+                          DataPageHeader{..}   -> pageBytes p -- v1, REQUIRED => no level bytes
+                          DataPageHeaderV2{..} -> drop (fromIntegral (definitionLevelByteLength + repetitionLevelByteLength)) (pageBytes p)
+                          _                    -> pageBytes p
+
+                    -- Check the value encoding; support PLAIN here
+                    let enc = case pageTypeHeader (pageHeader p) of
+                                DataPageHeader{..}   -> dataPageHeaderEncoding
+                                DataPageHeaderV2{..} -> dataPageHeaderV2Encoding
+                                _                    -> PARQUET_ENCODING_UNKNOWN
+                    when (enc /= EPLAIN) (error $ "Unsupported non-dictionary encoding: " ++ show enc)
+
+                    -- Read values in PLAIN format
+                    let ptype = columnType metadata
+                    finalCol <-
+                      case ptype of
+                        PINT32   -> let (col, _) = readPlainColumn PINT32 nVals bytesAfterLevels in pure col
+                        PDOUBLE  -> let (col, _) = readPlainColumn PDOUBLE nVals bytesAfterLevels in pure col
+                        PBYTE_ARRAY ->
+                          let (col, _) = readPlainColumn PBYTE_ARRAY nVals bytesAfterLevels in pure col
+                        PFIXED_LEN_BYTE_ARRAY ->
+                          let len = fromIntegral (typeLength (head schemaElem))
+                              (col, _) = readPlainFixedLenColumn len nVals bytesAfterLevels
+                          in pure col
+                        other -> error $ "PLAIN not implemented for: " ++ show other
+
+                    let colName = T.pack $ head (columnPathInSchema metadata)
+                    modifyIORef' colNames (++[colName])
+                    modifyIORef' colMap (\m -> M.insertWith (\l r -> fromMaybe (error "UNEXPECTED") (DI.concatColumns l r)) colName finalCol m)
         Nothing -> pure ()
 
   c' <- readIORef colMap
   colNames' <- readIORef colNames
   let asscList = map (\name -> (name, c' M.! name)) colNames'
   pure $ DI.fromNamedColumns asscList
+
+-- Reads exactly `n` values in PLAIN encoding and returns (column, remainingBytes)
+readPlainColumn :: ParquetType -> Int -> [Word8] -> (DI.Column, [Word8])
+readPlainColumn PINT32 n bs =
+  let (vals, rest) = readNInt32 n bs
+  in (DI.fromList vals, rest)
+
+readPlainColumn PDOUBLE n bs =
+  let (vals, rest) = readNDouble n bs
+  in (DI.fromList vals, rest)
+
+-- PLAIN BYTE_ARRAY: 4-byte little-endian length followed by bytes
+readPlainColumn PBYTE_ARRAY n bs =
+  let (vals, rest) = readNByteArrays n bs
+  in (DI.fromList (map (T.pack . map (chr . fromIntegral)) vals), rest)
+
+-- PLAIN FIXED_LEN_BYTE_ARRAY: each value is `len` bytes (from schema element)
+readPlainColumn PFIXED_LEN_BYTE_ARRAY n bs =
+  error "FIXED_LEN_BYTE_ARRAY requires typeLength from schema; use readPlainFixedLenColumn len"
+
+readPlainFixedLenColumn :: Int -> Int -> [Word8] -> (DI.Column, [Word8])
+readPlainFixedLenColumn len n bs =
+  let (vals, rest) = splitFixed n len bs
+  in (DI.fromList (map (T.pack . map (chr . fromIntegral)) vals), rest)
+
+-- Helpers
+readNInt32 :: Int -> [Word8] -> ([Int32],[Word8])
+readNInt32 0 bs = ([], bs)
+readNInt32 k bs =
+  let x  = littleEndianInt32 (take 4 bs)
+      bs' = drop 4 bs
+      (xs, rest) = readNInt32 (k-1) bs'
+  in (x:xs, rest)
+
+readNDouble :: Int -> [Word8] -> ([Double],[Word8])
+readNDouble 0 bs = ([], bs)
+readNDouble k bs =
+  let x  = castWord64ToDouble (littleEndianWord64 (take 8 bs))
+      bs' = drop 8 bs
+      (xs, rest) = readNDouble (k-1) bs'
+  in (x:xs, rest)
+
+readNByteArrays :: Int -> [Word8] -> ([[Word8]],[Word8])
+readNByteArrays 0 bs = ([], bs)
+readNByteArrays k bs =
+  let len  = fromIntegral (littleEndianInt32 (take 4 bs)) :: Int
+      body = take len (drop 4 bs)
+      bs'  = drop (4 + len) bs
+      (xs, rest) = readNByteArrays (k-1) bs'
+  in (body:xs, rest)
+
+splitFixed :: Int -> Int -> [Word8] -> ([[Word8]],[Word8])
+splitFixed 0 _ bs = ([], bs)
+splitFixed k len bs =
+  let body = take len bs
+      bs'  = drop len bs
+      (xs, rest) = splitFixed (k-1) len bs'
+  in (body:xs, rest)
 
 decodeDictionary :: DI.Column -> RleDecoder -> RleDecoder -> DI.Column
 decodeDictionary col rleDecoder indexDecoder
@@ -442,7 +451,7 @@ unpackWidth1 bytes = let
 unpackWidth2 [] = VU.empty
 unpackWidth2 bytes = let
     n = littleEndianWord32 $ take 4 bytes
-  in VU.fromList (map (\i -> (n .>>. (i * 2)) .&. 1) [0..14] ++ [n .>>. 30]) VU.++ (unpackWidth2 (drop 4 bytes))
+  in VU.fromList (map (\i -> (n .>>. (i * 2)) `mod` (1 .<<. 2)) [0..14] ++ [n .>>. 30]) VU.++ (unpackWidth2 (drop 4 bytes))
 unpackWidth3 [] = VU.empty
 unpackWidth3 bytes = let
     n0    = littleEndianWord32 $ take 4 bytes
@@ -511,7 +520,7 @@ readPageWord64 xs = (castWord64ToDouble (littleEndianWord64 (take 8 xs))) : read
 readPageBytes :: [Word8] -> [T.Text]
 readPageBytes [] = []
 readPageBytes xs = let
-    lenBytes = fromIntegral (littleEndianWord8 $ take 4 xs)
+    lenBytes = fromIntegral (littleEndianInt32 $ take 4 xs)
     totalBytesRead = lenBytes + 4
   in T.pack (map (chr . fromIntegral) $ take lenBytes (drop 4 xs)) : readPageBytes (drop totalBytesRead xs)
 
@@ -1507,11 +1516,6 @@ readVarIntFromBytes bs = (fromIntegral n, rem)
     loop shift result (x:xs) = let
         res = result .|. ((fromIntegral (x .&. 0x7f) :: Integer) `shiftL` shift)
       in if (x .&. 0x80) /= 0x80 then (res, xs) else loop (shift + 7) res xs
-
-littleEndianWord8 :: [Word8] -> Word8
-littleEndianWord8 bytes
-  | length bytes == 4 = foldr (\v acc -> acc .|. v) 0 (zipWith (\b i -> b `shiftL` i) bytes [0,8..])
-  | otherwise = error "Expected exactly 4 bytes"
 
 littleEndianWord32 :: [Word8] -> Word32
 littleEndianWord32 bytes

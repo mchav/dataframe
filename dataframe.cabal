@@ -48,6 +48,11 @@ library
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
                    DataFrame.IO.Parquet,
+                   DataFrame.IO.Parquet.ColumnStatistics,
+                   DataFrame.IO.Parquet.Compression,
+                   DataFrame.IO.Parquet.Encoding,
+                   DataFrame.IO.Parquet.Page,
+                   DataFrame.IO.Parquet.Types,
                    DataFrame.Lazy.IO.CSV,
                    DataFrame.Lazy.Internal.DataFrame
     build-depends:    base >= 4.17.2.0 && < 4.22,
@@ -91,6 +96,11 @@ executable dataframe
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
                    DataFrame.IO.Parquet,
+                   DataFrame.IO.Parquet.ColumnStatistics,
+                   DataFrame.IO.Parquet.Compression,
+                   DataFrame.IO.Parquet.Encoding,
+                   DataFrame.IO.Parquet.Page,
+                   DataFrame.IO.Parquet.Types,
                    DataFrame.Operations.Join,
                    DataFrame.Operations.Merge,
                    DataFrame.Lazy.IO.CSV,
@@ -141,7 +151,8 @@ test-suite tests
                    Operations.GroupBy,
                    Operations.InsertColumn,
                    Operations.Sort,
-                   Operations.Take
+                   Operations.Take,
+                   Parquet
     build-depends: base >= 4.17.2.0 && < 4.22,
                    HUnit ^>= 1.6,
                    random >= 1,

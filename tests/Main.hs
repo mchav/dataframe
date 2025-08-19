@@ -24,6 +24,7 @@ import qualified Operations.GroupBy
 import qualified Operations.InsertColumn
 import qualified Operations.Sort
 import qualified Operations.Take
+import qualified Parquet
 
 testData :: D.DataFrame
 testData = D.fromNamedColumns [ ("test1", DI.fromList ([1..26] :: [Int]))
@@ -78,6 +79,7 @@ tests = TestList $ dimensionsTest
                 ++ Operations.Sort.tests
                 ++ Operations.Take.tests
                 ++ Functions.tests
+                ++ Parquet.tests
                 ++ parseTests
 
 main :: IO ()
