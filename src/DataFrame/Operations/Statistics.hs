@@ -54,7 +54,7 @@ mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic mean'
 
 median :: T.Text -> DataFrame -> Maybe Double
-median = applyStatistic (SS.median SS.medianUnbiased)
+median = applyStatistic median'
 
 standardDeviation :: T.Text -> DataFrame -> Maybe Double
 standardDeviation = applyStatistic SS.fastStdDev
@@ -150,6 +150,15 @@ mean' :: VU.Vector Double -> Double
 mean' samp = let
     (!total, !n) = VG.foldl' (\(!total, !n) v -> (total + v, n + 1))  (0 :: Double, 0 :: Int) samp
   in total / fromIntegral n
+
+median' :: VU.Vector Double -> Double
+median' samp = let
+    sortedList = L.sort $ VU.toList samp
+    length = VU.length samp
+    middleIndex = length `div` 2
+  in if odd length
+    then sortedList !! middleIndex
+    else (sortedList !! (middleIndex - 1) + sortedList !! middleIndex) / 2
 
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double  deriving Show
