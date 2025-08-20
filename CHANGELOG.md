@@ -1,5 +1,16 @@
 # Revision history for dataframe
 
+## 0.3.0.2
+* Re-enable Parquet.
+* Change columnInfo to describeColumns
+* We can now convert columns to lists.
+* Fast reductions and groupings. GroupBys are now a dataframe construct not a column construct (thanks to @stites).
+* Filter is now faster because we do mutation on the index vector.
+* Frequencies table nnow correctly display percentages (thanks @kayvank)
+* Show table implementations have been unified (thanks @metapho-re)
+* We now compute statistics on null columns
+* Drastic improvement in plotting since we now use granite.
+
 ## 0.3.0.1
 * Temporarily remove Parquet support. I think it'll be worth creating a spin off of snappy that doesn't rely on C bindings. Also I'll probably spin Parquet off into a separate library.
 
