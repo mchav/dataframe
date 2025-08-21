@@ -14,6 +14,7 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector as V
+import qualified Data.Vector.Algorithms.Intro as VA
 import qualified Data.Vector.Unboxed as VU
 import qualified Statistics.Quantile as SS
 import qualified Statistics.Sample as SS
@@ -21,6 +22,7 @@ import qualified Statistics.Sample as SS
 import Prelude as P
 
 import Control.Exception (throw)
+import Control.Monad.ST (runST)
 import DataFrame.Errors (DataFrameException(..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame(..), getColumn, empty, unsafeGetColumn)
@@ -152,13 +154,17 @@ mean' samp = let
   in total / fromIntegral n
 
 median' :: VU.Vector Double -> Double
-median' samp = let
-    sortedList = L.sort $ VU.toList samp
+median' samp = runST $ do
+  mutableSamp <- VU.thaw samp
+  VA.sort mutableSamp
+  sortedSamp <- VU.freeze mutableSamp
+  let
     length = VU.length samp
     middleIndex = length `div` 2
-  in if odd length
-    then sortedList !! middleIndex
-    else (sortedList !! (middleIndex - 1) + sortedList !! middleIndex) / 2
+  return $
+    if odd length
+      then sortedSamp VU.! middleIndex
+      else (sortedSamp VU.! (middleIndex - 1) + sortedSamp VU.! middleIndex) / 2
 
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double  deriving Show
