@@ -168,7 +168,7 @@ plotCorrelationMatrix df = do
                         numericCols
                 )
                 numericCols
-    print (zip [0..] numericCols)
+    print (zip [0 ..] numericCols)
     putStrLn $ heatmap "Correlation Matrix" correlations defPlot
   where
     correlation xs ys =
