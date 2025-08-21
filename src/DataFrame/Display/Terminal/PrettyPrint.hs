@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module DataFrame.Display.Terminal.PrettyPrint where
 
 import qualified Data.Text as T
@@ -13,10 +14,10 @@ type Filler = Int -> T.Text -> T.Text
 
 -- a type for describing table columns
 data ColDesc t = ColDesc
-  { colTitleFill :: Filler,
-    colTitle :: T.Text,
-    colValueFill :: Filler
-  }
+    { colTitleFill :: Filler
+    , colTitle :: T.Text
+    , colValueFill :: Filler
+    }
 
 -- functions that fill a string (s) to a given width (n) by adding pad
 -- character (c) to align left, right, or center
@@ -45,13 +46,14 @@ center = fillCenter ' '
 
 showTable :: Bool -> [T.Text] -> [T.Text] -> [[T.Text]] -> T.Text
 showTable properMarkdown header types rows =
-  let consolidatedHeader = if properMarkdown then zipWith (\h t -> h <> "<br>" <> t) header types else header
-      cs = map (\h -> ColDesc center h left) consolidatedHeader
-      widths = [maximum $ map T.length col | col <- transpose $ consolidatedHeader : types : rows]
-      border = T.intercalate "---" [T.replicate width (T.singleton '-') | width <- widths]
-      separator = T.intercalate "-|-" [T.replicate width (T.singleton '-') | width <- widths]
-      fillCols fill cols = T.intercalate " | " [fill c width col | (c, width, col) <- zip3 cs widths cols]
-      lines = if properMarkdown
-        then border : fillCols colTitleFill consolidatedHeader : separator : map (fillCols colValueFill) rows
-        else border : fillCols colTitleFill consolidatedHeader : separator : fillCols colTitleFill types : separator : map (fillCols colValueFill) rows
-   in T.unlines lines
+    let consolidatedHeader = if properMarkdown then zipWith (\h t -> h <> "<br>" <> t) header types else header
+        cs = map (\h -> ColDesc center h left) consolidatedHeader
+        widths = [maximum $ map T.length col | col <- transpose $ consolidatedHeader : types : rows]
+        border = T.intercalate "---" [T.replicate width (T.singleton '-') | width <- widths]
+        separator = T.intercalate "-|-" [T.replicate width (T.singleton '-') | width <- widths]
+        fillCols fill cols = T.intercalate " | " [fill c width col | (c, width, col) <- zip3 cs widths cols]
+        lines =
+            if properMarkdown
+                then border : fillCols colTitleFill consolidatedHeader : separator : map (fillCols colValueFill) rows
+                else border : fillCols colTitleFill consolidatedHeader : separator : fillCols colTitleFill types : separator : map (fillCols colValueFill) rows
+     in T.unlines lines
