@@ -148,6 +148,7 @@ plotAllHistograms :: (HasCallStack) => DataFrame -> IO ()
 plotAllHistograms df = do
     let numericCols = filter (isNumericColumn df) (columnNames df)
     forM_ numericCols $ \col -> do
+        putStrLn (T.unpack col)
         plotHistogram col df
 
 plotCorrelationMatrix :: (HasCallStack) => DataFrame -> IO ()
@@ -167,6 +168,7 @@ plotCorrelationMatrix df = do
                         numericCols
                 )
                 numericCols
+    print (zip [0..] numericCols)
     putStrLn $ heatmap "Correlation Matrix" correlations defPlot
   where
     correlation xs ys =
@@ -337,6 +339,7 @@ getCategoricalCounts colName df =
                     UnboxedColumn vec ->
                         let counts = countValuesUnboxed vec
                          in Just [(show k, fromIntegral v) | (k, v) <- counts]
+                    _ -> Nothing
   where
     countValues :: (Ord a, Show a) => V.Vector a -> [(a, Int)]
     countValues vec = M.toList $ V.foldr' (\x acc -> M.insertWith (+) x 1 acc) M.empty vec
@@ -353,6 +356,7 @@ isNumericColumnCheck colName df =
              in case col of
                     BoxedColumn (vec :: V.Vector a) -> isNumericType @a
                     UnboxedColumn (vec :: VU.Vector a) -> isNumericType @a
+                    _ -> False
 
 isNumericType :: forall a. (Typeable a) => Bool
 isNumericType =
@@ -375,6 +379,7 @@ extractStringColumn colName df =
              in case col of
                     BoxedColumn vec -> V.toList $ V.map show vec
                     UnboxedColumn vec -> V.toList $ VG.map show (VG.convert vec)
+                    OptionalColumn vec -> V.toList $ V.map show vec
 
 extractNumericColumn :: (HasCallStack) => T.Text -> DataFrame -> [Double]
 extractNumericColumn colName df =
@@ -385,6 +390,7 @@ extractNumericColumn colName df =
              in case col of
                     BoxedColumn vec -> vectorToDoubles vec
                     UnboxedColumn vec -> unboxedVectorToDoubles vec
+                    _ -> []
 
 vectorToDoubles :: forall a. (Typeable a, Show a) => V.Vector a -> [Double]
 vectorToDoubles vec =
