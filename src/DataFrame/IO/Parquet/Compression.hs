@@ -3,16 +3,16 @@ module DataFrame.IO.Parquet.Compression where
 import Data.Int
 
 data CompressionCodec
-  = UNCOMPRESSED
-  | SNAPPY
-  | GZIP
-  | LZO
-  | BROTLI
-  | LZ4
-  | ZSTD
-  | LZ4_RAW
-  | COMPRESSION_CODEC_UNKNOWN
-  deriving (Show, Eq)
+    = UNCOMPRESSED
+    | SNAPPY
+    | GZIP
+    | LZO
+    | BROTLI
+    | LZ4
+    | ZSTD
+    | LZ4_RAW
+    | COMPRESSION_CODEC_UNKNOWN
+    deriving (Show, Eq)
 
 compressionCodecFromInt :: Int32 -> CompressionCodec
 compressionCodecFromInt 0 = UNCOMPRESSED

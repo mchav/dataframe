@@ -3,16 +3,16 @@ module DataFrame.IO.Parquet.Types where
 import Data.Int
 
 data ParquetType
-  = PBOOLEAN
-  | PINT32
-  | PINT64
-  | PINT96
-  | PFLOAT
-  | PDOUBLE
-  | PBYTE_ARRAY
-  | PFIXED_LEN_BYTE_ARRAY
-  | PARQUET_TYPE_UNKNOWN
-  deriving (Show, Eq)
+    = PBOOLEAN
+    | PINT32
+    | PINT64
+    | PINT96
+    | PFLOAT
+    | PDOUBLE
+    | PBYTE_ARRAY
+    | PFIXED_LEN_BYTE_ARRAY
+    | PARQUET_TYPE_UNKNOWN
+    deriving (Show, Eq)
 
 parquetTypeFromInt :: Int32 -> ParquetType
 parquetTypeFromInt 0 = PBOOLEAN

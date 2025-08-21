@@ -1,17 +1,18 @@
-
--- Useful Haskell extensions.
-{-# LANGUAGE OverloadedStrings #-} -- Allow string literal to be interpreted as any other string type.
-{-# LANGUAGE TypeApplications #-} -- Convenience syntax for specifiying the type `sum a b :: Int` vs `sum @Int a b'. 
 {-# LANGUAGE NumericUnderscores #-}
+-- Useful Haskell extensions.
+-- Allow string literal to be interpreted as any other string type.
+{-# LANGUAGE OverloadedStrings #-}
+-- Convenience syntax for specifiying the type `sum a b :: Int` vs `sum @Int a b'.
+{-# LANGUAGE TypeApplications #-}
 
 import qualified DataFrame as D -- import for general functionality.
 import qualified DataFrame.Functions as F -- import for column expressions.
 
 import DataFrame ((|>)) -- import chaining operator with unqualified.
 
-import qualified Data.Vector.Unboxed as VU
 import Control.Monad (replicateM)
 import Data.Time
+import qualified Data.Vector.Unboxed as VU
 import System.Random.Stateful
 
 main :: IO ()

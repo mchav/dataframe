@@ -3,17 +3,17 @@ module DataFrame.IO.Parquet.Encoding where
 import Data.Int
 
 data ParquetEncoding
-  = EPLAIN
-  | EPLAIN_DICTIONARY
-  | ERLE
-  | EBIT_PACKED
-  | EDELTA_BINARY_PACKED
-  | EDELTA_LENGTH_BYTE_ARRAY
-  | EDELTA_BYTE_ARRAY
-  | ERLE_DICTIONARY
-  | EBYTE_STREAM_SPLIT
-  | PARQUET_ENCODING_UNKNOWN
-  deriving (Show, Eq)
+    = EPLAIN
+    | EPLAIN_DICTIONARY
+    | ERLE
+    | EBIT_PACKED
+    | EDELTA_BINARY_PACKED
+    | EDELTA_LENGTH_BYTE_ARRAY
+    | EDELTA_BYTE_ARRAY
+    | ERLE_DICTIONARY
+    | EBYTE_STREAM_SPLIT
+    | PARQUET_ENCODING_UNKNOWN
+    deriving (Show, Eq)
 
 parquetEncodingFromInt :: Int32 -> ParquetEncoding
 parquetEncodingFromInt 0 = EPLAIN
