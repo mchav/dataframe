@@ -29,6 +29,7 @@ data DataFrameException where
         TypeErrorContext a b ->
         DataFrameException
     ColumnNotFoundException :: T.Text -> T.Text -> [T.Text] -> DataFrameException
+    EmptyDataSetException :: T.Text -> DataFrameException
     deriving (Exception)
 
 instance Show DataFrameException where
@@ -39,6 +40,7 @@ instance Show DataFrameException where
          in
             addCallPointInfo (errorColumnName context) (callingFunctionName context) errorString
     show (ColumnNotFoundException columnName callPoint availableColumns) = columnNotFound columnName callPoint availableColumns
+    show (EmptyDataSetException callPoint) = emptyDataSetError callPoint
 
 columnNotFound :: T.Text -> T.Text -> [T.Text] -> String
 columnNotFound name callPoint columns =
@@ -60,6 +62,12 @@ typeMismatchError givenType expectedType =
             ++ red (show givenType)
             ++ " but the column in the dataframe was actually of type: "
             ++ green (show expectedType)
+
+emptyDataSetError :: T.Text -> String
+emptyDataSetError callPoint = 
+    red "\n\n[ERROR] "
+        ++ T.unpack callPoint
+        ++ " cannot be called on empty data sets"
 
 addCallPointInfo :: Maybe String -> Maybe String -> String -> String
 addCallPointInfo (Just name) (Just cp) err =

@@ -174,8 +174,8 @@ median' samp = runST $ do
     length = VU.length samp
     middleIndex = length `div` 2
   return $
-    if odd length
-      then sortedSamp VU.! middleIndex
+    if length == 0 then throw $ EmptyDataSetException "median"
+    else if odd length then sortedSamp VU.! middleIndex
       else (sortedSamp VU.! (middleIndex - 1) + sortedSamp VU.! middleIndex) / 2
 
 -- accumulator: count, mean, m2
