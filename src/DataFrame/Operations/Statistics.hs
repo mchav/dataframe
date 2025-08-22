@@ -167,16 +167,19 @@ mean' samp =
 
 median' :: VU.Vector Double -> Double
 median' samp = runST $ do
-  mutableSamp <- VU.thaw samp
-  VA.sort mutableSamp
-  sortedSamp <- VU.freeze mutableSamp
-  let
-    length = VU.length samp
-    middleIndex = length `div` 2
-  return $
-    if length == 0 then throw $ EmptyDataSetException "median"
-    else if odd length then sortedSamp VU.! middleIndex
-      else (sortedSamp VU.! (middleIndex - 1) + sortedSamp VU.! middleIndex) / 2
+    mutableSamp <- VU.thaw samp
+    VA.sort mutableSamp
+    sortedSamp <- VU.freeze mutableSamp
+    let
+        length = VU.length samp
+        middleIndex = length `div` 2
+    return $
+        if length == 0
+            then throw $ EmptyDataSetException "median"
+            else
+                if odd length
+                    then sortedSamp VU.! middleIndex
+                    else (sortedSamp VU.! (middleIndex - 1) + sortedSamp VU.! middleIndex) / 2
 
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)

@@ -54,7 +54,7 @@ allTypesPlainSnappy =
     TestCase
         ( assertEqual
             "allTypesPlainSnappy"
-            (D.filter "id" (`elem` [(6::Int32), 7]) allTypes)
+            (D.filter "id" (`elem` [(6 :: Int32), 7]) allTypes)
             (unsafePerformIO (D.readParquet "./tests/data/alltypes_plain.snappy.parquet"))
         )
 
@@ -63,7 +63,7 @@ allTypesDictionary =
     TestCase
         ( assertEqual
             "allTypesPlainSnappy"
-            (D.filter "id" (`elem` [(0::Int32), 1]) allTypes)
+            (D.filter "id" (`elem` [(0 :: Int32), 1]) allTypes)
             (unsafePerformIO (D.readParquet "./tests/data/alltypes_dictionary.parquet"))
         )
 

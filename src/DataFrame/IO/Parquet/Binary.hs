@@ -24,7 +24,7 @@ littleEndianInt32 = fromIntegral . littleEndianWord32
 word64ToLittleEndian :: Word64 -> [Word8]
 word64ToLittleEndian w = map (\i -> fromIntegral (w `shiftR` i)) [0, 8, 16, 24, 32, 40, 48, 56]
 
-word32ToLittleEndian :: Word32 -> [Word8] 
+word32ToLittleEndian :: Word32 -> [Word8]
 word32ToLittleEndian w = map (\i -> fromIntegral (w `shiftR` i)) [0, 8, 16, 24]
 
 readUVarInt :: [Word8] -> (Word64, [Word8])

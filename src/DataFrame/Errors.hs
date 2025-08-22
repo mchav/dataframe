@@ -64,7 +64,7 @@ typeMismatchError givenType expectedType =
             ++ green (show expectedType)
 
 emptyDataSetError :: T.Text -> String
-emptyDataSetError callPoint = 
+emptyDataSetError callPoint =
     red "\n\n[ERROR] "
         ++ T.unpack callPoint
         ++ " cannot be called on empty data sets"

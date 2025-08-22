@@ -73,17 +73,17 @@ readPageFloat xs = castWord32ToFloat (littleEndianWord32 (take 4 xs)) : readPage
 readNInt96Times :: Int -> [Word8] -> ([UTCTime], [Word8])
 readNInt96Times 0 bs = ([], bs)
 readNInt96Times k bs =
-  let timestamp96 = take 12 bs
-      utcTime = int96ToUTCTime timestamp96
-      bs' = drop 12 bs
-      (times, rest) = readNInt96Times (k - 1) bs'
-  in (utcTime : times, rest)
+    let timestamp96 = take 12 bs
+        utcTime = int96ToUTCTime timestamp96
+        bs' = drop 12 bs
+        (times, rest) = readNInt96Times (k - 1) bs'
+     in (utcTime : times, rest)
 
 readPageInt96Times :: [Word8] -> [UTCTime]
 readPageInt96Times [] = []
-readPageInt96Times bs = 
-  let (times, rest) = readNInt96Times (length bs `div` 12) bs
-  in times
+readPageInt96Times bs =
+    let (times, rest) = readNInt96Times (length bs `div` 12) bs
+     in times
 
 readPageFixedBytes :: [Word8] -> Int -> [T.Text]
 readPageFixedBytes [] _ = []
@@ -113,7 +113,7 @@ decodeDictV1 dictValsM maxDef defLvls nPresent bytes =
                             let values = [ds !! i | i <- idxs]
                             pure (toMaybeInt64 maxDef defLvls values)
                         DInt96 ds -> do
-                            let values = [ ds !! i | i <- idxs ]
+                            let values = [ds !! i | i <- idxs]
                             pure (toMaybeUTCTime maxDef defLvls values)
                         DFloat ds -> do
                             let values = [ds !! i | i <- idxs]
@@ -168,9 +168,9 @@ toMaybeFloat maxDef def xs =
             else DI.fromList filled
 
 toMaybeUTCTime :: Int -> [Int] -> [UTCTime] -> DI.Column
-toMaybeUTCTime maxDef def times = 
-  let filled = stitchNullable maxDef def times
-      defaultTime = UTCTime (fromGregorian 1970 1 1) (secondsToDiffTime 0)
-  in if all isJust filled 
-     then DI.fromList (map (fromMaybe defaultTime) filled) 
-     else DI.fromList filled
+toMaybeUTCTime maxDef def times =
+    let filled = stitchNullable maxDef def times
+        defaultTime = UTCTime (fromGregorian 1970 1 1) (secondsToDiffTime 0)
+     in if all isJust filled
+            then DI.fromList (map (fromMaybe defaultTime) filled)
+            else DI.fromList filled

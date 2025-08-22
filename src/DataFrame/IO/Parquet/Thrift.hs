@@ -184,16 +184,17 @@ skipToStructEnd buf pos = do
         then return ()
         else do
             let modifier = fromIntegral ((t .&. 0xf0) `shiftR` 4) :: Int16
-            identifier <- if modifier == 0
-                then readIntFromBuffer @Int16 buf pos
-                else return 0
+            identifier <-
+                if modifier == 0
+                    then readIntFromBuffer @Int16 buf pos
+                    else return 0
             let elemType = toTType (t .&. 0x0f)
             skipFieldData elemType buf pos
             skipToStructEnd buf pos
 
 skipFieldData :: TType -> Ptr Word8 -> IORef Int -> IO ()
 skipFieldData fieldType buf pos = case fieldType of
-    BOOL -> return () 
+    BOOL -> return ()
     I32 -> readIntFromBuffer @Int32 buf pos >> pure ()
     I64 -> readIntFromBuffer @Int64 buf pos >> pure ()
     DOUBLE -> readIntFromBuffer @Int64 buf pos >> pure ()
@@ -235,10 +236,11 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                 readFileMetaData (metadata{version = version}) metaDataBuf bufferPos identifier fieldStack
             2 -> do
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
-                listSize <- if (sizeAndType `shiftR` 4) .&. 0x0f == 15
-                    then readVarIntFromBuffer @Int metaDataBuf bufferPos 
-                    else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
-                
+                listSize <-
+                    if (sizeAndType `shiftR` 4) .&. 0x0f == 15
+                        then readVarIntFromBuffer @Int metaDataBuf bufferPos
+                        else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
+
                 let elemType = toTType sizeAndType
                 schemaElements <- replicateM listSize (readSchemaElement defaultSchemaElement metaDataBuf bufferPos 0 [])
                 readFileMetaData (metadata{schema = schemaElements}) metaDataBuf bufferPos identifier fieldStack
@@ -247,19 +249,21 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                 readFileMetaData (metadata{numRows = fromIntegral numRows}) metaDataBuf bufferPos identifier fieldStack
             4 -> do
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
-                listSize <- if (sizeAndType `shiftR` 4) .&. 0x0f == 15
-                    then readVarIntFromBuffer @Int metaDataBuf bufferPos
-                    else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
-                
+                listSize <-
+                    if (sizeAndType `shiftR` 4) .&. 0x0f == 15
+                        then readVarIntFromBuffer @Int metaDataBuf bufferPos
+                        else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
+
                 let elemType = toTType sizeAndType
                 rowGroups <- replicateM listSize (readRowGroup emptyRowGroup metaDataBuf bufferPos 0 [])
                 readFileMetaData (metadata{rowGroups = rowGroups}) metaDataBuf bufferPos identifier fieldStack
             5 -> do
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
-                listSize <- if (sizeAndType `shiftR` 4) .&. 0x0f == 15
-                    then readVarIntFromBuffer @Int metaDataBuf bufferPos
-                    else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
-                
+                listSize <-
+                    if (sizeAndType `shiftR` 4) .&. 0x0f == 15
+                        then readVarIntFromBuffer @Int metaDataBuf bufferPos
+                        else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
+
                 let elemType = toTType sizeAndType
                 keyValueMetadata <- replicateM listSize (readKeyValue emptyKeyValue metaDataBuf bufferPos 0 [])
                 readFileMetaData (metadata{keyValueMetadata = keyValueMetadata}) metaDataBuf bufferPos identifier fieldStack
@@ -268,10 +272,11 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                 readFileMetaData (metadata{createdBy = Just createdBy}) metaDataBuf bufferPos identifier fieldStack
             7 -> do
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
-                listSize <- if (sizeAndType `shiftR` 4) .&. 0x0f == 15
-                    then readVarIntFromBuffer @Int metaDataBuf bufferPos
-                    else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
-                
+                listSize <-
+                    if (sizeAndType `shiftR` 4) .&. 0x0f == 15
+                        then readVarIntFromBuffer @Int metaDataBuf bufferPos
+                        else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
+
                 let elemType = toTType sizeAndType
                 columnOrders <- replicateM listSize (readColumnOrder metaDataBuf bufferPos 0 [])
                 readFileMetaData (metadata{columnOrders = columnOrders}) metaDataBuf bufferPos identifier fieldStack
@@ -695,10 +700,11 @@ readIntType v@(IntType bitWidth intIsSigned) buf pos lastFieldId fieldStack = do
         then return v
         else do
             let modifier = fromIntegral ((t .&. 0xf0) `shiftR` 4) :: Int16
-            identifier <- if modifier == 0
-                then readIntFromBuffer @Int16 buf pos
-                else return (lastFieldId + modifier)
-            
+            identifier <-
+                if modifier == 0
+                    then readIntFromBuffer @Int16 buf pos
+                    else return (lastFieldId + modifier)
+
             case identifier of
                 1 -> do
                     bitWidthValue <- readAndAdvance pos buf
