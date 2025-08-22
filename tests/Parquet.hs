@@ -23,8 +23,8 @@ allTypes =
         , ("bigint_col", D.fromList [(0 :: Int32), 10, 0, 10, 0, 10, 0, 10])
         , ("float_col", D.fromList [(0 :: Float), 1.1, 0, 1.1, 0, 1.1, 0, 1.1])
         , ("double_col", D.fromList [(0 :: Float), 10.1, 0, 10.1, 0, 10.1, 0, 10.1])
-        , ("date_string_col", D.fromList [("30 33 2F 30 31 2F 30 39" :: Text), "30 33 2F 30 31 2F 30 39", "30 34 2F 30 31 2F 30 39", "30 34 2F 30 31 2F 30 39", "30 32 2F 30 31 2F 30 39", "30 32 2F 30 31 2F 30 39", "30 31 2F 30 31 2F 30 39", "30 31 2F 30 31 2F 30 39"])
-        , ("string_col", D.fromList (take 8 (cycle [("30" :: Text), "31"])))
+        , ("date_string_col", D.fromList [("03/01/09" :: Text), "03/01/09", "04/01/09", "04/01/09", "02/01/09", "02/01/09", "01/01/09", "01/01/09"])
+        , ("string_col", D.fromList (take 8 (cycle [("0" :: Text), "1"])))
         ,
             ( "timestamp_col"
             , D.fromList
@@ -40,7 +40,6 @@ allTypes =
             )
         ]
 
--- TODO: This currently fails
 allTypesPlain :: Test
 allTypesPlain =
     TestCase
@@ -51,4 +50,4 @@ allTypesPlain =
         )
 
 tests :: [Test]
-tests = []
+tests = [allTypesPlain]

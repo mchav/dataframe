@@ -219,15 +219,6 @@ readNFloat k bs =
         (xs, rest) = readNFloat (k - 1) bs'
      in (x : xs, rest)
 
-readNInt96 :: Int -> [Word8] -> ([T.Text], [Word8])
-readNInt96 0 bs = ([], bs)
-readNInt96 k bs =
-    let bytes96 = take 12 bs
-        hexStr = T.pack $ concatMap (\b -> printf "%02x" b) bytes96
-        bs' = drop 12 bs
-        (xs, rest) = readNInt96 (k - 1) bs'
-     in (hexStr : xs, rest)
-
 splitFixed :: Int -> Int -> [Word8] -> ([[Word8]], [Word8])
 splitFixed 0 _ bs = ([], bs)
 splitFixed k len bs =

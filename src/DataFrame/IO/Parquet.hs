@@ -167,8 +167,8 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
                                 let (vals, _) = readNInt64 nPresent afterLvls
                                  in pure (toMaybeInt64 maxDef defLvls vals)
                             PINT96 ->
-                                let (vals, _) = readNInt96 nPresent afterLvls
-                                 in pure (toMaybeInt96 maxDef defLvls vals)
+                                let (vals, _) = readNInt96Times nPresent afterLvls
+                                 in pure (toMaybeUTCTime maxDef defLvls vals)
                             PFLOAT ->
                                 let (vals, _) = readNFloat nPresent afterLvls
                                  in pure (toMaybeFloat maxDef defLvls vals)
@@ -213,8 +213,8 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
                                 let (vals, _) = readNInt64 nPresent afterLvls
                                  in pure (toMaybeInt64 maxDef defLvls vals)
                             PINT96 ->
-                                let (vals, _) = readNInt96 nPresent afterLvls
-                                 in pure (toMaybeInt96 maxDef defLvls vals)
+                                let (vals, _) = readNInt96Times nPresent afterLvls
+                                 in pure (toMaybeUTCTime maxDef defLvls vals)
                             PFLOAT ->
                                 let (vals, _) = readNFloat nPresent afterLvls
                                  in pure (toMaybeFloat maxDef defLvls vals)

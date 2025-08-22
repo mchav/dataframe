@@ -7,10 +7,12 @@ import Data.Char
 import Data.Int
 import Data.Maybe
 import qualified Data.Text as T
+import Data.Time
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Encoding
 import DataFrame.IO.Parquet.Levels
+import DataFrame.IO.Parquet.Time
 import DataFrame.IO.Parquet.Types
 import qualified DataFrame.Internal.Column as DI
 import Foreign
@@ -31,7 +33,7 @@ readDictVals :: ParquetType -> [Word8] -> Maybe Int32 -> DictVals
 readDictVals PBOOLEAN bs (Just count) = DBool (take (fromIntegral count) $ readPageBool bs)
 readDictVals PINT32 bs _ = DInt32 (readPageInt32 bs)
 readDictVals PINT64 bs _ = DInt64 (readPageInt64 bs)
-readDictVals PINT96 bs _ = DInt96 (readPageInt96 bs)
+readDictVals PINT96 bs _ = DInt96 (readPageInt96Times bs)
 readDictVals PFLOAT bs _ = DFloat (readPageFloat bs)
 readDictVals PDOUBLE bs _ = DDouble (readPageWord64 bs)
 readDictVals PBYTE_ARRAY bs _ = DText (readPageBytes bs)
@@ -68,12 +70,20 @@ readPageFloat :: [Word8] -> [Float]
 readPageFloat [] = []
 readPageFloat xs = castWord32ToFloat (littleEndianWord32 (take 4 xs)) : readPageFloat (drop 4 xs)
 
-readPageInt96 :: [Word8] -> [T.Text]
-readPageInt96 [] = []
-readPageInt96 xs =
-    let bytes96 = take 12 xs
-        hexStr = T.pack $ concatMap (\b -> printf "%02x" b) bytes96
-     in hexStr : readPageInt96 (drop 12 xs)
+readNInt96Times :: Int -> [Word8] -> ([UTCTime], [Word8])
+readNInt96Times 0 bs = ([], bs)
+readNInt96Times k bs =
+  let timestamp96 = take 12 bs
+      utcTime = int96ToUTCTime timestamp96
+      bs' = drop 12 bs
+      (times, rest) = readNInt96Times (k - 1) bs'
+  in (utcTime : times, rest)
+
+readPageInt96Times :: [Word8] -> [UTCTime]
+readPageInt96Times [] = []
+readPageInt96Times bs = 
+  let (times, rest) = readNInt96Times (length bs `div` 12) bs
+  in times
 
 readPageFixedBytes :: [Word8] -> Int -> [T.Text]
 readPageFixedBytes [] _ = []
@@ -103,8 +113,8 @@ decodeDictV1 dictValsM maxDef defLvls nPresent bytes =
                             let values = [ds !! i | i <- idxs]
                             pure (toMaybeInt64 maxDef defLvls values)
                         DInt96 ds -> do
-                            let values = [ds !! i | i <- idxs]
-                            pure (toMaybeInt96 maxDef defLvls values)
+                            let values = [ ds !! i | i <- idxs ]
+                            pure (toMaybeUTCTime maxDef defLvls values)
                         DFloat ds -> do
                             let values = [ds !! i | i <- idxs]
                             pure (toMaybeFloat maxDef defLvls values)
@@ -157,9 +167,10 @@ toMaybeFloat maxDef def xs =
             then DI.fromList (map (fromMaybe 0.0) filled)
             else DI.fromList filled
 
-toMaybeInt96 :: Int -> [Int] -> [T.Text] -> DI.Column
-toMaybeInt96 maxDef def xs =
-    let filled = stitchNullable maxDef def xs
-     in if all isJust filled
-            then DI.fromList (map (fromMaybe "") filled)
-            else DI.fromList filled
+toMaybeUTCTime :: Int -> [Int] -> [UTCTime] -> DI.Column
+toMaybeUTCTime maxDef def times = 
+  let filled = stitchNullable maxDef def times
+      defaultTime = UTCTime (fromGregorian 1970 1 1) (secondsToDiffTime 0)
+  in if all isJust filled 
+     then DI.fromList (map (fromMaybe defaultTime) filled) 
+     else DI.fromList filled
