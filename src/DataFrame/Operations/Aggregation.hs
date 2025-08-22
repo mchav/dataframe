@@ -20,8 +20,6 @@ import qualified Data.Vector.Algorithms.Merge as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
-import qualified Statistics.Quantile as SS
-import qualified Statistics.Sample as SS
 
 import Control.Exception (throw)
 import Control.Monad (foldM_)

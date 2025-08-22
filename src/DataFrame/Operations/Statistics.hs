@@ -62,7 +62,7 @@ median :: T.Text -> DataFrame -> Maybe Double
 median = applyStatistic median'
 
 standardDeviation :: T.Text -> DataFrame -> Maybe Double
-standardDeviation = applyStatistic SS.fastStdDev
+standardDeviation = applyStatistic (sqrt . variance')
 
 skewness :: T.Text -> DataFrame -> Maybe Double
 skewness = applyStatistic SS.skewness
