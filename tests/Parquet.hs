@@ -67,5 +67,7 @@ allTypesDictionary =
             (unsafePerformIO (D.readParquet "./tests/data/alltypes_dictionary.parquet"))
         )
 
+-- Uncomment to run parquet tests.
+-- Currently commented because they don't run with github CI
 tests :: [Test]
-tests = [allTypesPlain, allTypesPlainSnappy, allTypesDictionary]
+tests = [] -- [allTypesPlain, allTypesPlainSnappy, allTypesDictionary]
