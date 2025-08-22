@@ -62,7 +62,7 @@ median :: T.Text -> DataFrame -> Maybe Double
 median = applyStatistic median'
 
 standardDeviation :: T.Text -> DataFrame -> Maybe Double
-standardDeviation = applyStatistic SS.fastStdDev
+standardDeviation = applyStatistic standardDeviation'
 
 skewness :: T.Text -> DataFrame -> Maybe Double
 skewness = applyStatistic SS.skewness
@@ -177,6 +177,16 @@ median' samp = runST $ do
     if length == 0 then throw $ EmptyDataSetException "median"
     else if odd length then sortedSamp VU.! middleIndex
       else (sortedSamp VU.! (middleIndex - 1) + sortedSamp VU.! middleIndex) / 2
+
+standardDeviation' :: VU.Vector Double -> Double
+standardDeviation' samp
+  | length == 0 = throw $ EmptyDataSetException "standardDeviation"
+  | otherwise = sqrt variance
+  where
+    m = mean' samp
+    length = VU.length samp
+    squares = VU.map (\x -> (x - m) ^ 2) samp
+    variance = VU.sum squares / fromIntegral length
 
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)

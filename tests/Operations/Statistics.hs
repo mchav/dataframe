@@ -10,6 +10,7 @@ import qualified DataFrame as DE
 import Assertions
 import Test.HUnit
 
+-- median'
 medianOfOddLengthDataSet :: Test
 medianOfOddLengthDataSet =
     TestCase
@@ -37,9 +38,50 @@ medianOfEmptyDataSet =
             (print $ D.median' (VU.fromList []))
         )
 
+-- standardDeviation'
+standardDeviationOfSingleElementDataSet :: Test
+standardDeviationOfSingleElementDataSet =
+    TestCase
+        ( assertEqual
+            "Standard deviation of a data set with a single element"
+            (D.standardDeviation' (VU.fromList [-3.5]))
+            0
+        )
+
+standardDeviationOfSameElementsDataSet :: Test
+standardDeviationOfSameElementsDataSet =
+    TestCase
+        ( assertEqual
+            "Standard deviation of a data set with the same elements"
+            (D.standardDeviation' (VU.fromList [3.5, 3.5, 3.5, 3.5]))
+            0
+        )
+
+standardDeviationOfSimpleDataSet :: Test
+standardDeviationOfSimpleDataSet =
+    TestCase
+        ( assertEqual
+            "Standard deviation of a simple data set"
+            (D.standardDeviation' (VU.fromList [2, 4, 4, 4, 5, 5, 7, 9]))
+            2
+        )
+
+standardDeviationOfEmptyDataSet :: Test
+standardDeviationOfEmptyDataSet =
+    TestCase
+        ( assertExpectException
+            "[Error Case]"
+            (DE.emptyDataSetError "standardDeviation")
+            (print $ D.standardDeviation' (VU.fromList []))
+        )
+
 tests :: [Test]
 tests =
     [ TestLabel "medianOfOddLengthDataSet" medianOfOddLengthDataSet
     , TestLabel "medianOfEvenLengthDataSet" medianOfEvenLengthDataSet
     , TestLabel "medianOfEmptyDataSet" medianOfEmptyDataSet
+    , TestLabel "standardDeviationOfSingleElementDataSet" standardDeviationOfSingleElementDataSet
+    , TestLabel "standardDeviationOfSameElementsDataSet" standardDeviationOfSameElementsDataSet
+    , TestLabel "standardDeviationOfSimpleDataSet" standardDeviationOfSimpleDataSet
+    , TestLabel "standardDeviationOfEmptyDataSet" standardDeviationOfEmptyDataSet
     ]
