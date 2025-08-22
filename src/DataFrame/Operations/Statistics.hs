@@ -178,11 +178,6 @@ median' samp = runST $ do
     else if odd length then sortedSamp VU.! middleIndex
       else (sortedSamp VU.! (middleIndex - 1) + sortedSamp VU.! middleIndex) / 2
 
-standardDeviation' :: VU.Vector Double -> Double
-standardDeviation' samp
-  | VU.length samp == 0 = throw $ EmptyDataSetException "standardDeviation"
-  | otherwise = sqrt $ variance' samp
-
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)
 
