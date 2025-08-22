@@ -177,6 +177,38 @@ readField buf pos lastFieldId fieldStack = do
             let elemType = toTType (t .&. 0x0f)
             pure $ Just (elemType, identifier)
 
+skipToStructEnd :: Ptr Word8 -> IORef Int -> IO ()
+skipToStructEnd buf pos = do
+    t <- readAndAdvance pos buf
+    if t .&. 0x0f == 0
+        then return ()
+        else do
+            let modifier = fromIntegral ((t .&. 0xf0) `shiftR` 4) :: Int16
+            identifier <- if modifier == 0
+                then readIntFromBuffer @Int16 buf pos
+                else return 0
+            let elemType = toTType (t .&. 0x0f)
+            skipFieldData elemType buf pos
+            skipToStructEnd buf pos
+
+skipFieldData :: TType -> Ptr Word8 -> IORef Int -> IO ()
+skipFieldData fieldType buf pos = case fieldType of
+    BOOL -> return () 
+    I32 -> readIntFromBuffer @Int32 buf pos >> pure ()
+    I64 -> readIntFromBuffer @Int64 buf pos >> pure ()
+    DOUBLE -> readIntFromBuffer @Int64 buf pos >> pure ()
+    STRING -> readByteString buf pos >> pure ()
+    LIST -> skipList buf pos
+    STRUCT -> skipToStructEnd buf pos
+    _ -> return ()
+
+skipList :: Ptr Word8 -> IORef Int -> IO ()
+skipList buf pos = do
+    sizeAndType <- readAndAdvance pos buf
+    let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+    let elemType = toTType sizeAndType
+    replicateM_ sizeOnly (skipFieldData elemType buf pos)
+
 readMetadata :: Handle -> Integer -> IO FileMetadata
 readMetadata handle size = do
     metaDataBuf <- mallocBytes (fromIntegral size) :: IO (Ptr Word8)
@@ -202,43 +234,46 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                 version <- readIntFromBuffer @Int32 metaDataBuf bufferPos
                 readFileMetaData (metadata{version = version}) metaDataBuf bufferPos identifier fieldStack
             2 -> do
-                -- We can do some type checking/exception handling here.
-                -- Check elemType == List
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
-                let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
-                -- type of the contents of the list.
+                listSize <- if (sizeAndType `shiftR` 4) .&. 0x0f == 15
+                    then readVarIntFromBuffer @Int metaDataBuf bufferPos 
+                    else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
+                
                 let elemType = toTType sizeAndType
-                schemaElements <- replicateM sizeOnly (readSchemaElement defaultSchemaElement metaDataBuf bufferPos 0 [])
+                schemaElements <- replicateM listSize (readSchemaElement defaultSchemaElement metaDataBuf bufferPos 0 [])
                 readFileMetaData (metadata{schema = schemaElements}) metaDataBuf bufferPos identifier fieldStack
             3 -> do
                 numRows <- readIntFromBuffer @Int64 metaDataBuf bufferPos
                 readFileMetaData (metadata{numRows = fromIntegral numRows}) metaDataBuf bufferPos identifier fieldStack
             4 -> do
-                -- We can do some type checking/exception handling here.
-                -- Check elemType == List
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
-                let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
-                -- type of the contents of the list.
+                listSize <- if (sizeAndType `shiftR` 4) .&. 0x0f == 15
+                    then readVarIntFromBuffer @Int metaDataBuf bufferPos
+                    else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
+                
                 let elemType = toTType sizeAndType
-                rowGroups <- replicateM sizeOnly (readRowGroup emptyRowGroup metaDataBuf bufferPos 0 [])
+                rowGroups <- replicateM listSize (readRowGroup emptyRowGroup metaDataBuf bufferPos 0 [])
                 readFileMetaData (metadata{rowGroups = rowGroups}) metaDataBuf bufferPos identifier fieldStack
             5 -> do
-                -- We can do some type checking/exception handling here.
-                -- Check elemType == List
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
-                let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
-                -- type of the contents of the list.
+                listSize <- if (sizeAndType `shiftR` 4) .&. 0x0f == 15
+                    then readVarIntFromBuffer @Int metaDataBuf bufferPos
+                    else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
+                
                 let elemType = toTType sizeAndType
-                keyValueMetadata <- replicateM sizeOnly (readKeyValue emptyKeyValue metaDataBuf bufferPos 0 [])
+                keyValueMetadata <- replicateM listSize (readKeyValue emptyKeyValue metaDataBuf bufferPos 0 [])
                 readFileMetaData (metadata{keyValueMetadata = keyValueMetadata}) metaDataBuf bufferPos identifier fieldStack
             6 -> do
                 createdBy <- readString metaDataBuf bufferPos
                 readFileMetaData (metadata{createdBy = Just createdBy}) metaDataBuf bufferPos identifier fieldStack
             7 -> do
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
-                let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+                listSize <- if (sizeAndType `shiftR` 4) .&. 0x0f == 15
+                    then readVarIntFromBuffer @Int metaDataBuf bufferPos
+                    else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
+                
                 let elemType = toTType sizeAndType
-                columnOrders <- replicateM sizeOnly (readColumnOrder metaDataBuf bufferPos 0 [])
+                columnOrders <- replicateM listSize (readColumnOrder metaDataBuf bufferPos 0 [])
                 readFileMetaData (metadata{columnOrders = columnOrders}) metaDataBuf bufferPos identifier fieldStack
             8 -> do
                 encryptionAlgorithm <- readEncryptionAlgorithm metaDataBuf bufferPos 0 []
@@ -250,49 +285,48 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
 
 readSchemaElement :: SchemaElement -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO SchemaElement
 readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
-    t <- readAndAdvance pos buf
-    if t .&. 0x0f == 0
-        then return schemaElement
-        else do
-            let modifier = fromIntegral ((t .&. 0xf0) `shiftR` 4) :: Int16
-            identifier <-
-                if modifier == 0
-                    then readIntFromBuffer @Int16 buf pos
-                    else return (lastFieldId + modifier)
-            let elemType = toTType (t .&. 0x0f)
-            case identifier of
-                1 -> do
-                    schemaElemType <- toIntegralType <$> readInt32FromBuffer buf pos
-                    readSchemaElement (schemaElement{elementType = schemaElemType}) buf pos identifier fieldStack
-                2 -> do
-                    typeLength <- readInt32FromBuffer buf pos
-                    readSchemaElement (schemaElement{typeLength = typeLength}) buf pos identifier fieldStack
-                3 -> do
-                    fieldRepetitionType <- readInt32FromBuffer buf pos
-                    readSchemaElement (schemaElement{repetitionType = repetitionTypeFromInt fieldRepetitionType}) buf pos identifier fieldStack
-                4 -> do
-                    nameSize <- readVarIntFromBuffer @Int buf pos
-                    contents <- replicateM nameSize (readAndAdvance pos buf)
-                    readSchemaElement (schemaElement{elementName = T.pack (map (chr . fromIntegral) contents)}) buf pos identifier fieldStack
-                5 -> do
-                    numChildren <- readInt32FromBuffer buf pos
-                    readSchemaElement (schemaElement{numChildren = numChildren}) buf pos identifier fieldStack
-                6 -> do
-                    convertedType <- readInt32FromBuffer buf pos
-                    readSchemaElement (schemaElement{convertedType = convertedType}) buf pos identifier fieldStack
-                7 -> do
-                    scale <- readInt32FromBuffer buf pos
-                    readSchemaElement (schemaElement{scale = scale}) buf pos identifier fieldStack
-                8 -> do
-                    precision <- readInt32FromBuffer buf pos
-                    readSchemaElement (schemaElement{precision = precision}) buf pos identifier fieldStack
-                9 -> do
-                    fieldId <- readInt32FromBuffer buf pos
-                    readSchemaElement (schemaElement{fieldId = fieldId}) buf pos identifier fieldStack
-                10 -> do
-                    logicalType <- readLogicalType buf pos 0 []
-                    readSchemaElement (schemaElement{logicalType = logicalType}) buf pos identifier fieldStack
-                _ -> error $ show identifier -- return schemaElement
+    fieldContents <- readField buf pos lastFieldId fieldStack
+    case fieldContents of
+        Nothing -> return schemaElement
+        Just (STOP, _) -> return schemaElement
+        Just (elemType, identifier) -> case identifier of
+            1 -> do
+                schemaElemType <- toIntegralType <$> readInt32FromBuffer buf pos
+                readSchemaElement (schemaElement{elementType = schemaElemType}) buf pos identifier fieldStack
+            2 -> do
+                typeLength <- readInt32FromBuffer buf pos
+                readSchemaElement (schemaElement{typeLength = typeLength}) buf pos identifier fieldStack
+            3 -> do
+                fieldRepetitionType <- readInt32FromBuffer buf pos
+                readSchemaElement (schemaElement{repetitionType = repetitionTypeFromInt fieldRepetitionType}) buf pos identifier fieldStack
+            4 -> do
+                nameSize <- readVarIntFromBuffer @Int buf pos
+                if nameSize <= 0
+                    then readSchemaElement schemaElement buf pos identifier fieldStack
+                    else do
+                        contents <- replicateM nameSize (readAndAdvance pos buf)
+                        readSchemaElement (schemaElement{elementName = T.pack (map (chr . fromIntegral) contents)}) buf pos identifier fieldStack
+            5 -> do
+                numChildren <- readInt32FromBuffer buf pos
+                readSchemaElement (schemaElement{numChildren = numChildren}) buf pos identifier fieldStack
+            6 -> do
+                convertedType <- readInt32FromBuffer buf pos
+                readSchemaElement (schemaElement{convertedType = convertedType}) buf pos identifier fieldStack
+            7 -> do
+                scale <- readInt32FromBuffer buf pos
+                readSchemaElement (schemaElement{scale = scale}) buf pos identifier fieldStack
+            8 -> do
+                precision <- readInt32FromBuffer buf pos
+                readSchemaElement (schemaElement{precision = precision}) buf pos identifier fieldStack
+            9 -> do
+                fieldId <- readInt32FromBuffer buf pos
+                readSchemaElement (schemaElement{fieldId = fieldId}) buf pos identifier fieldStack
+            10 -> do
+                logicalType <- readLogicalType buf pos 0 []
+                readSchemaElement (schemaElement{logicalType = logicalType}) buf pos identifier fieldStack
+            _ -> do
+                skipFieldData elemType buf pos
+                readSchemaElement schemaElement buf pos identifier fieldStack
 
 readRowGroup :: RowGroup -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO RowGroup
 readRowGroup r buf pos lastFieldId fieldStack = do
@@ -617,22 +651,20 @@ readLogicalType buf pos lastFieldId fieldStack = do
                     replicateM_ 2 (readField buf pos 0 [])
                     return ENUM_TYPE
                 5 -> do
-                    _ <- readField buf pos 0 []
                     readDecimalType (DecimalType{decimalTypeScale = 0, decimalTypePrecision = 0}) buf pos 0 []
                 6 -> do
                     replicateM_ 2 (readField buf pos 0 [])
                     return DATE_TYPE
                 7 -> do
-                    _ <- readField buf pos 0 []
                     readTimeType (TimeType{isAdjustedToUTC = False, unit = MILLISECONDS}) buf pos 0 []
                 8 -> do
-                    _ <- readField buf pos 0 []
                     readTimeType (TimestampType{isAdjustedToUTC = False, unit = MILLISECONDS}) buf pos 0 []
                 -- Apparently reserved for interval types
                 9 -> return LOGICAL_TYPE_UNKNOWN
                 10 -> do
+                    intType <- readIntType (IntType{intIsSigned = False, bitWidth = 0}) buf pos 0 []
                     _ <- readField buf pos 0 []
-                    readIntType (IntType{intIsSigned = False, bitWidth = 0}) buf pos 0 []
+                    pure intType
                 11 -> do
                     replicateM_ 2 (readField buf pos 0 [])
                     return LOGICAL_TYPE_UNKNOWN
@@ -649,30 +681,32 @@ readLogicalType buf pos lastFieldId fieldStack = do
                     replicateM_ 2 (readField buf pos 0 [])
                     return FLOAT16_TYPE
                 16 -> do
-                    _ <- readField buf pos 0 []
                     return VariantType{specificationVersion = 1}
                 17 -> do
-                    _ <- readField buf pos 0 []
                     return GeometryType{crs = ""}
                 18 -> do
-                    _ <- readField buf pos 0 []
                     return GeographyType{crs = "", algorithm = SPHERICAL}
                 _ -> return LOGICAL_TYPE_UNKNOWN
 
 readIntType :: LogicalType -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
 readIntType v@(IntType bitWidth intIsSigned) buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
-    case fieldContents of
-        Nothing -> return v
-        Just (elemType, identifier) -> case identifier of
-            1 -> do
-                bitWidth <- readAndAdvance pos buf
-                readIntType (v{bitWidth = fromIntegral bitWidth}) buf pos lastFieldId fieldStack
-            2 -> do
-                -- TODO: Check for empty
-                intIsSigned <- readAndAdvance pos buf
-                readIntType (v{intIsSigned = intIsSigned == compactBooleanTrue}) buf pos lastFieldId fieldStack
-            _ -> error $ "UNKNOWN field ID for IntType" ++ show identifier
+    t <- readAndAdvance pos buf
+    if t .&. 0x0f == 0
+        then return v
+        else do
+            let modifier = fromIntegral ((t .&. 0xf0) `shiftR` 4) :: Int16
+            identifier <- if modifier == 0
+                then readIntFromBuffer @Int16 buf pos
+                else return (lastFieldId + modifier)
+            
+            case identifier of
+                1 -> do
+                    bitWidthValue <- readAndAdvance pos buf
+                    readIntType (v{bitWidth = fromIntegral bitWidthValue}) buf pos identifier fieldStack
+                2 -> do
+                    let isSigned = (t .&. 0x0f) == compactBooleanTrue
+                    readIntType (v{intIsSigned = isSigned}) buf pos identifier fieldStack
+                _ -> error $ "UNKNOWN field ID for IntType: " ++ show identifier
 
 readDecimalType :: LogicalType -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
 readDecimalType v@(DecimalType p s) buf pos lastFieldId fieldStack = do
