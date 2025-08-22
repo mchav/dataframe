@@ -48,6 +48,10 @@ library
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
                    DataFrame.IO.Parquet,
+                   DataFrame.IO.Parquet.Binary
+                   DataFrame.IO.Parquet.Dictionary
+                   DataFrame.IO.Parquet.Levels
+                   DataFrame.IO.Parquet.Thrift
                    DataFrame.IO.Parquet.ColumnStatistics,
                    DataFrame.IO.Parquet.Compression,
                    DataFrame.IO.Parquet.Encoding,
@@ -97,6 +101,10 @@ executable dataframe
                    DataFrame.Display.Terminal.Plot,
                    DataFrame.IO.CSV,
                    DataFrame.IO.Parquet,
+                   DataFrame.IO.Parquet.Binary
+                   DataFrame.IO.Parquet.Dictionary
+                   DataFrame.IO.Parquet.Levels
+                   DataFrame.IO.Parquet.Thrift
                    DataFrame.IO.Parquet.ColumnStatistics,
                    DataFrame.IO.Parquet.Compression,
                    DataFrame.IO.Parquet.Encoding,
