@@ -77,17 +77,23 @@ readPageHeader hdr xs lastFieldId =
                         (compressedPageSize, rem') = readInt32FromBytes rem
                      in
                         readPageHeader (hdr{compressedPageSize = compressedPageSize}) rem' identifier
+                4 ->
+                    let
+                        (crc, rem') = readInt32FromBytes rem
+                     in
+                        readPageHeader (hdr{pageHeaderCrcChecksum = crc}) rem' identifier
                 5 ->
                     let
                         (dataPageHeader, rem') = readPageTypeHeader emptyDataPageHeader rem 0
                      in
                         readPageHeader (hdr{pageTypeHeader = dataPageHeader}) rem' identifier
+                6 -> error "Index page header not supported"
                 7 ->
                     let
                         (dictionaryPageHeader, rem') = readPageTypeHeader emptyDictionaryPageHeader rem 0
                      in
                         readPageHeader (hdr{pageTypeHeader = dictionaryPageHeader}) rem' identifier
-                n -> error $ show n
+                n -> error $ "Unknown page header field" ++ show n
 
 readPageTypeHeader :: PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
 readPageTypeHeader hdr [] _ = (hdr, [])
