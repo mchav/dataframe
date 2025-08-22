@@ -11,6 +11,7 @@ import Data.Char
 import Data.Foldable
 import Data.IORef
 import qualified Data.Map as M
+import Data.List
 import Data.Maybe
 import qualified Data.Text as T
 import qualified DataFrame.Internal.Column as DI
@@ -34,14 +35,11 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
 
     fileMetadata <- readMetadata handle size
     
-    -- Extract column paths from schema (skip root element)
-    let columnPaths = getColumnPaths (tail $ schema fileMetadata)
+    let columnPaths = getColumnPaths (drop 1 $ schema fileMetadata)
     let columnNames = map fst columnPaths
     
-    -- Create a map to store columns
     colMap <- newIORef (M.empty :: M.Map T.Text DI.Column)
     
-    -- Find type lengths from schema for FIXED_LEN_BYTE_ARRAY columns
     let schemaElements = schema fileMetadata
     let getTypeLength :: [String] -> Maybe Int32
         getTypeLength path = findTypeLength schemaElements path 0
@@ -52,19 +50,16 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                   elementType s == STRING && typeLength s > 0 = Just (typeLength s)
                 | otherwise = findTypeLength ss targetPath (if numChildren s > 0 then depth + 1 else depth)
             
-            pathToElement _ _ _ = []  -- Simplified, you'd need proper path tracking
+            pathToElement _ _ _ = []
     
-    -- Process each row group
     forM_ (rowGroups fileMetadata) $ \rowGroup -> do
-        -- Process each column chunk
         forM_ (zip (rowGroupColumns rowGroup) [0..]) $ \(colChunk, colIdx) -> do
             let metadata = columnMetaData colChunk
             let colPath = columnPathInSchema metadata
             let colName = if null colPath 
                           then T.pack $ "col_" ++ show colIdx
                           else T.pack $ last colPath
-            
-            -- Calculate start position and length
+
             let colDataPageOffset = columnDataPageOffset metadata
             let colDictionaryPageOffset = columnDictionaryPageOffset metadata
             let colStart = if colDictionaryPageOffset > 0 && colDataPageOffset > colDictionaryPageOffset
@@ -72,32 +67,23 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                           else colDataPageOffset
             let colLength = columnTotalCompressedSize metadata
             
-            -- Read all column bytes
             columnBytes <- readBytes handle colStart colLength
             
-            -- Read all pages
             pages <- readAllPages (columnCodec metadata) columnBytes
             
-            -- Get type length if needed
             let maybeTypeLength = if columnType metadata == PFIXED_LEN_BYTE_ARRAY
                                  then getTypeLength colPath
                                  else Nothing
             
-            -- Process pages based on encoding
-            let primaryEncoding = if null (columnEncodings metadata)
-                                 then EPLAIN
-                                 else head (columnEncodings metadata)
+            let primaryEncoding = fromMaybe EPLAIN (fmap fst (uncons (columnEncodings metadata)))
 
-            let schemaTail = tail (schema fileMetadata)
+            let schemaTail = drop 1 (schema fileMetadata)
             let colPath    = columnPathInSchema (columnMetaData colChunk)
             let (maxDef, maxRep) = levelsForPath schemaTail colPath
             column <- processColumnPages (maxDef, maxRep) pages (columnType metadata) primaryEncoding maybeTypeLength
 
-            
-            -- Add to column map
             modifyIORef colMap (M.insert colName column)
     
-    -- Build final DataFrame
     finalColMap <- readIORef colMap
     let orderedColumns = map (\name -> (name, finalColMap M.! name)) 
                             (filter (`M.member` finalColMap) columnNames)
@@ -144,10 +130,13 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
         case dictPages of
           []            -> Nothing
           (dictPage:_)  ->
-            case pageTypeHeader (pageHeader dictPage) of
-              DictionaryPageHeader{..} ->
-                Just (readDictVals pType (pageBytes dictPage) maybeTypeLength)
-              _ -> Nothing
+              case pageTypeHeader (pageHeader dictPage) of
+                DictionaryPageHeader{..} ->
+                  let countForBools = if pType == PBOOLEAN 
+                                    then error "is bool" Just dictionaryPageHeaderNumValues 
+                                    else maybeTypeLength
+                  in Just (readDictVals pType (pageBytes dictPage) countForBools)
+                _ -> Nothing
 
   cols <- forM dataPages $ \page -> do
     case pageTypeHeader (pageHeader page) of
@@ -160,16 +149,28 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
         case dataPageHeaderEncoding of
           EPLAIN ->
             case pType of
+              PBOOLEAN ->
+                let (vals, _) = readNBool nPresent afterLvls
+                in  pure (toMaybeBool maxDef defLvls vals)
               PINT32 ->
                 let (vals, _) = readNInt32 nPresent afterLvls
-                in  pure (toMaybeInt32  maxDef defLvls vals)
+                in  pure (toMaybeInt32 maxDef defLvls vals)
+              PINT64 ->
+                let (vals, _) = readNInt64 nPresent afterLvls
+                in  pure (toMaybeInt64 maxDef defLvls vals)
+              PINT96 ->
+                let (vals, _) = readNInt96 nPresent afterLvls
+                in  pure (toMaybeInt96 maxDef defLvls vals)
+              PFLOAT ->
+                let (vals, _) = readNFloat nPresent afterLvls
+                in  pure (toMaybeFloat maxDef defLvls vals)
               PDOUBLE ->
                 let (vals, _) = readNDouble nPresent afterLvls
                 in  pure (toMaybeDouble maxDef defLvls vals)
               PBYTE_ARRAY ->
                 let (raws, _) = readNByteArrays nPresent afterLvls
                     texts     = map (T.pack . map (chr . fromIntegral)) raws
-                in  pure (toMaybeText   maxDef defLvls texts)
+                in  pure (toMaybeText maxDef defLvls texts)
               PFIXED_LEN_BYTE_ARRAY ->
                 case maybeTypeLength of
                   Just len ->
@@ -177,7 +178,7 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
                         texts     = map (T.pack . map (chr . fromIntegral)) raws
                     in  pure (toMaybeText maxDef defLvls texts)
                   Nothing -> error "FIXED_LEN_BYTE_ARRAY requires type length"
-              _ -> error ("PLAIN not implemented for " ++ show pType)
+              PARQUET_TYPE_UNKNOWN -> error "Cannot read unknown Parquet type"
 
           ERLE_DICTIONARY      -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
           EPLAIN_DICTIONARY    -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
@@ -196,16 +197,28 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
         case dataPageHeaderV2Encoding of
           EPLAIN ->
             case pType of
+              PBOOLEAN ->
+                let (vals, _) = readNBool nPresent afterLvls
+                in  pure (toMaybeBool maxDef defLvls vals)
               PINT32 ->
                 let (vals, _) = readNInt32 nPresent afterLvls
-                in  pure (toMaybeInt32  maxDef defLvls vals)
+                in  pure (toMaybeInt32 maxDef defLvls vals)
+              PINT64 ->
+                let (vals, _) = readNInt64 nPresent afterLvls
+                in  pure (toMaybeInt64 maxDef defLvls vals)
+              PINT96 ->
+                let (vals, _) = readNInt96 nPresent afterLvls
+                in  pure (toMaybeInt96 maxDef defLvls vals)
+              PFLOAT ->
+                let (vals, _) = readNFloat nPresent afterLvls
+                in  pure (toMaybeFloat maxDef defLvls vals)
               PDOUBLE ->
                 let (vals, _) = readNDouble nPresent afterLvls
                 in  pure (toMaybeDouble maxDef defLvls vals)
               PBYTE_ARRAY ->
                 let (raws, _) = readNByteArrays nPresent afterLvls
                     texts     = map (T.pack . map (chr . fromIntegral)) raws
-                in  pure (toMaybeText   maxDef defLvls texts)
+                in  pure (toMaybeText maxDef defLvls texts)
               PFIXED_LEN_BYTE_ARRAY ->
                 case maybeTypeLength of
                   Just len ->
@@ -213,7 +226,7 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
                         texts     = map (T.pack . map (chr . fromIntegral)) raws
                     in  pure (toMaybeText maxDef defLvls texts)
                   Nothing -> error "FIXED_LEN_BYTE_ARRAY requires type length"
-              _ -> error ("PLAIN v2 not implemented for " ++ show pType)
+              PARQUET_TYPE_UNKNOWN -> error "Cannot read unknown Parquet type"
 
           other -> error ("Unsupported v2 encoding: " ++ show other)
 

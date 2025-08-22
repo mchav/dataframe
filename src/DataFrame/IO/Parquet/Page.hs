@@ -8,6 +8,7 @@ import qualified Data.ByteString as BSO
 import Data.Bits
 import Data.Char
 import Data.Int
+import Data.List
 import Data.Word
 import Data.Foldable
 import Data.Maybe
@@ -20,6 +21,7 @@ import DataFrame.IO.Parquet.Thrift
 import DataFrame.IO.Parquet.Levels
 import DataFrame.IO.Parquet.Dictionary
 import GHC.Float
+import Text.Printf
 
 isDataPage :: Page -> Bool
 isDataPage page = case pageTypeHeader (pageHeader page) of
@@ -57,7 +59,7 @@ readPageHeader hdr xs lastFieldId =
         fieldContents = readField' xs lastFieldId
      in
         case fieldContents of
-            Nothing -> (hdr, tail xs)
+            Nothing -> (hdr, drop 1 xs)
             Just (rem, elemType, identifier) -> case identifier of
                 1 ->
                     let
@@ -94,7 +96,7 @@ readPageTypeHeader hdr@(DictionaryPageHeader{..}) xs lastFieldId =
         fieldContents = readField' xs lastFieldId
      in
         case fieldContents of
-            Nothing -> (hdr, tail xs)
+            Nothing -> (hdr, drop 1 xs)
             Just (rem, elemType, identifier) -> case identifier of
                 1 ->
                     let
@@ -117,7 +119,7 @@ readPageTypeHeader hdr@(DataPageHeader{..}) xs lastFieldId =
         fieldContents = readField' xs lastFieldId
      in
         case fieldContents of
-            Nothing -> (hdr, tail xs)
+            Nothing -> (hdr, drop 1 xs)
             Just (rem, elemType, identifier) -> case identifier of
                 1 ->
                     let
@@ -191,6 +193,41 @@ readNByteArrays k bs =
         (xs, rest) = readNByteArrays (k - 1) bs'
     in (body : xs, rest)
 
+readNBool :: Int -> [Word8] -> ([Bool], [Word8])
+readNBool 0 bs = ([], bs)
+readNBool count bs = 
+    let totalBytes = (count + 7) `div` 8
+        chunk = take totalBytes bs
+        rest = drop totalBytes bs
+        bits = concatMap (\b -> map (\i -> (b `shiftR` i) .&. 1 == 1) [0..7]) chunk
+        bools = take count bits
+    in (bools, rest)
+
+readNInt64 :: Int -> [Word8] -> ([Int64], [Word8])
+readNInt64 0 bs = ([], bs)
+readNInt64 k bs =
+    let x = fromIntegral (littleEndianWord64 (take 8 bs))
+        bs' = drop 8 bs
+        (xs, rest) = readNInt64 (k - 1) bs'
+    in (x : xs, rest)
+
+readNFloat :: Int -> [Word8] -> ([Float], [Word8])
+readNFloat 0 bs = ([], bs)
+readNFloat k bs =
+    let x = castWord32ToFloat (littleEndianWord32 (take 4 bs))
+        bs' = drop 4 bs
+        (xs, rest) = readNFloat (k - 1) bs'
+    in (x : xs, rest)
+
+readNInt96 :: Int -> [Word8] -> ([T.Text], [Word8])
+readNInt96 0 bs = ([], bs)
+readNInt96 k bs =
+    let bytes96 = take 12 bs
+        hexStr = T.pack $ concatMap (\b -> printf "%02x" b) bytes96
+        bs' = drop 12 bs
+        (xs, rest) = readNInt96 (k - 1) bs'
+    in (hexStr : xs, rest)
+
 splitFixed :: Int -> Int -> [Word8] -> ([[Word8]], [Word8])
 splitFixed 0 _ bs = ([], bs)
 splitFixed k len bs =
@@ -205,7 +242,7 @@ readStatisticsFromBytes cs xs lastFieldId =
         fieldContents = readField' xs lastFieldId
      in
         case fieldContents of
-            Nothing -> (cs, tail xs)
+            Nothing -> (cs, drop 1 xs)
             Just (rem, elemType, identifier) -> case identifier of
                 1 ->
                     let

@@ -178,7 +178,15 @@ data EncryptionAlgorithm
         }
     deriving (Show, Eq)
 
-data DictVals = DInt32 [Int32] | DDouble [Double] | DText [T.Text] deriving (Show, Eq)
+data DictVals 
+    = DBool [Bool] 
+    | DInt32 [Int32] 
+    | DInt64 [Int64]
+    | DInt96 [T.Text]  -- or create a custom Int96 type
+    | DFloat [Float]
+    | DDouble [Double] 
+    | DText [T.Text] 
+    deriving (Show, Eq)
 
 data Page = Page
     { pageHeader :: PageHeader
