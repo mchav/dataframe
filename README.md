@@ -117,7 +117,10 @@ Familiar with another dataframe library? Get started:
 
 ## Supported input formats
 * CSV
-* Apache Parquet (still buggy and experimental)
+* Apache Parquet
+
+## Supported output formats
+* CSV
 
 ## Future work
 * Apache arrow compatability
