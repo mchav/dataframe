@@ -14,6 +14,7 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Algorithms.Intro as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Statistics.Quantile as SS
@@ -22,6 +23,7 @@ import qualified Statistics.Sample as SS
 import Prelude as P
 
 import Control.Exception (throw)
+import Control.Monad.ST (runST)
 import qualified Data.Bifunctor as Data
 import Data.Foldable (asum)
 import Data.Function ((&))
@@ -57,7 +59,7 @@ mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic mean'
 
 median :: T.Text -> DataFrame -> Maybe Double
-median = applyStatistic (SS.median SS.medianUnbiased)
+median = applyStatistic median'
 
 standardDeviation :: T.Text -> DataFrame -> Maybe Double
 standardDeviation = applyStatistic SS.fastStdDev
@@ -162,6 +164,19 @@ mean' samp =
         (!total, !n) = VG.foldl' (\(!total, !n) v -> (total + v, n + 1)) (0 :: Double, 0 :: Int) samp
      in
         total / fromIntegral n
+
+median' :: VU.Vector Double -> Double
+median' samp = runST $ do
+  mutableSamp <- VU.thaw samp
+  VA.sort mutableSamp
+  sortedSamp <- VU.freeze mutableSamp
+  let
+    length = VU.length samp
+    middleIndex = length `div` 2
+  return $
+    if length == 0 then throw $ EmptyDataSetException "median"
+    else if odd length then sortedSamp VU.! middleIndex
+      else (sortedSamp VU.! (middleIndex - 1) + sortedSamp VU.! middleIndex) / 2
 
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)

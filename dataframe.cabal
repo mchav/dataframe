@@ -160,7 +160,8 @@ test-suite tests
                    Operations.Filter,
                    Operations.GroupBy,
                    Operations.InsertColumn,
-                   Operations.Sort,
+                   Operations.Sort, 
+                   Operations.Statistics, 
                    Operations.Take,
                    Parquet
     build-depends: base >= 4.17.2.0 && < 4.22,

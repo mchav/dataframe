@@ -24,6 +24,7 @@ import qualified Operations.Filter
 import qualified Operations.GroupBy
 import qualified Operations.InsertColumn
 import qualified Operations.Sort
+import qualified Operations.Statistics
 import qualified Operations.Take
 import qualified Parquet
 
@@ -89,6 +90,7 @@ tests =
             ++ Operations.GroupBy.tests
             ++ Operations.InsertColumn.tests
             ++ Operations.Sort.tests
+            ++ Operations.Statistics.tests
             ++ Operations.Take.tests
             ++ Functions.tests
             ++ Parquet.tests
