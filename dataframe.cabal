@@ -110,7 +110,7 @@ executable dataframe
                    DataFrame.IO.Parquet.Compression,
                    DataFrame.IO.Parquet.Encoding,
                    DataFrame.IO.Parquet.Page,
-                   DataFrame.IO.Parquet.Ttime,
+                   DataFrame.IO.Parquet.Time,
                    DataFrame.IO.Parquet.Types,
                    DataFrame.Operations.Join,
                    DataFrame.Operations.Merge,

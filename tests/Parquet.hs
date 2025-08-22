@@ -20,9 +20,9 @@ allTypes =
         , ("tinyint_col", D.fromList [(0 :: Int32), 1, 0, 1, 0, 1, 0, 1])
         , ("smallint_col", D.fromList [(0 :: Int32), 1, 0, 1, 0, 1, 0, 1])
         , ("int_col", D.fromList [(0 :: Int32), 1, 0, 1, 0, 1, 0, 1])
-        , ("bigint_col", D.fromList [(0 :: Int32), 10, 0, 10, 0, 10, 0, 10])
+        , ("bigint_col", D.fromList [(0 :: Int64), 10, 0, 10, 0, 10, 0, 10])
         , ("float_col", D.fromList [(0 :: Float), 1.1, 0, 1.1, 0, 1.1, 0, 1.1])
-        , ("double_col", D.fromList [(0 :: Float), 10.1, 0, 10.1, 0, 10.1, 0, 10.1])
+        , ("double_col", D.fromList [(0 :: Double), 10.1, 0, 10.1, 0, 10.1, 0, 10.1])
         , ("date_string_col", D.fromList [("03/01/09" :: Text), "03/01/09", "04/01/09", "04/01/09", "02/01/09", "02/01/09", "01/01/09", "01/01/09"])
         , ("string_col", D.fromList (take 8 (cycle [("0" :: Text), "1"])))
         ,
@@ -46,8 +46,26 @@ allTypesPlain =
         ( assertEqual
             "allTypesPlain"
             allTypes
-            (unsafePerformIO (D.readParquet "./tests/parquet-testing/data/alltypes_plain.parquet"))
+            (unsafePerformIO (D.readParquet "./tests/data/alltypes_plain.parquet"))
+        )
+
+allTypesPlainSnappy :: Test
+allTypesPlainSnappy =
+    TestCase
+        ( assertEqual
+            "allTypesPlainSnappy"
+            (D.filter "id" (`elem` [(6::Int32), 7]) allTypes)
+            (unsafePerformIO (D.readParquet "./tests/data/alltypes_plain.snappy.parquet"))
+        )
+
+allTypesDictionary :: Test
+allTypesDictionary =
+    TestCase
+        ( assertEqual
+            "allTypesPlainSnappy"
+            (D.filter "id" (`elem` [(0::Int32), 1]) allTypes)
+            (unsafePerformIO (D.readParquet "./tests/data/alltypes_dictionary.parquet"))
         )
 
 tests :: [Test]
-tests = [allTypesPlain]
+tests = [allTypesPlain, allTypesPlainSnappy, allTypesDictionary]
