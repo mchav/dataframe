@@ -2,9 +2,9 @@
 
 module DataFrame.IO.Parquet.Types where
 
-import           Data.Int
+import Data.Int
 import qualified Data.Text as T
-import           Data.Word
+import Data.Word
 
 data ParquetType
     = PBOOLEAN
@@ -178,14 +178,14 @@ data EncryptionAlgorithm
         }
     deriving (Show, Eq)
 
-data DictVals 
-    = DBool [Bool] 
-    | DInt32 [Int32] 
+data DictVals
+    = DBool [Bool]
+    | DInt32 [Int32]
     | DInt64 [Int64]
-    | DInt96 [T.Text]  -- or create a custom Int96 type
+    | DInt96 [T.Text] -- or create a custom Int96 type
     | DFloat [Float]
-    | DDouble [Double] 
-    | DText [T.Text] 
+    | DDouble [Double]
+    | DText [T.Text]
     deriving (Show, Eq)
 
 data Page = Page
@@ -291,4 +291,3 @@ compressionCodecFromInt 5 = LZ4
 compressionCodecFromInt 6 = ZSTD
 compressionCodecFromInt 7 = LZ4_RAW
 compressionCodecFromInt _ = COMPRESSION_CODEC_UNKNOWN
-

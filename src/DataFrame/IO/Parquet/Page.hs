@@ -1,26 +1,27 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
+
 module DataFrame.IO.Parquet.Page where
 
 import Codec.Compression.Zstd.Streaming
 import Control.Monad
-import qualified Data.ByteString as BSO
 import Data.Bits
+import qualified Data.ByteString as BSO
 import Data.Char
+import Data.Foldable
 import Data.Int
 import Data.List
-import Data.Word
-import Data.Foldable
 import Data.Maybe
 import qualified Data.Text as T
-import qualified DataFrame.Internal.Column as DI
-import qualified Snappy as Snappy
-import DataFrame.IO.Parquet.Types
+import Data.Word
 import DataFrame.IO.Parquet.Binary
-import DataFrame.IO.Parquet.Thrift
-import DataFrame.IO.Parquet.Levels
 import DataFrame.IO.Parquet.Dictionary
+import DataFrame.IO.Parquet.Levels
+import DataFrame.IO.Parquet.Thrift
+import DataFrame.IO.Parquet.Types
+import qualified DataFrame.Internal.Column as DI
 import GHC.Float
+import qualified Snappy as Snappy
 import Text.Printf
 
 isDataPage :: Page -> Bool
@@ -87,7 +88,6 @@ readPageHeader hdr xs lastFieldId =
                      in
                         readPageHeader (hdr{pageTypeHeader = dictionaryPageHeader}) rem' identifier
                 n -> error $ show n
-
 
 readPageTypeHeader :: PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
 readPageTypeHeader hdr [] _ = (hdr, [])
@@ -156,7 +156,7 @@ readField' (x : xs) lastFieldId
         let modifier = fromIntegral ((x .&. 0xf0) `shiftR` 4) :: Int16
             (identifier, rem) = if modifier == 0 then readIntFromBytes @Int16 xs else (lastFieldId + modifier, xs)
             elemType = toTType (x .&. 0x0f)
-        in Just (rem, elemType, identifier)
+         in Just (rem, elemType, identifier)
 
 readAllPages :: CompressionCodec -> [Word8] -> IO [Page]
 readAllPages codec bytes = go bytes []
@@ -174,7 +174,7 @@ readNInt32 k bs =
     let x = littleEndianInt32 (take 4 bs)
         bs' = drop 4 bs
         (xs, rest) = readNInt32 (k - 1) bs'
-    in (x : xs, rest)
+     in (x : xs, rest)
 
 readNDouble :: Int -> [Word8] -> ([Double], [Word8])
 readNDouble 0 bs = ([], bs)
@@ -182,7 +182,7 @@ readNDouble k bs =
     let x = castWord64ToDouble (littleEndianWord64 (take 8 bs))
         bs' = drop 8 bs
         (xs, rest) = readNDouble (k - 1) bs'
-    in (x : xs, rest)
+     in (x : xs, rest)
 
 readNByteArrays :: Int -> [Word8] -> ([[Word8]], [Word8])
 readNByteArrays 0 bs = ([], bs)
@@ -191,17 +191,17 @@ readNByteArrays k bs =
         body = take len (drop 4 bs)
         bs' = drop (4 + len) bs
         (xs, rest) = readNByteArrays (k - 1) bs'
-    in (body : xs, rest)
+     in (body : xs, rest)
 
 readNBool :: Int -> [Word8] -> ([Bool], [Word8])
 readNBool 0 bs = ([], bs)
-readNBool count bs = 
+readNBool count bs =
     let totalBytes = (count + 7) `div` 8
         chunk = take totalBytes bs
         rest = drop totalBytes bs
-        bits = concatMap (\b -> map (\i -> (b `shiftR` i) .&. 1 == 1) [0..7]) chunk
+        bits = concatMap (\b -> map (\i -> (b `shiftR` i) .&. 1 == 1) [0 .. 7]) chunk
         bools = take count bits
-    in (bools, rest)
+     in (bools, rest)
 
 readNInt64 :: Int -> [Word8] -> ([Int64], [Word8])
 readNInt64 0 bs = ([], bs)
@@ -209,7 +209,7 @@ readNInt64 k bs =
     let x = fromIntegral (littleEndianWord64 (take 8 bs))
         bs' = drop 8 bs
         (xs, rest) = readNInt64 (k - 1) bs'
-    in (x : xs, rest)
+     in (x : xs, rest)
 
 readNFloat :: Int -> [Word8] -> ([Float], [Word8])
 readNFloat 0 bs = ([], bs)
@@ -217,7 +217,7 @@ readNFloat k bs =
     let x = castWord32ToFloat (littleEndianWord32 (take 4 bs))
         bs' = drop 4 bs
         (xs, rest) = readNFloat (k - 1) bs'
-    in (x : xs, rest)
+     in (x : xs, rest)
 
 readNInt96 :: Int -> [Word8] -> ([T.Text], [Word8])
 readNInt96 0 bs = ([], bs)
@@ -226,7 +226,7 @@ readNInt96 k bs =
         hexStr = T.pack $ concatMap (\b -> printf "%02x" b) bytes96
         bs' = drop 12 bs
         (xs, rest) = readNInt96 (k - 1) bs'
-    in (hexStr : xs, rest)
+     in (hexStr : xs, rest)
 
 splitFixed :: Int -> Int -> [Word8] -> ([[Word8]], [Word8])
 splitFixed 0 _ bs = ([], bs)
@@ -234,7 +234,7 @@ splitFixed k len bs =
     let body = take len bs
         bs' = drop len bs
         (xs, rest) = splitFixed (k - 1) len bs'
-    in (body : xs, rest)
+     in (body : xs, rest)
 
 readStatisticsFromBytes :: ColumnStatistics -> [Word8] -> Int16 -> (ColumnStatistics, [Word8])
 readStatisticsFromBytes cs xs lastFieldId =

@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
+
 module DataFrame.IO.Parquet.Thrift where
 
 import Control.Monad
@@ -7,14 +8,14 @@ import Data.Bits
 import Data.Char
 import Data.IORef
 import Data.Int
+import qualified Data.Map as M
 import Data.Maybe
+import qualified Data.Text as T
 import Data.Word
+import DataFrame.IO.Parquet.Binary
+import DataFrame.IO.Parquet.Types
 import Foreign
 import System.IO
-import qualified Data.Map as M
-import qualified Data.Text as T
-import DataFrame.IO.Parquet.Types
-import DataFrame.IO.Parquet.Binary
 
 data SchemaElement = SchemaElement
     { elementName :: T.Text
@@ -149,15 +150,18 @@ compactList = 0x09
 compactStruct = 0x0C
 
 toTType :: Word8 -> TType
-toTType t = fromMaybe STOP $ M.lookup (t .&. 0x0f) $ M.fromList
-    [ (compactBooleanTrue, BOOL)
-    , (compactI32, I32)
-    , (compactI64, I64)
-    , (compactDouble, DOUBLE)
-    , (compactBinary, STRING)
-    , (compactList, LIST)
-    , (compactStruct, STRUCT)
-    ]
+toTType t =
+    fromMaybe STOP $
+        M.lookup (t .&. 0x0f) $
+            M.fromList
+                [ (compactBooleanTrue, BOOL)
+                , (compactI32, I32)
+                , (compactI64, I64)
+                , (compactDouble, DOUBLE)
+                , (compactBinary, STRING)
+                , (compactList, LIST)
+                , (compactStruct, STRUCT)
+                ]
 
 readField :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO (Maybe (TType, Int16))
 readField buf pos lastFieldId fieldStack = do
@@ -166,9 +170,10 @@ readField buf pos lastFieldId fieldStack = do
         then return Nothing
         else do
             let modifier = fromIntegral ((t .&. 0xf0) `shiftR` 4) :: Int16
-            identifier <- if modifier == 0
-                then readIntFromBuffer @Int16 buf pos
-                else return (lastFieldId + modifier)
+            identifier <-
+                if modifier == 0
+                    then readIntFromBuffer @Int16 buf pos
+                    else return (lastFieldId + modifier)
             let elemType = toTType (t .&. 0x0f)
             pure $ Just (elemType, identifier)
 

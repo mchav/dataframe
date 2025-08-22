@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeApplications #-}
+
 module DataFrame.IO.Parquet.Binary where
 
 import Control.Monad
@@ -35,20 +36,20 @@ readVarIntFromBytes bs = (fromIntegral n, rem)
     loop _ result [] = (result, [])
     loop shift result (x : xs) =
         let res = result .|. ((fromIntegral (x .&. 0x7f) :: Integer) `shiftL` shift)
-        in if (x .&. 0x80) /= 0x80 then (res, xs) else loop (shift + 7) res xs
+         in if (x .&. 0x80) /= 0x80 then (res, xs) else loop (shift + 7) res xs
 
 readIntFromBytes :: (Integral a) => [Word8] -> (a, [Word8])
 readIntFromBytes bs =
     let (n, rem) = readVarIntFromBytes bs
         u = fromIntegral n :: Word32
-    in (fromIntegral $ (fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1)), rem)
+     in (fromIntegral $ (fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1)), rem)
 
 readInt32FromBytes :: [Word8] -> (Int32, [Word8])
 readInt32FromBytes bs =
     let (n', rem) = readVarIntFromBytes @Int64 bs
         n = fromIntegral n' :: Int32
         u = fromIntegral n :: Word32
-    in ((fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1)), rem)
+     in ((fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1)), rem)
 
 readAndAdvance :: IORef Int -> Ptr b -> IO Word8
 readAndAdvance bufferPos buffer = do
