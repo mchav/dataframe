@@ -51,6 +51,7 @@ readPage c columnBytes = do
             Left e -> error (show e)
             Right res -> pure res
         UNCOMPRESSED -> pure (BSO.pack compressed)
+        other -> error ("Unsupported compression type: " ++ show other)
     pure $ (Just $ Page hdr (BSO.unpack fullData), drop (fromIntegral $ compressedPageSize hdr) rem)
 
 readPageHeader :: PageHeader -> [Word8] -> Int16 -> (PageHeader, [Word8])
@@ -93,6 +94,11 @@ readPageHeader hdr xs lastFieldId =
                         (dictionaryPageHeader, rem') = readPageTypeHeader emptyDictionaryPageHeader rem 0
                      in
                         readPageHeader (hdr{pageTypeHeader = dictionaryPageHeader}) rem' identifier
+                8 ->
+                    let
+                        (dataPageHeaderV2, rem') = readPageTypeHeader emptyDataPageHeaderV2 rem 0
+                     in
+                        readPageHeader (hdr{pageTypeHeader = dataPageHeaderV2}) rem' identifier
                 n -> error $ "Unknown page header field" ++ show n
 
 readPageTypeHeader :: PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
@@ -152,6 +158,54 @@ readPageTypeHeader hdr@(DataPageHeader{..}) xs lastFieldId =
                         (stats, rem') = readStatisticsFromBytes emptyColumnStatistics rem 0
                      in
                         readPageTypeHeader (hdr{dataPageHeaderStatistics = stats}) rem' identifier
+                n -> error $ show n
+readPageTypeHeader hdr@(DataPageHeaderV2{..}) xs lastFieldId =
+    let
+        fieldContents = readField' xs lastFieldId
+     in
+        case fieldContents of
+            Nothing -> (hdr, drop 1 xs)
+            Just (rem, elemType, identifier) -> case identifier of
+                1 ->
+                    let
+                        (numValues, rem') = readInt32FromBytes rem
+                     in
+                        readPageTypeHeader (hdr{dataPageHeaderV2NumValues = numValues}) rem' identifier
+                2 ->
+                    let
+                        (numNulls, rem') = readInt32FromBytes rem
+                     in
+                        readPageTypeHeader (hdr{dataPageHeaderV2NumNulls = numNulls}) rem' identifier
+                3 ->
+                    let
+                        (numRows, rem') = readInt32FromBytes rem
+                     in
+                        readPageTypeHeader (hdr{dataPageHeaderV2NumRows = numRows}) rem' identifier
+                4 ->
+                    let
+                        (enc, rem') = readInt32FromBytes rem
+                     in
+                        readPageTypeHeader (hdr{dataPageHeaderV2Encoding = parquetEncodingFromInt enc}) rem' identifier
+                5 ->
+                    let
+                        (n, rem') = readInt32FromBytes rem
+                     in
+                        readPageTypeHeader (hdr{definitionLevelByteLength = n}) rem' identifier
+                6 ->
+                    let
+                        (n, rem') = readInt32FromBytes rem
+                     in
+                        readPageTypeHeader (hdr{repetitionLevelByteLength = n}) rem' identifier
+                7 ->
+                    let
+                        isCompressed = ((head xs) .&. 0x0f) == compactBooleanTrue
+                     in
+                        readPageTypeHeader (hdr{dataPageHeaderV2IsCompressed = dataPageHeaderV2IsCompressed}) rem identifier
+                8 ->
+                    let
+                        (stats, rem') = readStatisticsFromBytes emptyColumnStatistics rem 0
+                     in
+                        readPageTypeHeader (hdr{dataPageHeaderV2Statistics = stats}) rem' identifier
                 n -> error $ show n
 
 readField' :: [Word8] -> Int16 -> Maybe ([Word8], TType, Int16)

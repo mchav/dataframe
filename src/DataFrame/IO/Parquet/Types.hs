@@ -235,7 +235,7 @@ data PageTypeHeader
 
 emptyDictionaryPageHeader = DictionaryPageHeader 0 PARQUET_ENCODING_UNKNOWN False
 emptyDataPageHeader = DataPageHeader 0 PARQUET_ENCODING_UNKNOWN PARQUET_ENCODING_UNKNOWN PARQUET_ENCODING_UNKNOWN emptyColumnStatistics
-emptyDataPageHeaderV2 = DataPageHeaderV2 0 0 0 PARQUET_ENCODING_UNKNOWN 0 0 False emptyColumnStatistics
+emptyDataPageHeaderV2 = DataPageHeaderV2 0 0 0 PARQUET_ENCODING_UNKNOWN 0 0 {- default for v2 is compressed -} True emptyColumnStatistics
 
 data RepetitionType = REQUIRED | OPTIONAL | REPEATED | UNKNOWN_REPETITION_TYPE deriving (Eq, Show)
 

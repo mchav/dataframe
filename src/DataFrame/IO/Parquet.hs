@@ -233,6 +233,8 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
                                          in pure (toMaybeText maxDef defLvls texts)
                                     Nothing -> error "FIXED_LEN_BYTE_ARRAY requires type length"
                             PARQUET_TYPE_UNKNOWN -> error "Cannot read unknown Parquet type"
+                    ERLE_DICTIONARY -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
+                    EPLAIN_DICTIONARY -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
                     other -> error ("Unsupported v2 encoding: " ++ show other)
 
     case cols of
