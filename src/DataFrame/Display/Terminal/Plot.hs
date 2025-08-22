@@ -232,7 +232,10 @@ plotBarsTopNWith n colName config df = do
             putStrLn $ bars (plotTitle config) grouped (plotSettings config)
 
 plotGroupedBarsWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
-plotGroupedBarsWith groupCol valCol config df = do
+plotGroupedBarsWith = plotGroupedBarsWithN 10
+
+plotGroupedBarsWithN :: (HasCallStack) => Int -> T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
+plotGroupedBarsWithN n groupCol valCol config df = do
     let isNumeric = isNumericColumnCheck valCol df
 
     if isNumeric
@@ -240,7 +243,7 @@ plotGroupedBarsWith groupCol valCol config df = do
             let groups = extractStringColumn groupCol df
                 values = extractNumericColumn valCol df
                 grouped = M.toList $ M.fromListWith (+) (zip groups values)
-                finalGroups = groupWithOther 10 grouped
+                finalGroups = groupWithOther n grouped
             putStrLn $ bars (plotTitle config) finalGroups (plotSettings config)
         else do
             let groups = extractStringColumn groupCol df
@@ -251,7 +254,7 @@ plotGroupedBarsWith groupCol valCol config df = do
                         M.fromListWith
                             (+)
                             [(g ++ " - " ++ v, 1) | (g, v) <- pairs]
-                finalCounts = groupWithOther 15 [(k, fromIntegral v) | (k, v) <- counts]
+                finalCounts = groupWithOther n [(k, fromIntegral v) | (k, v) <- counts]
             putStrLn $ bars (plotTitle config) finalCounts (plotSettings config)
 
 plotValueCounts :: (HasCallStack) => T.Text -> DataFrame -> IO ()
