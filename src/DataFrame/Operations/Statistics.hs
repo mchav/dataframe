@@ -17,6 +17,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Intro as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified Statistics.Quantile as SS
 import qualified Statistics.Sample as SS
 
@@ -166,20 +167,16 @@ mean' samp =
         total / fromIntegral n
 
 median' :: VU.Vector Double -> Double
-median' samp = runST $ do
-    mutableSamp <- VU.thaw samp
-    VA.sort mutableSamp
-    sortedSamp <- VU.freeze mutableSamp
-    let
-        length = VU.length samp
-        middleIndex = length `div` 2
-    return $
-        if length == 0
-            then throw $ EmptyDataSetException "median"
-            else
-                if odd length
-                    then sortedSamp VU.! middleIndex
-                    else (sortedSamp VU.! (middleIndex - 1) + sortedSamp VU.! middleIndex) / 2
+median' samp
+    | VU.null samp = throw $ EmptyDataSetException "median"
+    | otherwise    = runST $ do
+        mutableSamp <- VU.thaw samp
+        VA.sort mutableSamp
+        let len = VU.length samp
+            middleIndex = len `div` 2
+        middleElement <- VUM.read mutableSamp middleIndex
+        (!left, !right) <- (,) <$> pure middleElement <*> (if odd len then pure middleElement else VUM.read mutableSamp (middleIndex - 1))
+        pure ((left + right) / 2)
 
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)
