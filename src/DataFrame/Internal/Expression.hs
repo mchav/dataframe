@@ -88,6 +88,16 @@ interpret df (Apply _ (f :: c -> d) value) =
      in
         -- TODO: Handle this gracefully.
         TColumn $ fromMaybe (error "mapColumn returned nothing") (mapColumn f value')
+interpret df (BinOp _ (f :: c -> d -> e) (Lit left) right) =
+    let
+        (TColumn right') = interpret @d df right
+     in
+        TColumn $ fromMaybe (error "mapColumn returned nothing") (mapColumn (f left) right')
+interpret df (BinOp _ (f :: c -> d -> e) left (Lit right)) =
+    let
+        (TColumn left') = interpret @c df left
+     in
+        TColumn $ fromMaybe (error "mapColumn returned nothing") (mapColumn (flip f right) left')
 interpret df (BinOp _ (f :: c -> d -> e) left right) =
     let
         (TColumn left') = interpret @c df left
