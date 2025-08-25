@@ -175,7 +175,7 @@ median' samp
         let len = VU.length samp
             middleIndex = len `div` 2
         middleElement <- VUM.read mutableSamp middleIndex
-        if odd then pure middleElement
+        if odd len then pure middleElement
         else do
             prev <-VUM.read mutableSamp (middleIndex - 1)
             pure ((middleElement + prev) / 2)
