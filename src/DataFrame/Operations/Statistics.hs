@@ -66,7 +66,7 @@ standardDeviation :: T.Text -> DataFrame -> Maybe Double
 standardDeviation = applyStatistic (sqrt . variance')
 
 skewness :: T.Text -> DataFrame -> Maybe Double
-skewness = applyStatistic SS.skewness
+skewness = applyStatistic skewness'
 
 variance :: T.Text -> DataFrame -> Maybe Double
 variance = applyStatistic variance'
@@ -183,8 +183,8 @@ median' samp
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)
 
-step :: VarAcc -> Double -> VarAcc
-step (VarAcc !n !mean !m2) !x =
+varianceStep :: VarAcc -> Double -> VarAcc
+varianceStep (VarAcc !n !mean !m2) !x =
     let !n' = n + 1
         !delta = x - mean
         !mean' = mean + delta / fromIntegral n'
@@ -197,4 +197,23 @@ computeVariance (VarAcc n _ m2)
     | otherwise = m2 / fromIntegral (n - 1)
 
 variance' :: VU.Vector Double -> Double
-variance' = computeVariance . VG.foldl' step (VarAcc 0 0 0)
+variance' = computeVariance . VG.foldl' varianceStep (VarAcc 0 0 0)
+
+data SkewAcc = SkewAcc !Int !Double !Double !Double deriving (Show)
+
+skewnessStep :: SkewAcc -> Double -> SkewAcc
+skewnessStep (SkewAcc !n !m !m2 !m3) !x =
+    let !k   = fromIntegral n
+        !n'  = n + 1
+        !m'  = m  + (x - m) / k
+        !m2' = m2 + ((x - m) ^ 2 * (k - 1)) / k
+        !m3' = m3 + ((x - m) ^ 3 * (k - 1) * (k - 2)) / k ^ 2 - (3 * (x - m) * m2) / k
+     in SkewAcc n' m' m2' m3'
+
+computeSkewness :: SkewAcc -> Double
+computeSkewness (SkewAcc n _ m2 m3)
+    | n < 3 = 0 -- or error "skewness of <3 samples"
+    | otherwise = (sqrt (fromIntegral n - 1) * m3) / sqrt (m2 ^ 3)
+
+skewness' :: VU.Vector Double -> Double
+skewness' = computeSkewness . VG.foldl' skewnessStep (SkewAcc 1 0 0 0)
