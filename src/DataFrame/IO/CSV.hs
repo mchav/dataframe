@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -27,6 +27,7 @@ import Control.Monad.ST (runST)
 import Data.Attoparsec.ByteString.Char8
 import Data.Bits (shiftL)
 import Data.Char
+import Data.Either
 import Data.Function (on)
 import Data.IORef
 import Data.Maybe
@@ -72,7 +73,7 @@ defaultOptions = ReadOptions
     { hasHeader = True
     , inferTypes = True
     , safeRead = True
-    , chunkSize = 65536
+    , chunkSize = 1_000_000_000
     }
 
 newGrowingVector :: Int -> IO (GrowingVector a)
@@ -90,7 +91,7 @@ appendGrowingVector (GrowingVector vecRef sizeRef capRef) !val = do
     size <- readIORef sizeRef
     cap <- readIORef capRef
     vec <- readIORef vecRef
-    
+
     vec' <- if size >= cap
         then do
             let !newCap = cap `shiftL` 1
@@ -99,7 +100,7 @@ appendGrowingVector (GrowingVector vecRef sizeRef capRef) !val = do
             writeIORef capRef newCap
             return newVec
         else return vec
-    
+
     VM.unsafeWrite vec' size val
     writeIORef sizeRef $! size + 1
 
@@ -108,7 +109,7 @@ appendGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef capRef) !val = d
     size <- readIORef sizeRef
     cap <- readIORef capRef
     vec <- readIORef vecRef
-    
+
     vec' <- if size >= cap
         then do
             let !newCap = cap `shiftL` 1
@@ -117,7 +118,7 @@ appendGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef capRef) !val = d
             writeIORef capRef newCap
             return newVec
         else return vec
-    
+
     VUM.unsafeWrite vec' size val
     writeIORef sizeRef $! size + 1
 
@@ -149,23 +150,21 @@ readSeparated !sep !opts !path = do
             columnNames = if hasHeader opts
                 then map (T.filter (/= '\"') . TE.decodeUtf8Lenient) firstRow
                 else map (T.singleton . intToDigit) [0 .. length firstRow - 1]
-        
+
         unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
-        
+
         dataLine <- C8.hGetLine handle
         let dataRow = parseLine sep dataLine
         growingCols <- initializeColumns dataRow opts
-        
+
         processRow 0 dataRow growingCols
-        
+
         processFile handle sep growingCols 1
-        
+
         frozenCols <- V.fromList <$> mapM freezeGrowingColumn growingCols
-        
-        let numRows = case frozenCols V.!? 0 of
-                Just col -> columnLength col
-                Nothing -> 0
-        
+
+        let numRows = maybe 0 columnLength (frozenCols V.!? 0)
+
         return $ DataFrame
             { columns = frozenCols
             , columnIndices = M.fromList (zip columnNames [0..])
@@ -181,10 +180,10 @@ initializeColumns row opts = mapM initColumn row
         let val = TE.decodeUtf8Lenient bs
         if inferTypes opts
             then case inferType val of
-                IntType -> GrowingInt <$> newGrowingUnboxedVector 1024 <*> pure nullsRef
-                DoubleType -> GrowingDouble <$> newGrowingUnboxedVector 1024 <*> pure nullsRef
-                TextType -> GrowingText <$> newGrowingVector 1024 <*> pure nullsRef
-            else GrowingText <$> newGrowingVector 1024 <*> pure nullsRef
+                IntType -> GrowingInt <$> newGrowingUnboxedVector 1_000_000_000 <*> pure nullsRef
+                DoubleType -> GrowingDouble <$> newGrowingUnboxedVector 1_000_000_000 <*> pure nullsRef
+                TextType -> GrowingText <$> newGrowingVector 1_000_000_000 <*> pure nullsRef
+            else GrowingText <$> newGrowingVector 1_000_000_000 <*> pure nullsRef
 
 data InferredType = IntType | DoubleType | TextType
 
@@ -202,20 +201,20 @@ processRow !rowIdx !vals !cols = zipWithM_ (processValue rowIdx) vals cols
     processValue !idx !bs !col = do
         let !val = TE.decodeUtf8Lenient bs
         case col of
-            GrowingInt gv nulls -> 
-                case readInt val of
+            GrowingInt gv nulls ->
+                case readByteStringInt bs of
                     Just !i -> appendGrowingUnboxedVector gv i
                     Nothing -> do
                         appendGrowingUnboxedVector gv 0
                         modifyIORef' nulls (idx:)
-            
+
             GrowingDouble gv nulls ->
-                case readDouble val of
+                case readByteStringDouble bs of
                     Just !d -> appendGrowingUnboxedVector gv d
                     Nothing -> do
                         appendGrowingUnboxedVector gv 0.0
                         modifyIORef' nulls (idx:)
-            
+
             GrowingText gv nulls ->
                 if isNull val
                     then do
@@ -239,7 +238,7 @@ processFile !handle !sep !cols = go
                 go $! rowIdx + 1
 
 parseLine :: Char -> BS.ByteString -> [BS.ByteString]
-parseLine !sep = either (const []) id . parseOnly (record sep)
+parseLine !sep = fromRight [] . parseOnly (record sep)
 
 record :: Char -> Parser [BS.ByteString]
 record !sep = field sep `sepBy` char sep

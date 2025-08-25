@@ -1,23 +1,35 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE Strict #-}
 
 module Main where
 
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 
+import Data.Time
 import DataFrame ((|>))
+import System.Mem
 
 main :: IO ()
 main = do
-    parsed <- D.readSeparated ';' D.defaultOptions "../data/measurements.txt"
-    let measurement = (F.col @Double "Measurement")
+    startRead <- getCurrentTime
+    parsed <- D.readSeparated ';' D.defaultOptions "../../1brc/data/measurements.txt"
+    endRead <- getCurrentTime
+    let readTime = diffUTCTime endRead startRead
+    putStrLn $ "Read Time: " ++ (show readTime)
+    performGC
+    let measurement = (F.col @Double "measurement")
+    startCalculation <- getCurrentTime
     print $
         parsed
-            |> D.groupBy ["City"]
+            |> D.groupBy ["city"]
             |> D.aggregate
                 [ (F.minimum measurement) `F.as` "minimum"
                 , (F.mean measurement) `F.as` "mean"
                 , (F.maximum measurement) `F.as` "maximum"
                 ]
-            |> D.sortBy D.Ascending ["City"]
+            |> D.sortBy D.Ascending ["city"]
+    endCalculation <- getCurrentTime
+    let calculationTime = diffUTCTime endCalculation startCalculation
+    putStrLn $ "Calculation Time: " ++ (show calculationTime)
