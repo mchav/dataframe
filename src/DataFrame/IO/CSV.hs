@@ -22,7 +22,6 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Applicative (many, (*>), (<$>), (<*), (<*>), (<|>))
-import Control.DeepSeq (NFData(..), deepseq)
 import Control.Monad (forM_, unless, when, zipWithM_)
 import Control.Monad.ST (runST)
 import Data.Attoparsec.ByteString.Char8
