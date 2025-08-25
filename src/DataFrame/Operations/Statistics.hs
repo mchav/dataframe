@@ -175,8 +175,10 @@ median' samp
         let len = VU.length samp
             middleIndex = len `div` 2
         middleElement <- VUM.read mutableSamp middleIndex
-        (!left, !right) <- (,) <$> pure middleElement <*> (if odd len then pure middleElement else VUM.read mutableSamp (middleIndex - 1))
-        pure ((left + right) / 2)
+        if odd then pure middleElement
+        else do
+            prev <-VUM.read mutableSamp (middleIndex - 1)
+            pure ((middleElement + prev) / 2)
 
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)
