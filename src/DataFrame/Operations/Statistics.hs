@@ -78,7 +78,7 @@ correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
 correlation first second df = do
     f <- _getColumnAsDouble first df
     s <- _getColumnAsDouble second df
-    return $ SS.correlation (VG.zip f s)
+    return $ correlation' f s
 
 _getColumnAsDouble :: T.Text -> DataFrame -> Maybe (VU.Vector Double)
 _getColumnAsDouble name df = case getColumn name df of
@@ -197,3 +197,20 @@ computeVariance (VarAcc !n _ !m2)
 variance' :: VU.Vector Double -> Double
 variance' = computeVariance . VU.foldl' step (VarAcc 0 0 0)
 {-# INLINE variance' #-}
+
+
+correlation' :: VU.Vector Double -> VU.Vector Double -> Double
+correlation' f s = let
+    -- assumes vectors are the same length.
+    n = VG.length f
+    means (-1) acc = acc 
+    means i (!mX :: Double, !mY :: Double) = means (i - 1) (mX + f VU.! i, mY + s VU.! i)
+    (!mX, !mY) = means (n - 1) (0, 0)
+    covs (-1) acc = acc
+    covs i (!cov, !varX, !varY) = covs (i - 1) (cov + (x' * y'), varX +  (x' * x'), varY + (y' * y'))
+      where
+            x' = f VU.! i - mX
+            y' = s VU.! i - mY
+    (!cov, !varX, !varY) = covs (n - 1) (0, 0, 0)
+  in ((cov / fromIntegral n) / sqrt ((varX / fromIntegral n) * (varY / fromIntegral n)))
+{-# INLINE correlation' #-}
