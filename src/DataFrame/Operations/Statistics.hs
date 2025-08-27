@@ -86,8 +86,11 @@ _getColumnAsDouble name df = case getColumn name df of
         Just Refl -> Just f
         Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
             Just Refl -> Just $ VU.map fromIntegral f
-            Nothing -> Nothing
+            Nothing -> case testEquality (typeRep @a) (typeRep @Float) of
+                Just Refl -> Just $ VU.map realToFrac f
+                Nothing -> Nothing
     _ -> Nothing
+{-# INLINE _getColumnAsDouble #-}
 
 sum :: forall a. (Columnable a, Num a, VU.Unbox a) => T.Text -> DataFrame -> Maybe a
 sum name df = case getColumn name df of
@@ -100,17 +103,12 @@ applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe D
 applyStatistic f name df = case getColumn name (filterJust name df) of
     Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
     Just column@(UnboxedColumn (col :: VU.Vector a)) -> case testEquality (typeRep @a) (typeRep @Double) of
-        Just Refl -> reduceColumn f column
+        Just Refl -> Just (f col)
         Nothing -> do
-            matching <-
-                asum
-                    [ mapColumn (fromIntegral :: Int -> Double) column
-                    , mapColumn (fromIntegral :: Integer -> Double) column
-                    , mapColumn (realToFrac :: Float -> Double) column
-                    , Just column
-                    ]
-            reduceColumn f matching
+            col' <- _getColumnAsDouble name df
+            pure (f col')
     _ -> Nothing
+{-# INLINE applyStatistic #-}
 
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
 applyStatistics f name df = case getColumn name (filterJust name df) of
@@ -160,11 +158,8 @@ toPct2dp x
     | otherwise = printf "%.2f%%" (x * 100)
 
 mean' :: VU.Vector Double -> Double
-mean' samp =
-    let
-        (!total, !n) = VG.foldl' (\(!total, !n) v -> (total + v, n + 1)) (0 :: Double, 0 :: Int) samp
-     in
-        total / fromIntegral n
+mean' samp = VU.sum samp / fromIntegral (VU.length samp)
+{-# INLINE mean #-}
 
 median' :: VU.Vector Double -> Double
 median' samp
@@ -179,6 +174,7 @@ median' samp
         else do
             prev <-VUM.read mutableSamp (middleIndex - 1)
             pure ((middleElement + prev) / 2)
+{-# INLINE median' #-}
 
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)
@@ -190,11 +186,14 @@ step (VarAcc !n !mean !m2) !x =
         !mean' = mean + delta / fromIntegral n'
         !m2' = m2 + delta * (x - mean')
      in VarAcc n' mean' m2'
+{-# INLINE step #-}
 
 computeVariance :: VarAcc -> Double
-computeVariance (VarAcc n _ m2)
+computeVariance (VarAcc !n _ !m2)
     | n < 2 = 0 -- or error "variance of <2 samples"
     | otherwise = m2 / fromIntegral (n - 1)
+{-# INLINE computeVariance #-}
 
 variance' :: VU.Vector Double -> Double
-variance' = computeVariance . VG.foldl' step (VarAcc 0 0 0)
+variance' = computeVariance . VU.foldl' step (VarAcc 0 0 0)
+{-# INLINE variance' #-}
