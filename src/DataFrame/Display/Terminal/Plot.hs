@@ -25,6 +25,8 @@ import Type.Reflection (typeRep)
 import DataFrame.Internal.Column (Column (..), Columnable)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Operations.Core
+import qualified DataFrame.Internal.Column as D
+import qualified DataFrame.Operations.Subset as D
 import Granite
 
 data PlotConfig = PlotConfig
@@ -68,6 +70,20 @@ plotScatterWith xCol yCol config df = do
         yVals = extractNumericColumn yCol df
         points = zip xVals yVals
     T.putStrLn $ scatter [(xCol <> " vs " <> yCol, points)] (plotSettings config)
+
+plotScatterBy :: (HasCallStack) => T.Text -> T.Text -> T.Text -> DataFrame -> IO ()
+plotScatterBy xCol yCol grouping df = plotScatterByWith xCol yCol grouping (defaultPlotConfig Scatter) df
+
+plotScatterByWith :: (HasCallStack) => T.Text -> T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
+plotScatterByWith xCol yCol grouping config df = do
+    let vals = extractStringColumn grouping df
+    let df' = insertColumn grouping (D.fromList vals) df
+    xs <- forM (L.nub vals) $ \col -> do
+        let xVals = extractNumericColumn xCol (D.filter grouping (==col) df')
+            yVals = extractNumericColumn yCol (D.filter grouping (==col) df')
+            points = zip xVals yVals
+        pure (col, points)
+    T.putStrLn $ scatter xs (plotSettings config)
 
 plotLines :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO ()
 plotLines xAxis colNames df = plotLinesWith xAxis colNames (defaultPlotConfig Line) df
