@@ -6,11 +6,13 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE LambdaCase #-}
 
 module DataFrame.IO.CSV where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
+import qualified Data.ByteString.Builder as Builder
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
@@ -22,9 +24,9 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Applicative (many, (*>), (<$>), (<*), (<*>), (<|>))
-import Control.Monad (forM_, unless, when, zipWithM_)
+import Control.Monad (forM_, unless, when, zipWithM_, void)
 import Control.Monad.ST (runST)
-import Data.Attoparsec.ByteString.Char8
+import Data.Attoparsec.ByteString.Char8 hiding (endOfLine)
 import Data.Bits (shiftL)
 import Data.Char
 import Data.Either
@@ -73,7 +75,7 @@ defaultOptions = ReadOptions
     { hasHeader = True
     , inferTypes = True
     , safeRead = True
-    , chunkSize = 1_000_000_000
+    , chunkSize = 512_000
     }
 
 newGrowingVector :: Int -> IO (GrowingVector a)
@@ -159,7 +161,7 @@ readSeparated !sep !opts !path = do
 
         processRow 0 dataRow growingCols
 
-        processFile handle sep growingCols 1
+        processFile handle sep growingCols (chunkSize opts) 1
 
         frozenCols <- V.fromList <$> mapM freezeGrowingColumn growingCols
 
@@ -180,10 +182,10 @@ initializeColumns row opts = mapM initColumn row
         let val = TE.decodeUtf8Lenient bs
         if inferTypes opts
             then case inferType val of
-                IntType -> GrowingInt <$> newGrowingUnboxedVector 1_000_000_000 <*> pure nullsRef
-                DoubleType -> GrowingDouble <$> newGrowingUnboxedVector 1_000_000_000 <*> pure nullsRef
-                TextType -> GrowingText <$> newGrowingVector 1_000_000_000 <*> pure nullsRef
-            else GrowingText <$> newGrowingVector 1_000_000_000 <*> pure nullsRef
+                IntType -> GrowingInt <$> newGrowingUnboxedVector 1_024 <*> pure nullsRef
+                DoubleType -> GrowingDouble <$> newGrowingUnboxedVector 1_024 <*> pure nullsRef
+                TextType -> GrowingText <$> newGrowingVector 1_024 <*> pure nullsRef
+            else GrowingText <$> newGrowingVector 1_024 <*> pure nullsRef
 
 data InferredType = IntType | DoubleType | TextType
 
@@ -225,39 +227,60 @@ processRow !rowIdx !vals !cols = zipWithM_ (processValue rowIdx) vals cols
 isNull :: T.Text -> Bool
 isNull t = T.null t || t == "NA" || t == "NULL" || t == "null"
 
-processFile :: Handle -> Char -> [GrowingColumn] -> Int -> IO ()
-processFile !handle !sep !cols = go
-  where
-    go !rowIdx = do
-        eof <- hIsEOF handle
-        unless eof $ do
-            line <- C8.hGetLine handle
-            unless (BS.null line) $ do
-                let !vals = parseLine sep line
-                processRow rowIdx vals cols
-                go $! rowIdx + 1
+processFile :: Handle -> Char -> [GrowingColumn] -> Int -> Int -> IO ()
+processFile !handle !sep !cols !chunk r = do
+    let go remain !rowIdx = do
+            parseWith (C8.hGetNonBlocking handle chunk) (parseRow sep) remain >>= \case
+                Fail unconsumed ctx er -> do
+                    erpos <- hTell handle
+                    fail $
+                        "Failed to parse CSV file around "
+                            <> show erpos
+                            <> " byte; due: "
+                            <> show er
+                            <> "; context: "
+                            <> show ctx
+                Partial c -> do
+                    fail "Partial handler is called"
+                Done (unconsumed :: C8.ByteString) (row :: [C8.ByteString]) -> do
+                    processRow rowIdx row cols
+                    unless (row == [] || unconsumed == mempty) $ go unconsumed $! rowIdx + 1
+                    return ()
+    go "" r
 
 parseLine :: Char -> BS.ByteString -> [BS.ByteString]
 parseLine !sep = fromRight [] . parseOnly (record sep)
 
+parseRow :: Char -> Parser [C8.ByteString]
+parseRow sep = record sep <* (endOfLine <|> endOfInput) <?> "CSV row"
+
 record :: Char -> Parser [BS.ByteString]
-record !sep = field sep `sepBy` char sep
+record sep = field sep `sepBy` char sep <?> "CSV record"
 
 field :: Char -> Parser BS.ByteString
-field !sep = quotedField <|> unquotedField sep
+field sep = quotedField <|> unquotedField sep <?> "CSV field"
 
 unquotedField :: Char -> Parser BS.ByteString
-unquotedField !sep = takeWhile (\c -> c /= sep && c /= '\n' && c /= '\r' && c /= '"')
+unquotedField sep = takeWhile (\c -> c /= sep && c /= '\n' && c /= '\r') <?> "unquoted field"
 
 quotedField :: Parser BS.ByteString
 quotedField = do
     char '"'
-    contents <- BS.concat <$> many (unquote <|> escaped)
+    contents <- Builder.toLazyByteString <$> parseQuotedContents
     char '"'
-    return contents
+    return $ BS.toStrict contents
+    <?> "quoted field"
   where
-    unquote = takeWhile1 (\c -> c /= '"' && c /= '\\')
-    escaped = char '\\' *> (C8.singleton <$> anyChar)
+    parseQuotedContents = mconcat <$> many quotedChar
+    quotedChar = 
+        (Builder.byteString <$> takeWhile1 (/= '"'))
+        <|> (char '"' *> char '"' *> pure (Builder.char8 '"'))
+        <?> "quoted field content"
+
+endOfLine :: Parser ()
+endOfLine = 
+    (void (string "\r\n") <|> void (char '\n') <|> void (char '\r'))
+    <?> "line ending"
 
 freezeGrowingColumn :: GrowingColumn -> IO Column
 freezeGrowingColumn (GrowingInt gv nullsRef) = do
