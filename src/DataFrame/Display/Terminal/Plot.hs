@@ -79,8 +79,9 @@ plotScatterByWith xCol yCol grouping config df = do
     let vals = extractStringColumn grouping df
     let df' = insertColumn grouping (D.fromList vals) df
     xs <- forM (L.nub vals) $ \col -> do
-        let xVals = extractNumericColumn xCol (D.filter grouping (==col) df')
-            yVals = extractNumericColumn yCol (D.filter grouping (==col) df')
+        let filtered = D.filter grouping (==col) df'
+            xVals = extractNumericColumn xCol filtered
+            yVals = extractNumericColumn yCol filtered
             points = zip xVals yVals
         pure (col, points)
     T.putStrLn $ scatter xs (plotSettings config)
