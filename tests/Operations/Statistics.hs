@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE NumericUnderscores #-}
 
 module Operations.Statistics where
 
@@ -37,9 +38,47 @@ medianOfEmptyDataSet =
             (print $ D.median' (VU.fromList []))
         )
 
+skewnessOfDataSetWithSameElements :: Test
+skewnessOfDataSetWithSameElements =
+    TestCase
+        ( assertBool
+            "Skewness of a data set with the same elements"
+            (isNaN (D.skewness' (VU.fromList $ replicate 10 42.0)))
+        )
+
+skewnessOfSymmetricDataSet :: Test
+skewnessOfSymmetricDataSet =
+    TestCase
+        ( assertEqual
+            "Skewness of a symmetric data set"
+            (D.skewness' (VU.fromList [-3.0, -2.0, -1.5, 0, 1.5, 2.0, 3.0]))
+            0
+        )
+
+skewnessOfSimpleDataSet :: Test
+skewnessOfSimpleDataSet =
+    TestCase
+        ( assertBool
+            "Skewness of a simple data set"
+            (abs (D.skewness' (VU.fromList [25, 28, 26, 30, 40, 50, 40]) - 0.566_731_633_676) < 1e-12)
+        )
+
+skewnessOfEmptyDataSet :: Test
+skewnessOfEmptyDataSet =
+    TestCase
+        ( assertEqual
+            "Skewness of an empty data set"
+            (D.skewness' (VU.fromList []))
+            0
+        )
+
 tests :: [Test]
 tests =
     [ TestLabel "medianOfOddLengthDataSet" medianOfOddLengthDataSet
     , TestLabel "medianOfEvenLengthDataSet" medianOfEvenLengthDataSet
     , TestLabel "medianOfEmptyDataSet" medianOfEmptyDataSet
+    , TestLabel "skewnessOfDataSetWithSameElements" skewnessOfDataSetWithSameElements
+    , TestLabel "skewnessOfSymmetricDataSet" skewnessOfSymmetricDataSet
+    , TestLabel "skewnessOfSimpleDataSet" skewnessOfSimpleDataSet
+    , TestLabel "skewnessOfEmptyDataSet" skewnessOfEmptyDataSet
     ]
