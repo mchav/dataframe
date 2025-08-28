@@ -78,7 +78,7 @@ correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
 correlation first second df = do
     f <- _getColumnAsDouble first df
     s <- _getColumnAsDouble second df
-    return $ correlation' f s
+    correlation' f s
 
 _getColumnAsDouble :: T.Text -> DataFrame -> Maybe (VU.Vector Double)
 _getColumnAsDouble name df = case getColumn name df of
@@ -103,10 +103,13 @@ applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe D
 applyStatistic f name df = case getColumn name (filterJust name df) of
     Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
     Just column@(UnboxedColumn (col :: VU.Vector a)) -> case testEquality (typeRep @a) (typeRep @Double) of
-        Just Refl -> Just (f col)
+        Just Refl -> let
+                res = (f col)
+            in if isNaN res then Nothing else pure res
         Nothing -> do
             col' <- _getColumnAsDouble name df
-            pure (f col')
+            let res = (f col')
+            if isNaN res then Nothing else pure res
     _ -> Nothing
 {-# INLINE applyStatistic #-}
 
@@ -199,18 +202,27 @@ variance' = computeVariance . VU.foldl' step (VarAcc 0 0 0)
 {-# INLINE variance' #-}
 
 
-correlation' :: VU.Vector Double -> VU.Vector Double -> Double
-correlation' f s = let
-    -- assumes vectors are the same length.
-    n = VG.length f
-    means (-1) acc = acc 
-    means i (!mX :: Double, !mY :: Double) = means (i - 1) (mX + f VU.! i, mY + s VU.! i)
-    (!mX, !mY) = means (n - 1) (0, 0)
-    covs (-1) acc = acc
-    covs i (!cov, !varX, !varY) = covs (i - 1) (cov + (x' * y'), varX +  (x' * x'), varY + (y' * y'))
-      where
-            x' = f VU.! i - mX
-            y' = s VU.! i - mY
-    (!cov, !varX, !varY) = covs (n - 1) (0, 0, 0)
-  in ((cov / fromIntegral n) / sqrt ((varX / fromIntegral n) * (varY / fromIntegral n)))
+correlation' :: VU.Vector Double -> VU.Vector Double -> Maybe Double
+correlation' xs ys
+  | VU.length xs /= VU.length ys = Nothing
+  | nI < 2                       = Nothing
+  | otherwise                    =
+      let !nf  = fromIntegral nI
+          (!sumX,!sumY,!sumSquaredX,!sumSquaredY,!sumXY) = go 0 0 0 0 0 0
+          !num = nf * sumXY - sumX * sumY
+          !den = sqrt ((nf * sumSquaredX - sumX*sumX) * (nf * sumSquaredY - sumY*sumY))
+      in pure (num / den)
+  where
+    !nI = VU.length xs
+    go !i !sumX !sumY !sumSquaredX !sumSquaredY !sumXY
+      | i < nI   =
+          let !x   = VU.unsafeIndex xs i
+              !y   = VU.unsafeIndex ys i
+              !sumX' = sumX  + x
+              !sumY' = sumY  + y
+              !sumSquaredX'= sumSquaredX + x*x
+              !sumSquaredY'= sumSquaredY + y*y
+              !sumXY'= sumXY + x*y
+          in  go (i+1) sumX' sumY' sumSquaredX' sumSquaredY' sumXY'
+      | otherwise = (sumX,sumY,sumSquaredX,sumSquaredY,sumXY)
 {-# INLINE correlation' #-}
