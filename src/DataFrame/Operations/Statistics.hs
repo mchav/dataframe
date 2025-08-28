@@ -88,7 +88,7 @@ standardDeviation = applyStatistic (sqrt . variance')
 
 -- | Calculates the skewness of a given column as a standalone value.
 skewness :: T.Text -> DataFrame -> Maybe Double
-skewness = applyStatistic SS.skewness
+skewness = applyStatistic skewness'
 
 -- | Calculates the variance of a given column as a standalone value.
 variance :: T.Text -> DataFrame -> Maybe Double
@@ -212,14 +212,14 @@ median' samp
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)
 
-step :: VarAcc -> Double -> VarAcc
-step (VarAcc !n !mean !m2) !x =
+varianceStep :: VarAcc -> Double -> VarAcc
+varianceStep (VarAcc !n !mean !m2) !x =
     let !n' = n + 1
         !delta = x - mean
         !mean' = mean + delta / fromIntegral n'
         !m2' = m2 + delta * (x - mean')
      in VarAcc n' mean' m2'
-{-# INLINE step #-}
+{-# INLINE varianceStep #-}
 
 computeVariance :: VarAcc -> Double
 computeVariance (VarAcc !n _ !m2)
@@ -228,8 +228,32 @@ computeVariance (VarAcc !n _ !m2)
 {-# INLINE computeVariance #-}
 
 variance' :: VU.Vector Double -> Double
-variance' = computeVariance . VU.foldl' step (VarAcc 0 0 0)
+variance' = computeVariance . VU.foldl' varianceStep (VarAcc 0 0 0)
 {-# INLINE variance' #-}
+
+-- accumulator: count, mean, m2, m3
+data SkewAcc = SkewAcc !Int !Double !Double !Double deriving (Show)
+
+skewnessStep :: SkewAcc -> Double -> SkewAcc
+skewnessStep (SkewAcc !n !mean !m2 !m3) !x =
+    let !n'  = n + 1
+        !k   = fromIntegral n'
+        !delta = x - mean
+        !mean'  = mean  + delta / k
+        !m2' = m2 + (delta ^ 2 * (k - 1)) / k
+        !m3' = m3 + (delta ^ 3 * (k - 1) * (k - 2)) / k ^ 2 - (3 * delta * m2) / k
+     in SkewAcc n' mean' m2' m3'
+{-# INLINE skewnessStep #-}
+
+computeSkewness :: SkewAcc -> Double
+computeSkewness (SkewAcc n _ m2 m3)
+    | n < 3 = 0 -- or error "skewness of <3 samples"
+    | otherwise = (sqrt (fromIntegral n - 1) * m3) / sqrt (m2 ^ 3)
+{-# INLINE computeSkewness #-}
+
+skewness' :: VU.Vector Double -> Double
+skewness' = computeSkewness . VU.foldl' skewnessStep (SkewAcc 0 0 0 0)
+{-# INLINE skewness' #-}
 
 correlation' :: VU.Vector Double -> VU.Vector Double -> Maybe Double
 correlation' xs ys
