@@ -17,6 +17,7 @@ import qualified Data.Vector.Algorithms.Merge as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 
+import Control.DeepSeq
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
 import Data.Function (on)
@@ -34,6 +35,9 @@ import Type.Reflection (TypeRep, typeOf, typeRep)
 
 data Any where
     Value :: (Columnable' a) => a -> Any
+
+instance NFData Any where
+    rnf (Value v) = rnf v `seq` ()
 
 instance Eq Any where
     (==) :: Any -> Any -> Bool

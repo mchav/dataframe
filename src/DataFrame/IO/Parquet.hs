@@ -5,6 +5,8 @@ module DataFrame.IO.Parquet (
     readParquet,
 ) where
 
+import Control.DeepSeq
+import Control.Exception
 import Control.Monad
 import qualified Data.ByteString as BSO
 import Data.Char
@@ -103,7 +105,16 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                 (\name -> (name, finalColMap M.! name))
                 (filter (`M.member` finalColMap) columnNames)
 
-    pure $ DI.fromNamedColumns orderedColumns
+    evaluate $! force $! DI.fromNamedColumns orderedColumns
+
+-- readMetadataSizeFromFooter :: BSO.ByteString -> (Integer, BSO.ByteString)
+-- readMetadataSizeFromFooter contents = let
+--         footerOffSet = BSO.length contents - 8
+--         sizeBytes = map (fromIntegral @Word8 @Int32 . BSO.index contents) (map (+footerOffSet) [0 .. 3])
+--         size = fromIntegral $ foldl' (.|.) 0 $ zipWith shift sizeBytes [0, 8, 16, 24]
+--         magicStringBytes = map (BSO.index contents) (map (+footerOffSet) [4 .. 7])
+--         magicString = BSO.pack magicStringBytes
+--     in (size, magicString)
 
 readMetadataSizeFromFooter :: Handle -> IO (Integer, BSO.ByteString)
 readMetadataSizeFromFooter handle = do

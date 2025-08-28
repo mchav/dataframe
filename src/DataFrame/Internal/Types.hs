@@ -13,6 +13,7 @@
 
 module DataFrame.Internal.Types where
 
+import Control.DeepSeq
 import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Kind (Constraint, Type)
 import Data.Maybe (fromMaybe)
@@ -23,7 +24,7 @@ import qualified Data.Vector.Unboxed as VU
 import Data.Word (Word16, Word32, Word64, Word8)
 import Type.Reflection (TypeRep, typeOf, typeRep)
 
-type Columnable' a = (Typeable a, Show a, Ord a, Eq a, Read a)
+type Columnable' a = (Typeable a, Show a, Ord a, Eq a, Read a, NFData a)
 
 {- | A type with column representations used to select the
 "right" representation when specializing the `toColumn` function.

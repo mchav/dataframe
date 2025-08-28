@@ -14,6 +14,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 
+import Control.DeepSeq
 import Control.Monad (join)
 import Data.Function (on)
 import Data.List (sortBy, transpose, (\\))
@@ -33,6 +34,12 @@ data DataFrame = DataFrame
     -- ^ Keeps the column names in the order they were inserted in.
     , dataframeDimensions :: (Int, Int)
     }
+
+instance NFData DataFrame where
+    rnf (DataFrame columns indices dims) = rnf columns `seq`
+                                           rnf indices `seq`
+                                           rnf dims    `seq`
+                                           ()
 
 {- | A record that contains information about how and what
 rows are grouped in the dataframe. This can only be used with

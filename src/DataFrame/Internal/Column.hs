@@ -14,6 +14,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE BangPatterns #-}
 
 module DataFrame.Internal.Column where
 
@@ -28,6 +29,7 @@ import qualified Data.Vector.Mutable as VBM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
+import Control.DeepSeq
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
 import Data.Int
@@ -53,6 +55,11 @@ data Column where
     BoxedColumn :: (Columnable a) => VB.Vector a -> Column
     UnboxedColumn :: (Columnable a, VU.Unbox a) => VU.Vector a -> Column
     OptionalColumn :: (Columnable a) => VB.Vector (Maybe a) -> Column
+
+instance NFData Column where
+  rnf (BoxedColumn v)    = v `seq` VB.foldl' (\_ !x -> rnf x) () v
+  rnf (UnboxedColumn v) = v `seq` VU.foldl' (\_ !x -> rnf x) () v
+  rnf (OptionalColumn v)   = v `seq` VB.foldl' (\_ !x -> rnf x) () v
 
 data MutableColumn where
     MBoxedColumn :: (Columnable a) => VBM.IOVector a -> MutableColumn
