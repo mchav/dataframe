@@ -118,22 +118,6 @@ Familiar with another dataframe library? Get started:
 ## Supported input formats
 * CSV
 * Apache Parquet
-  * Supports all primitive parquet types plain and uncompressed.
-  * Can decode both v1 and v2 data pages.
-  * Supports Snappy and ZSTD compression.
-  * Supports RLE/bitpacking encoding for primitive types
-  * Backward compatible with INT96 type.
-  * From the parquet-testing repo we can successfully read the following:
-    * alltypes_dictionary.parquet
-    * alltypes_plain.parquet
-    * alltypes_plain.snappy.parquet
-    * alltypes_tiny_pages_plain.parquet
-    * binary_truncated_min_max.parquet
-    * datapage_v1-corrupt-checksum.parquet
-    * datapage_v1-snappy-compressed-checksum.parquet
-    * datapage_v1-uncompressed-checksum.parquet
-  * We will continue adding functionality/coverage as needed.
-
 
 ## Supported output formats
 * CSV
