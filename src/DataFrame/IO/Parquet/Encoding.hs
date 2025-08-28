@@ -26,22 +26,19 @@ unpackBitPacked bw count bs
             totalBytes = (totalBits + 7) `div` 8
             chunk = take totalBytes bs
             rest = drop totalBytes bs
-         in if length chunk < totalBytes
-                then error $ "Not enough bytes: need " ++ show totalBytes ++ ", got " ++ show (length chunk)
-                else
-                    let bits = concatMap (\b -> map (\i -> (b `shiftR` i) .&. 1) [0 .. 7]) chunk
-                        toN xs = foldl' (\a (i, b) -> a .|. (b `shiftL` i)) 0 (zip [0 ..] xs)
+            bits = concatMap (\b -> map (\i -> (b `shiftR` i) .&. 1) [0 .. 7]) chunk
+            toN xs = foldl' (\a (i, b) -> a .|. (b `shiftL` i)) 0 (zip [0 ..] xs)
 
-                        extractValues _ [] = []
-                        extractValues n bitsLeft
-                            | n <= 0 = []
-                            | length bitsLeft < bw = []
-                            | otherwise =
-                                let (this, bitsLeft') = splitAt bw bitsLeft
-                                 in toN this : extractValues (n - 1) bitsLeft'
+            extractValues _ [] = []
+            extractValues n bitsLeft
+                | n <= 0 = []
+                | length bitsLeft < bw = []
+                | otherwise =
+                    let (this, bitsLeft') = splitAt bw bitsLeft
+                        in toN this : extractValues (n - 1) bitsLeft'
 
-                        vals = extractValues count bits
-                     in (map fromIntegral vals, rest)
+            vals = extractValues count bits
+        in (map fromIntegral vals, rest)
 
 decodeRLEBitPackedHybrid :: Int -> Int -> [Word8] -> ([Word32], [Word8])
 decodeRLEBitPackedHybrid bw need bs
