@@ -41,18 +41,21 @@ take n d = d{columns = V.map (takeColumn n') (columns d), dataframeDimensions = 
     (r, c) = dataframeDimensions d
     n' = clip n 0 r
 
+-- | O(k * n) Take the last n rows of a DataFrame.
 takeLast :: Int -> DataFrame -> DataFrame
 takeLast n d = d{columns = V.map (takeLastColumn n') (columns d), dataframeDimensions = (n', c)}
   where
     (r, c) = dataframeDimensions d
     n' = clip n 0 r
 
+-- | O(k * n) Drop the first n rows of a DataFrame.
 drop :: Int -> DataFrame -> DataFrame
 drop n d = d{columns = V.map (sliceColumn n' (max (r - n') 0)) (columns d), dataframeDimensions = (max (r - n') 0, c)}
   where
     (r, c) = dataframeDimensions d
     n' = clip n 0 r
 
+-- | O(k * n) Drop the last n rows of a DataFrame.
 dropLast :: Int -> DataFrame -> DataFrame
 dropLast n d = d{columns = V.map (sliceColumn 0 n') (columns d), dataframeDimensions = (n', c)}
   where

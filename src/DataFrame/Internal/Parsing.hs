@@ -6,6 +6,7 @@ import qualified Data.ByteString.Char8 as C
 import qualified Data.Set as S
 import qualified Data.Text as T
 
+import Data.ByteString.Lex.Fractional
 import Data.Maybe (fromMaybe)
 import Data.Text.Read
 import GHC.Stack (HasCallStack)
@@ -38,6 +39,13 @@ readByteStringInt s = case C.readInt (C.strip s) of
     Just (value, "") -> Just value
     Just (value, _) -> Nothing
 {-# INLINE readByteStringInt #-}
+
+readByteStringDouble :: (HasCallStack) => C.ByteString -> Maybe Double
+readByteStringDouble s = case readSigned readDecimal (C.strip s) of
+    Nothing -> Nothing
+    Just (value, "") -> Just value
+    Just (value, _) -> Nothing
+{-# INLINE readByteStringDouble #-}
 
 readDouble :: (HasCallStack) => T.Text -> Maybe Double
 readDouble s =

@@ -198,7 +198,7 @@ readPageTypeHeader hdr@(DataPageHeaderV2{..}) xs lastFieldId =
                         readPageTypeHeader (hdr{repetitionLevelByteLength = n}) rem' identifier
                 7 ->
                     let
-                        isCompressed = ((head xs) .&. 0x0f) == compactBooleanTrue
+                        isCompressed = fromMaybe True $ fmap ((== compactBooleanTrue) . (.&. 0x0f)) (safeHead xs)
                      in
                         readPageTypeHeader (hdr{dataPageHeaderV2IsCompressed = dataPageHeaderV2IsCompressed}) rem identifier
                 8 ->
@@ -207,6 +207,10 @@ readPageTypeHeader hdr@(DataPageHeaderV2{..}) xs lastFieldId =
                      in
                         readPageTypeHeader (hdr{dataPageHeaderV2Statistics = stats}) rem' identifier
                 n -> error $ show n
+
+safeHead :: [a] -> Maybe a
+safeHead [] = Nothing
+safeHead (x : _) = Just x
 
 readField' :: [Word8] -> Int16 -> Maybe ([Word8], TType, Int16)
 readField' [] _ = Nothing

@@ -2,13 +2,14 @@
 
 module DataFrame.IO.Parquet.Binary where
 
-import Control.Monad
-import Data.Bits
-import Data.Char
-import Data.IORef
-import Data.Word
-import Foreign
-import System.IO
+import           Control.Monad
+import           Data.Bits
+import qualified Data.ByteString as BS
+import           Data.Char
+import           Data.IORef
+import           Data.Word
+import           Foreign
+import           System.IO
 
 littleEndianWord32 :: [Word8] -> Word32
 littleEndianWord32 bytes
@@ -93,13 +94,14 @@ readString buf pos = do
     map (chr . fromIntegral) <$> replicateM nameSize (readAndAdvance pos buf)
 
 readBytes :: Handle -> Int64 -> Int64 -> IO [Word8]
-readBytes handle colStart colLen = do
-    buf <- mallocBytes (fromIntegral colLen) :: IO (Ptr Word8)
-    hSeek handle AbsoluteSeek (fromIntegral colStart)
-    _ <- hGetBuf handle buf (fromIntegral colLen)
-    columnBytes <- mapM (peekByteOff buf) [0 .. fromIntegral colLen - 1]
-    free buf
-    pure columnBytes
+readBytes h colStart colLen = do
+  hSeek h AbsoluteSeek (fromIntegral colStart)
+  bs <- BS.hGet h (fromIntegral colLen)
+  if BS.length bs /= (fromIntegral colLen)
+     then ioError (userError ("short read: wanted "
+                              ++ show colLen ++ " bytes, got "
+                              ++ show (BS.length bs)))
+     else pure (BS.unpack bs)
 
 numBytesInFile :: Handle -> IO Integer
 numBytesInFile handle = do

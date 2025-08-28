@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -12,6 +13,7 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import Data.Typeable (Typeable)
 import qualified Data.Vector as V
@@ -21,78 +23,93 @@ import GHC.Stack (HasCallStack)
 import Type.Reflection (typeRep)
 
 import DataFrame.Internal.Column (Column (..), Columnable)
+import qualified DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Operations.Core
+import qualified DataFrame.Operations.Subset as D
 import Granite
 
 data PlotConfig = PlotConfig
     { plotType :: PlotType
-    , plotTitle :: String
     , plotSettings :: Plot
     }
 
 data PlotType
-    = Histogram'
-    | Scatter'
-    | Line'
-    | Bar'
-    | BoxPlot'
-    | Pie'
-    | StackedBar'
-    | Heatmap'
+    = Histogram
+    | Scatter
+    | Line
+    | Bar
+    | BoxPlot
+    | Pie
+    | StackedBar
+    | Heatmap
     deriving (Eq, Show)
 
 defaultPlotConfig :: PlotType -> PlotConfig
 defaultPlotConfig ptype =
     PlotConfig
         { plotType = ptype
-        , plotTitle = ""
         , plotSettings = defPlot
         }
 
 plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotHistogram colName df = plotHistogramWith colName (defaultPlotConfig Histogram') df
+plotHistogram colName df = plotHistogramWith colName (defaultPlotConfig Histogram) df
 
 plotHistogramWith :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO ()
 plotHistogramWith colName config df = do
     let values = extractNumericColumn colName df
         (minVal, maxVal) = if null values then (0, 1) else (minimum values, maximum values)
-    putStrLn $ histogram (plotTitle config) (bins 30 minVal maxVal) values (plotSettings config)
+    T.putStrLn $ histogram (bins 30 minVal maxVal) values (plotSettings config)
 
 plotScatter :: (HasCallStack) => T.Text -> T.Text -> DataFrame -> IO ()
-plotScatter xCol yCol df = plotScatterWith xCol yCol (defaultPlotConfig Scatter') df
+plotScatter xCol yCol df = plotScatterWith xCol yCol (defaultPlotConfig Scatter) df
 
 plotScatterWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotScatterWith xCol yCol config df = do
     let xVals = extractNumericColumn xCol df
         yVals = extractNumericColumn yCol df
         points = zip xVals yVals
-    putStrLn $ scatter (plotTitle config) [(T.unpack xCol ++ " vs " ++ T.unpack yCol, points)] (plotSettings config)
+    T.putStrLn $ scatter [(xCol <> " vs " <> yCol, points)] (plotSettings config)
 
-plotLines :: (HasCallStack) => [T.Text] -> DataFrame -> IO ()
-plotLines colNames df = plotLinesWith colNames (defaultPlotConfig Line') df
+plotScatterBy :: (HasCallStack) => T.Text -> T.Text -> T.Text -> DataFrame -> IO ()
+plotScatterBy xCol yCol grouping df = plotScatterByWith xCol yCol grouping (defaultPlotConfig Scatter) df
 
-plotLinesWith :: (HasCallStack) => [T.Text] -> PlotConfig -> DataFrame -> IO ()
-plotLinesWith colNames config df = do
+plotScatterByWith :: (HasCallStack) => T.Text -> T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
+plotScatterByWith xCol yCol grouping config df = do
+    let vals = extractStringColumn grouping df
+    let df' = insertColumn grouping (D.fromList vals) df
+    xs <- forM (L.nub vals) $ \col -> do
+        let filtered = D.filter grouping (== col) df'
+            xVals = extractNumericColumn xCol filtered
+            yVals = extractNumericColumn yCol filtered
+            points = zip xVals yVals
+        pure (col, points)
+    T.putStrLn $ scatter xs (plotSettings config)
+
+plotLines :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO ()
+plotLines xAxis colNames df = plotLinesWith xAxis colNames (defaultPlotConfig Line) df
+
+plotLinesWith :: (HasCallStack) => T.Text -> [T.Text] -> PlotConfig -> DataFrame -> IO ()
+plotLinesWith xAxis colNames config df = do
     seriesData <- forM colNames $ \col -> do
         let values = extractNumericColumn col df
-            indices = map fromIntegral [0 .. length values - 1]
-        return (T.unpack col, zip indices values)
-    putStrLn $ lineGraph (plotTitle config) seriesData (plotSettings config)
+            indices = extractNumericColumn xAxis df
+        return (col, zip indices values)
+    T.putStrLn $ lineGraph seriesData (plotSettings config)
 
 plotBoxPlots :: (HasCallStack) => [T.Text] -> DataFrame -> IO ()
-plotBoxPlots colNames df = plotBoxPlotsWith colNames (defaultPlotConfig BoxPlot') df
+plotBoxPlots colNames df = plotBoxPlotsWith colNames (defaultPlotConfig BoxPlot) df
 
 plotBoxPlotsWith :: (HasCallStack) => [T.Text] -> PlotConfig -> DataFrame -> IO ()
 plotBoxPlotsWith colNames config df = do
     boxData <- forM colNames $ \col -> do
         let values = extractNumericColumn col df
-        return (T.unpack col, values)
-    putStrLn $ boxPlot (plotTitle config) boxData (plotSettings config)
+        return (col, values)
+    T.putStrLn $ boxPlot boxData (plotSettings config)
 
 plotStackedBars :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO ()
 plotStackedBars categoryCol valueColumns df =
-    plotStackedBarsWith categoryCol valueColumns (defaultPlotConfig StackedBar') df
+    plotStackedBarsWith categoryCol valueColumns (defaultPlotConfig StackedBar) df
 
 plotStackedBarsWith :: (HasCallStack) => T.Text -> [T.Text] -> PlotConfig -> DataFrame -> IO ()
 plotStackedBarsWith categoryCol valueColumns config df = do
@@ -104,19 +121,19 @@ plotStackedBarsWith categoryCol valueColumns config df = do
         seriesData <- forM valueColumns $ \col -> do
             let allValues = extractNumericColumn col df
                 values = [allValues !! i | i <- indices, i < length allValues]
-            return (T.unpack col, sum values)
+            return (col, sum values)
         return (cat, seriesData)
 
-    putStrLn $ stackedBars (plotTitle config) stackData (plotSettings config)
+    T.putStrLn $ stackedBars stackData (plotSettings config)
 
 plotHeatmap :: (HasCallStack) => DataFrame -> IO ()
-plotHeatmap df = plotHeatmapWith (defaultPlotConfig Heatmap') df
+plotHeatmap df = plotHeatmapWith (defaultPlotConfig Heatmap) df
 
 plotHeatmapWith :: (HasCallStack) => PlotConfig -> DataFrame -> IO ()
 plotHeatmapWith config df = do
     let numericCols = filter (isNumericColumn df) (columnNames df)
         matrix = map (\col -> extractNumericColumn col df) numericCols
-    putStrLn $ heatmap (plotTitle config) matrix (plotSettings config)
+    T.putStrLn $ heatmap matrix (plotSettings config)
 
 isNumericColumn :: DataFrame -> T.Text -> Bool
 isNumericColumn df colName =
@@ -148,7 +165,7 @@ plotAllHistograms :: (HasCallStack) => DataFrame -> IO ()
 plotAllHistograms df = do
     let numericCols = filter (isNumericColumn df) (columnNames df)
     forM_ numericCols $ \col -> do
-        putStrLn (T.unpack col)
+        T.putStrLn col
         plotHistogram col df
 
 plotCorrelationMatrix :: (HasCallStack) => DataFrame -> IO ()
@@ -169,7 +186,7 @@ plotCorrelationMatrix df = do
                 )
                 numericCols
     print (zip [0 ..] numericCols)
-    putStrLn $ heatmap "Correlation Matrix" correlations defPlot
+    T.putStrLn $ heatmap correlations (defPlot{plotTitle = "Correlation Matrix"})
   where
     correlation xs ys =
         let n = fromIntegral $ length xs
@@ -180,14 +197,8 @@ plotCorrelationMatrix df = do
             stdY = sqrt $ sum [(y - meanY) ^ 2 | y <- ys] / n
          in covXY / (stdX * stdY)
 
-quickPlot :: (HasCallStack) => [T.Text] -> DataFrame -> IO ()
-quickPlot [] df = plotAllHistograms df >> putStrLn "Plotted all numeric columns"
-quickPlot [col] df = plotHistogram col df
-quickPlot [col1, col2] df = plotScatter col1 col2 df
-quickPlot cols df = plotLines cols df
-
 plotBars :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotBars colName df = plotBarsWith colName Nothing (defaultPlotConfig Bar') df
+plotBars colName df = plotBarsWith colName Nothing (defaultPlotConfig Bar) df
 
 plotBarsWith :: (HasCallStack) => T.Text -> Maybe T.Text -> PlotConfig -> DataFrame -> IO ()
 plotBarsWith colName groupByCol config df =
@@ -201,21 +212,21 @@ plotSingleBars colName config df = do
     case barData of
         Just counts -> do
             let grouped = groupWithOther 10 counts
-            putStrLn $ bars (plotTitle config) grouped (plotSettings config)
+            T.putStrLn $ bars grouped (plotSettings config)
         Nothing -> do
             let values = extractNumericColumn colName df
             if length values > 20
                 then do
-                    let labels = map (\i -> "Item " ++ show i) [1 .. length values]
+                    let labels = map (\i -> "Item " <> T.pack (show i)) [1 .. length values]
                         paired = zip labels values
                         grouped = groupWithOther 10 paired
-                    putStrLn $ bars (plotTitle config) grouped (plotSettings config)
+                    T.putStrLn $ bars grouped (plotSettings config)
                 else do
-                    let labels = map (\i -> "Item " ++ show i) [1 .. length values]
-                    putStrLn $ bars (plotTitle config) (zip labels values) (plotSettings config)
+                    let labels = map (\i -> "Item " <> T.pack (show i)) [1 .. length values]
+                    T.putStrLn $ bars (zip labels values) (plotSettings config)
 
 plotBarsTopN :: (HasCallStack) => Int -> T.Text -> DataFrame -> IO ()
-plotBarsTopN n colName df = plotBarsTopNWith n colName (defaultPlotConfig Bar') df
+plotBarsTopN n colName df = plotBarsTopNWith n colName (defaultPlotConfig Bar) df
 
 plotBarsTopNWith :: (HasCallStack) => Int -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotBarsTopNWith n colName config df = do
@@ -223,13 +234,13 @@ plotBarsTopNWith n colName config df = do
     case barData of
         Just counts -> do
             let grouped = groupWithOther n counts
-            putStrLn $ bars (plotTitle config) grouped (plotSettings config)
+            T.putStrLn $ bars grouped (plotSettings config)
         Nothing -> do
             let values = extractNumericColumn colName df
-                labels = map (\i -> "Item " ++ show i) [1 .. length values]
+                labels = map (\i -> "Item " <> T.pack (show i)) [1 .. length values]
                 paired = zip labels values
                 grouped = groupWithOther n paired
-            putStrLn $ bars (plotTitle config) grouped (plotSettings config)
+            T.putStrLn $ bars grouped (plotSettings config)
 
 plotGroupedBarsWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotGroupedBarsWith = plotGroupedBarsWithN 10
@@ -244,7 +255,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                 values = extractNumericColumn valCol df
                 grouped = M.toList $ M.fromListWith (+) (zip groups values)
                 finalGroups = groupWithOther n grouped
-            putStrLn $ bars (plotTitle config) finalGroups (plotSettings config)
+            T.putStrLn $ bars finalGroups (plotSettings config)
         else do
             let groups = extractStringColumn groupCol df
                 vals = extractStringColumn valCol df
@@ -253,12 +264,12 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                     M.toList $
                         M.fromListWith
                             (+)
-                            [(g ++ " - " ++ v, 1) | (g, v) <- pairs]
+                            [(g <> " - " <> v, 1) | (g, v) <- pairs]
                 finalCounts = groupWithOther n [(k, fromIntegral v) | (k, v) <- counts]
-            putStrLn $ bars (plotTitle config) finalCounts (plotSettings config)
+            T.putStrLn $ bars finalCounts (plotSettings config)
 
 plotValueCounts :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotValueCounts colName df = plotValueCountsWith colName 10 (defaultPlotConfig Bar') df
+plotValueCounts colName df = plotValueCountsWith colName 10 (defaultPlotConfig Bar) df
 
 plotValueCountsWith :: (HasCallStack) => T.Text -> Int -> PlotConfig -> DataFrame -> IO ()
 plotValueCountsWith colName maxBars config df = do
@@ -268,12 +279,15 @@ plotValueCountsWith colName maxBars config df = do
             let grouped = groupWithOther maxBars c
                 config' =
                     config
-                        { plotTitle =
-                            if null (plotTitle config)
-                                then "Value counts for " ++ T.unpack colName
-                                else plotTitle config
+                        { plotSettings =
+                            (plotSettings config)
+                                { plotTitle =
+                                    if T.null (plotTitle (plotSettings config))
+                                        then "Value counts for " <> colName
+                                        else plotTitle (plotSettings config)
+                                }
                         }
-            putStrLn $ bars (T.unpack colName) grouped (plotSettings config')
+            T.putStrLn $ bars grouped (plotSettings config')
         Nothing -> error $ "Could not get value counts for column " ++ T.unpack colName
 
 plotBarsWithPercentages :: (HasCallStack) => T.Text -> DataFrame -> IO ()
@@ -283,11 +297,11 @@ plotBarsWithPercentages colName df = do
         Just c -> do
             let total = sum (map snd c)
                 percentages =
-                    [ (label ++ " (" ++ show (round (100 * val / total) :: Int) ++ "%)", val)
+                    [ (label <> " (" <> T.pack (show (round (100 * val / total) :: Int)) <> "%)", val)
                     | (label, val) <- c
                     ]
                 grouped = groupWithOther 10 percentages
-            putStrLn $ bars ("Distribution of " ++ T.unpack colName) grouped defPlot
+            T.putStrLn $ bars grouped (defPlot{plotTitle = "Distribution of " <> colName})
         Nothing -> error $ "Could not get value counts for column " ++ T.unpack colName
 
 smartPlotBars :: (HasCallStack) => T.Text -> DataFrame -> IO ()
@@ -297,22 +311,21 @@ smartPlotBars colName df = do
         Just c -> do
             let numUnique = length c
                 config =
-                    (defaultPlotConfig Bar')
-                        { plotTitle = T.unpack colName ++ " (" ++ show numUnique ++ " unique values)"
+                    (defaultPlotConfig Bar)
+                        { plotSettings = (plotSettings (defaultPlotConfig Bar)){plotTitle = colName <> " (" <> T.pack (show numUnique) <> " unique values)"}
                         }
             if numUnique <= 12
-                then putStrLn $ bars (plotTitle config) c (plotSettings config)
+                then T.putStrLn $ bars c (plotSettings config)
                 else
                     if numUnique <= 20
                         then do
                             let grouped = groupWithOther 12 c
-                            putStrLn $ bars (plotTitle config ++ " - Top 12 + Other") grouped (plotSettings config)
+                            T.putStrLn $ bars grouped (plotSettings config)
                         else do
                             let grouped = groupWithOther 10 c
                                 otherCount = numUnique - 10
-                            putStrLn $
+                            T.putStrLn $
                                 bars
-                                    (plotTitle config ++ " - Top 10 + Other (" ++ show otherCount ++ " items)")
                                     grouped
                                     (plotSettings config)
         Nothing -> plotBars colName df
@@ -329,7 +342,7 @@ plotCategoricalSummary df = do
                 if numUnique > 15 then plotBarsTopN 10 col df else plotBars col df
             Nothing -> return ()
 
-getCategoricalCounts :: (HasCallStack) => T.Text -> DataFrame -> Maybe [(String, Double)]
+getCategoricalCounts :: (HasCallStack) => T.Text -> DataFrame -> Maybe [(T.Text, Double)]
 getCategoricalCounts colName df =
     case M.lookup colName (columnIndices df) of
         Nothing -> error $ "Column " ++ T.unpack colName ++ " not found"
@@ -338,10 +351,10 @@ getCategoricalCounts colName df =
              in case col of
                     BoxedColumn vec ->
                         let counts = countValues vec
-                         in Just [(show k, fromIntegral v) | (k, v) <- counts]
+                         in Just [(T.pack (show k), fromIntegral v) | (k, v) <- counts]
                     UnboxedColumn vec ->
                         let counts = countValuesUnboxed vec
-                         in Just [(show k, fromIntegral v) | (k, v) <- counts]
+                         in Just [(T.pack (show k), fromIntegral v) | (k, v) <- counts]
                     _ -> Nothing
   where
     countValues :: (Ord a, Show a) => V.Vector a -> [(a, Int)]
@@ -373,16 +386,16 @@ isNumericType =
                     Just _ -> True
                     Nothing -> False
 
-extractStringColumn :: (HasCallStack) => T.Text -> DataFrame -> [String]
+extractStringColumn :: (HasCallStack) => T.Text -> DataFrame -> [T.Text]
 extractStringColumn colName df =
     case M.lookup colName (columnIndices df) of
         Nothing -> error $ "Column " ++ T.unpack colName ++ " not found"
         Just idx ->
             let col = columns df V.! idx
              in case col of
-                    BoxedColumn vec -> V.toList $ V.map show vec
-                    UnboxedColumn vec -> V.toList $ VG.map show (VG.convert vec)
-                    OptionalColumn vec -> V.toList $ V.map show vec
+                    BoxedColumn vec -> V.toList $ V.map (T.pack . show) vec
+                    UnboxedColumn vec -> V.toList $ VG.map (T.pack . show) (VG.convert vec)
+                    OptionalColumn vec -> V.toList $ V.map (T.pack . show) vec
 
 extractNumericColumn :: (HasCallStack) => T.Text -> DataFrame -> [Double]
 extractNumericColumn colName df =
@@ -417,7 +430,7 @@ unboxedVectorToDoubles vec =
                 Just Refl -> VU.toList $ VU.map realToFrac vec
                 Nothing -> error $ "Column is not numeric (type: " ++ show (typeRep @a) ++ ")"
 
-groupWithOther :: Int -> [(String, Double)] -> [(String, Double)]
+groupWithOther :: Int -> [(T.Text, Double)] -> [(T.Text, Double)]
 groupWithOther n items =
     let sorted = L.sortOn (negate . snd) items
         (topN, rest) = splitAt n sorted
@@ -425,11 +438,11 @@ groupWithOther n items =
         result =
             if null rest || otherSum == 0
                 then topN
-                else topN ++ [("Other (" ++ show (length rest) ++ " items)", otherSum)]
+                else topN ++ [("Other (" <> T.pack (show (length rest)) <> " items)", otherSum)]
      in result
 
 plotPie :: (HasCallStack) => T.Text -> Maybe T.Text -> DataFrame -> IO ()
-plotPie valCol labelCol df = plotPieWith valCol labelCol (defaultPlotConfig Pie') df
+plotPie valCol labelCol df = plotPieWith valCol labelCol (defaultPlotConfig Pie) df
 
 plotPieWith :: (HasCallStack) => T.Text -> Maybe T.Text -> PlotConfig -> DataFrame -> IO ()
 plotPieWith valCol labelCol config df = do
@@ -437,20 +450,20 @@ plotPieWith valCol labelCol config df = do
     case categoricalData of
         Just counts -> do
             let grouped = groupWithOtherForPie 8 counts
-            putStrLn $ pie (plotTitle config) grouped (plotSettings config)
+            T.putStrLn $ pie grouped (plotSettings config)
         Nothing -> do
             let values = extractNumericColumn valCol df
                 labels = case labelCol of
-                    Nothing -> map (\i -> "Item " ++ show i) [1 .. length values]
+                    Nothing -> map (\i -> "Item " <> T.pack (show i)) [1 .. length values]
                     Just lCol -> extractStringColumn lCol df
             let pieData = zip labels values
                 grouped =
                     if length pieData > 10
                         then groupWithOtherForPie 8 pieData
                         else pieData
-            putStrLn $ pie (plotTitle config) grouped (plotSettings config)
+            T.putStrLn $ pie grouped (plotSettings config)
 
-groupWithOtherForPie :: Int -> [(String, Double)] -> [(String, Double)]
+groupWithOtherForPie :: Int -> [(T.Text, Double)] -> [(T.Text, Double)]
 groupWithOtherForPie n items =
     let total = sum (map snd items)
         sorted = L.sortOn (negate . snd) items
@@ -464,17 +477,17 @@ groupWithOtherForPie n items =
                     topN
                         ++ [
                                ( "Other ("
-                                    ++ show (length rest)
-                                    ++ " items, "
-                                    ++ show otherPct
-                                    ++ "%)"
+                                    <> T.pack (show (length rest))
+                                    <> " items, "
+                                    <> T.pack (show otherPct)
+                                    <> "%)"
                                , otherSum
                                )
                            ]
      in result
 
 plotPieWithPercentages :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotPieWithPercentages colName df = plotPieWithPercentagesConfig colName (defaultPlotConfig Pie') df
+plotPieWithPercentages colName df = plotPieWithPercentagesConfig colName (defaultPlotConfig Pie) df
 
 plotPieWithPercentagesConfig :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO ()
 plotPieWithPercentagesConfig colName config df = do
@@ -483,24 +496,24 @@ plotPieWithPercentagesConfig colName config df = do
         Just c -> do
             let total = sum (map snd c)
                 withPct =
-                    [ (label ++ " (" ++ show (round (100 * val / total) :: Int) ++ "%)", val)
+                    [ (label <> " (" <> T.pack (show (round (100 * val / total) :: Int)) <> "%)", val)
                     | (label, val) <- c
                     ]
                 grouped = groupWithOtherForPie 8 withPct
-            putStrLn $ pie (plotTitle config) grouped (plotSettings config)
+            T.putStrLn $ pie grouped (plotSettings config)
         Nothing -> do
             let values = extractNumericColumn colName df
                 total = sum values
-                labels = map (\i -> "Item " ++ show i) [1 .. length values]
+                labels = map (\i -> "Item " <> T.pack (show i)) [1 .. length values]
                 withPct =
-                    [ (label ++ " (" ++ show (round (100 * val / total) :: Int) ++ "%)", val)
+                    [ (label <> " (" <> T.pack (show (round (100 * val / total) :: Int)) <> "%)", val)
                     | (label, val) <- zip labels values
                     ]
                 grouped = groupWithOtherForPie 8 withPct
-            putStrLn $ pie (plotTitle config) grouped (plotSettings config)
+            T.putStrLn $ pie grouped (plotSettings config)
 
 plotPieTopN :: (HasCallStack) => Int -> T.Text -> DataFrame -> IO ()
-plotPieTopN n colName df = plotPieTopNWith n colName (defaultPlotConfig Pie') df
+plotPieTopN n colName df = plotPieTopNWith n colName (defaultPlotConfig Pie) df
 
 plotPieTopNWith :: (HasCallStack) => Int -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotPieTopNWith n colName config df = do
@@ -508,13 +521,13 @@ plotPieTopNWith n colName config df = do
     case counts of
         Just c -> do
             let grouped = groupWithOtherForPie n c
-            putStrLn $ pie (plotTitle config) grouped (plotSettings config)
+            T.putStrLn $ pie grouped (plotSettings config)
         Nothing -> do
             let values = extractNumericColumn colName df
-                labels = map (\i -> "Item " ++ show i) [1 .. length values]
+                labels = map (\i -> "Item " <> T.pack (show i)) [1 .. length values]
                 paired = zip labels values
                 grouped = groupWithOtherForPie n paired
-            putStrLn $ pie (plotTitle config) grouped (plotSettings config)
+            T.putStrLn $ pie grouped (plotSettings config)
 
 smartPlotPie :: (HasCallStack) => T.Text -> DataFrame -> IO ()
 smartPlotPie colName df = do
@@ -525,23 +538,23 @@ smartPlotPie colName df = do
                 total = sum (map snd c)
                 significant = filter (\(_, v) -> v / total >= 0.01) c
                 config =
-                    (defaultPlotConfig Pie')
-                        { plotTitle = T.unpack colName ++ " Distribution"
+                    (defaultPlotConfig Pie)
+                        { plotSettings = (plotSettings (defaultPlotConfig Pie)){plotTitle = colName <> " Distribution"}
                         }
             if length significant <= 6
-                then putStrLn $ pie (plotTitle config) significant (plotSettings config)
+                then T.putStrLn $ pie significant (plotSettings config)
                 else
                     if length significant <= 10
                         then do
                             let grouped = groupWithOtherForPie 8 c
-                            putStrLn $ pie (plotTitle config) grouped (plotSettings config)
+                            T.putStrLn $ pie grouped (plotSettings config)
                         else do
                             let grouped = groupWithOtherForPie 6 c
-                            putStrLn $ pie (plotTitle config) grouped (plotSettings config)
+                            T.putStrLn $ pie grouped (plotSettings config)
         Nothing -> plotPie colName Nothing df
 
 plotPieGrouped :: (HasCallStack) => T.Text -> T.Text -> DataFrame -> IO ()
-plotPieGrouped groupCol valCol df = plotPieGroupedWith groupCol valCol (defaultPlotConfig Pie') df
+plotPieGrouped groupCol valCol df = plotPieGroupedWith groupCol valCol (defaultPlotConfig Pie) df
 
 plotPieGroupedWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotPieGroupedWith groupCol valCol config df = do
@@ -553,14 +566,14 @@ plotPieGroupedWith groupCol valCol config df = do
                 values = extractNumericColumn valCol df
                 grouped = M.toList $ M.fromListWith (+) (zip groups values)
                 finalGroups = groupWithOtherForPie 8 grouped
-            putStrLn $ pie (plotTitle config) finalGroups (plotSettings config)
+            T.putStrLn $ pie finalGroups (plotSettings config)
         else do
             let groups = extractStringColumn groupCol df
                 vals = extractStringColumn valCol df
-                combined = zipWith (\g v -> g ++ " - " ++ v) groups vals
+                combined = zipWith (\g v -> g <> " - " <> v) groups vals
                 counts = M.toList $ M.fromListWith (+) [(c, 1) | c <- combined]
                 finalCounts = groupWithOtherForPie 10 [(k, fromIntegral v) | (k, v) <- counts]
-            putStrLn $ pie (plotTitle config) finalCounts (plotSettings config)
+            T.putStrLn $ pie finalCounts (plotSettings config)
 
 plotPieComparison :: (HasCallStack) => [T.Text] -> DataFrame -> IO ()
 plotPieComparison cols df = do
@@ -581,10 +594,10 @@ plotBinaryPie colName df = do
                 then do
                     let total = sum (map snd c)
                         withPct =
-                            [ (label ++ " (" ++ show (round (100 * val / total) :: Int) ++ "%)", val)
+                            [ (label <> " (" <> T.pack (show (round (100 * val / total) :: Int)) <> "%)", val)
                             | (label, val) <- c
                             ]
-                    putStrLn $ pie (T.unpack colName ++ " Proportion") withPct defPlot
+                    T.putStrLn $ pie withPct defPlot
                 else
                     error $
                         "Column "
@@ -595,7 +608,7 @@ plotBinaryPie colName df = do
         Nothing -> error $ "Column " ++ T.unpack colName ++ " is not categorical"
 
 plotMarketShare :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotMarketShare colName df = plotMarketShareWith colName (defaultPlotConfig Pie') df
+plotMarketShare colName df = plotMarketShareWith colName (defaultPlotConfig Pie) df
 
 plotMarketShareWith :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO ()
 plotMarketShareWith colName config df = do
@@ -609,20 +622,19 @@ plotMarketShareWith colName config df = do
 
                 formatShare (label, val) =
                     let pct = round (100 * val / total) :: Int
-                     in (label ++ " (" ++ show pct ++ "%)", val)
+                     in (label <> " (" <> T.pack (show pct) <> "%)", val)
 
                 shares = map formatShare significantShares
                 finalShares =
                     if otherSum > 0 && otherSum / total >= 0.01
-                        then shares ++ [("Others (<2% each)", otherSum)]
+                        then shares <> [("Others (<2% each)", otherSum)]
                         else shares
 
             let config' =
                     config
-                        { plotTitle =
-                            if null (plotTitle config)
-                                then T.unpack colName ++ " Market Share"
-                                else plotTitle config
-                        }
-            putStrLn $ pie (plotTitle config') finalShares (plotSettings config')
+            -- { plotSettings = (plotSettings config) {
+            --         plotTitle = colName <> ": market share"
+            --     }
+            -- }
+            T.putStrLn $ pie finalShares (plotSettings config')
         Nothing -> error $ "Column " ++ T.unpack colName ++ " is not categorical"

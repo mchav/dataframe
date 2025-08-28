@@ -11,12 +11,17 @@ import DataFrame.Internal.DataFrame as D
 import DataFrame.Operations.Aggregation as D
 import DataFrame.Operations.Core as D
 
+-- | Equivalent to SQL join types.
 data JoinType
     = INNER
     | LEFT
     | RIGHT
     | FULL_OUTER
 
+{- | Join two dataframes using SQL join semantics.
+
+Only inner join is implemented for now.
+-}
 join ::
     JoinType ->
     [T.Text] ->
@@ -28,8 +33,9 @@ join LEFT xs right = error "UNIMPLEMENTED"
 join RIGHT xs right = error "UNIMPLEMENTED"
 join FULL_OUTER xs right = error "UNIMPLEMENTED"
 
--- Create row representation for each of the two dataframes
--- get the product of left and right counts for each key
+{- | Inner join of two dataframes. Note: for chaining, the left dataframe is actually
+on the right side.
+-}
 innerJoin :: [T.Text] -> DataFrame -> DataFrame -> DataFrame
 innerJoin cs right left =
     let

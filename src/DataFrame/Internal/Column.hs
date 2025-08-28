@@ -256,7 +256,7 @@ atIndices indexes (UnboxedColumn column) = UnboxedColumn $ VG.ifilter (\i _ -> i
 -- | O(n) Selects the elements at a given set of indices. Does not change the order.
 atIndicesStable :: VU.Vector Int -> Column -> Column
 atIndicesStable indexes (BoxedColumn column) = BoxedColumn $ indexes `getIndices` column
-atIndicesStable indexes (UnboxedColumn column) = UnboxedColumn $ indexes `getIndicesUnboxed` column
+atIndicesStable indexes (UnboxedColumn column) = UnboxedColumn $ VU.unsafeBackpermute column indexes
 atIndicesStable indexes (OptionalColumn column) = OptionalColumn $ indexes `getIndices` column
 {-# INLINE atIndicesStable #-}
 
@@ -498,6 +498,7 @@ __Examples:__
 [1,2,3,4]
 > toVector @Double column
 exception: ...
+@
 -}
 toVector :: forall a. (Columnable a) => Column -> VB.Vector a
 toVector xs = case toVectorSafe xs of
@@ -514,6 +515,7 @@ __Examples:__
 [1,2,3,4]
 > toList @Double column
 exception: ...
+@
 -}
 toList :: forall a. (Columnable a) => Column -> [a]
 toList xs = case toVectorSafe @a xs of

@@ -7,8 +7,10 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
-import qualified DataFrame as DE
-import qualified DataFrame as DI
+import qualified DataFrame.Internal.Column as D
+import qualified DataFrame.Internal.DataFrame as D
+import qualified DataFrame.Internal.Column as DI
+import qualified DataFrame.Internal.DataFrame as DI
 
 import Assertions
 import Test.HUnit
@@ -34,7 +36,7 @@ filterColumnDoesNotExist =
     TestCase
         ( assertExpectException
             "[Error Case]"
-            (DE.columnNotFound "test0" "filter" (D.columnNames testData))
+            (D.columnNotFound "test0" "filter" (D.columnNames testData))
             (print $ D.filter @Int "test0" even testData)
         )
 
@@ -43,7 +45,7 @@ filterColumnWrongType =
     TestCase
         ( assertExpectException
             "[Error Case]"
-            (DE.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
+            (D.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
             (print $ D.filter @Integer "test1" even testData)
         )
 
@@ -52,7 +54,7 @@ filterByColumnDoesNotExist =
     TestCase
         ( assertExpectException
             "[Error Case]"
-            (DE.columnNotFound "test0" "filter" (D.columnNames testData))
+            (D.columnNotFound "test0" "filter" (D.columnNames testData))
             (print $ D.filterBy @Int even "test0" testData)
         )
 
@@ -61,7 +63,7 @@ filterByColumnWrongType =
     TestCase
         ( assertExpectException
             "[Error Case]"
-            (DE.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
+            (D.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
             (print $ D.filterBy @Integer even "test1" testData)
         )
 

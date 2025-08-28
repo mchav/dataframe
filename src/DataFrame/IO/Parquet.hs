@@ -28,6 +28,14 @@ import DataFrame.IO.Parquet.Page
 import DataFrame.IO.Parquet.Thrift
 import DataFrame.IO.Parquet.Types
 
+{- | Read a parquet file from path and load it into a dataframe.
+
+==== __Example__
+@
+ghci> D.readParquet "./data/mtcars.parquet" df
+
+@
+-}
 readParquet :: String -> IO DataFrame
 readParquet path = withBinaryFile path ReadMode $ \handle -> do
     (size, magicString) <- readMetadataSizeFromFooter handle

@@ -113,8 +113,10 @@ mkGroupedColumns indices df acc name =
             let vs = indices `getIndicesUnboxed` column
              in insertUnboxedVector name vs acc
 
+{- | Aggregate a grouped dataframe using the expressions give.
+All ungrouped columns will be dropped.
+-}
 aggregate :: [(T.Text, UExpr)] -> GroupedDataFrame -> DataFrame
--- aggregate aggs df = undefined
 aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
     let
         df' = selectIndices (VG.map (valueIndices VG.!) (VG.init offsets)) (select groupingColumns df)
@@ -134,6 +136,7 @@ selectIndices xs df =
         , dataframeDimensions = (VG.length xs, VG.length (columns df))
         }
 
+-- | Filter out all non-unique values in a dataframe.
 distinct :: DataFrame -> DataFrame
 distinct df = selectIndices (VG.map (indices VG.!) (VG.init os)) df
   where

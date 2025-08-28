@@ -1,6 +1,8 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -8,28 +10,29 @@
 
 module DataFrame.IO.CSV where
 
-import qualified Data.ByteString.Char8 as C
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Builder as Builder
+import qualified Data.ByteString.Char8 as C8
 import qualified Data.List as L
-import qualified Data.Map as M
-import qualified Data.Set as S
+import qualified Data.Map.Strict as M
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.IO as TLIO
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Applicative (many, (*>), (<$>), (<*), (<*>), (<|>))
-import Control.Monad (forM_, unless, void, zipWithM_)
-import Data.Attoparsec.Text
+import Control.Monad (forM_, unless, void, when, zipWithM_)
+import Control.Monad.ST (runST)
+import Data.Attoparsec.ByteString.Char8 hiding (endOfLine)
+import Data.Bits (shiftL)
 import Data.Char
-import Data.Foldable (fold)
+import Data.Either
 import Data.Function (on)
 import Data.IORef
 import Data.Maybe
-import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Type.Equality (
     TestEquality (testEquality),
     type (:~:) (Refl),
@@ -43,107 +46,223 @@ import System.IO
 import Type.Reflection
 import Prelude hiding (concat, takeWhile)
 
--- | Record for CSV read options.
-data ReadOptions = ReadOptions
-    { hasHeader :: Bool
-    , inferTypes :: Bool
-    , safeRead :: Bool
+data GrowingVector a = GrowingVector
+    { gvData :: !(IORef (VM.IOVector a))
+    , gvSize :: !(IORef Int)
+    , gvCapacity :: !(IORef Int)
     }
 
-{- | By default we assume the file has a header, we infer the types on read
-and we convert any rows with nullish objects into Maybe (safeRead).
--}
-defaultOptions :: ReadOptions
-defaultOptions = ReadOptions{hasHeader = True, inferTypes = True, safeRead = True}
+data GrowingUnboxedVector a = GrowingUnboxedVector
+    { guvData :: !(IORef (VUM.IOVector a))
+    , guvSize :: !(IORef Int)
+    , guvCapacity :: !(IORef Int)
+    }
 
-{- | Reads a CSV file from the given path.
-Note this file stores intermediate temporary files
-while converting the CSV from a row to a columnar format.
+data GrowingColumn
+    = GrowingInt !(GrowingUnboxedVector Int) !(IORef [Int])
+    | GrowingDouble !(GrowingUnboxedVector Double) !(IORef [Int])
+    | GrowingText !(GrowingVector T.Text) !(IORef [Int])
+
+-- | CSV read parameters.
+data ReadOptions = ReadOptions
+    { hasHeader :: Bool
+    -- ^ Whether or not the CSV file has a header. (default: True)
+    , inferTypes :: Bool
+    -- ^ Whether to try and infer types. (default: True)
+    , safeRead :: Bool
+    -- ^ Whether to partially parse values into `Maybe`/Either`. (default: True)
+    , chunkSize :: Int
+    -- ^ Default chunk size (in bytes) for csv reader. (default: 512'000)
+    }
+
+defaultOptions :: ReadOptions
+defaultOptions =
+    ReadOptions
+        { hasHeader = True
+        , inferTypes = True
+        , safeRead = True
+        , chunkSize = 512_000
+        }
+
+newGrowingVector :: Int -> IO (GrowingVector a)
+newGrowingVector !initCap = do
+    vec <- VM.unsafeNew initCap
+    GrowingVector <$> newIORef vec <*> newIORef 0 <*> newIORef initCap
+
+newGrowingUnboxedVector :: (VUM.Unbox a) => Int -> IO (GrowingUnboxedVector a)
+newGrowingUnboxedVector !initCap = do
+    vec <- VUM.unsafeNew initCap
+    GrowingUnboxedVector <$> newIORef vec <*> newIORef 0 <*> newIORef initCap
+
+appendGrowingVector :: GrowingVector a -> a -> IO ()
+appendGrowingVector (GrowingVector vecRef sizeRef capRef) !val = do
+    size <- readIORef sizeRef
+    cap <- readIORef capRef
+    vec <- readIORef vecRef
+
+    vec' <-
+        if size >= cap
+            then do
+                let !newCap = cap `shiftL` 1
+                newVec <- VM.unsafeGrow vec newCap
+                writeIORef vecRef newVec
+                writeIORef capRef newCap
+                return newVec
+            else return vec
+
+    VM.unsafeWrite vec' size val
+    writeIORef sizeRef $! size + 1
+
+appendGrowingUnboxedVector :: (VUM.Unbox a) => GrowingUnboxedVector a -> a -> IO ()
+appendGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef capRef) !val = do
+    size <- readIORef sizeRef
+    cap <- readIORef capRef
+    vec <- readIORef vecRef
+
+    vec' <-
+        if size >= cap
+            then do
+                let !newCap = cap `shiftL` 1
+                newVec <- VUM.unsafeGrow vec newCap
+                writeIORef vecRef newVec
+                writeIORef capRef newCap
+                return newVec
+            else return vec
+
+    VUM.unsafeWrite vec' size val
+    writeIORef sizeRef $! size + 1
+
+freezeGrowingVector :: GrowingVector a -> IO (V.Vector a)
+freezeGrowingVector (GrowingVector vecRef sizeRef _) = do
+    vec <- readIORef vecRef
+    size <- readIORef sizeRef
+    V.freeze (VM.slice 0 size vec)
+
+freezeGrowingUnboxedVector :: (VUM.Unbox a) => GrowingUnboxedVector a -> IO (VU.Vector a)
+freezeGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef _) = do
+    vec <- readIORef vecRef
+    size <- readIORef sizeRef
+    VU.freeze (VUM.slice 0 size vec)
+
+{- | Read CSV file from path and load it into a dataframe.
+
+==== __Example__
+@
+ghci> D.readCsv "./data/taxi.csv" df
+
+@
 -}
 readCsv :: String -> IO DataFrame
 readCsv = readSeparated ',' defaultOptions
 
-{- | Reads a tab separated file from the given path.
-Note this file stores intermediate temporary files
-while converting the CSV from a row to a columnar format.
+{- | Read TSV (tab separated) file from path and load it into a dataframe.
+
+==== __Example__
+@
+ghci> D.readTsv "./data/taxi.tsv" df
+
+@
 -}
 readTsv :: String -> IO DataFrame
 readTsv = readSeparated '\t' defaultOptions
 
--- | Reads a character separated file into a dataframe using mutable vectors.
+{- | Read text file with specified delimiter into a dataframe.
+
+==== __Example__
+@
+ghci> D.readSeparated ';' D.defaultOptions "./data/taxi.txt" df
+
+@
+-}
 readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
-readSeparated c opts path = do
-    totalRows <- countRows c path
+readSeparated !sep !opts !path = do
     withFile path ReadMode $ \handle -> do
-        firstRow <- map T.strip . parseSep c <$> TIO.hGetLine handle
-        let columnNames =
+        hSetBuffering handle (BlockBuffering (Just (chunkSize opts)))
+
+        firstLine <- C8.hGetLine handle
+        let firstRow = parseLine sep firstLine
+            columnNames =
                 if hasHeader opts
-                    then map (T.filter (/= '\"')) firstRow
-                    else map (T.singleton . intToDigit) [0 .. (length firstRow - 1)]
-        -- If there was no header rewind the file cursor.
+                    then map (T.filter (/= '\"') . TE.decodeUtf8Lenient) firstRow
+                    else map (T.singleton . intToDigit) [0 .. length firstRow - 1]
+
         unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
 
-        -- Initialize mutable vectors for each column
-        let numColumns = length columnNames
-        let numRows = if hasHeader opts then totalRows - 1 else totalRows
-        -- Use this row to infer the types of the rest of the column.
-        -- TODO: this isn't robust but in so far as this is a guess anyway
-        -- it's probably fine. But we should probably sample n rows and pick
-        -- the most likely type from the sample.
-        dataRow <- map T.strip . parseSep c <$> TIO.hGetLine handle
+        dataLine <- C8.hGetLine handle
+        let dataRow = parseLine sep dataLine
+        growingCols <- initializeColumns dataRow opts
 
-        -- This array will track the indices of all null values for each column.
-        -- If any exist then the column will be an optional type.
-        nullIndices <- VM.unsafeNew numColumns
-        VM.set nullIndices []
-        mutableCols <- VM.unsafeNew numColumns
-        getInitialDataVectors numRows mutableCols dataRow
+        processRow 0 dataRow growingCols
 
-        -- Read rows into the mutable vectors
-        fillColumns numRows c mutableCols nullIndices handle
+        processFile handle sep growingCols (chunkSize opts) 1
 
-        -- Freeze the mutable vectors into immutable ones
-        nulls' <- V.unsafeFreeze nullIndices
-        cols <- V.mapM (freezeColumn mutableCols nulls' opts) (V.generate numColumns id)
+        frozenCols <- V.fromList <$> mapM freezeGrowingColumn growingCols
+
+        let numRows = maybe 0 columnLength (frozenCols V.!? 0)
+
         return $
             DataFrame
-                { columns = cols
+                { columns = frozenCols
                 , columnIndices = M.fromList (zip columnNames [0 ..])
-                , dataframeDimensions = (maybe 0 columnLength (cols V.!? 0), V.length cols)
+                , dataframeDimensions = (numRows, V.length frozenCols)
                 }
-{-# INLINE readSeparated #-}
 
-getInitialDataVectors :: Int -> VM.IOVector MutableColumn -> [T.Text] -> IO ()
-getInitialDataVectors n mCol xs = do
-    forM_ (zip [0 ..] xs) $ \(i, x) -> do
-        col <- case inferValueType x of
-            "Int" -> MUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Int)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readInt x) >> return c)
-            "Double" -> MUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Double)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readDouble x) >> return c)
-            _ -> MBoxedColumn <$> ((VM.unsafeNew n :: IO (VM.IOVector T.Text)) >>= \c -> VM.unsafeWrite c 0 x >> return c)
-        VM.unsafeWrite mCol i col
-{-# INLINE getInitialDataVectors #-}
+initializeColumns :: [BS.ByteString] -> ReadOptions -> IO [GrowingColumn]
+initializeColumns row opts = mapM initColumn row
+  where
+    initColumn :: BS.ByteString -> IO GrowingColumn
+    initColumn bs = do
+        nullsRef <- newIORef []
+        let val = TE.decodeUtf8Lenient bs
+        if inferTypes opts
+            then case inferType val of
+                IntType -> GrowingInt <$> newGrowingUnboxedVector 1_024 <*> pure nullsRef
+                DoubleType -> GrowingDouble <$> newGrowingUnboxedVector 1_024 <*> pure nullsRef
+                TextType -> GrowingText <$> newGrowingVector 1_024 <*> pure nullsRef
+            else GrowingText <$> newGrowingVector 1_024 <*> pure nullsRef
 
-inferValueType :: T.Text -> T.Text
-inferValueType s =
-    let
-        example = s
-     in
-        case readInt example of
-            Just _ -> "Int"
-            Nothing -> case readDouble example of
-                Just _ -> "Double"
-                Nothing -> "Other"
-{-# INLINE inferValueType #-}
+data InferredType = IntType | DoubleType | TextType
 
--- | Reads rows from the handle and stores values in mutable vectors.
-fillColumns :: Int -> Char -> VM.IOVector MutableColumn -> VM.IOVector [(Int, T.Text)] -> Handle -> IO ()
-fillColumns n c mutableCols nullIndices handle = do
-    input <- newIORef (mempty :: T.Text)
-    forM_ [1 .. n] $ \i -> do
-        isEOF <- hIsEOF handle
-        input' <- readIORef input
-        unless (isEOF && input' == mempty) $ do
-            parseWith (TIO.hGetChunk handle) (parseRow c) input' >>= \case
+inferType :: T.Text -> InferredType
+inferType !t
+    | T.null t = TextType
+    | isJust (readInt t) = IntType
+    | isJust (readDouble t) = DoubleType
+    | otherwise = TextType
+
+processRow :: Int -> [BS.ByteString] -> [GrowingColumn] -> IO ()
+processRow !rowIdx !vals !cols = zipWithM_ (processValue rowIdx) vals cols
+  where
+    processValue :: Int -> BS.ByteString -> GrowingColumn -> IO ()
+    processValue !idx !bs !col = do
+        let !val = TE.decodeUtf8Lenient bs
+        case col of
+            GrowingInt gv nulls ->
+                case readByteStringInt bs of
+                    Just !i -> appendGrowingUnboxedVector gv i
+                    Nothing -> do
+                        appendGrowingUnboxedVector gv 0
+                        modifyIORef' nulls (idx :)
+            GrowingDouble gv nulls ->
+                case readByteStringDouble bs of
+                    Just !d -> appendGrowingUnboxedVector gv d
+                    Nothing -> do
+                        appendGrowingUnboxedVector gv 0.0
+                        modifyIORef' nulls (idx :)
+            GrowingText gv nulls ->
+                if isNull val
+                    then do
+                        appendGrowingVector gv T.empty
+                        modifyIORef' nulls (idx :)
+                    else appendGrowingVector gv val
+
+isNull :: T.Text -> Bool
+isNull t = T.null t || t == "NA" || t == "NULL" || t == "null"
+
+processFile :: Handle -> Char -> [GrowingColumn] -> Int -> Int -> IO ()
+processFile !handle !sep !cols !chunk r = do
+    let go remain !rowIdx = do
+            parseWith (C8.hGetNonBlocking handle chunk) (parseRow sep) remain >>= \case
                 Fail unconsumed ctx er -> do
                     erpos <- hTell handle
                     fail $
@@ -155,100 +274,87 @@ fillColumns n c mutableCols nullIndices handle = do
                             <> show ctx
                 Partial c -> do
                     fail "Partial handler is called"
-                Done (unconsumed :: T.Text) (row :: [T.Text]) -> do
-                    writeIORef input unconsumed
-                    zipWithM_ (writeValue mutableCols nullIndices i) [0 ..] row
-{-# INLINE fillColumns #-}
+                Done (unconsumed :: C8.ByteString) (row :: [C8.ByteString]) -> do
+                    processRow rowIdx row cols
+                    unless (row == [] || unconsumed == mempty) $ go unconsumed $! rowIdx + 1
+                    return ()
+    go "" r
 
--- | Writes a value into the appropriate column, resizing the vector if necessary.
-writeValue :: VM.IOVector MutableColumn -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> T.Text -> IO ()
-writeValue mutableCols nullIndices count colIndex value = do
-    col <- VM.unsafeRead mutableCols colIndex
-    res <- writeColumn count value col
-    let modify value = VM.unsafeModify nullIndices ((count, value) :) colIndex
-    either modify (const (return ())) res
-{-# INLINE writeValue #-}
+parseLine :: Char -> BS.ByteString -> [BS.ByteString]
+parseLine !sep = fromRight [] . parseOnly (record sep)
 
--- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
-freezeColumn :: VM.IOVector MutableColumn -> V.Vector [(Int, T.Text)] -> ReadOptions -> Int -> IO Column
-freezeColumn mutableCols nulls opts colIndex = do
-    col <- VM.unsafeRead mutableCols colIndex
-    freezeColumn' (nulls V.! colIndex) col
-{-# INLINE freezeColumn #-}
+parseRow :: Char -> Parser [C8.ByteString]
+parseRow sep = record sep <* (endOfLine <|> endOfInput) <?> "CSV row"
 
-parseSep :: Char -> T.Text -> [T.Text]
-parseSep c s = either error id (parseOnly (record c) s)
-{-# INLINE parseSep #-}
+record :: Char -> Parser [BS.ByteString]
+record sep = field sep `sepBy` char sep <?> "CSV record"
 
-record :: Char -> Parser [T.Text]
-record c =
-    field c `sepBy1` char c
-        <?> "record"
-{-# INLINE record #-}
+field :: Char -> Parser BS.ByteString
+field sep = quotedField <|> unquotedField sep <?> "CSV field"
 
-parseRow :: Char -> Parser [T.Text]
-parseRow c = (record c <* lineEnd) <?> "record-new-line"
+unquotedField :: Char -> Parser BS.ByteString
+unquotedField sep = takeWhile (\c -> c /= sep && c /= '\n' && c /= '\r') <?> "unquoted field"
 
-field :: Char -> Parser T.Text
-field c =
-    quotedField <|> unquotedField c
-        <?> "field"
-{-# INLINE field #-}
-
-unquotedTerminators :: Char -> S.Set Char
-unquotedTerminators sep = S.fromList [sep, '\n', '\r', '"']
-
-unquotedField :: Char -> Parser T.Text
-unquotedField sep =
-    takeWhile (not . (`S.member` terminators)) <?> "unquoted field"
+quotedField :: Parser BS.ByteString
+quotedField =
+    do
+        char '"'
+        contents <- Builder.toLazyByteString <$> parseQuotedContents
+        char '"'
+        return $ BS.toStrict contents
+        <?> "quoted field"
   where
-    terminators = unquotedTerminators sep
-{-# INLINE unquotedField #-}
+    parseQuotedContents = mconcat <$> many quotedChar
+    quotedChar =
+        (Builder.byteString <$> takeWhile1 (/= '"'))
+            <|> (char '"' *> char '"' *> pure (Builder.char8 '"'))
+            <?> "quoted field content"
 
-quotedField :: Parser T.Text
-quotedField = char '"' *> contents <* char '"' <?> "quoted field"
-  where
-    contents = fold <$> many (unquote <|> unescape)
-      where
-        unquote = takeWhile1 (notInClass "\"\\")
-        unescape =
-            char '\\' *> do
-                T.singleton <$> do
-                    char '\\' <|> char '"'
-{-# INLINE quotedField #-}
+endOfLine :: Parser ()
+endOfLine =
+    (void (string "\r\n") <|> void (char '\n') <|> void (char '\r'))
+        <?> "line ending"
 
-lineEnd :: Parser ()
-lineEnd =
-    (endOfLine <|> endOfInput)
-        <?> "end of line"
-{-# INLINE lineEnd #-}
-
--- | First pass to count rows for exact allocation
-countRows :: Char -> FilePath -> IO Int
-countRows c path = withFile path ReadMode $! go 0 ""
-  where
-    go n input h = do
-        isEOF <- hIsEOF h
-        if isEOF && input == mempty
-            then pure n
-            else
-                parseWith (TIO.hGetChunk h) (parseRow c) input >>= \case
-                    Fail unconsumed ctx er -> do
-                        erpos <- hTell h
-                        fail $
-                            "Failed to parse CSV file around "
-                                <> show erpos
-                                <> " byte; due: "
-                                <> show er
-                                <> "; context: "
-                                <> show ctx
-                                <> " "
-                                <> show unconsumed
-                    Partial c -> do
-                        fail $ "Partial handler is called; n = " <> show n
-                    Done (unconsumed :: T.Text) _ ->
-                        go (n + 1) unconsumed h
-{-# INLINE countRows #-}
+freezeGrowingColumn :: GrowingColumn -> IO Column
+freezeGrowingColumn (GrowingInt gv nullsRef) = do
+    vec <- freezeGrowingUnboxedVector gv
+    nulls <- readIORef nullsRef
+    if null nulls
+        then return $ UnboxedColumn vec
+        else do
+            let size = VU.length vec
+            mvec <- VM.new size
+            forM_ [0 .. size - 1] $ \i -> do
+                if i `elem` nulls
+                    then VM.write mvec i Nothing
+                    else VM.write mvec i (Just (vec VU.! i))
+            BoxedColumn <$> V.freeze mvec
+freezeGrowingColumn (GrowingDouble gv nullsRef) = do
+    vec <- freezeGrowingUnboxedVector gv
+    nulls <- readIORef nullsRef
+    if null nulls
+        then return $ UnboxedColumn vec
+        else do
+            let size = VU.length vec
+            mvec <- VM.new size
+            forM_ [0 .. size - 1] $ \i -> do
+                if i `elem` nulls
+                    then VM.write mvec i Nothing
+                    else VM.write mvec i (Just (vec VU.! i))
+            BoxedColumn <$> V.freeze mvec
+freezeGrowingColumn (GrowingText gv nullsRef) = do
+    vec <- freezeGrowingVector gv
+    nulls <- readIORef nullsRef
+    if null nulls
+        then return $ BoxedColumn vec
+        else do
+            let size = V.length vec
+            mvec <- VM.new size
+            forM_ [0 .. size - 1] $ \i -> do
+                if i `elem` nulls
+                    then VM.write mvec i Nothing
+                    else VM.write mvec i (Just (vec V.! i))
+            BoxedColumn <$> V.freeze mvec
 
 writeCsv :: String -> DataFrame -> IO ()
 writeCsv = writeSeparated ','

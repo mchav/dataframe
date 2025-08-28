@@ -29,17 +29,61 @@ import DataFrame.Internal.Parsing (isNullish)
 import Type.Reflection
 import Prelude hiding (null)
 
--- | O(1) Get DataFrame dimensions i.e. (rows, columns)
+{- | O(1) Get DataFrame dimensions i.e. (rows, columns)
+
+==== __Example__
+@
+ghci> D.dimensions df
+
+(100, 3)
+@
+-}
 dimensions :: DataFrame -> (Int, Int)
 dimensions = dataframeDimensions
 {-# INLINE dimensions #-}
 
--- | O(k) Get column names of the DataFrame in order of insertion.
+{- | O(k) Get column names of the DataFrame in order of insertion.
+
+==== __Example__
+@
+ghci> D.columnNames df
+
+["col_a", "col_b", "col_c"]
+@
+-}
 columnNames :: DataFrame -> [T.Text]
 columnNames = map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices
 {-# INLINE columnNames #-}
 
--- | /O(n)/ Adds a vector to the dataframe.
+{- | Adds a vector to the dataframe. If the vector has less elements than the dataframe and the dataframe is not empty
+the vector is converted to type `Maybe a` filled with `Nothing` to match the size of the dataframe. Similarly,
+if the vector has more elements than what's currently in the dataframe, the other columns in the dataframe are
+change to `Maybe <Type>` and filled with `Nothing`.
+
+==== __Example__
+@
+ghci> import qualified Data.Vector as V
+
+ghci> D.insertVector "numbers" (V.fromList [1..10]) D.empty
+
+---------------
+index | numbers
+------|--------
+ Int  |   Int
+------|--------
+0     | 1
+1     | 2
+2     | 3
+3     | 4
+4     | 5
+5     | 6
+6     | 7
+7     | 8
+8     | 9
+9     | 10
+
+@
+-}
 insertVector ::
     forall a.
     (Columnable a) =>
@@ -52,42 +96,6 @@ insertVector ::
     DataFrame
 insertVector name xs = insertColumn name (fromVector xs)
 {-# INLINE insertVector #-}
-
-cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
-cloneColumn original new df = fromMaybe (throw $ ColumnNotFoundException original "cloneColumn" (map fst $ M.toList $ columnIndices df)) $ do
-    column <- getColumn original df
-    return $ insertColumn new column df
-
--- | /O(n)/ Adds an unboxed vector to the dataframe.
-insertUnboxedVector ::
-    forall a.
-    (Columnable a, VU.Unbox a) =>
-    -- | Column Name
-    T.Text ->
-    -- | Unboxed vector to add to column
-    VU.Vector a ->
-    -- | DataFrame to add to column
-    DataFrame ->
-    DataFrame
-insertUnboxedVector name xs = insertColumn name (UnboxedColumn xs)
-
--- -- | /O(n)/ Add a column to the dataframe. Not meant for external use.
-insertColumn ::
-    -- | Column Name
-    T.Text ->
-    -- | Column to add
-    Column ->
-    -- | DataFrame to add to column
-    DataFrame ->
-    DataFrame
-insertColumn name column d =
-    let
-        (r, c) = dataframeDimensions d
-        n = max (columnLength column) r
-     in
-        case M.lookup name (columnIndices d) of
-            Just i -> DataFrame (V.map (expandColumn n) (columns d V.// [(i, column)])) (columnIndices d) (n, c)
-            Nothing -> DataFrame (V.map (expandColumn n) (columns d `V.snoc` column)) (M.insert name c (columnIndices d)) (n, c + 1)
 
 {- | /O(k)/ Add a column to the dataframe providing a default.
 This constructs a new vector and also may convert it
@@ -111,9 +119,174 @@ insertVectorWithDefault defaultValue name xs d =
         values = xs V.++ V.replicate (rows - V.length xs) defaultValue
      in insertColumn name (fromVector values) d
 
+{- | /O(n)/ Adds an unboxed vector to the dataframe.
+
+Same as insertVector but takes an unboxed vector. If you insert a vector of numbers through insertVector it will either way be converted
+into an unboxed vector so this function saves that extra work/conversion.
+-}
+insertUnboxedVector ::
+    forall a.
+    (Columnable a, VU.Unbox a) =>
+    -- | Column Name
+    T.Text ->
+    -- | Unboxed vector to add to column
+    VU.Vector a ->
+    -- | DataFrame to add to column
+    DataFrame ->
+    DataFrame
+insertUnboxedVector name xs = insertColumn name (UnboxedColumn xs)
+
+{- | /O(n)/ Add a column to the dataframe.
+
+==== __Example__
+@
+ghci> D.insertColumn "numbers" (D.fromList [1..10]) D.empty
+
+---------------
+index | numbers
+------|--------
+ Int  |   Int
+------|--------
+0     | 1
+1     | 2
+2     | 3
+3     | 4
+4     | 5
+5     | 6
+6     | 7
+7     | 8
+8     | 9
+9     | 10
+
+@
+-}
+insertColumn ::
+    -- | Column Name
+    T.Text ->
+    -- | Column to add
+    Column ->
+    -- | DataFrame to add to column
+    DataFrame ->
+    DataFrame
+insertColumn name column d =
+    let
+        (r, c) = dataframeDimensions d
+        n = max (columnLength column) r
+     in
+        case M.lookup name (columnIndices d) of
+            Just i -> DataFrame (V.map (expandColumn n) (columns d V.// [(i, column)])) (columnIndices d) (n, c)
+            Nothing -> DataFrame (V.map (expandColumn n) (columns d `V.snoc` column)) (M.insert name c (columnIndices d)) (n, c + 1)
+
+{- | /O(n)/ Clones a column and places it under a new name in the dataframe.
+
+==== __Example__
+@
+ghci> import qualified Data.Vector as V
+
+ghci> df = insertVector "numbers" (V.fromList [1..10]) D.empty
+
+ghci> D.cloneColumn "numbers" "others" df
+
+------------------------
+index | numbers | others
+------|---------|-------
+ Int  |   Int   |  Int
+------|---------|-------
+0     | 1       | 1
+1     | 2       | 2
+2     | 3       | 3
+3     | 4       | 4
+4     | 5       | 5
+5     | 6       | 6
+6     | 7       | 7
+7     | 8       | 8
+8     | 9       | 9
+9     | 10      | 10
+
+@
+-}
+cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
+cloneColumn original new df = fromMaybe (throw $ ColumnNotFoundException original "cloneColumn" (map fst $ M.toList $ columnIndices df)) $ do
+    column <- getColumn original df
+    return $ insertColumn new column df
+
+{- | /O(n)/ Renames a single column.
+
+==== __Example__
+@
+ghci> import qualified Data.Vector as V
+
+ghci> df = insertVector "numbers" (V.fromList [1..10]) D.empty
+
+ghci> D.rename "numbers" "others" df
+
+--------------
+index | others
+------|-------
+ Int  |  Int
+------|-------
+0     | 1
+1     | 2
+2     | 3
+3     | 4
+4     | 5
+5     | 6
+6     | 7
+7     | 8
+8     | 9
+9     | 10
+
+@
+-}
 rename :: T.Text -> T.Text -> DataFrame -> DataFrame
 rename orig new df = either throw id (renameSafe orig new df)
 
+{- | /O(n)/ Renames many columns.
+
+==== __Example__
+@
+ghci> import qualified Data.Vector as V
+
+ghci> df = D.insertVector "others" (V.fromList [11..20]) (D.insertVector "numbers" (V.fromList [1..10]) D.empty)
+
+ghci> df
+
+------------------------
+index | numbers | others
+------|---------|-------
+ Int  |   Int   |  Int
+------|---------|-------
+0     | 1       | 11
+1     | 2       | 12
+2     | 3       | 13
+3     | 4       | 14
+4     | 5       | 15
+5     | 6       | 16
+6     | 7       | 17
+7     | 8       | 18
+8     | 9       | 19
+9     | 10      | 20
+
+ghci> D.renameMany [("numbers", "first_10"), ("others", "next_10")] df
+
+--------------------------
+index | first_10 | next_10
+------|----------|--------
+ Int  |   Int    |   Int
+------|----------|--------
+0     | 1        | 11
+1     | 2        | 12
+2     | 3        | 13
+3     | 4        | 14
+4     | 5        | 15
+5     | 6        | 16
+6     | 7        | 17
+7     | 8        | 18
+8     | 9        | 19
+9     | 10       | 20
+
+@
+-}
 renameMany :: [(T.Text, T.Text)] -> DataFrame -> DataFrame
 renameMany replacements df = fold (uncurry rename) replacements df
 
@@ -124,10 +297,6 @@ renameSafe orig new df = fromMaybe (Left $ ColumnNotFoundException orig "rename"
     let newAdded = M.insert new columnIndex origRemoved
     return (Right df{columnIndices = newAdded})
 
--- | O(1) Get the number of elements in a given column.
-columnSize :: T.Text -> DataFrame -> Maybe Int
-columnSize name df = columnLength <$> getColumn name df
-
 data ColumnInfo = ColumnInfo
     { nameOfColumn :: !T.Text
     , nonNullValues :: !Int
@@ -137,8 +306,25 @@ data ColumnInfo = ColumnInfo
     , typeOfColumn :: !T.Text
     }
 
-{- | O(n) Returns the number of non-null columns in the dataframe and the type associated
-with each column.
+{- | O(n * k ^ 2) Returns the number of non-null columns in the dataframe and the type associated with each column.
+
+==== __Example__
+@
+ghci> import qualified Data.Vector as V
+
+ghci> df = D.insertVector "others" (V.fromList [11..20]) (D.insertVector "numbers" (V.fromList [1..10]) D.empty)
+
+ghci> D.describeColumns df
+
+-----------------------------------------------------------------------------------------------------
+index | Column Name | # Non-null Values | # Null Values | # Partially parsed | # Unique Values | Type
+------|-------------|-------------------|---------------|--------------------|-----------------|-----
+ Int  |    Text     |        Int        |      Int      |        Int         |       Int       | Text
+------|-------------|-------------------|---------------|--------------------|-----------------|-----
+0     | others      | 10                | 0             | 0                  | 10              | Int
+1     | numbers     | 10                | 0             | 0                  | 10              | Int
+
+@
 -}
 describeColumns :: DataFrame -> DataFrame
 describeColumns df =
@@ -202,13 +388,78 @@ partiallyParsed (BoxedColumn (xs :: V.Vector a)) =
         _ -> 0
 partiallyParsed _ = 0
 
+{- | Creates a dataframe from a list of tuples with name and column.
+
+==== __Example__
+@
+ghci> df = D.fromNamedColumns [("numbers", D.fromList [1..10]), ("others", D.fromList [11..20])]
+
+ghci> df
+
+------------------------
+index | numbers | others
+------|---------|-------
+ Int  |   Int   |  Int
+------|---------|-------
+0     | 1       | 11
+1     | 2       | 12
+2     | 3       | 13
+3     | 4       | 14
+4     | 5       | 15
+5     | 6       | 16
+6     | 7       | 17
+7     | 8       | 18
+8     | 9       | 19
+9     | 10      | 20
+
+@
+-}
 fromNamedColumns :: [(T.Text, Column)] -> DataFrame
 fromNamedColumns = L.foldl' (\df (name, column) -> insertColumn name column df) empty
 
+{- | Create a dataframe from a list of columns. The column names are "0", "1"... etc.
+Useful for quick exploration but you should probably alwyas rename the columns after
+or drop the ones you don't want.
+
+==== __Example__
+@
+ghci> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
+
+ghci> df
+
+-----------------
+index |  0  |  1
+------|-----|----
+ Int  | Int | Int
+------|-----|----
+0     | 1   | 11
+1     | 2   | 12
+2     | 3   | 13
+3     | 4   | 14
+4     | 5   | 15
+5     | 6   | 16
+6     | 7   | 17
+7     | 8   | 18
+8     | 9   | 19
+9     | 10  | 20
+
+@
+-}
 fromUnnamedColumns :: [Column] -> DataFrame
 fromUnnamedColumns = fromNamedColumns . zip (map (T.pack . show) [0 ..])
 
--- | O (k * n) Counts the occurences of each value in a given column.
+{- | O (k * n) Counts the occurences of each value in a given column.
+
+==== __Example__
+@
+ghci> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
+
+ghci> D.valueCounts @Int "0" df
+
+[(1,1),(2,1),(3,1),(4,1),(5,1),(6,1),(7,1),(8,1),(9,1),(10,1)]
+
+@
+-}
 valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Int)]
 valueCounts columnName df = case getColumn columnName df of
     Nothing -> throw $ ColumnNotFoundException columnName "valueCounts" (map fst $ M.toList $ columnIndices df)
@@ -261,5 +512,30 @@ valueCounts columnName df = case getColumn columnName df of
                             )
                 Just Refl -> M.toAscList column
 
+{- | A left fold for dataframes that takes the dataframe as the last object.
+this makes it easier to chain operations.
+
+==== __Example__
+@
+ghci> D.fold (const id) [1..5] df
+
+-----------------
+index |  0  |  1
+------|-----|----
+ Int  | Int | Int
+------|-----|----
+0     | 1   | 11
+1     | 2   | 12
+2     | 3   | 13
+3     | 4   | 14
+4     | 5   | 15
+5     | 6   | 16
+6     | 7   | 17
+7     | 8   | 18
+8     | 9   | 19
+9     | 10  | 20
+
+@
+-}
 fold :: (a -> DataFrame -> DataFrame) -> [a] -> DataFrame -> DataFrame
 fold f xs acc = L.foldl' (flip f) acc xs
