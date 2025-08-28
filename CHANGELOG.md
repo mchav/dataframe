@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.3.0.4
+* Fix bug with parquet reader.
+
 ## 0.3.0.3
 * Improved parquet reader. The reader now supports most parquet files downloaded from internet sources
   * Supports all primitive parquet types plain and uncompressed.
