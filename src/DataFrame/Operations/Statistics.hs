@@ -228,7 +228,7 @@ computeVariance (VarAcc !n _ !m2)
 {-# INLINE computeVariance #-}
 
 variance' :: VU.Vector Double -> Double
-variance' = computeVariance . VG.foldl' varianceStep (VarAcc 0 0 0)
+variance' = computeVariance . VU.foldl' varianceStep (VarAcc 0 0 0)
 {-# INLINE variance' #-}
 
 -- accumulator: count, mean, m2, m3
@@ -252,7 +252,7 @@ computeSkewness (SkewAcc n _ m2 m3)
 {-# INLINE computeSkewness #-}
 
 skewness' :: VU.Vector Double -> Double
-skewness' = computeSkewness . VG.foldl' skewnessStep (SkewAcc 0 0 0 0)
+skewness' = computeSkewness . VU.foldl' skewnessStep (SkewAcc 0 0 0 0)
 {-# INLINE skewness' #-}
 
 correlation' :: VU.Vector Double -> VU.Vector Double -> Maybe Double
