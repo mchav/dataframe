@@ -169,6 +169,7 @@ applyAtIndex i f columnName df = case getColumn columnName df of
                     )
         Just column' -> insertColumn columnName column' df
 
+-- | Replace all instances of `Nothing` in a column with the given value.
 impute ::
     forall b.
     (Columnable b) =>

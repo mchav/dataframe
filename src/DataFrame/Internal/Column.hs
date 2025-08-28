@@ -498,6 +498,7 @@ __Examples:__
 [1,2,3,4]
 > toVector @Double column
 exception: ...
+@
 -}
 toVector :: forall a. (Columnable a) => Column -> VB.Vector a
 toVector xs = case toVectorSafe xs of
@@ -514,6 +515,7 @@ __Examples:__
 [1,2,3,4]
 > toList @Double column
 exception: ...
+@
 -}
 toList :: forall a. (Columnable a) => Column -> [a]
 toList xs = case toVectorSafe @a xs of

@@ -209,8 +209,8 @@ readPageTypeHeader hdr@(DataPageHeaderV2{..}) xs lastFieldId =
                 n -> error $ show n
 
 safeHead :: [a] -> Maybe a
-safeHead []    = Nothing
-safeHead (x:_) = Just x
+safeHead [] = Nothing
+safeHead (x : _) = Just x
 
 readField' :: [Word8] -> Int16 -> Maybe ([Word8], TType, Int16)
 readField' [] _ = Nothing

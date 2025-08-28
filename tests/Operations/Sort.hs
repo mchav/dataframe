@@ -2,16 +2,17 @@
 
 module Operations.Sort where
 
+import Assertions
+import Control.Monad
+import Data.Char
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
-import qualified DataFrame as DE
-import qualified DataFrame as DI
-
-import Assertions
-import Control.Monad
-import Data.Char
+import qualified DataFrame.Internal.Column as D
+import qualified DataFrame.Internal.Column as DI
+import qualified DataFrame.Internal.DataFrame as D
+import qualified DataFrame.Internal.DataFrame as DI
 import System.Random
 import System.Random.Shuffle (shuffle')
 import Test.HUnit
@@ -59,7 +60,7 @@ sortByColumnDoesNotExist =
     TestCase
         ( assertExpectException
             "[Error Case]"
-            (DE.columnNotFound "[\"test0\"]" "sortBy" (D.columnNames testData))
+            (D.columnNotFound "[\"test0\"]" "sortBy" (D.columnNames testData))
             (print $ D.sortBy D.Ascending ["test0"] testData)
         )
 

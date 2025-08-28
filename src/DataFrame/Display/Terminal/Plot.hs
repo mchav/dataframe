@@ -1,10 +1,10 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module DataFrame.Display.Terminal.Plot where
 
@@ -23,9 +23,9 @@ import GHC.Stack (HasCallStack)
 import Type.Reflection (typeRep)
 
 import DataFrame.Internal.Column (Column (..), Columnable)
+import qualified DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Operations.Core
-import qualified DataFrame.Internal.Column as D
 import qualified DataFrame.Operations.Subset as D
 import Granite
 
@@ -79,7 +79,7 @@ plotScatterByWith xCol yCol grouping config df = do
     let vals = extractStringColumn grouping df
     let df' = insertColumn grouping (D.fromList vals) df
     xs <- forM (L.nub vals) $ \col -> do
-        let filtered = D.filter grouping (==col) df'
+        let filtered = D.filter grouping (== col) df'
             xVals = extractNumericColumn xCol filtered
             yVals = extractNumericColumn yCol filtered
             points = zip xVals yVals
@@ -186,7 +186,7 @@ plotCorrelationMatrix df = do
                 )
                 numericCols
     print (zip [0 ..] numericCols)
-    T.putStrLn $ heatmap correlations (defPlot { plotTitle = "Correlation Matrix"})
+    T.putStrLn $ heatmap correlations (defPlot{plotTitle = "Correlation Matrix"})
   where
     correlation xs ys =
         let n = fromIntegral $ length xs
@@ -279,12 +279,13 @@ plotValueCountsWith colName maxBars config df = do
             let grouped = groupWithOther maxBars c
                 config' =
                     config
-                        { plotSettings = (plotSettings config) {
-                            plotTitle =
-                                if T.null (plotTitle (plotSettings config))
-                                then "Value counts for " <> colName
-                                else plotTitle (plotSettings config)
-                            }
+                        { plotSettings =
+                            (plotSettings config)
+                                { plotTitle =
+                                    if T.null (plotTitle (plotSettings config))
+                                        then "Value counts for " <> colName
+                                        else plotTitle (plotSettings config)
+                                }
                         }
             T.putStrLn $ bars grouped (plotSettings config')
         Nothing -> error $ "Could not get value counts for column " ++ T.unpack colName
@@ -300,7 +301,7 @@ plotBarsWithPercentages colName df = do
                     | (label, val) <- c
                     ]
                 grouped = groupWithOther 10 percentages
-            T.putStrLn $ bars grouped (defPlot { plotTitle = "Distribution of " <> colName })
+            T.putStrLn $ bars grouped (defPlot{plotTitle = "Distribution of " <> colName})
         Nothing -> error $ "Could not get value counts for column " ++ T.unpack colName
 
 smartPlotBars :: (HasCallStack) => T.Text -> DataFrame -> IO ()
@@ -311,7 +312,8 @@ smartPlotBars colName df = do
             let numUnique = length c
                 config =
                     (defaultPlotConfig Bar)
-                        { plotSettings = (plotSettings (defaultPlotConfig Bar)) { plotTitle = colName <> " (" <> T.pack (show numUnique) <> " unique values)" } }
+                        { plotSettings = (plotSettings (defaultPlotConfig Bar)){plotTitle = colName <> " (" <> T.pack (show numUnique) <> " unique values)"}
+                        }
             if numUnique <= 12
                 then T.putStrLn $ bars c (plotSettings config)
                 else
@@ -452,7 +454,7 @@ plotPieWith valCol labelCol config df = do
         Nothing -> do
             let values = extractNumericColumn valCol df
                 labels = case labelCol of
-                    Nothing -> map (\i -> "Item " <> T.pack(show i)) [1 .. length values]
+                    Nothing -> map (\i -> "Item " <> T.pack (show i)) [1 .. length values]
                     Just lCol -> extractStringColumn lCol df
             let pieData = zip labels values
                 grouped =
@@ -537,7 +539,8 @@ smartPlotPie colName df = do
                 significant = filter (\(_, v) -> v / total >= 0.01) c
                 config =
                     (defaultPlotConfig Pie)
-                        { plotSettings = (plotSettings (defaultPlotConfig Pie)) { plotTitle = colName <> " Distribution" } }
+                        { plotSettings = (plotSettings (defaultPlotConfig Pie)){plotTitle = colName <> " Distribution"}
+                        }
             if length significant <= 6
                 then T.putStrLn $ pie significant (plotSettings config)
                 else
@@ -629,9 +632,9 @@ plotMarketShareWith colName config df = do
 
             let config' =
                     config
-                        -- { plotSettings = (plotSettings config) {
-                        --         plotTitle = colName <> ": market share"
-                        --     }
-                        -- }
+            -- { plotSettings = (plotSettings config) {
+            --         plotTitle = colName <> ": market share"
+            --     }
+            -- }
             T.putStrLn $ pie finalShares (plotSettings config')
         Nothing -> error $ "Column " ++ T.unpack colName ++ " is not categorical"

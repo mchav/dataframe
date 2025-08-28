@@ -5,7 +5,9 @@ module Operations.Statistics where
 
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
-import qualified DataFrame as DE
+import qualified DataFrame.Internal.Column as D
+import qualified DataFrame.Internal.DataFrame as D
+import qualified DataFrame.Operations.Statistics as D
 
 import Assertions
 import Test.HUnit
@@ -33,7 +35,7 @@ medianOfEmptyDataSet =
     TestCase
         ( assertExpectException
             "[Error Case]"
-            (DE.emptyDataSetError "median")
+            (D.emptyDataSetError "median")
             (print $ D.median' (VU.fromList []))
         )
 

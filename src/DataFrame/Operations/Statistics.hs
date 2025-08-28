@@ -40,6 +40,24 @@ import GHC.Float (int2Double)
 import Text.Printf (printf)
 import Type.Reflection (typeRep)
 
+{- | Show a frequency table for a categorical feaure.
+
+__Examples:__
+
+@
+ghci> df <- D.readCsv "./data/housing.csv"
+
+ghci> D.frequencies "ocean_proximity" df
+
+----------------------------------------------------------------------------
+index |   Statistic    | <1H OCEAN | INLAND | ISLAND | NEAR BAY | NEAR OCEAN
+------|----------------|-----------|--------|--------|----------|-----------
+ Int  |      Text      |    Any    |  Any   |  Any   |   Any    |    Any
+------|----------------|-----------|--------|--------|----------|-----------
+0     | Count          | 9136      | 6551   | 5      | 2290     | 2658
+1     | Percentage (%) | 44.26%    | 31.74% | 0.02%  | 11.09%   | 12.88%
+@
+-}
 frequencies :: T.Text -> DataFrame -> DataFrame
 frequencies name df =
     let
@@ -56,24 +74,31 @@ frequencies name df =
             Just ((OptionalColumn (column :: V.Vector a))) -> freqs column
             Just ((UnboxedColumn (column :: VU.Vector a))) -> freqs column
 
+-- | Calculates the mean of a given column as a standalone value.
 mean :: T.Text -> DataFrame -> Maybe Double
 mean = applyStatistic mean'
 
+-- | Calculates the median of a given column as a standalone value.
 median :: T.Text -> DataFrame -> Maybe Double
 median = applyStatistic median'
 
+-- | Calculates the standard deviation of a given column as a standalone value.
 standardDeviation :: T.Text -> DataFrame -> Maybe Double
 standardDeviation = applyStatistic (sqrt . variance')
 
+-- | Calculates the skewness of a given column as a standalone value.
 skewness :: T.Text -> DataFrame -> Maybe Double
 skewness = applyStatistic SS.skewness
 
+-- | Calculates the variance of a given column as a standalone value.
 variance :: T.Text -> DataFrame -> Maybe Double
 variance = applyStatistic variance'
 
+-- | Calculates the inter-quartile range of a given column as a standalone value.
 interQuartileRange :: T.Text -> DataFrame -> Maybe Double
 interQuartileRange = applyStatistic (SS.midspread SS.medianUnbiased 4)
 
+-- | Calculates the Pearson's correlation coefficient between two given columns as a standalone value.
 correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
 correlation first second df = do
     f <- _getColumnAsDouble first df
@@ -92,6 +117,7 @@ _getColumnAsDouble name df = case getColumn name df of
     _ -> Nothing
 {-# INLINE _getColumnAsDouble #-}
 
+-- | Calculates the sum of a given column as a standalone value.
 sum :: forall a. (Columnable a, Num a, VU.Unbox a) => T.Text -> DataFrame -> Maybe a
 sum name df = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "sum" (map fst $ M.toList $ columnIndices df)
@@ -103,9 +129,11 @@ applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe D
 applyStatistic f name df = case getColumn name (filterJust name df) of
     Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
     Just column@(UnboxedColumn (col :: VU.Vector a)) -> case testEquality (typeRep @a) (typeRep @Double) of
-        Just Refl -> let
+        Just Refl ->
+            let
                 res = (f col)
-            in if isNaN res then Nothing else pure res
+             in
+                if isNaN res then Nothing else pure res
         Nothing -> do
             col' <- _getColumnAsDouble name df
             let res = (f col')
@@ -124,6 +152,7 @@ applyStatistics f name df = case getColumn name (filterJust name df) of
                 Nothing -> Nothing
     _ -> Nothing
 
+-- | Descriprive statistics of the numeric columns.
 summarize :: DataFrame -> DataFrame
 summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic", fromList ["Count" :: T.Text, "Mean", "Minimum", "25%", "Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
   where
@@ -167,16 +196,17 @@ mean' samp = VU.sum samp / fromIntegral (VU.length samp)
 median' :: VU.Vector Double -> Double
 median' samp
     | VU.null samp = throw $ EmptyDataSetException "median"
-    | otherwise    = runST $ do
+    | otherwise = runST $ do
         mutableSamp <- VU.thaw samp
         VA.sort mutableSamp
         let len = VU.length samp
             middleIndex = len `div` 2
         middleElement <- VUM.read mutableSamp middleIndex
-        if odd len then pure middleElement
-        else do
-            prev <-VUM.read mutableSamp (middleIndex - 1)
-            pure ((middleElement + prev) / 2)
+        if odd len
+            then pure middleElement
+            else do
+                prev <- VUM.read mutableSamp (middleIndex - 1)
+                pure ((middleElement + prev) / 2)
 {-# INLINE median' #-}
 
 -- accumulator: count, mean, m2
@@ -201,28 +231,27 @@ variance' :: VU.Vector Double -> Double
 variance' = computeVariance . VU.foldl' step (VarAcc 0 0 0)
 {-# INLINE variance' #-}
 
-
 correlation' :: VU.Vector Double -> VU.Vector Double -> Maybe Double
 correlation' xs ys
-  | VU.length xs /= VU.length ys = Nothing
-  | nI < 2                       = Nothing
-  | otherwise                    =
-      let !nf  = fromIntegral nI
-          (!sumX,!sumY,!sumSquaredX,!sumSquaredY,!sumXY) = go 0 0 0 0 0 0
-          !num = nf * sumXY - sumX * sumY
-          !den = sqrt ((nf * sumSquaredX - sumX*sumX) * (nf * sumSquaredY - sumY*sumY))
-      in pure (num / den)
+    | VU.length xs /= VU.length ys = Nothing
+    | nI < 2 = Nothing
+    | otherwise =
+        let !nf = fromIntegral nI
+            (!sumX, !sumY, !sumSquaredX, !sumSquaredY, !sumXY) = go 0 0 0 0 0 0
+            !num = nf * sumXY - sumX * sumY
+            !den = sqrt ((nf * sumSquaredX - sumX * sumX) * (nf * sumSquaredY - sumY * sumY))
+         in pure (num / den)
   where
     !nI = VU.length xs
     go !i !sumX !sumY !sumSquaredX !sumSquaredY !sumXY
-      | i < nI   =
-          let !x   = VU.unsafeIndex xs i
-              !y   = VU.unsafeIndex ys i
-              !sumX' = sumX  + x
-              !sumY' = sumY  + y
-              !sumSquaredX'= sumSquaredX + x*x
-              !sumSquaredY'= sumSquaredY + y*y
-              !sumXY'= sumXY + x*y
-          in  go (i+1) sumX' sumY' sumSquaredX' sumSquaredY' sumXY'
-      | otherwise = (sumX,sumY,sumSquaredX,sumSquaredY,sumXY)
+        | i < nI =
+            let !x = VU.unsafeIndex xs i
+                !y = VU.unsafeIndex ys i
+                !sumX' = sumX + x
+                !sumY' = sumY + y
+                !sumSquaredX' = sumSquaredX + x * x
+                !sumSquaredY' = sumSquaredY + y * y
+                !sumXY' = sumXY + x * y
+             in go (i + 1) sumX' sumY' sumSquaredX' sumSquaredY' sumXY'
+        | otherwise = (sumX, sumY, sumSquaredX, sumSquaredY, sumXY)
 {-# INLINE correlation' #-}

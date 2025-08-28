@@ -1,30 +1,30 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE LambdaCase #-}
 
 module DataFrame.IO.CSV where
 
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Builder as Builder
+import qualified Data.ByteString.Char8 as C8
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
 import qualified Data.Text.Encoding as TE
+import qualified Data.Text.IO as TIO
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Applicative (many, (*>), (<$>), (<*), (<*>), (<|>))
-import Control.Monad (forM_, unless, when, zipWithM_, void)
+import Control.Monad (forM_, unless, void, when, zipWithM_)
 import Control.Monad.ST (runST)
 import Data.Attoparsec.ByteString.Char8 hiding (endOfLine)
 import Data.Bits (shiftL)
@@ -63,27 +63,33 @@ data GrowingColumn
     | GrowingDouble !(GrowingUnboxedVector Double) !(IORef [Int])
     | GrowingText !(GrowingVector T.Text) !(IORef [Int])
 
+-- | CSV read parameters.
 data ReadOptions = ReadOptions
     { hasHeader :: Bool
+    -- ^ Whether or not the CSV file has a header. (default: True)
     , inferTypes :: Bool
+    -- ^ Whether to try and infer types. (default: True)
     , safeRead :: Bool
+    -- ^ Whether to partially parse values into `Maybe`/Either`. (default: True)
     , chunkSize :: Int
+    -- ^ Default chunk size (in bytes) for csv reader. (default: 512'000)
     }
 
 defaultOptions :: ReadOptions
-defaultOptions = ReadOptions
-    { hasHeader = True
-    , inferTypes = True
-    , safeRead = True
-    , chunkSize = 512_000
-    }
+defaultOptions =
+    ReadOptions
+        { hasHeader = True
+        , inferTypes = True
+        , safeRead = True
+        , chunkSize = 512_000
+        }
 
 newGrowingVector :: Int -> IO (GrowingVector a)
 newGrowingVector !initCap = do
     vec <- VM.unsafeNew initCap
     GrowingVector <$> newIORef vec <*> newIORef 0 <*> newIORef initCap
 
-newGrowingUnboxedVector :: VUM.Unbox a => Int -> IO (GrowingUnboxedVector a)
+newGrowingUnboxedVector :: (VUM.Unbox a) => Int -> IO (GrowingUnboxedVector a)
 newGrowingUnboxedVector !initCap = do
     vec <- VUM.unsafeNew initCap
     GrowingUnboxedVector <$> newIORef vec <*> newIORef 0 <*> newIORef initCap
@@ -94,32 +100,34 @@ appendGrowingVector (GrowingVector vecRef sizeRef capRef) !val = do
     cap <- readIORef capRef
     vec <- readIORef vecRef
 
-    vec' <- if size >= cap
-        then do
-            let !newCap = cap `shiftL` 1
-            newVec <- VM.unsafeGrow vec newCap
-            writeIORef vecRef newVec
-            writeIORef capRef newCap
-            return newVec
-        else return vec
+    vec' <-
+        if size >= cap
+            then do
+                let !newCap = cap `shiftL` 1
+                newVec <- VM.unsafeGrow vec newCap
+                writeIORef vecRef newVec
+                writeIORef capRef newCap
+                return newVec
+            else return vec
 
     VM.unsafeWrite vec' size val
     writeIORef sizeRef $! size + 1
 
-appendGrowingUnboxedVector :: VUM.Unbox a => GrowingUnboxedVector a -> a -> IO ()
+appendGrowingUnboxedVector :: (VUM.Unbox a) => GrowingUnboxedVector a -> a -> IO ()
 appendGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef capRef) !val = do
     size <- readIORef sizeRef
     cap <- readIORef capRef
     vec <- readIORef vecRef
 
-    vec' <- if size >= cap
-        then do
-            let !newCap = cap `shiftL` 1
-            newVec <- VUM.unsafeGrow vec newCap
-            writeIORef vecRef newVec
-            writeIORef capRef newCap
-            return newVec
-        else return vec
+    vec' <-
+        if size >= cap
+            then do
+                let !newCap = cap `shiftL` 1
+                newVec <- VUM.unsafeGrow vec newCap
+                writeIORef vecRef newVec
+                writeIORef capRef newCap
+                return newVec
+            else return vec
 
     VUM.unsafeWrite vec' size val
     writeIORef sizeRef $! size + 1
@@ -130,18 +138,42 @@ freezeGrowingVector (GrowingVector vecRef sizeRef _) = do
     size <- readIORef sizeRef
     V.freeze (VM.slice 0 size vec)
 
-freezeGrowingUnboxedVector :: VUM.Unbox a => GrowingUnboxedVector a -> IO (VU.Vector a)
+freezeGrowingUnboxedVector :: (VUM.Unbox a) => GrowingUnboxedVector a -> IO (VU.Vector a)
 freezeGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef _) = do
     vec <- readIORef vecRef
     size <- readIORef sizeRef
     VU.freeze (VUM.slice 0 size vec)
 
+{- | Read CSV file from path and load it into a dataframe.
+
+==== __Example__
+@
+ghci> D.readCsv "./data/taxi.csv" df
+
+@
+-}
 readCsv :: String -> IO DataFrame
 readCsv = readSeparated ',' defaultOptions
 
+{- | Read TSV (tab separated) file from path and load it into a dataframe.
+
+==== __Example__
+@
+ghci> D.readTsv "./data/taxi.tsv" df
+
+@
+-}
 readTsv :: String -> IO DataFrame
 readTsv = readSeparated '\t' defaultOptions
 
+{- | Read text file with specified delimiter into a dataframe.
+
+==== __Example__
+@
+ghci> D.readSeparated ';' D.defaultOptions "./data/taxi.txt" df
+
+@
+-}
 readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
 readSeparated !sep !opts !path = do
     withFile path ReadMode $ \handle -> do
@@ -149,9 +181,10 @@ readSeparated !sep !opts !path = do
 
         firstLine <- C8.hGetLine handle
         let firstRow = parseLine sep firstLine
-            columnNames = if hasHeader opts
-                then map (T.filter (/= '\"') . TE.decodeUtf8Lenient) firstRow
-                else map (T.singleton . intToDigit) [0 .. length firstRow - 1]
+            columnNames =
+                if hasHeader opts
+                    then map (T.filter (/= '\"') . TE.decodeUtf8Lenient) firstRow
+                    else map (T.singleton . intToDigit) [0 .. length firstRow - 1]
 
         unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
 
@@ -167,11 +200,12 @@ readSeparated !sep !opts !path = do
 
         let numRows = maybe 0 columnLength (frozenCols V.!? 0)
 
-        return $ DataFrame
-            { columns = frozenCols
-            , columnIndices = M.fromList (zip columnNames [0..])
-            , dataframeDimensions = (numRows, V.length frozenCols)
-            }
+        return $
+            DataFrame
+                { columns = frozenCols
+                , columnIndices = M.fromList (zip columnNames [0 ..])
+                , dataframeDimensions = (numRows, V.length frozenCols)
+                }
 
 initializeColumns :: [BS.ByteString] -> ReadOptions -> IO [GrowingColumn]
 initializeColumns row opts = mapM initColumn row
@@ -208,20 +242,18 @@ processRow !rowIdx !vals !cols = zipWithM_ (processValue rowIdx) vals cols
                     Just !i -> appendGrowingUnboxedVector gv i
                     Nothing -> do
                         appendGrowingUnboxedVector gv 0
-                        modifyIORef' nulls (idx:)
-
+                        modifyIORef' nulls (idx :)
             GrowingDouble gv nulls ->
                 case readByteStringDouble bs of
                     Just !d -> appendGrowingUnboxedVector gv d
                     Nothing -> do
                         appendGrowingUnboxedVector gv 0.0
-                        modifyIORef' nulls (idx:)
-
+                        modifyIORef' nulls (idx :)
             GrowingText gv nulls ->
                 if isNull val
                     then do
                         appendGrowingVector gv T.empty
-                        modifyIORef' nulls (idx:)
+                        modifyIORef' nulls (idx :)
                     else appendGrowingVector gv val
 
 isNull :: T.Text -> Bool
@@ -264,23 +296,24 @@ unquotedField :: Char -> Parser BS.ByteString
 unquotedField sep = takeWhile (\c -> c /= sep && c /= '\n' && c /= '\r') <?> "unquoted field"
 
 quotedField :: Parser BS.ByteString
-quotedField = do
-    char '"'
-    contents <- Builder.toLazyByteString <$> parseQuotedContents
-    char '"'
-    return $ BS.toStrict contents
-    <?> "quoted field"
+quotedField =
+    do
+        char '"'
+        contents <- Builder.toLazyByteString <$> parseQuotedContents
+        char '"'
+        return $ BS.toStrict contents
+        <?> "quoted field"
   where
     parseQuotedContents = mconcat <$> many quotedChar
-    quotedChar = 
+    quotedChar =
         (Builder.byteString <$> takeWhile1 (/= '"'))
-        <|> (char '"' *> char '"' *> pure (Builder.char8 '"'))
-        <?> "quoted field content"
+            <|> (char '"' *> char '"' *> pure (Builder.char8 '"'))
+            <?> "quoted field content"
 
 endOfLine :: Parser ()
-endOfLine = 
+endOfLine =
     (void (string "\r\n") <|> void (char '\n') <|> void (char '\r'))
-    <?> "line ending"
+        <?> "line ending"
 
 freezeGrowingColumn :: GrowingColumn -> IO Column
 freezeGrowingColumn (GrowingInt gv nullsRef) = do
@@ -291,12 +324,11 @@ freezeGrowingColumn (GrowingInt gv nullsRef) = do
         else do
             let size = VU.length vec
             mvec <- VM.new size
-            forM_ [0..size-1] $ \i -> do
+            forM_ [0 .. size - 1] $ \i -> do
                 if i `elem` nulls
                     then VM.write mvec i Nothing
                     else VM.write mvec i (Just (vec VU.! i))
             BoxedColumn <$> V.freeze mvec
-
 freezeGrowingColumn (GrowingDouble gv nullsRef) = do
     vec <- freezeGrowingUnboxedVector gv
     nulls <- readIORef nullsRef
@@ -305,12 +337,11 @@ freezeGrowingColumn (GrowingDouble gv nullsRef) = do
         else do
             let size = VU.length vec
             mvec <- VM.new size
-            forM_ [0..size-1] $ \i -> do
+            forM_ [0 .. size - 1] $ \i -> do
                 if i `elem` nulls
                     then VM.write mvec i Nothing
                     else VM.write mvec i (Just (vec VU.! i))
             BoxedColumn <$> V.freeze mvec
-
 freezeGrowingColumn (GrowingText gv nullsRef) = do
     vec <- freezeGrowingVector gv
     nulls <- readIORef nullsRef
@@ -319,7 +350,7 @@ freezeGrowingColumn (GrowingText gv nullsRef) = do
         else do
             let size = V.length vec
             mvec <- VM.new size
-            forM_ [0..size-1] $ \i -> do
+            forM_ [0 .. size - 1] $ \i -> do
                 if i `elem` nulls
                     then VM.write mvec i Nothing
                     else VM.write mvec i (Just (vec V.! i))

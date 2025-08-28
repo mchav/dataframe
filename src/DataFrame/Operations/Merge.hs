@@ -12,6 +12,7 @@ import qualified DataFrame.Operations.Core as D
 import Data.Maybe
 
 instance Semigroup D.DataFrame where
+    -- \| Vertically merge two dataframes using shared columns.
     (<>) :: D.DataFrame -> D.DataFrame -> D.DataFrame
     (<>) a b =
         let
@@ -48,5 +49,6 @@ instance Semigroup D.DataFrame where
 instance Monoid D.DataFrame where
     mempty = D.empty
 
+-- | Add two dataframes side by side/horizontally.
 (|||) :: D.DataFrame -> D.DataFrame -> D.DataFrame
 (|||) a b = D.fold (\name acc -> D.insertColumn name (D.unsafeGetColumn name b) acc) (D.columnNames b) a

@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE Strict #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Main where
 

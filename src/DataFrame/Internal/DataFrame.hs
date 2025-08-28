@@ -34,6 +34,10 @@ data DataFrame = DataFrame
     , dataframeDimensions :: (Int, Int)
     }
 
+{- | A record that contains information about how and what
+rows are grouped in the dataframe. This can only be used with
+`aggregate`.
+-}
 data GroupedDataFrame = Grouped
     { fullDataframe :: DataFrame
     , groupedColumns :: [T.Text]
@@ -108,6 +112,11 @@ unsafeGetColumn name df = columns df V.! (columnIndices df M.! name)
 null :: DataFrame -> Bool
 null df = V.null (columns df)
 
+{- | Returns a dataframe as a two dimentions vector of floats.
+
+All entries in the dataframe must be doubles.
+This is useful for handing data over into ML systems.
+-}
 toMatrix :: DataFrame -> V.Vector (VU.Vector Float)
 toMatrix df =
     let
@@ -115,6 +124,10 @@ toMatrix df =
      in
         V.generate (fst (dataframeDimensions df)) (\i -> foldl (\acc j -> acc `VU.snoc` (realToFrac ((m V.! j) V.! i))) VU.empty [0 .. (V.length m - 1)])
 
+{- | Get a specific column as a vector.
+
+You must specify the type via type applications.
+-}
 columnAsVector :: forall a. (Columnable a) => T.Text -> DataFrame -> V.Vector a
 columnAsVector name df = case unsafeGetColumn name df of
     (BoxedColumn (col :: V.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
