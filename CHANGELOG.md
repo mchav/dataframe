@@ -1,5 +1,11 @@
 # Revision history for dataframe
 
+## 0.3.0.3
+* Improved parquet reader. The reader now supports most parquet files found in the wild.
+* Improve CSV parsing: Parse bytestring and convert to text only at the end. Remove some redundancies in parsing with suggestions from @Jhingon.
+* Faster correlation computation.
+* Update version of granite that ships with dataframe and add new scatterBy plot.
+
 ## 0.3.0.2
 * Re-enable Parquet.
 * Change columnInfo to describeColumns
