@@ -22,10 +22,11 @@ import qualified Data.Vector.Unboxed as VU
 import GHC.Stack (HasCallStack)
 import Type.Reflection (typeRep)
 
-import DataFrame.Internal.Column (Column (..), Columnable)
+import DataFrame.Internal.Column (Column (..), Columnable, isNumeric)
 import qualified DataFrame.Internal.Column as D
-import DataFrame.Internal.DataFrame (DataFrame (..))
+import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Operations.Core
+import DataFrame.Internal.Types
 import qualified DataFrame.Operations.Subset as D
 import Granite
 
@@ -136,30 +137,9 @@ plotHeatmapWith config df = do
     T.putStrLn $ heatmap matrix (plotSettings config)
 
 isNumericColumn :: DataFrame -> T.Text -> Bool
-isNumericColumn df colName =
-    case M.lookup colName (columnIndices df) of
-        Nothing -> False
-        Just idx ->
-            let col = columns df V.! idx
-             in case col of
-                    BoxedColumn (vec :: V.Vector a) ->
-                        case testEquality (typeRep @a) (typeRep @Double) of
-                            Just _ -> True
-                            Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
-                                Just _ -> True
-                                Nothing -> case testEquality (typeRep @a) (typeRep @Float) of
-                                    Just _ -> True
-                                    Nothing -> False
-                    UnboxedColumn (vec :: VU.Vector a) ->
-                        case testEquality (typeRep @a) (typeRep @Double) of
-                            Just _ -> True
-                            Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
-                                Just _ -> True
-                                Nothing -> case testEquality (typeRep @a) (typeRep @Float) of
-                                    Just _ -> True
-                                    Nothing -> False
-                    -- Haven't dealt with optionals yet.
-                    _ -> False
+isNumericColumn df colName = case getColumn colName df of
+    Nothing  -> False
+    Just col -> isNumeric col
 
 plotAllHistograms :: (HasCallStack) => DataFrame -> IO ()
 plotAllHistograms df = do
@@ -247,9 +227,9 @@ plotGroupedBarsWith = plotGroupedBarsWithN 10
 
 plotGroupedBarsWithN :: (HasCallStack) => Int -> T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotGroupedBarsWithN n groupCol valCol config df = do
-    let isNumeric = isNumericColumnCheck valCol df
+    let colIsNumeric = isNumericColumnCheck valCol df
 
-    if isNumeric
+    if colIsNumeric
         then do
             let groups = extractStringColumn groupCol df
                 values = extractNumericColumn valCol df
@@ -364,27 +344,7 @@ getCategoricalCounts colName df =
     countValuesUnboxed vec = M.toList $ VU.foldr' (\x acc -> M.insertWith (+) x 1 acc) M.empty vec
 
 isNumericColumnCheck :: T.Text -> DataFrame -> Bool
-isNumericColumnCheck colName df =
-    case M.lookup colName (columnIndices df) of
-        Nothing -> False
-        Just idx ->
-            let col = columns df V.! idx
-             in case col of
-                    BoxedColumn (vec :: V.Vector a) -> isNumericType @a
-                    UnboxedColumn (vec :: VU.Vector a) -> isNumericType @a
-                    _ -> False
-
-isNumericType :: forall a. (Typeable a) => Bool
-isNumericType =
-    case testEquality (typeRep @a) (typeRep @Double) of
-        Just _ -> True
-        Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
-            Just _ -> True
-            Nothing -> case testEquality (typeRep @a) (typeRep @Float) of
-                Just _ -> True
-                Nothing -> case testEquality (typeRep @a) (typeRep @Integer) of
-                    Just _ -> True
-                    Nothing -> False
+isNumericColumnCheck colName df = isNumericColumn df colName
 
 extractStringColumn :: (HasCallStack) => T.Text -> DataFrame -> [T.Text]
 extractStringColumn colName df =
@@ -558,9 +518,9 @@ plotPieGrouped groupCol valCol df = plotPieGroupedWith groupCol valCol (defaultP
 
 plotPieGroupedWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotPieGroupedWith groupCol valCol config df = do
-    let isNumeric = isNumericColumnCheck valCol df
+    let colIsNumeric = isNumericColumnCheck valCol df
 
-    if isNumeric
+    if colIsNumeric
         then do
             let groups = extractStringColumn groupCol df
                 values = extractNumericColumn valCol df

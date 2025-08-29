@@ -216,7 +216,7 @@ interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate name 
                     let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                      in go (f acc x) (j + 1) e
         STrue -> TColumn $
-            fromVector $
+            fromUnboxedVector $
                 VG.generate (VG.length os - 1) $ \g ->
                     let !start = os `VG.unsafeIndex` g
                         !end = os `VG.unsafeIndex` (g + 1)

@@ -25,6 +25,7 @@ import Prelude as P
 
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
+import Control.Monad
 import qualified Data.Bifunctor as Data
 import Data.Foldable (asum)
 import Data.Function ((&))
@@ -32,6 +33,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
+import DataFrame.Internal.Types
 import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn, unsafeGetColumn)
 import DataFrame.Internal.Row (showValue, toAny)
 import DataFrame.Operations.Core
@@ -109,12 +111,12 @@ _getColumnAsDouble :: T.Text -> DataFrame -> Maybe (VU.Vector Double)
 _getColumnAsDouble name df = case getColumn name df of
     Just (UnboxedColumn (f :: VU.Vector a)) -> case testEquality (typeRep @a) (typeRep @Double) of
         Just Refl -> Just f
-        Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
-            Just Refl -> Just $ VU.map fromIntegral f
-            Nothing -> case testEquality (typeRep @a) (typeRep @Float) of
-                Just Refl -> Just $ VU.map realToFrac f
-                Nothing -> Nothing
-    _ -> Nothing
+        Nothing -> case sIntegral @a of
+                    STrue  -> Just (VU.map fromIntegral f)
+                    SFalse -> case sFloating @a of
+                        STrue  -> Just (VU.map realToFrac f)
+                        SFalse -> Nothing
+    Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
 {-# INLINE _getColumnAsDouble #-}
 
 -- | Calculates the sum of a given column as a standalone value.
@@ -126,31 +128,15 @@ sum name df = case getColumn name df of
         Nothing -> Nothing
 
 applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
-applyStatistic f name df = case getColumn name (filterJust name df) of
-    Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
-    Just column@(UnboxedColumn (col :: VU.Vector a)) -> case testEquality (typeRep @a) (typeRep @Double) of
-        Just Refl ->
-            let
+applyStatistic f name df = join $ fmap apply (_getColumnAsDouble name (filterJust name df))
+    where
+        apply col = let
                 res = (f col)
-             in
-                if isNaN res then Nothing else pure res
-        Nothing -> do
-            col' <- _getColumnAsDouble name df
-            let res = (f col')
-            if isNaN res then Nothing else pure res
-    _ -> Nothing
+            in if isNaN res then Nothing else pure res
 {-# INLINE applyStatistic #-}
 
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
-applyStatistics f name df = case getColumn name (filterJust name df) of
-    Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @Int) of
-        Just Refl -> Just $! f (VU.map fromIntegral column)
-        Nothing -> case testEquality (typeRep @a') (typeRep @Double) of
-            Just Refl -> Just $! f column
-            Nothing -> case testEquality (typeRep @a') (typeRep @Float) of
-                Just Refl -> Just $! f (VG.map realToFrac column)
-                Nothing -> Nothing
-    _ -> Nothing
+applyStatistics f name df = fmap f (_getColumnAsDouble name (filterJust name df))
 
 -- | Descriprive statistics of the numeric columns.
 summarize :: DataFrame -> DataFrame

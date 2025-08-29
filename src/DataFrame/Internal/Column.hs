@@ -75,6 +75,12 @@ isOptional :: Column -> Bool
 isOptional (OptionalColumn column) = True
 isOptional _ = False
 
+isNumeric :: Column -> Bool
+isNumeric (UnboxedColumn (vec :: VU.Vector a)) = case sNumeric @a of
+    STrue -> True
+    _     -> False
+isNumeric _ = False
+
 -- | An internal/debugging function to get the column type of a column.
 columnVersionString :: Column -> String
 columnVersionString column = case column of
@@ -123,7 +129,15 @@ class ColumnifyRep (r :: Rep) a where
     toColumnRep :: VB.Vector a -> Column
 
 -- | Constraint synonym for what we can put into columns.
-type Columnable a = (Columnable' a, ColumnifyRep (KindOf a) a, UnboxIf a, SBoolI (Unboxable a), SBoolI (Numeric a))
+type Columnable a = (Columnable' a,
+                     ColumnifyRep (KindOf a) a,
+                     UnboxIf a,
+                     IntegralIf a,
+                     FloatingIf a,
+                     SBoolI (Unboxable a),
+                     SBoolI (Numeric a),
+                     SBoolI (IntegralTypes a),
+                     SBoolI (FloatingTypes a))
 
 instance
     (Columnable a, VU.Unbox a) =>

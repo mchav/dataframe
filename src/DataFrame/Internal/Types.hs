@@ -56,8 +56,8 @@ type family Unboxable (a :: Type) :: Bool where
     Unboxable Float = 'True
     Unboxable _ = 'False
 
--- | All unboxable types (according to the `vector` package).
 type family Numeric (a :: Type) :: Bool where
+    Numeric Integer = 'True
     Numeric Int = 'True
     Numeric Int8 = 'True
     Numeric Int16 = 'True
@@ -101,3 +101,33 @@ type family When (flag :: Bool) (c :: Constraint) :: Constraint where
     When 'False c = () -- empty constraint
 
 type UnboxIf a = When (Unboxable a) (VU.Unbox a)
+
+type family IntegralTypes (a :: Type) :: Bool where
+    IntegralTypes Integer = 'True
+    IntegralTypes Int = 'True
+    IntegralTypes Int8 = 'True
+    IntegralTypes Int16 = 'True
+    IntegralTypes Int32 = 'True
+    IntegralTypes Int64 = 'True
+    IntegralTypes Word = 'True
+    IntegralTypes Word8 = 'True
+    IntegralTypes Word16 = 'True
+    IntegralTypes Word32 = 'True
+    IntegralTypes Word64 = 'True
+    IntegralTypes _ = 'False
+
+sIntegral :: forall a. (SBoolI (IntegralTypes a)) => SBool (IntegralTypes a)
+sIntegral = sbool @(IntegralTypes a)
+
+type IntegralIf a = When (IntegralTypes a) (Integral a)
+
+type family FloatingTypes (a :: Type) :: Bool where
+    FloatingTypes Float = 'True
+    FloatingTypes Double = 'True
+    FloatingTypes _ = 'False
+
+sFloating :: forall a. (SBoolI (FloatingTypes a)) => SBool (FloatingTypes a)
+sFloating = sbool @(FloatingTypes a)
+
+type FloatingIf a = When (FloatingTypes a) (Real a, Fractional a)
+
