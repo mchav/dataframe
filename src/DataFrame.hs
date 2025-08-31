@@ -212,7 +212,7 @@ import DataFrame.Internal.Column as Column (
     toList,
     toVector,
     isNumeric,
-    isOptional
+    hasMissing
  )
 import DataFrame.Internal.DataFrame as Dataframe (
     DataFrame,
