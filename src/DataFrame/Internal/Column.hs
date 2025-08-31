@@ -68,13 +68,12 @@ data TypedColumn a where
 unwrapTypedColumn :: TypedColumn a -> Column
 unwrapTypedColumn (TColumn value) = value
 
-{- | An internal function that checks if a column can
-be used in missing value operations.
--}
-isOptional :: Column -> Bool
-isOptional (OptionalColumn column) = True
-isOptional _ = False
+{- | Checks if a column contains missing values. -}
+hasMissing :: Column -> Bool
+hasMissing (OptionalColumn column) = True
+hasMissing _ = False
 
+{- | Checks if a column contains numeric values. -}
 isNumeric :: Column -> Bool
 isNumeric (UnboxedColumn (vec :: VU.Vector a)) = case sNumeric @a of
     STrue -> True
@@ -238,7 +237,7 @@ columnLength (OptionalColumn xs) = VG.length xs
 numElements :: Column -> Int
 numElements (BoxedColumn xs) = VG.length xs
 numElements (UnboxedColumn xs) = VG.length xs
-numElements (OptionalColumn xs) = VG.foldl' (\acc x -> acc + (fromEnum (isJust x))) 0 xs
+numElements (OptionalColumn xs) = VG.foldl' (\acc x -> acc + fromEnum (isJust x)) 0 xs
 {-# INLINE numElements #-}
 
 -- | O(n) Takes the first n values of a column.

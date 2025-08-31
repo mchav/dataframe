@@ -211,6 +211,8 @@ import DataFrame.Internal.Column as Column (
     fromVector,
     toList,
     toVector,
+    isNumeric,
+    isOptional
  )
 import DataFrame.Internal.DataFrame as Dataframe (
     DataFrame,
@@ -249,9 +251,14 @@ import DataFrame.Operations.Subset as Subset (
     filterWhere,
     range,
     select,
+    SelectionCriteria,
+    byName,
+    byProperty,
+    byNameProperty,
+    byTextRange,
+    byTextRange,
+    byIndexRange,
     selectBy,
-    selectIntRange,
-    selectRange,
     take,
     takeLast,
  )
