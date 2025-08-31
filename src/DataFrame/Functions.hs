@@ -32,6 +32,10 @@ import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
 import Type.Reflection (typeRep)
 
+name :: (Show a) => Expr a -> T.Text
+name (Col n) = n
+name other   = error $ "You must call `name` on a column reference. Not the expression: " ++ show other
+
 col :: (Columnable a) => T.Text -> Expr a
 col = Col
 
@@ -47,20 +51,29 @@ lift = Apply "udf"
 lift2 :: (Columnable c, Columnable b, Columnable a) => (c -> b -> a) -> Expr c -> Expr b -> Expr a
 lift2 = BinOp "udf"
 
-eq :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
-eq = BinOp "eq" (==)
+(==) :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
+(==) = BinOp "eq" (Prelude.==)
 
-lt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-lt = BinOp "lt" (<)
+(<) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
+(<) = BinOp "lt" (Prelude.<)
 
-gt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-gt = BinOp "gt" (>)
+(>) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
+(>) = BinOp "gt" (Prelude.>)
 
-leq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-leq = BinOp "leq" (<=)
+(<=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
+(<=) = BinOp "leq" (Prelude.<=)
 
-geq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-geq = BinOp "geq" (>=)
+(>=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
+(>=) = BinOp "geq" (Prelude.>=)
+
+and :: Expr Bool -> Expr Bool -> Expr Bool
+and = BinOp "and" (&&)
+
+or :: Expr Bool -> Expr Bool -> Expr Bool
+or = BinOp "or" (||)
+
+not :: Expr Bool -> Expr Bool
+not = Apply "not" Prelude.not
 
 count :: (Columnable a) => Expr a -> Expr Int
 count (Col name) = GeneralAggregate name "count" VG.length
@@ -85,6 +98,9 @@ mean (Col name) =
                 total / fromIntegral n
      in
         NumericAggregate name "mean" mean'
+
+foldAgg :: forall a b . (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
+foldAgg (Col name) = FoldAggregate name "foldUdf"
 
 -- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
 isReservedId :: T.Text -> Bool
@@ -124,7 +140,7 @@ isVarId t = case T.uncons t of
     Nothing -> False
 
 isHaskellIdentifier :: T.Text -> Bool
-isHaskellIdentifier t = not (isVarId t) || isReservedId t
+isHaskellIdentifier t = Prelude.not (isVarId t) || isReservedId t
 
 sanitize :: T.Text -> T.Text
 sanitize t
@@ -133,10 +149,10 @@ sanitize t
     | otherwise = t'
   where
     isValid =
-        not (isHaskellIdentifier t)
+        Prelude.not (isHaskellIdentifier t)
             && isVarId t
             && T.all Char.isAlphaNum t
-    t' = T.map replaceInvalidCharacters . T.filter (not . parentheses) $ t
+    t' = T.map replaceInvalidCharacters . T.filter (Prelude.not . parentheses) $ t
     replaceInvalidCharacters c
         | Char.isUpper c = Char.toLower c
         | Char.isSpace c = '_'
@@ -169,7 +185,7 @@ typeFromString [tycon, t1, t2] = do
     lhs <- typeFromString [t1]
     rhs <- typeFromString [t2]
     return (AppT (AppT outer lhs) rhs)
-typeFromString s = fail $ "Unsupported type: " ++ (unwords s)
+typeFromString s = fail $ "Unsupported type: " ++ unwords s
 
 declareColumns :: DataFrame -> DecsQ
 declareColumns df =
@@ -179,8 +195,8 @@ declareColumns df =
         specs = zipWith (\name type_ -> (sanitize name, type_)) names types
      in
         fmap concat $ forM specs $ \(nm, tyStr) -> do
-            traceShow nm (pure ())
             ty <- typeFromString (words tyStr)
+            traceShow (nm <> " :: Expr " <> T.pack tyStr)  (pure ())
             let n = mkName (T.unpack nm)
             sig <- sigD n [t|Expr $(pure ty)|]
             val <- valD (varP n) (normalB [|col $(TH.lift nm)|]) []

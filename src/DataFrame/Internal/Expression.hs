@@ -73,6 +73,13 @@ data Expr a where
         T.Text -> -- Operation name
         (VU.Vector b -> a) ->
         Expr a
+    FoldAggregate ::
+        forall a  b . (Columnable a, Columnable b) =>
+        T.Text -> -- Column name
+        T.Text -> -- Operation name
+        a ->
+        (a -> b -> a) ->
+        Expr a
 
 data UExpr where
     Wrap :: (Columnable a) => Expr a -> UExpr
@@ -107,6 +114,15 @@ interpret df (BinOp _ (f :: c -> d -> e) left right) =
 interpret df (ReductionAggregate name op (f :: forall a. (Columnable a) => a -> a -> a)) =
     let
         (TColumn column) = interpret @a df (Col name)
+     in
+        case headColumn @a column of
+            Nothing -> error "Invalid operation"
+            Just h -> case ifoldlColumn (\acc _ v -> f acc v) h column of
+                Nothing -> error "Invalid operation"
+                Just value -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
+interpret df (FoldAggregate name op start (f :: (a -> b -> a))) =
+    let
+        (TColumn column) = interpret @b df (Col name)
      in
         case headColumn @a column of
             Nothing -> error "Invalid operation"
@@ -241,6 +257,67 @@ interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate name 
             | otherwise =
                 let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                  in go (f acc x) (j + 1) e
+interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate name op s (f ::(a -> b -> a))) = case getColumn name df of
+    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Just (BoxedColumn (col :: V.Vector c)) -> case testEquality (typeRep @b) (typeRep @c) of
+        Nothing  -> error "Type mismatch"
+        Just Refl -> TColumn $
+                        fromVector $
+                            VG.generate (VG.length os - 1) $ \g ->
+                                let !start = os `VG.unsafeIndex` g
+                                    !end = os `VG.unsafeIndex` (g + 1)
+                                in go s start end
+                    where
+                        {-# INLINE go #-}
+                        go !acc j e
+                            | j == e = acc
+                            | otherwise =
+                                let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
+                                in go (f acc x) (j + 1) e
+    Just (UnboxedColumn (col :: VU.Vector c)) -> case testEquality (typeRep @b) (typeRep @c) of
+        Nothing  -> error "Type mismatch"
+        Just Refl -> case sUnbox @a of
+                        SFalse -> TColumn $
+                                    fromVector $
+                                        VG.generate (VG.length os - 1) $ \g ->
+                                            let !start = os `VG.unsafeIndex` g
+                                                !end = os `VG.unsafeIndex` (g + 1)
+                                            in go s start end
+                                where
+                                    {-# INLINE go #-}
+                                    go !acc j e
+                                        | j == e = acc
+                                        | otherwise =
+                                            let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
+                                            in go (f acc x) (j + 1) e
+                        STrue -> TColumn $
+                            fromUnboxedVector $
+                                VG.generate (VG.length os - 1) $ \g ->
+                                    let !start = os `VG.unsafeIndex` g
+                                        !end = os `VG.unsafeIndex` (g + 1)
+                                    in go s start end
+                        where
+                            {-# INLINE go #-}
+                            go !acc j e
+                                | j == e = acc
+                                | otherwise =
+                                    let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
+                                    in go (f acc x) (j + 1) e
+    Just (OptionalColumn (col :: V.Vector c)) -> case testEquality (typeRep @b) (typeRep @c) of
+        Nothing  -> error "Type mismatch"
+        Just Refl -> TColumn $
+                        fromVector $
+                            VG.generate (VG.length os - 1) $ \g ->
+                                let !start = os `VG.unsafeIndex` g
+                                    !end = os `VG.unsafeIndex` (g + 1)
+                                in go s start end
+                    where
+                        {-# INLINE go #-}
+                        go !acc j e
+                            | j == e = acc
+                            | otherwise =
+                                let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
+                                in go (f acc x) (j + 1) e
 interpretAggregation gdf@(Grouped df names indices os) (NumericAggregate name op (f :: VU.Vector b -> c)) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
     Just (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @b) (typeRep @d) of
@@ -297,7 +374,7 @@ interpretAggregation gdf@(Grouped df names indices os) (NumericAggregate name op
                                             (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
                                         )
                                 )
-    _ -> error $ "Cannot apply numeric aggregation to non-numeric column: " ++ (T.unpack name)
+    _ -> error $ "Cannot apply numeric aggregation to non-numeric column: " ++ T.unpack name
 
 instance (Num a, Columnable a) => Num (Expr a) where
     (+) :: Expr a -> Expr a -> Expr a
