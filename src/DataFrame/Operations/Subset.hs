@@ -209,8 +209,8 @@ byProperty = ColumnNameProperty
 byNameProperty :: (T.Text -> Bool) -> SelectionCriteria
 byNameProperty = ColumnNameProperty
 
-byTextRange :: (T.Text, T.Text) -> SelectionCriteria
-byTextRange = ColumnTextRange
+byNameRange :: (T.Text, T.Text) -> SelectionCriteria
+byNameRange = ColumnTextRange
 
 byIndexRange :: (Int, Int) -> SelectionCriteria
 byIndexRange = ColumnIndexRange
