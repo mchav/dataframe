@@ -8,8 +8,8 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
 import qualified DataFrame.Internal.Column as D
-import qualified DataFrame.Internal.DataFrame as D
 import qualified DataFrame.Internal.Column as DI
+import qualified DataFrame.Internal.DataFrame as D
 import qualified DataFrame.Internal.DataFrame as DI
 
 import Assertions

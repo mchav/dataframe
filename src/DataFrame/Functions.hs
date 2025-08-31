@@ -34,7 +34,7 @@ import Type.Reflection (typeRep)
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n
-name other   = error $ "You must call `name` on a column reference. Not the expression: " ++ show other
+name other = error $ "You must call `name` on a column reference. Not the expression: " ++ show other
 
 col :: (Columnable a) => T.Text -> Expr a
 col = Col
@@ -99,7 +99,7 @@ mean (Col name) =
      in
         NumericAggregate name "mean" mean'
 
-foldAgg :: forall a b . (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
+foldAgg :: forall a b. (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
 foldAgg (Col name) = FoldAggregate name "foldUdf"
 
 -- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
@@ -196,7 +196,7 @@ declareColumns df =
      in
         fmap concat $ forM specs $ \(nm, tyStr) -> do
             ty <- typeFromString (words tyStr)
-            traceShow (nm <> " :: Expr " <> T.pack tyStr)  (pure ())
+            traceShow (nm <> " :: Expr " <> T.pack tyStr) (pure ())
             let n = mkName (T.unpack nm)
             sig <- sigD n [t|Expr $(pure ty)|]
             val <- valD (varP n) (normalB [|col $(TH.lift nm)|]) []

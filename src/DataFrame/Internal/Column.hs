@@ -68,16 +68,16 @@ data TypedColumn a where
 unwrapTypedColumn :: TypedColumn a -> Column
 unwrapTypedColumn (TColumn value) = value
 
-{- | Checks if a column contains missing values. -}
+-- | Checks if a column contains missing values.
 hasMissing :: Column -> Bool
 hasMissing (OptionalColumn column) = True
 hasMissing _ = False
 
-{- | Checks if a column contains numeric values. -}
+-- | Checks if a column contains numeric values.
 isNumeric :: Column -> Bool
 isNumeric (UnboxedColumn (vec :: VU.Vector a)) = case sNumeric @a of
     STrue -> True
-    _     -> False
+    _ -> False
 isNumeric _ = False
 
 -- | An internal/debugging function to get the column type of a column.
@@ -128,15 +128,17 @@ class ColumnifyRep (r :: Rep) a where
     toColumnRep :: VB.Vector a -> Column
 
 -- | Constraint synonym for what we can put into columns.
-type Columnable a = (Columnable' a,
-                     ColumnifyRep (KindOf a) a,
-                     UnboxIf a,
-                     IntegralIf a,
-                     FloatingIf a,
-                     SBoolI (Unboxable a),
-                     SBoolI (Numeric a),
-                     SBoolI (IntegralTypes a),
-                     SBoolI (FloatingTypes a))
+type Columnable a =
+    ( Columnable' a
+    , ColumnifyRep (KindOf a) a
+    , UnboxIf a
+    , IntegralIf a
+    , FloatingIf a
+    , SBoolI (Unboxable a)
+    , SBoolI (Numeric a)
+    , SBoolI (IntegralTypes a)
+    , SBoolI (FloatingTypes a)
+    )
 
 instance
     (Columnable a, VU.Unbox a) =>

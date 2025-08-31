@@ -24,8 +24,8 @@ import qualified Statistics.Sample as SS
 import Prelude as P
 
 import Control.Exception (throw)
-import Control.Monad.ST (runST)
 import Control.Monad
+import Control.Monad.ST (runST)
 import qualified Data.Bifunctor as Data
 import Data.Foldable (asum)
 import Data.Function ((&))
@@ -33,9 +33,9 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
-import DataFrame.Internal.Types
 import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn, unsafeGetColumn)
 import DataFrame.Internal.Row (showValue, toAny)
+import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import DataFrame.Operations.Subset (filterJust)
 import GHC.Float (int2Double)
@@ -112,10 +112,10 @@ _getColumnAsDouble name df = case getColumn name df of
     Just (UnboxedColumn (f :: VU.Vector a)) -> case testEquality (typeRep @a) (typeRep @Double) of
         Just Refl -> Just f
         Nothing -> case sIntegral @a of
-                    STrue  -> Just (VU.map fromIntegral f)
-                    SFalse -> case sFloating @a of
-                        STrue  -> Just (VU.map realToFrac f)
-                        SFalse -> Nothing
+            STrue -> Just (VU.map fromIntegral f)
+            SFalse -> case sFloating @a of
+                STrue -> Just (VU.map realToFrac f)
+                SFalse -> Nothing
     Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
 {-# INLINE _getColumnAsDouble #-}
 
@@ -129,10 +129,12 @@ sum name df = case getColumn name df of
 
 applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
 applyStatistic f name df = join $ fmap apply (_getColumnAsDouble name (filterJust name df))
-    where
-        apply col = let
-                res = (f col)
-            in if isNaN res then Nothing else pure res
+  where
+    apply col =
+        let
+            res = (f col)
+         in
+            if isNaN res then Nothing else pure res
 {-# INLINE applyStatistic #-}
 
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
@@ -222,10 +224,10 @@ data SkewAcc = SkewAcc !Int !Double !Double !Double deriving (Show)
 
 skewnessStep :: SkewAcc -> Double -> SkewAcc
 skewnessStep (SkewAcc !n !mean !m2 !m3) !x =
-    let !n'  = n + 1
-        !k   = fromIntegral n'
+    let !n' = n + 1
+        !k = fromIntegral n'
         !delta = x - mean
-        !mean'  = mean  + delta / k
+        !mean' = mean + delta / k
         !m2' = m2 + (delta ^ 2 * (k - 1)) / k
         !m3' = m3 + (delta ^ 3 * (k - 1) * (k - 2)) / k ^ 2 - (3 * delta * m2) / k
      in SkewAcc n' mean' m2' m3'

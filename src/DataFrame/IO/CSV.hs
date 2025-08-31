@@ -31,13 +31,14 @@ import Data.Bits (shiftL)
 import Data.Char
 import Data.Either
 import Data.Function (on)
+import Data.Functor
 import Data.IORef
 import Data.Maybe
 import Data.Type.Equality (
     TestEquality (testEquality),
     type (:~:) (Refl),
  )
-import DataFrame.Internal.Column (Column (..), MutableColumn (..), columnLength, freezeColumn', writeColumn, fromVector)
+import DataFrame.Internal.Column (Column (..), MutableColumn (..), columnLength, freezeColumn', fromVector, writeColumn)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
 import DataFrame.Operations.Typing
@@ -175,37 +176,36 @@ ghci> D.readSeparated ';' D.defaultOptions "./data/taxi.txt" df
 @
 -}
 readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
-readSeparated !sep !opts !path = do
-    withFile path ReadMode $ \handle -> do
-        hSetBuffering handle (BlockBuffering (Just (chunkSize opts)))
+readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
+    hSetBuffering handle (BlockBuffering (Just (chunkSize opts)))
 
-        firstLine <- C8.hGetLine handle
-        let firstRow = parseLine sep firstLine
-            columnNames =
-                if hasHeader opts
-                    then map (T.filter (/= '\"') . TE.decodeUtf8Lenient) firstRow
-                    else map (T.singleton . intToDigit) [0 .. length firstRow - 1]
+    firstLine <- C8.hGetLine handle
+    let firstRow = parseLine sep firstLine
+        columnNames =
+            if hasHeader opts
+                then map (T.filter (/= '\"') . TE.decodeUtf8Lenient) firstRow
+                else map (T.singleton . intToDigit) [0 .. length firstRow - 1]
 
-        unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
+    unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
 
-        dataLine <- C8.hGetLine handle
-        let dataRow = parseLine sep dataLine
-        growingCols <- initializeColumns dataRow opts
+    dataLine <- C8.hGetLine handle
+    let dataRow = parseLine sep dataLine
+    growingCols <- initializeColumns dataRow opts
 
-        processRow 0 dataRow growingCols
+    processRow 0 dataRow growingCols
 
-        processFile handle sep growingCols (chunkSize opts) 1
+    processFile handle sep growingCols (chunkSize opts) 1
 
-        frozenCols <- V.fromList <$> mapM freezeGrowingColumn growingCols
+    frozenCols <- V.fromList <$> mapM freezeGrowingColumn growingCols
 
-        let numRows = maybe 0 columnLength (frozenCols V.!? 0)
+    let numRows = maybe 0 columnLength (frozenCols V.!? 0)
 
-        return $
-            DataFrame
-                { columns = frozenCols
-                , columnIndices = M.fromList (zip columnNames [0 ..])
-                , dataframeDimensions = (numRows, V.length frozenCols)
-                }
+    return $
+        DataFrame
+            { columns = frozenCols
+            , columnIndices = M.fromList (zip columnNames [0 ..])
+            , dataframeDimensions = (numRows, V.length frozenCols)
+            }
 
 initializeColumns :: [BS.ByteString] -> ReadOptions -> IO [GrowingColumn]
 initializeColumns row opts = mapM initColumn row
@@ -261,23 +261,21 @@ isNull t = T.null t || t == "NA" || t == "NULL" || t == "null"
 
 processFile :: Handle -> Char -> [GrowingColumn] -> Int -> Int -> IO ()
 processFile !handle !sep !cols !chunk r = do
-    let go remain !rowIdx = do
-            parseWith (C8.hGetNonBlocking handle chunk) (parseRow sep) remain >>= \case
-                Fail unconsumed ctx er -> do
-                    erpos <- hTell handle
-                    fail $
-                        "Failed to parse CSV file around "
-                            <> show erpos
-                            <> " byte; due: "
-                            <> show er
-                            <> "; context: "
-                            <> show ctx
-                Partial c -> do
-                    fail "Partial handler is called"
-                Done (unconsumed :: C8.ByteString) (row :: [C8.ByteString]) -> do
-                    processRow rowIdx row cols
-                    unless (row == [] || unconsumed == mempty) $ go unconsumed $! rowIdx + 1
-                    return ()
+    let go remain !rowIdx = parseWith (C8.hGetNonBlocking handle chunk) (parseRow sep) remain >>= \case
+            Fail unconsumed ctx er -> do
+                erpos <- hTell handle
+                fail $
+                    "Failed to parse CSV file around "
+                        <> show erpos
+                        <> " byte; due: "
+                        <> show er
+                        <> "; context: "
+                        <> show ctx
+            Partial c -> do
+                fail "Partial handler is called"
+            Done (unconsumed :: C8.ByteString) (row :: [C8.ByteString]) -> do
+                processRow rowIdx row cols
+                unless (null row || unconsumed == mempty) $ go unconsumed $! rowIdx + 1
     go "" r
 
 parseLine :: Char -> BS.ByteString -> [BS.ByteString]
@@ -306,8 +304,8 @@ quotedField =
   where
     parseQuotedContents = mconcat <$> many quotedChar
     quotedChar =
-        (Builder.byteString <$> takeWhile1 (/= '"'))
-            <|> (char '"' *> char '"' *> pure (Builder.char8 '"'))
+        Builder.byteString <$> takeWhile1 (/= '"')
+            <|> ((char '"' *> char '"') Data.Functor.$> Builder.char8 '"')
             <?> "quoted field content"
 
 endOfLine :: Parser ()
@@ -387,7 +385,7 @@ getRowAsText df i = V.ifoldr go [] (columns df)
                     App t1 t2 -> case eqTypeRep t1 (typeRep @Maybe) of
                         Just HRefl -> case testEquality t2 (typeRep @T.Text) of
                             Just Refl -> fromMaybe "null" e
-                            Nothing -> (fromOptional . (T.pack . show)) e
+                            Nothing -> (fromOptional . T.pack . show) e
                               where
                                 fromOptional s
                                     | T.isPrefixOf "Just " s = T.drop (T.length "Just ") s

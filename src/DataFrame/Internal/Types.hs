@@ -130,4 +130,3 @@ sFloating :: forall a. (SBoolI (FloatingTypes a)) => SBool (FloatingTypes a)
 sFloating = sbool @(FloatingTypes a)
 
 type FloatingIf a = When (FloatingTypes a) (Real a, Fractional a)
-

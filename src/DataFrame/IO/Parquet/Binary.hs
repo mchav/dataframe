@@ -2,22 +2,22 @@
 
 module DataFrame.IO.Parquet.Binary where
 
-import           Control.Monad
-import           Data.Bits
+import Control.Monad
+import Data.Bits
 import qualified Data.ByteString as BS
-import           Data.Char
-import           Data.IORef
-import           Data.Word
-import           Foreign
-import           System.IO
+import Data.Char
+import Data.IORef
+import Data.Word
+import Foreign
+import System.IO
 
 littleEndianWord32 :: [Word8] -> Word32
 littleEndianWord32 bytes
-    | length bytes >= 4 = foldr (.|.) 0 (zipWith (\b i -> (fromIntegral b) `shiftL` i) (take 4 bytes) [0, 8, 16, 24])
+    | length bytes >= 4 = foldr (.|.) 0 (zipWith (\b i -> fromIntegral b `shiftL` i) (take 4 bytes) [0, 8, 16, 24])
     | otherwise = littleEndianWord32 (take 4 $ bytes ++ repeat 0)
 
 littleEndianWord64 :: [Word8] -> Word64
-littleEndianWord64 bytes = foldr (.|.) 0 (zipWith (\b i -> (fromIntegral b) `shiftL` i) (take 8 bytes) [0, 8 ..])
+littleEndianWord64 bytes = foldr (.|.) 0 (zipWith (\b i -> fromIntegral b `shiftL` i) (take 8 bytes) [0, 8 ..])
 
 littleEndianInt32 :: [Word8] -> Int32
 littleEndianInt32 = fromIntegral . littleEndianWord32
@@ -33,8 +33,8 @@ readUVarInt xs = loop xs 0 0 0
   where
     loop bs x _ 10 = (x, bs)
     loop (b : bs) x s i
-        | b < 0x80 = (x .|. ((fromIntegral b) `shiftL` s), bs)
-        | otherwise = loop bs (x .|. (fromIntegral ((b .&. 0x7f) `shiftL` s))) (s + 7) (i + 1)
+        | b < 0x80 = (x .|. (fromIntegral b) `shiftL` s, bs)
+        | otherwise = loop bs (x .|. fromIntegral ((b .&. 0x7f) `shiftL` s)) (s + 7) (i + 1)
 
 readVarIntFromBytes :: (Integral a) => [Word8] -> (a, [Word8])
 readVarIntFromBytes bs = (fromIntegral n, rem)
@@ -42,8 +42,8 @@ readVarIntFromBytes bs = (fromIntegral n, rem)
     (n, rem) = loop 0 0 bs
     loop _ result [] = (result, [])
     loop shift result (x : xs) =
-        let res = result .|. ((fromIntegral (x .&. 0x7f) :: Integer) `shiftL` shift)
-         in if (x .&. 0x80) /= 0x80 then (res, xs) else loop (shift + 7) res xs
+        let res = result .|. (fromIntegral (x .&. 0x7f) :: Integer) `shiftL` shift
+         in if x .&. 0x80 /= 0x80 then (res, xs) else loop (shift + 7) res xs
 
 readIntFromBytes :: (Integral a) => [Word8] -> (a, [Word8])
 readIntFromBytes bs =
@@ -70,8 +70,8 @@ readVarIntFromBuffer buf bufferPos = do
     start <- readIORef bufferPos
     let loop i shift result = do
             b <- readAndAdvance bufferPos buf
-            let res = result .|. ((fromIntegral (b .&. 0x7f) :: Integer) `shiftL` shift)
-            if (b .&. 0x80) /= 0x80
+            let res = result .|. (fromIntegral (b .&. 0x7f) :: Integer) `shiftL` shift
+            if b .&. 0x80 /= 0x80
                 then return res
                 else loop (i + 1) (shift + 7) res
     fromIntegral <$> loop start 0 0
@@ -95,13 +95,19 @@ readString buf pos = do
 
 readBytes :: Handle -> Int64 -> Int64 -> IO [Word8]
 readBytes h colStart colLen = do
-  hSeek h AbsoluteSeek (fromIntegral colStart)
-  bs <- BS.hGet h (fromIntegral colLen)
-  if BS.length bs /= (fromIntegral colLen)
-     then ioError (userError ("short read: wanted "
-                              ++ show colLen ++ " bytes, got "
-                              ++ show (BS.length bs)))
-     else pure (BS.unpack bs)
+    hSeek h AbsoluteSeek (fromIntegral colStart)
+    bs <- BS.hGet h (fromIntegral colLen)
+    if BS.length bs /= fromIntegral colLen
+        then
+            ioError
+                ( userError
+                    ( "short read: wanted "
+                        ++ show colLen
+                        ++ " bytes, got "
+                        ++ show (BS.length bs)
+                    )
+                )
+        else pure (BS.unpack bs)
 
 numBytesInFile :: Handle -> IO Integer
 numBytesInFile handle = do
@@ -113,7 +119,7 @@ readByteStringFromBytes xs =
     let
         (size, rem) = readVarIntFromBytes @Int xs
      in
-        (take size rem, drop size rem)
+        splitAt size rem
 
 readByteString :: Ptr Word8 -> IORef Int -> IO [Word8]
 readByteString buf pos = do

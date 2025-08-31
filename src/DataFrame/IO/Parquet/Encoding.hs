@@ -35,10 +35,10 @@ unpackBitPacked bw count bs
                 | length bitsLeft < bw = []
                 | otherwise =
                     let (this, bitsLeft') = splitAt bw bitsLeft
-                        in toN this : extractValues (n - 1) bitsLeft'
+                     in toN this : extractValues (n - 1) bitsLeft'
 
             vals = extractValues count bits
-        in (map fromIntegral vals, rest)
+         in (map fromIntegral vals, rest)
 
 decodeRLEBitPackedHybrid :: Int -> Int -> [Word8] -> ([Word32], [Word8])
 decodeRLEBitPackedHybrid bw need bs

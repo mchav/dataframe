@@ -25,8 +25,8 @@ import Type.Reflection (typeRep)
 import DataFrame.Internal.Column (Column (..), Columnable, isNumeric)
 import qualified DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
-import DataFrame.Operations.Core
 import DataFrame.Internal.Types
+import DataFrame.Operations.Core
 import qualified DataFrame.Operations.Subset as D
 import Granite
 
@@ -54,7 +54,7 @@ defaultPlotConfig ptype =
         }
 
 plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotHistogram colName df = plotHistogramWith colName (defaultPlotConfig Histogram) df
+plotHistogram colName = plotHistogramWith colName (defaultPlotConfig Histogram)
 
 plotHistogramWith :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO ()
 plotHistogramWith colName config df = do
@@ -63,7 +63,7 @@ plotHistogramWith colName config df = do
     T.putStrLn $ histogram (bins 30 minVal maxVal) values (plotSettings config)
 
 plotScatter :: (HasCallStack) => T.Text -> T.Text -> DataFrame -> IO ()
-plotScatter xCol yCol df = plotScatterWith xCol yCol (defaultPlotConfig Scatter) df
+plotScatter xCol yCol = plotScatterWith xCol yCol (defaultPlotConfig Scatter)
 
 plotScatterWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotScatterWith xCol yCol config df = do
@@ -73,7 +73,7 @@ plotScatterWith xCol yCol config df = do
     T.putStrLn $ scatter [(xCol <> " vs " <> yCol, points)] (plotSettings config)
 
 plotScatterBy :: (HasCallStack) => T.Text -> T.Text -> T.Text -> DataFrame -> IO ()
-plotScatterBy xCol yCol grouping df = plotScatterByWith xCol yCol grouping (defaultPlotConfig Scatter) df
+plotScatterBy xCol yCol grouping = plotScatterByWith xCol yCol grouping (defaultPlotConfig Scatter)
 
 plotScatterByWith :: (HasCallStack) => T.Text -> T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotScatterByWith xCol yCol grouping config df = do
@@ -88,7 +88,7 @@ plotScatterByWith xCol yCol grouping config df = do
     T.putStrLn $ scatter xs (plotSettings config)
 
 plotLines :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO ()
-plotLines xAxis colNames df = plotLinesWith xAxis colNames (defaultPlotConfig Line) df
+plotLines xAxis colNames = plotLinesWith xAxis colNames (defaultPlotConfig Line)
 
 plotLinesWith :: (HasCallStack) => T.Text -> [T.Text] -> PlotConfig -> DataFrame -> IO ()
 plotLinesWith xAxis colNames config df = do
@@ -99,7 +99,7 @@ plotLinesWith xAxis colNames config df = do
     T.putStrLn $ lineGraph seriesData (plotSettings config)
 
 plotBoxPlots :: (HasCallStack) => [T.Text] -> DataFrame -> IO ()
-plotBoxPlots colNames df = plotBoxPlotsWith colNames (defaultPlotConfig BoxPlot) df
+plotBoxPlots colNames = plotBoxPlotsWith colNames (defaultPlotConfig BoxPlot)
 
 plotBoxPlotsWith :: (HasCallStack) => [T.Text] -> PlotConfig -> DataFrame -> IO ()
 plotBoxPlotsWith colNames config df = do
@@ -109,8 +109,7 @@ plotBoxPlotsWith colNames config df = do
     T.putStrLn $ boxPlot boxData (plotSettings config)
 
 plotStackedBars :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO ()
-plotStackedBars categoryCol valueColumns df =
-    plotStackedBarsWith categoryCol valueColumns (defaultPlotConfig StackedBar) df
+plotStackedBars categoryCol valueColumns = plotStackedBarsWith categoryCol valueColumns (defaultPlotConfig StackedBar)
 
 plotStackedBarsWith :: (HasCallStack) => T.Text -> [T.Text] -> PlotConfig -> DataFrame -> IO ()
 plotStackedBarsWith categoryCol valueColumns config df = do
@@ -128,18 +127,16 @@ plotStackedBarsWith categoryCol valueColumns config df = do
     T.putStrLn $ stackedBars stackData (plotSettings config)
 
 plotHeatmap :: (HasCallStack) => DataFrame -> IO ()
-plotHeatmap df = plotHeatmapWith (defaultPlotConfig Heatmap) df
+plotHeatmap = plotHeatmapWith (defaultPlotConfig Heatmap)
 
 plotHeatmapWith :: (HasCallStack) => PlotConfig -> DataFrame -> IO ()
 plotHeatmapWith config df = do
     let numericCols = filter (isNumericColumn df) (columnNames df)
-        matrix = map (\col -> extractNumericColumn col df) numericCols
+        matrix = map (`extractNumericColumn` df) numericCols
     T.putStrLn $ heatmap matrix (plotSettings config)
 
 isNumericColumn :: DataFrame -> T.Text -> Bool
-isNumericColumn df colName = case getColumn colName df of
-    Nothing  -> False
-    Just col -> isNumeric col
+isNumericColumn df colName = maybe False isNumeric (getColumn colName df)
 
 plotAllHistograms :: (HasCallStack) => DataFrame -> IO ()
 plotAllHistograms df = do
@@ -178,7 +175,7 @@ plotCorrelationMatrix df = do
          in covXY / (stdX * stdY)
 
 plotBars :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotBars colName df = plotBarsWith colName Nothing (defaultPlotConfig Bar) df
+plotBars colName = plotBarsWith colName Nothing (defaultPlotConfig Bar)
 
 plotBarsWith :: (HasCallStack) => T.Text -> Maybe T.Text -> PlotConfig -> DataFrame -> IO ()
 plotBarsWith colName groupByCol config df =
@@ -206,7 +203,7 @@ plotSingleBars colName config df = do
                     T.putStrLn $ bars (zip labels values) (plotSettings config)
 
 plotBarsTopN :: (HasCallStack) => Int -> T.Text -> DataFrame -> IO ()
-plotBarsTopN n colName df = plotBarsTopNWith n colName (defaultPlotConfig Bar) df
+plotBarsTopN n colName = plotBarsTopNWith n colName (defaultPlotConfig Bar)
 
 plotBarsTopNWith :: (HasCallStack) => Int -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotBarsTopNWith n colName config df = do
@@ -249,7 +246,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
             T.putStrLn $ bars finalCounts (plotSettings config)
 
 plotValueCounts :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotValueCounts colName df = plotValueCountsWith colName 10 (defaultPlotConfig Bar) df
+plotValueCounts colName = plotValueCountsWith colName 10 (defaultPlotConfig Bar)
 
 plotValueCountsWith :: (HasCallStack) => T.Text -> Int -> PlotConfig -> DataFrame -> IO ()
 plotValueCountsWith colName maxBars config df = do
@@ -402,7 +399,7 @@ groupWithOther n items =
      in result
 
 plotPie :: (HasCallStack) => T.Text -> Maybe T.Text -> DataFrame -> IO ()
-plotPie valCol labelCol df = plotPieWith valCol labelCol (defaultPlotConfig Pie) df
+plotPie valCol labelCol = plotPieWith valCol labelCol (defaultPlotConfig Pie)
 
 plotPieWith :: (HasCallStack) => T.Text -> Maybe T.Text -> PlotConfig -> DataFrame -> IO ()
 plotPieWith valCol labelCol config df = do
@@ -447,7 +444,7 @@ groupWithOtherForPie n items =
      in result
 
 plotPieWithPercentages :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotPieWithPercentages colName df = plotPieWithPercentagesConfig colName (defaultPlotConfig Pie) df
+plotPieWithPercentages colName = plotPieWithPercentagesConfig colName (defaultPlotConfig Pie)
 
 plotPieWithPercentagesConfig :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO ()
 plotPieWithPercentagesConfig colName config df = do
@@ -473,7 +470,7 @@ plotPieWithPercentagesConfig colName config df = do
             T.putStrLn $ pie grouped (plotSettings config)
 
 plotPieTopN :: (HasCallStack) => Int -> T.Text -> DataFrame -> IO ()
-plotPieTopN n colName df = plotPieTopNWith n colName (defaultPlotConfig Pie) df
+plotPieTopN n colName = plotPieTopNWith n colName (defaultPlotConfig Pie)
 
 plotPieTopNWith :: (HasCallStack) => Int -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotPieTopNWith n colName config df = do
@@ -514,7 +511,7 @@ smartPlotPie colName df = do
         Nothing -> plotPie colName Nothing df
 
 plotPieGrouped :: (HasCallStack) => T.Text -> T.Text -> DataFrame -> IO ()
-plotPieGrouped groupCol valCol df = plotPieGroupedWith groupCol valCol (defaultPlotConfig Pie) df
+plotPieGrouped groupCol valCol = plotPieGroupedWith groupCol valCol (defaultPlotConfig Pie)
 
 plotPieGroupedWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
 plotPieGroupedWith groupCol valCol config df = do
@@ -536,14 +533,13 @@ plotPieGroupedWith groupCol valCol config df = do
             T.putStrLn $ pie finalCounts (plotSettings config)
 
 plotPieComparison :: (HasCallStack) => [T.Text] -> DataFrame -> IO ()
-plotPieComparison cols df = do
-    forM_ cols $ \col -> do
-        let counts = getCategoricalCounts col df
-        case counts of
-            Just c -> when (length c > 1 && length c <= 20) $ do
-                putStrLn $ "\n=== " ++ T.unpack col ++ " Distribution ==="
-                smartPlotPie col df
-            Nothing -> return ()
+plotPieComparison cols df = forM_ cols $ \col -> do
+    let counts = getCategoricalCounts col df
+    case counts of
+        Just c -> when (length c > 1 && length c <= 20) $ do
+            putStrLn $ "\n=== " ++ T.unpack col ++ " Distribution ==="
+            smartPlotPie col df
+        Nothing -> return ()
 
 plotBinaryPie :: (HasCallStack) => T.Text -> DataFrame -> IO ()
 plotBinaryPie colName df = do
@@ -568,7 +564,7 @@ plotBinaryPie colName df = do
         Nothing -> error $ "Column " ++ T.unpack colName ++ " is not categorical"
 
 plotMarketShare :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotMarketShare colName df = plotMarketShareWith colName (defaultPlotConfig Pie) df
+plotMarketShare colName = plotMarketShareWith colName (defaultPlotConfig Pie)
 
 plotMarketShareWith :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO ()
 plotMarketShareWith colName config df = do

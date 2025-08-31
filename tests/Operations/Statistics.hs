@@ -1,6 +1,6 @@
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE NumericUnderscores #-}
 
 module Operations.Statistics where
 

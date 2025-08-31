@@ -193,12 +193,12 @@ select cs df
         col <- getColumn k df
         pure $ insertColumn k col d
 
--- | 
-data SelectionCriteria = ColumnProperty       (Column -> Bool)
-                       | ColumnNameProperty   (T.Text -> Bool)
-                       | ColumnTextRange      (T.Text, T.Text)
-                       | ColumnIndexRange     (Int, Int)
-                       | ColumnName           T.Text
+data SelectionCriteria
+    = ColumnProperty (Column -> Bool)
+    | ColumnNameProperty (T.Text -> Bool)
+    | ColumnTextRange (T.Text, T.Text)
+    | ColumnIndexRange (Int, Int)
+    | ColumnName T.Text
 
 byName :: T.Text -> SelectionCriteria
 byName = ColumnName
@@ -218,15 +218,15 @@ byIndexRange = ColumnIndexRange
 -- | O(n) select columns by column predicate name.
 selectBy :: [SelectionCriteria] -> DataFrame -> DataFrame
 selectBy xs df = select columnsWithProperties df
-    where
-        columnsWithProperties = L.foldl' columnWithProperty [] xs
-        columnWithProperty acc (ColumnName name) = acc ++ [name]
-        columnWithProperty acc (ColumnNameProperty f) = acc ++ L.filter f (columnNames df)
-        columnWithProperty acc (ColumnTextRange (from, to)) = acc ++ reverse (Prelude.dropWhile (to /=) $ reverse $ dropWhile (from /=) (columnNames df))
-        columnWithProperty acc (ColumnIndexRange (from, to)) = acc ++ Prelude.take (to - from + 1) (Prelude.drop from (columnNames df))
-        columnWithProperty acc (ColumnProperty f) = acc ++ map fst (L.filter (\(k,v) -> v `elem` ixs) (M.toAscList (columnIndices df)))
-            where
-                ixs = V.ifoldl' (\acc i c -> if f c then i:acc else acc) [] (columns df)
+  where
+    columnsWithProperties = L.foldl' columnWithProperty [] xs
+    columnWithProperty acc (ColumnName name) = acc ++ [name]
+    columnWithProperty acc (ColumnNameProperty f) = acc ++ L.filter f (columnNames df)
+    columnWithProperty acc (ColumnTextRange (from, to)) = acc ++ reverse (Prelude.dropWhile (to /=) $ reverse $ dropWhile (from /=) (columnNames df))
+    columnWithProperty acc (ColumnIndexRange (from, to)) = acc ++ Prelude.take (to - from + 1) (Prelude.drop from (columnNames df))
+    columnWithProperty acc (ColumnProperty f) = acc ++ map fst (L.filter (\(k, v) -> v `elem` ixs) (M.toAscList (columnIndices df)))
+      where
+        ixs = V.ifoldl' (\acc i c -> if f c then i : acc else acc) [] (columns df)
 
 {- | O(n) inverse of select
 

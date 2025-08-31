@@ -209,10 +209,10 @@ import DataFrame.Internal.Column as Column (
     fromList,
     fromUnboxedVector,
     fromVector,
+    hasMissing,
+    isNumeric,
     toList,
     toVector,
-    isNumeric,
-    hasMissing
  )
 import DataFrame.Internal.DataFrame as Dataframe (
     DataFrame,
@@ -240,6 +240,12 @@ import DataFrame.Operations.Statistics as Statistics (
     variance,
  )
 import DataFrame.Operations.Subset as Subset (
+    SelectionCriteria,
+    byIndexRange,
+    byName,
+    byNameProperty,
+    byNameRange,
+    byProperty,
     cube,
     drop,
     dropLast,
@@ -251,12 +257,6 @@ import DataFrame.Operations.Subset as Subset (
     filterWhere,
     range,
     select,
-    SelectionCriteria,
-    byName,
-    byProperty,
-    byNameProperty,
-    byNameRange,
-    byIndexRange,
     selectBy,
     take,
     takeLast,
