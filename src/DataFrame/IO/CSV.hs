@@ -37,7 +37,7 @@ import Data.Type.Equality (
     TestEquality (testEquality),
     type (:~:) (Refl),
  )
-import DataFrame.Internal.Column (Column (..), MutableColumn (..), columnLength, freezeColumn', writeColumn)
+import DataFrame.Internal.Column (Column (..), MutableColumn (..), columnLength, freezeColumn', writeColumn, fromVector)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
 import DataFrame.Operations.Typing
@@ -328,7 +328,7 @@ freezeGrowingColumn (GrowingInt gv nullsRef) = do
                 if i `elem` nulls
                     then VM.write mvec i Nothing
                     else VM.write mvec i (Just (vec VU.! i))
-            BoxedColumn <$> V.freeze mvec
+            OptionalColumn <$> V.freeze mvec
 freezeGrowingColumn (GrowingDouble gv nullsRef) = do
     vec <- freezeGrowingUnboxedVector gv
     nulls <- readIORef nullsRef
@@ -341,7 +341,7 @@ freezeGrowingColumn (GrowingDouble gv nullsRef) = do
                 if i `elem` nulls
                     then VM.write mvec i Nothing
                     else VM.write mvec i (Just (vec VU.! i))
-            BoxedColumn <$> V.freeze mvec
+            OptionalColumn <$> V.freeze mvec
 freezeGrowingColumn (GrowingText gv nullsRef) = do
     vec <- freezeGrowingVector gv
     nulls <- readIORef nullsRef
@@ -354,7 +354,7 @@ freezeGrowingColumn (GrowingText gv nullsRef) = do
                 if i `elem` nulls
                     then VM.write mvec i Nothing
                     else VM.write mvec i (Just (vec V.! i))
-            BoxedColumn <$> V.freeze mvec
+            OptionalColumn <$> V.freeze mvec
 
 writeCsv :: String -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
