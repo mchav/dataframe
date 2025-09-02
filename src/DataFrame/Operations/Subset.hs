@@ -147,9 +147,8 @@ filterWhere expr df =
         (TColumn col) = interpret @Bool df expr
         (Just indexes) = findIndices (== True) col
         c' = snd $ dataframeDimensions df
-        pick idxs col = atIndicesStable idxs col
      in
-        df{columns = V.map (pick indexes) (columns df), dataframeDimensions = (VU.length indexes, c')}
+        df{columns = V.map (atIndicesStable indexes) (columns df), dataframeDimensions = (VU.length indexes, c')}
 
 {- | O(k) removes all rows with `Nothing` in a given column from the dataframe.
 

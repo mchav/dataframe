@@ -29,9 +29,6 @@ sortBy order names df
     | any (`notElem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "sortBy" (columnNames df)
     | otherwise =
         let
-            -- TODO: Remove the SortOrder defintion from operations so we can share it between here and internal and
-            -- we don't have to do this Bool mapping.
             indexes = sortedIndexes' (order == Ascending) (toRowVector names df)
-            pick idxs col = atIndicesStable idxs col
          in
-            df{columns = V.map (pick indexes) (columns df)}
+            df{columns = V.map (atIndicesStable indexes) (columns df)}
