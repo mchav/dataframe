@@ -203,8 +203,8 @@ data SelectionCriteria
 byName :: T.Text -> SelectionCriteria
 byName = ColumnName
 
-byProperty :: (T.Text -> Bool) -> SelectionCriteria
-byProperty = ColumnNameProperty
+byProperty :: (Column -> Bool) -> SelectionCriteria
+byProperty = ColumnProperty
 
 byNameProperty :: (T.Text -> Bool) -> SelectionCriteria
 byNameProperty = ColumnNameProperty
