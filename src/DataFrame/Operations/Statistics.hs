@@ -115,6 +115,7 @@ _getColumnAsDouble name df = case getColumn name df of
                 STrue -> Just (VU.map realToFrac f)
                 SFalse -> Nothing
     Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
+    _ -> Nothing
 {-# INLINE _getColumnAsDouble #-}
 
 -- | Calculates the sum of a given column as a standalone value.
