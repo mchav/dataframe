@@ -332,7 +332,9 @@ getCategoricalCounts colName df =
                     UnboxedColumn vec ->
                         let counts = countValuesUnboxed vec
                          in Just [(T.pack (show k), fromIntegral v) | (k, v) <- counts]
-                    _ -> Nothing
+                    OptionalColumn vec ->
+                        let counts = countValues vec
+                         in Just [(T.pack (show k), fromIntegral v) | (k, v) <- counts]
   where
     countValues :: (Ord a, Show a) => V.Vector a -> [(a, Int)]
     countValues vec = M.toList $ V.foldr' (\x acc -> M.insertWith (+) x 1 acc) M.empty vec
