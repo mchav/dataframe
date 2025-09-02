@@ -15,12 +15,14 @@
 module DataFrame.Functions where
 
 import DataFrame.Internal.Column
+import DataFrame.Internal.Statistics
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
 import DataFrame.Internal.Expression (Expr (..), UExpr (..))
 
 import Control.Monad
 import qualified Data.Char as Char
 import Data.Function
+import qualified Data.Foldable as F
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -79,28 +81,26 @@ count :: (Columnable a) => Expr a -> Expr Int
 count (Col name) = GeneralAggregate name "count" VG.length
 count _ = error "Argument can only be a column reference not an unevaluated expression"
 
-minimum :: (Columnable a) => Expr a -> Expr a
+minimum :: (Columnable a, Ord a) => Expr a -> Expr a
 minimum (Col name) = ReductionAggregate name "minimum" min
 
-maximum :: (Columnable a) => Expr a -> Expr a
+maximum :: (Columnable a, Ord a) => Expr a -> Expr a
 maximum (Col name) = ReductionAggregate name "maximum" max
 
 sum :: forall a. (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
 sum (Col name) = NumericAggregate name "sum" VG.sum
 
-mean :: (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr Double
-mean (Col name) =
-    let
-        mean' samp =
-            let
-                (!total, !n) = VG.foldl' (\(!total, !n) v -> (total + v, n + 1)) (0 :: Double, 0 :: Int) samp
-             in
-                total / fromIntegral n
-     in
-        NumericAggregate name "mean" mean'
+mean :: (Columnable a, Num a) => Expr a -> Expr Double
+mean (Col name) = NumericAggregate name "mean" mean'
 
-foldAgg :: forall a b. (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
-foldAgg (Col name) = FoldAggregate name "foldUdf"
+standardDeviation :: (Columnable a, Num a) => Expr a -> Expr Double
+standardDeviation (Col name) = NumericAggregate name "stddev" (sqrt . variance')
+
+zScore :: Expr Double -> Expr Double
+zScore c@(Col name) = (c - mean c) / (standardDeviation c)
+
+reduce :: forall a b. (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
+reduce (Col name) = FoldAggregate name "foldUdf"
 
 -- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
 isReservedId :: T.Text -> Bool

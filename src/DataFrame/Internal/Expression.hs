@@ -121,6 +121,15 @@ interpret df (ReductionAggregate name op (f :: forall a. (Columnable a) => a -> 
             Just h -> case ifoldlColumn (\acc _ v -> f acc v) h column of
                 Nothing -> error "Invalid operation"
                 Just value -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
+interpret df (NumericAggregate name op (f :: VU.Vector b -> c)) =
+    let
+        (TColumn column) = interpret @b df (Col name)
+     in
+        case column of
+            (UnboxedColumn (v :: VU.Vector d)) -> case testEquality (typeRep @d) (typeRep @b) of 
+                Just Refl -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) (f v)
+                Nothing -> error "Invalid operation" 
+            _ -> error "Invalid operation"
 interpret df (FoldAggregate name op start (f :: (a -> b -> a))) =
     let
         (TColumn column) = interpret @b df (Col name)
@@ -437,3 +446,4 @@ instance (Show a) => Show (Expr a) where
     show (Lit value) = show value
     show (Apply name f value) = T.unpack name ++ "(" ++ show value ++ ")"
     show (BinOp name f a b) = T.unpack name ++ "(" ++ show a ++ ", " ++ show b ++ ")"
+    show (NumericAggregate columnName op f) = T.unpack op ++ "(" ++ T.unpack columnName ++ ")"
