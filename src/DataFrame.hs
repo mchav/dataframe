@@ -220,6 +220,7 @@ import DataFrame.Internal.DataFrame as Dataframe (
     columnAsVector,
     empty,
     toMatrix,
+    toMarkdownTable
  )
 import DataFrame.Internal.Expression as Expression (Expr)
 import DataFrame.Operations.Aggregation as Aggregation (aggregate, distinct, groupBy)

@@ -14,7 +14,6 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 
-import Control.Monad (join)
 import Data.Function (on)
 import Data.List (sortBy, transpose, (\\))
 import Data.Maybe (isJust)
@@ -64,6 +63,10 @@ instance Eq DataFrame where
 instance Show DataFrame where
     show :: DataFrame -> String
     show d = T.unpack (asText d False)
+
+-- | For showing the dataframe as markdown in notebooks.
+toMarkdownTable :: DataFrame -> T.Text
+toMarkdownTable df = asText df True
 
 asText :: DataFrame -> Bool -> T.Text
 asText d properMarkdown =

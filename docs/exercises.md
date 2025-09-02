@@ -170,3 +170,56 @@ index |         city
 233   | Baker                
 234   | Clutier
 ```
+
+## Exercise 9: Merging
+
+For this question we will use the data in `./data/station.csv`.
+
+Query the two cities in STATION with the shortest and longest city names, as well as their respective lengths (i.e.: number of characters in the name).
+
+### Solution
+
+We'll include the SQL for comparison:
+
+```SQL
+(SELECT CITY, LENGTH(CITY) FROM STATION ORDER BY LENGTH(CITY) DESC LIMIT 1)
+UNION
+(SELECT CITY, LENGTH(CITY) FROM STATION ORDER BY LENGTH(CITY) ASC LIMIT 1);
+```
+
+
+``haskell
+ghci> letterSort s = df |> D.derive "length" (F.lift T.length city) |> D.select [F.name city, "length"] |> D.sortBy s ["length"] |> D.take 1
+ghci> (letterSort D.Descending) <> (letterSort D.Ascending)
+--------------------------------------
+index |         city          | length
+------|-----------------------|-------
+ Int  |         Text          |  Int
+------|-----------------------|-------
+0     | Marine On Saint Croix | 21
+1     | Roy                   | 3
+```
+
+## Exercise 10: Duplicates and user defined functions
+
+For this question we will use the data in `./data/station.csv`.
+
+Query the list of city names starting with vowels (i.e., a, e, i, o, or u). Your result cannot contain duplicates.
+
+### Solution
+
+```haskell
+ghci> df |> D.select [F.name city] |> D.filterWhere (F.lift (\c -> any (`T.isPrefixOf` (T.toLower c)) ["a", "e", "i", "o", "u"]) city) |> D.take 5
+-----------------
+index |   city
+------|----------
+ Int  |   Text
+------|----------
+0     | Arlington
+1     | Albany
+2     | Upperco
+3     | Aguanga
+4     | Odin
+```
+
+
