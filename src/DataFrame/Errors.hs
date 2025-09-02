@@ -7,6 +7,7 @@
 module DataFrame.Errors where
 
 import qualified Data.Text as T
+import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception
 import Data.Array
@@ -30,6 +31,8 @@ data DataFrameException where
         DataFrameException
     ColumnNotFoundException :: T.Text -> T.Text -> [T.Text] -> DataFrameException
     EmptyDataSetException :: T.Text -> DataFrameException
+    WrongQuantileNumberException :: Int -> DataFrameException
+    WrongQuantileIndexException :: VU.Vector Int -> Int -> DataFrameException
     deriving (Exception)
 
 instance Show DataFrameException where
@@ -41,6 +44,8 @@ instance Show DataFrameException where
             addCallPointInfo (errorColumnName context) (callingFunctionName context) errorString
     show (ColumnNotFoundException columnName callPoint availableColumns) = columnNotFound columnName callPoint availableColumns
     show (EmptyDataSetException callPoint) = emptyDataSetError callPoint
+    show (WrongQuantileNumberException q) = wrongQuantileNumberError q
+    show (WrongQuantileIndexException qs q) = wrongQuantileIndexError qs q
 
 columnNotFound :: T.Text -> T.Text -> [T.Text] -> String
 columnNotFound name callPoint columns =
@@ -68,6 +73,24 @@ emptyDataSetError callPoint =
     red "\n\n[ERROR] "
         ++ T.unpack callPoint
         ++ " cannot be called on empty data sets"
+
+wrongQuantileNumberError :: Int -> String
+wrongQuantileNumberError q =
+    red "\n\n[ERROR] "
+        ++ "Quantile number q should satisfy "
+        ++ "q >= 2, but here q is "
+        ++ show q
+
+wrongQuantileIndexError :: VU.Vector Int -> Int -> String
+wrongQuantileIndexError qs q =
+    red "\n\n[ERROR] "
+        ++ "For quantile number q, "
+        ++ "each quantile index i "
+        ++ "should satisfy 0 <= i <= q, "
+        ++ "but here q is "
+        ++ show q
+        ++ " and indexes are "
+        ++ show qs
 
 addCallPointInfo :: Maybe String -> Maybe String -> String -> String
 addCallPointInfo (Just name) (Just cp) err =

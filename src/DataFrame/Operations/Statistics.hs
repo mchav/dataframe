@@ -18,8 +18,6 @@ import qualified Data.Vector.Algorithms.Intro as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
-import qualified Statistics.Quantile as SS
-import qualified Statistics.Sample as SS
 
 import Prelude as P
 
@@ -98,7 +96,7 @@ variance = applyStatistic variance'
 
 -- | Calculates the inter-quartile range of a given column as a standalone value.
 interQuartileRange :: T.Text -> DataFrame -> Maybe Double
-interQuartileRange = applyStatistic (SS.midspread SS.medianUnbiased 4)
+interQuartileRange = applyStatistic interQuartileRange'
 
 -- | Calculates the Pearson's correlation coefficient between two given columns as a standalone value.
 correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
@@ -148,7 +146,7 @@ summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic"
     stats name =
         let
             count = fromIntegral . numElements <$> getColumn name df
-            quantiles = applyStatistics (SS.quantilesVec SS.medianUnbiased (VU.fromList [0, 1, 2, 3, 4]) 4) name df
+            quantiles = applyStatistics (quantiles' (VU.fromList [0, 1, 2, 3, 4]) 4) name df
             min' = flip (VG.!) 0 <$> quantiles
             quartile1 = flip (VG.!) 1 <$> quantiles
             median' = flip (VG.!) 2 <$> quantiles
@@ -267,3 +265,34 @@ correlation' xs ys
              in go (i + 1) sumX' sumY' sumSquaredX' sumSquaredY' sumXY'
         | otherwise = (sumX, sumY, sumSquaredX, sumSquaredY, sumXY)
 {-# INLINE correlation' #-}
+
+quantiles' :: VU.Vector Int -> Int -> VU.Vector Double -> VU.Vector Double
+quantiles' qs q samp
+    | VU.null samp = throw $ EmptyDataSetException "quantiles"
+    | q < 2 = throw $ WrongQuantileNumberException q
+    | VU.any (\i -> i < 0 || i > q) qs = throw $ WrongQuantileIndexException qs q
+    | otherwise = runST $ do
+        let !n = VU.length samp
+        mutableSamp <- VU.thaw samp
+        VA.sort mutableSamp
+        sortedSamp <- VU.freeze mutableSamp
+        return $ VU.map (\i ->
+            let !p = fromIntegral i / fromIntegral q
+            in interpolate sortedSamp p n) qs
+{-# INLINE quantiles' #-}
+
+interpolate :: VU.Vector Double -> Double -> Int -> Double
+interpolate sortedSamp p n =
+    let !position = p * fromIntegral (n - 1)
+        !i = floor position
+        !f = position - fromIntegral i
+    in  if f == 0
+            then sortedSamp VU.! i
+            else (1 - f) * sortedSamp VU.! i + f * sortedSamp VU.! (i + 1)
+{-# INLINE interpolate #-}
+
+interQuartileRange' :: VU.Vector Double -> Double
+interQuartileRange' samp =
+    let quartiles = quantiles' (VU.fromList [1, 3]) 4 samp
+    in  quartiles VU.! 1 - quartiles VU.! 0
+{-# INLINE interQuartileRange' #-}
