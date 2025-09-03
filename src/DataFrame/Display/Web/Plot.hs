@@ -58,8 +58,8 @@ defaultPlotConfig ptype =
     PlotConfig
         { plotType = ptype
         , plotTitle = ""
-        , plotWidth = 800
-        , plotHeight = 600
+        , plotWidth = 600
+        , plotHeight = 400
         , plotFile = Nothing
         }
 
@@ -707,17 +707,19 @@ plotValueCountsWith colName maxBars config df = do
     let config' = config { plotTitle = "Value counts for " <> colName }
     plotBarsTopNWith maxBars colName config' df
 
-plotAllHistograms :: (HasCallStack) => DataFrame -> IO [HtmlPlot]
+plotAllHistograms :: (HasCallStack) => DataFrame -> IO HtmlPlot
 plotAllHistograms df = do
     let numericCols = filter (isNumericColumn df) (columnNames df)
-    forM numericCols $ \col -> do
+    xs <- forM numericCols $ \col -> do
         T.putStrLn $ "<!-- Histogram for " <> col <> " -->"
         plotHistogram col df
+    let allPlots = foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> contents) "" xs
+    return (HtmlPlot allPlots)
 
-plotCategoricalSummary :: (HasCallStack) => DataFrame -> IO [HtmlPlot]
+plotCategoricalSummary :: (HasCallStack) => DataFrame -> IO HtmlPlot
 plotCategoricalSummary df = do
     let cols = columnNames df
-    forM cols $ \col -> do
+    xs <- forM cols $ \col -> do
         let counts = getCategoricalCounts col df
         case counts of
             Just c -> do
@@ -727,6 +729,8 @@ plotCategoricalSummary df = do
                     if numUnique > 15 then plotBarsTopN 10 col df else plotBars col df)
                 else return (HtmlPlot "")
             Nothing -> return (HtmlPlot "")
+    let allPlots = foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> contents) "" xs
+    return (HtmlPlot allPlots)
 
 plotBarsWithPercentages :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
 plotBarsWithPercentages colName df = do
