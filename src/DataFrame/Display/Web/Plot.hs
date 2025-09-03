@@ -32,6 +32,8 @@ import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import qualified DataFrame.Operations.Subset as D
 
+newtype HtmlPlot = HtmlPlot T.Text deriving (Show)
+
 data PlotConfig = PlotConfig
     { plotType :: PlotType
     , plotTitle :: T.Text
@@ -77,16 +79,10 @@ wrapInHTML chartId content width height =
         , "\n</script>\n"
         ]
 
-outputHTML :: PlotConfig -> T.Text -> IO ()
-outputHTML config html =
-    case plotFile config of
-        Nothing -> T.putStrLn html
-        Just fp -> writeFile fp (T.unpack html)
-
-plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO ()
+plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
 plotHistogram colName = plotHistogramWith colName (defaultPlotConfig Histogram)
 
-plotHistogramWith :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO ()
+plotHistogramWith :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotHistogramWith colName config df = do
     chartId <- generateChartId
     let values = extractNumericColumn colName df
@@ -123,17 +119,17 @@ plotHistogramWith colName config df = do
             , "});"
             ]
     
-    outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+    return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
 
 calculateHistogram :: [Double] -> [Double] -> Double -> [Int]
 calculateHistogram values bins binWidth =
     let countBin b = length [v | v <- values, v >= b && v < b + binWidth]
     in map countBin bins
 
-plotScatter :: (HasCallStack) => T.Text -> T.Text -> DataFrame -> IO ()
+plotScatter :: (HasCallStack) => T.Text -> T.Text -> DataFrame -> IO HtmlPlot
 plotScatter xCol yCol = plotScatterWith xCol yCol (defaultPlotConfig Scatter)
 
-plotScatterWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
+plotScatterWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotScatterWith xCol yCol config df = do
     chartId <- generateChartId
     let xVals = extractNumericColumn xCol df
@@ -164,12 +160,12 @@ plotScatterWith xCol yCol config df = do
             , "});"
             ]
     
-    outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+    return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
 
-plotScatterBy :: (HasCallStack) => T.Text -> T.Text -> T.Text -> DataFrame -> IO ()
+plotScatterBy :: (HasCallStack) => T.Text -> T.Text -> T.Text -> DataFrame -> IO HtmlPlot
 plotScatterBy xCol yCol grouping = plotScatterByWith xCol yCol grouping (defaultPlotConfig Scatter)
 
-plotScatterByWith :: (HasCallStack) => T.Text -> T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
+plotScatterByWith :: (HasCallStack) => T.Text -> T.Text -> T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotScatterByWith xCol yCol grouping config df = do
     chartId <- generateChartId
     let vals = extractStringColumn grouping df
@@ -213,12 +209,12 @@ plotScatterByWith xCol yCol grouping config df = do
             , "});"
             ]
     
-    outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+    return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
 
-plotLines :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO ()
+plotLines :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO HtmlPlot
 plotLines xAxis colNames = plotLinesWith xAxis colNames (defaultPlotConfig Line)
 
-plotLinesWith :: (HasCallStack) => T.Text -> [T.Text] -> PlotConfig -> DataFrame -> IO ()
+plotLinesWith :: (HasCallStack) => T.Text -> [T.Text] -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotLinesWith xAxis colNames config df = do
     chartId <- generateChartId
     let xValues = extractNumericColumn xAxis df
@@ -259,18 +255,18 @@ plotLinesWith xAxis colNames config df = do
             , "});"
             ]
     
-    outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+    return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
 
-plotBars :: (HasCallStack) => T.Text -> DataFrame -> IO ()
+plotBars :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
 plotBars colName = plotBarsWith colName Nothing (defaultPlotConfig Bar)
 
-plotBarsWith :: (HasCallStack) => T.Text -> Maybe T.Text -> PlotConfig -> DataFrame -> IO ()
+plotBarsWith :: (HasCallStack) => T.Text -> Maybe T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotBarsWith colName groupByCol config df =
     case groupByCol of
         Nothing -> plotSingleBars colName config df
         Just grpCol -> plotGroupedBarsWith grpCol colName config df
 
-plotSingleBars :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO ()
+plotSingleBars :: (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotSingleBars colName config df = do
     chartId <- generateChartId
     let barData = getCategoricalCounts colName df
@@ -302,7 +298,7 @@ plotSingleBars colName config df = do
                     , "  }\n"
                     , "});"
                     ]
-            outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+            return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
         Nothing -> do
             let values = extractNumericColumn colName df
                 labels' = if length values > 20
@@ -334,12 +330,12 @@ plotSingleBars colName config df = do
                     , "  }\n"
                     , "});"
                     ]
-            outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+            return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
 
-plotPie :: (HasCallStack) => T.Text -> Maybe T.Text -> DataFrame -> IO ()
+plotPie :: (HasCallStack) => T.Text -> Maybe T.Text -> DataFrame -> IO HtmlPlot
 plotPie valCol labelCol = plotPieWith valCol labelCol (defaultPlotConfig Pie)
 
-plotPieWith :: (HasCallStack) => T.Text -> Maybe T.Text -> PlotConfig -> DataFrame -> IO ()
+plotPieWith :: (HasCallStack) => T.Text -> Maybe T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotPieWith valCol labelCol config df = do
     chartId <- generateChartId
     let categoricalData = getCategoricalCounts valCol df
@@ -366,7 +362,7 @@ plotPieWith valCol labelCol config df = do
                     , "  }\n"
                     , "});"
                     ]
-            outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+            return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
         Nothing -> do
             let values = extractNumericColumn valCol df
                 labels' = case labelCol of
@@ -396,7 +392,7 @@ plotPieWith valCol labelCol config df = do
                     , "  }\n"
                     , "});"
                     ]
-            outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+            return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
 
 pieColors :: [T.Text]
 pieColors = 
@@ -412,10 +408,10 @@ pieColors =
     , "rgb(238, 130, 238)"
     ]
 
-plotStackedBars :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO ()
+plotStackedBars :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO HtmlPlot
 plotStackedBars categoryCol valueColumns = plotStackedBarsWith categoryCol valueColumns (defaultPlotConfig StackedBar)
 
-plotStackedBarsWith :: (HasCallStack) => T.Text -> [T.Text] -> PlotConfig -> DataFrame -> IO ()
+plotStackedBarsWith :: (HasCallStack) => T.Text -> [T.Text] -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotStackedBarsWith categoryCol valueColumns config df = do
     chartId <- generateChartId
     let categories = extractStringColumn categoryCol df
@@ -460,12 +456,12 @@ plotStackedBarsWith categoryCol valueColumns config df = do
             , "});"
             ]
     
-    outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+    return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
 
-plotBoxPlots :: (HasCallStack) => [T.Text] -> DataFrame -> IO ()
+plotBoxPlots :: (HasCallStack) => [T.Text] -> DataFrame -> IO HtmlPlot
 plotBoxPlots colNames = plotBoxPlotsWith colNames (defaultPlotConfig BoxPlot)
 
-plotBoxPlotsWith :: (HasCallStack) => [T.Text] -> PlotConfig -> DataFrame -> IO ()
+plotBoxPlotsWith :: (HasCallStack) => [T.Text] -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotBoxPlotsWith colNames config df = do
     chartId <- generateChartId
     boxData <- forM colNames $ \col -> do
@@ -507,12 +503,12 @@ plotBoxPlotsWith colNames config df = do
             , "});"
             ]
     
-    outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+    return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
 
-plotGroupedBarsWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
+plotGroupedBarsWith :: (HasCallStack) => T.Text -> T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotGroupedBarsWith = plotGroupedBarsWithN 10
 
-plotGroupedBarsWithN :: (HasCallStack) => Int -> T.Text -> T.Text -> PlotConfig -> DataFrame -> IO ()
+plotGroupedBarsWithN :: (HasCallStack) => Int -> T.Text -> T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotGroupedBarsWithN n groupCol valCol config df = do
     chartId <- generateChartId
     let colIsNumeric = isNumericColumnCheck valCol df
@@ -548,7 +544,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                     , "  }\n"
                     , "});"
                     ]
-            outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+            return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
         else do
             let groups = extractStringColumn groupCol df
                 vals = extractStringColumn valCol df
@@ -584,7 +580,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                     , "  }\n"
                     , "});"
                     ]
-            outputHTML config $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+            return $ HtmlPlot $ wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
 
 -- TODO: Move these helpers to a common module.
 
@@ -695,47 +691,49 @@ groupWithOtherForPie n items =
                            ]
      in result
 
-plotBarsTopN :: (HasCallStack) => Int -> T.Text -> DataFrame -> IO ()
+plotBarsTopN :: (HasCallStack) => Int -> T.Text -> DataFrame -> IO HtmlPlot
 plotBarsTopN n colName = plotBarsTopNWith n colName (defaultPlotConfig Bar)
 
-plotBarsTopNWith :: (HasCallStack) => Int -> T.Text -> PlotConfig -> DataFrame -> IO ()
+plotBarsTopNWith :: (HasCallStack) => Int -> T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotBarsTopNWith n colName config df = do
     let config' = config { plotTitle = plotTitle config <> " (Top " <> T.pack (show n) <> ")" }
     plotBarsWith colName Nothing config' df
 
-plotValueCounts :: (HasCallStack) => T.Text -> DataFrame -> IO ()
+plotValueCounts :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
 plotValueCounts colName = plotValueCountsWith colName 10 (defaultPlotConfig Bar)
 
-plotValueCountsWith :: (HasCallStack) => T.Text -> Int -> PlotConfig -> DataFrame -> IO ()
+plotValueCountsWith :: (HasCallStack) => T.Text -> Int -> PlotConfig -> DataFrame -> IO HtmlPlot
 plotValueCountsWith colName maxBars config df = do
     let config' = config { plotTitle = "Value counts for " <> colName }
     plotBarsTopNWith maxBars colName config' df
 
-plotAllHistograms :: (HasCallStack) => DataFrame -> IO ()
+plotAllHistograms :: (HasCallStack) => DataFrame -> IO [HtmlPlot]
 plotAllHistograms df = do
     let numericCols = filter (isNumericColumn df) (columnNames df)
-    forM_ numericCols $ \col -> do
+    forM numericCols $ \col -> do
         T.putStrLn $ "<!-- Histogram for " <> col <> " -->"
         plotHistogram col df
 
-plotCategoricalSummary :: (HasCallStack) => DataFrame -> IO ()
+plotCategoricalSummary :: (HasCallStack) => DataFrame -> IO [HtmlPlot]
 plotCategoricalSummary df = do
     let cols = columnNames df
-    forM_ cols $ \col -> do
+    forM cols $ \col -> do
         let counts = getCategoricalCounts col df
         case counts of
-            Just c -> when (length c > 1) $ do
-                let numUnique = length c
-                putStrLn $ "\n<!-- " ++ T.unpack col ++ " (" ++ show numUnique ++ " unique values) -->"
-                if numUnique > 15 then plotBarsTopN 10 col df else plotBars col df
-            Nothing -> return ()
+            Just c -> do
+                if (length c > 1) then (do
+                    let numUnique = length c
+                    putStrLn $ "\n<!-- " ++ T.unpack col ++ " (" ++ show numUnique ++ " unique values) -->"
+                    if numUnique > 15 then plotBarsTopN 10 col df else plotBars col df)
+                else return (HtmlPlot "")
+            Nothing -> return (HtmlPlot "")
 
-plotBarsWithPercentages :: (HasCallStack) => T.Text -> DataFrame -> IO ()
+plotBarsWithPercentages :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
 plotBarsWithPercentages colName df = do
     let config = (defaultPlotConfig Bar) { plotTitle = "Distribution of " <> colName }
     plotBarsWith colName Nothing config df
 
-smartPlotBars :: (HasCallStack) => T.Text -> DataFrame -> IO ()
+smartPlotBars :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
 smartPlotBars colName df = do
     let counts = getCategoricalCounts colName df
     case counts of
