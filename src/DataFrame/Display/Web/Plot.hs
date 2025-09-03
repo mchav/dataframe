@@ -713,7 +713,7 @@ plotAllHistograms df = do
     xs <- forM numericCols $ \col -> do
         T.putStrLn $ "<!-- Histogram for " <> col <> " -->"
         plotHistogram col df
-    let allPlots = foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> contents) "" xs
+    let allPlots = L.foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> contents) "" xs
     return (HtmlPlot allPlots)
 
 plotCategoricalSummary :: (HasCallStack) => DataFrame -> IO HtmlPlot
@@ -729,7 +729,7 @@ plotCategoricalSummary df = do
                     if numUnique > 15 then plotBarsTopN 10 col df else plotBars col df)
                 else return (HtmlPlot "")
             Nothing -> return (HtmlPlot "")
-    let allPlots = foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> contents) "" xs
+    let allPlots = L.foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> contents) "" xs
     return (HtmlPlot allPlots)
 
 plotBarsWithPercentages :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
