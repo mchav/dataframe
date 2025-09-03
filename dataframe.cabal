@@ -48,7 +48,6 @@ library
                    DataFrame.Operations.Typing,
                    DataFrame.Operations.Aggregation,
                    DataFrame.Display.Terminal.Plot,
-                   DataFrame.Display.Web.Plot,
                    DataFrame.IO.CSV,
                    DataFrame.IO.Parquet,
                    DataFrame.IO.Parquet.Binary
