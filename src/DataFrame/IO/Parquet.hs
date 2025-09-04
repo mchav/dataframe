@@ -5,20 +5,21 @@
 module DataFrame.IO.Parquet where
 
 import Control.Monad
+import Data.Bits
 import qualified Data.ByteString as BSO
 import Data.Char
 import Data.Foldable
 import Data.IORef
+import Data.Int
 import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
+import Data.Word
 import qualified DataFrame.Internal.Column as DI
 import DataFrame.Internal.DataFrame (DataFrame)
 import qualified DataFrame.Internal.DataFrame as DI
 import qualified DataFrame.Operations.Core as DI
-import Foreign
-import System.IO
 
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Dictionary
@@ -76,7 +77,7 @@ readParquet path = do
                         else colDataPageOffset
             let colLength = columnTotalCompressedSize metadata
 
-            let columnBytes = map (BSO.index contents . fromIntegral) [colStart..(colStart + colLength - 1)]
+            let columnBytes = map (BSO.index contents . fromIntegral) [colStart .. (colStart + colLength - 1)]
 
             pages <- readAllPages (columnCodec metadata) columnBytes
 
@@ -91,7 +92,6 @@ readParquet path = do
             let colPath = columnPathInSchema (columnMetaData colChunk)
             let (maxDef, maxRep) = levelsForPath schemaTail colPath
             column <- processColumnPages (maxDef, maxRep) pages (columnType metadata) primaryEncoding maybeTypeLength
-            print column
 
             modifyIORef colMap (M.insert colName column)
 
@@ -105,18 +105,20 @@ readParquet path = do
 
 readMetadataFromPath path = do
     contents <- BSO.readFile path
-    let (size, magicString) = readMetadataSizeFromFooter contents
+    let (size, magicString) = contents `seq` readMetadataSizeFromFooter contents
     when (magicString /= "PAR1") $ error "Invalid Parquet file"
     readMetadata contents size
 
 readMetadataSizeFromFooter :: BSO.ByteString -> (Int, BSO.ByteString)
-readMetadataSizeFromFooter contents = let
+readMetadataSizeFromFooter contents =
+    let
         footerOffSet = BSO.length contents - 8
         sizeBytes = map (fromIntegral @Word8 @Int32 . BSO.index contents) [footerOffSet .. footerOffSet + 3]
         size = fromIntegral $ L.foldl' (.|.) 0 $ zipWith shift sizeBytes [0, 8, 16, 24]
         magicStringBytes = map (BSO.index contents) [footerOffSet + 4 .. footerOffSet + 7]
         magicString = BSO.pack magicStringBytes
-    in (size, magicString)
+     in
+        (size, magicString)
 
 getColumnPaths :: [SchemaElement] -> [(T.Text, Int)]
 getColumnPaths schema = extractLeafPaths schema 0 []

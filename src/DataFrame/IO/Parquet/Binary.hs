@@ -7,9 +7,8 @@ import Data.Bits
 import qualified Data.ByteString as BS
 import Data.Char
 import Data.IORef
+import Data.Int
 import Data.Word
-import Foreign
-import System.IO
 
 littleEndianWord32 :: [Word8] -> Word32
 littleEndianWord32 bytes

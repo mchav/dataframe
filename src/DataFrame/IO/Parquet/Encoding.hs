@@ -2,7 +2,7 @@ module DataFrame.IO.Parquet.Encoding where
 
 import Data.Bits
 import Data.Foldable
-import Data.List (mapAccumL, foldl')
+import Data.List (foldl', mapAccumL)
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 

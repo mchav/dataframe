@@ -15,8 +15,6 @@ import qualified Data.Text as T
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Types
-import Foreign
-import System.IO
 
 data SchemaElement = SchemaElement
     { elementName :: T.Text
@@ -213,9 +211,8 @@ skipList buf pos = do
 
 readMetadata :: BS.ByteString -> Int -> IO FileMetadata
 readMetadata contents size = do
-
-    let metadataStartPos = BS.length contents - footerSize - size 
-    let metadataBytes = BS.pack $ map (BS.index contents) [metadataStartPos..(metadataStartPos + size - 1)]
+    let metadataStartPos = BS.length contents - footerSize - size
+    let metadataBytes = BS.pack $ map (BS.index contents) [metadataStartPos .. (metadataStartPos + size - 1)]
     let lastFieldId = 0
     let fieldStack = []
     bufferPos <- newIORef (0 :: Int)
