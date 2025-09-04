@@ -31,6 +31,7 @@ import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import qualified DataFrame.Operations.Subset as D
+import DataFrame.Display.Web.ChartJs
 
 newtype HtmlPlot = HtmlPlot T.Text deriving (Show)
 
@@ -79,7 +80,9 @@ wrapInHTML chartId content width height =
         , "px;height:"
         , T.pack (show height)
         , "px\"></canvas>\n"
-        , "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js\"></script>\n"
+        , "<script>"
+        , minifiedChartJs
+        , "</script>\n"
         , "<script>\n"
         , content
         , "\n</script>\n"

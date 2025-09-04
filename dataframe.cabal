@@ -27,6 +27,7 @@ library
                     DataFrame.Lazy,
                     DataFrame.Functions,
                     DataFrame.Display.Web.Plot,
+                    DataFrame.Display.Web.ChartJs,
                     DataFrame.Internal.Types,
                     DataFrame.Internal.Expression,
                     DataFrame.Internal.Parsing,
