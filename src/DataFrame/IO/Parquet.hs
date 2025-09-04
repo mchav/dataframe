@@ -37,16 +37,14 @@ ghci> D.readParquet "./data/mtcars.parquet" df
 @
 -}
 readParquet :: String -> IO DataFrame
-readParquet path = withBinaryFile path ReadMode $ \handle -> do
-    (size, magicString) <- readMetadataSizeFromFooter handle
-    when (magicString /= "PAR1") $ error "Invalid Parquet file"
-
-    fileMetadata <- readMetadata handle size
-
+readParquet path = do
+    fileMetadata <- readMetadataFromPath path
     let columnPaths = getColumnPaths (drop 1 $ schema fileMetadata)
     let columnNames = map fst columnPaths
 
     colMap <- newIORef (M.empty :: M.Map T.Text DI.Column)
+
+    contents <- BSO.readFile path
 
     let schemaElements = schema fileMetadata
     let getTypeLength :: [String] -> Maybe Int32
@@ -79,7 +77,7 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                         else colDataPageOffset
             let colLength = columnTotalCompressedSize metadata
 
-            columnBytes <- readBytes handle colStart colLength
+            let columnBytes = map (BSO.index contents . fromIntegral) [colStart..(colStart + colLength - 1)]
 
             pages <- readAllPages (columnCodec metadata) columnBytes
 
@@ -104,6 +102,11 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                 (filter (`M.member` finalColMap) columnNames)
 
     pure $ DI.fromNamedColumns orderedColumns
+
+readMetadataFromPath path = withBinaryFile path ReadMode $ \handle -> do
+    (size, magicString) <- readMetadataSizeFromFooter handle
+    when (magicString /= "PAR1") $ error "Invalid Parquet file"
+    readMetadata handle size
 
 readMetadataSizeFromFooter :: Handle -> IO (Integer, BSO.ByteString)
 readMetadataSizeFromFooter handle = do
