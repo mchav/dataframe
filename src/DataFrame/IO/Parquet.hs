@@ -39,6 +39,7 @@ ghci> D.readParquet "./data/mtcars.parquet" df
 readParquet :: String -> IO DataFrame
 readParquet path = do
     fileMetadata <- readMetadataFromPath path
+    print fileMetadata
     let columnPaths = getColumnPaths (drop 1 $ schema fileMetadata)
     let columnNames = map fst columnPaths
 
@@ -78,8 +79,11 @@ readParquet path = do
             let colLength = columnTotalCompressedSize metadata
 
             let columnBytes = map (BSO.index contents . fromIntegral) [colStart..(colStart + colLength - 1)]
+            print columnBytes
 
             pages <- readAllPages (columnCodec metadata) columnBytes
+
+            print pages
 
             let maybeTypeLength =
                     if columnType metadata == PFIXED_LEN_BYTE_ARRAY
@@ -92,6 +96,7 @@ readParquet path = do
             let colPath = columnPathInSchema (columnMetaData colChunk)
             let (maxDef, maxRep) = levelsForPath schemaTail colPath
             column <- processColumnPages (maxDef, maxRep) pages (columnType metadata) primaryEncoding maybeTypeLength
+            print column
 
             modifyIORef colMap (M.insert colName column)
 
