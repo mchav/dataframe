@@ -62,7 +62,7 @@ library
                     DataFrame.IO.Parquet.Types,
                     DataFrame.Lazy.IO.CSV,
                     DataFrame.Lazy.Internal.DataFrame
-    build-depends:    base >= 4.17.2.0 && < 4.22,
+    build-depends:    base > 4 && <5,
                       array ^>= 0.5,
                       attoparsec >= 0.12 && <= 0.14.4,
                       bytestring >= 0.11 && <= 0.12.2.0,
@@ -85,7 +85,7 @@ library
 
 executable dataframe
     main-is:       Main.hs
-    build-depends:    base >= 4.17.2.0 && < 4.22,
+    build-depends:    base > 4 && < 5,
                       array ^>= 0.5,
                       attoparsec >= 0.12 && <= 0.14.4,
                       bytestring >= 0.11 && <= 0.12.2.0,
@@ -105,13 +105,14 @@ executable dataframe
                       zstd >= 0.1.2.0 && <= 0.1.3.0
     hs-source-dirs:   app
     default-language: Haskell2010
+    ghc-options: -rtsopts -threaded -with-rtsopts=-N
 
 
 benchmark dataframe-benchmark
     type:       exitcode-stdio-1.0
     main-is:    Main.hs
     hs-source-dirs: benchmark
-    build-depends: base >= 4.17.2.0 && < 4.22,
+    build-depends: base > 4 && < 5,
                    criterion >= 1 && <= 1.6.4.0,
                    process >= 1.6,
                    text >= 2.0 && <= 2.1.2,
