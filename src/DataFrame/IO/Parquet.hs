@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeApplications #-}
 
 module DataFrame.IO.Parquet where
 
@@ -102,25 +103,20 @@ readParquet path = do
 
     pure $ DI.fromNamedColumns orderedColumns
 
-readMetadataFromPath path = withBinaryFile path ReadMode $ \handle -> do
-    (size, magicString) <- readMetadataSizeFromFooter handle
+readMetadataFromPath path = do
+    contents <- BSO.readFile path
+    let (size, magicString) = readMetadataSizeFromFooter contents
     when (magicString /= "PAR1") $ error "Invalid Parquet file"
-    readMetadata handle size
+    readMetadata contents size
 
-readMetadataSizeFromFooter :: Handle -> IO (Integer, BSO.ByteString)
-readMetadataSizeFromFooter handle = do
-    footerOffSet <- numBytesInFile handle
-    buf <- mallocBytes 8 :: IO (Ptr Word8)
-    hSeek handle AbsoluteSeek (fromIntegral $ footerOffSet - 8)
-    _ <- hGetBuf handle buf 8
-
-    sizeBytes <- mapM (\i -> fromIntegral <$> (peekElemOff buf i :: IO Word8) :: IO Int32) [0 .. 3]
-    let size = fromIntegral $ L.foldl' (.|.) 0 $ zipWith shift sizeBytes [0, 8, 16, 24]
-
-    magicStringBytes <- mapM (\i -> peekElemOff buf i :: IO Word8) [4 .. 7]
-    let magicString = BSO.pack magicStringBytes
-    free buf
-    return (size, magicString)
+readMetadataSizeFromFooter :: BSO.ByteString -> (Int, BSO.ByteString)
+readMetadataSizeFromFooter contents = let
+        footerOffSet = BSO.length contents - 8
+        sizeBytes = map (fromIntegral @Word8 @Int32 . BSO.index contents) [footerOffSet .. footerOffSet + 3]
+        size = fromIntegral $ L.foldl' (.|.) 0 $ zipWith shift sizeBytes [0, 8, 16, 24]
+        magicStringBytes = map (BSO.index contents) [footerOffSet + 4 .. footerOffSet + 7]
+        magicString = BSO.pack magicStringBytes
+    in (size, magicString)
 
 getColumnPaths :: [SchemaElement] -> [(T.Text, Int)]
 getColumnPaths schema = extractLeafPaths schema 0 []

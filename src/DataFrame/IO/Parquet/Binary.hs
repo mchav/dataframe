@@ -58,14 +58,14 @@ readInt32FromBytes bs =
         u = fromIntegral n :: Word32
      in ((fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1)), rem)
 
-readAndAdvance :: IORef Int -> Ptr b -> IO Word8
+readAndAdvance :: IORef Int -> BS.ByteString -> IO Word8
 readAndAdvance bufferPos buffer = do
     pos <- readIORef bufferPos
-    b <- peekByteOff buffer pos :: IO Word8
+    let b = BS.index buffer pos
     modifyIORef bufferPos (+ 1)
     return b
 
-readVarIntFromBuffer :: (Integral a) => Ptr b -> IORef Int -> IO a
+readVarIntFromBuffer :: (Integral a) => BS.ByteString -> IORef Int -> IO a
 readVarIntFromBuffer buf bufferPos = do
     start <- readIORef bufferPos
     let loop i shift result = do
@@ -76,43 +76,22 @@ readVarIntFromBuffer buf bufferPos = do
                 else loop (i + 1) (shift + 7) res
     fromIntegral <$> loop start 0 0
 
-readIntFromBuffer :: (Integral a) => Ptr b -> IORef Int -> IO a
+readIntFromBuffer :: (Integral a) => BS.ByteString -> IORef Int -> IO a
 readIntFromBuffer buf bufferPos = do
     n <- readVarIntFromBuffer buf bufferPos
     let u = fromIntegral n :: Word32
     return $ fromIntegral $ (fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1))
 
-readInt32FromBuffer :: Ptr b -> IORef Int -> IO Int32
+readInt32FromBuffer :: BS.ByteString -> IORef Int -> IO Int32
 readInt32FromBuffer buf bufferPos = do
     n <- (fromIntegral <$> readVarIntFromBuffer @Int64 buf bufferPos) :: IO Int32
     let u = fromIntegral n :: Word32
     return $ (fromIntegral (u `shiftR` 1) :: Int32) .^. (-(n .&. 1))
 
-readString :: Ptr Word8 -> IORef Int -> IO String
+readString :: BS.ByteString -> IORef Int -> IO String
 readString buf pos = do
     nameSize <- readVarIntFromBuffer @Int buf pos
     map (chr . fromIntegral) <$> replicateM nameSize (readAndAdvance pos buf)
-
-readBytes :: Handle -> Int64 -> Int64 -> IO [Word8]
-readBytes h colStart colLen = do
-    hSeek h AbsoluteSeek (fromIntegral colStart)
-    bs <- BS.hGet h (fromIntegral colLen)
-    if BS.length bs /= fromIntegral colLen
-        then
-            ioError
-                ( userError
-                    ( "short read: wanted "
-                        ++ show colLen
-                        ++ " bytes, got "
-                        ++ show (BS.length bs)
-                    )
-                )
-        else pure (BS.unpack bs)
-
-numBytesInFile :: Handle -> IO Integer
-numBytesInFile handle = do
-    hSeek handle SeekFromEnd 0
-    hTell handle
 
 readByteStringFromBytes :: [Word8] -> ([Word8], [Word8])
 readByteStringFromBytes xs =
@@ -121,18 +100,18 @@ readByteStringFromBytes xs =
      in
         splitAt size rem
 
-readByteString :: Ptr Word8 -> IORef Int -> IO [Word8]
+readByteString :: BS.ByteString -> IORef Int -> IO [Word8]
 readByteString buf pos = do
     size <- readVarIntFromBuffer @Int buf pos
     replicateM size (readAndAdvance pos buf)
 
-readByteString' :: Ptr Word8 -> Int64 -> IO [Word8]
+readByteString' :: BS.ByteString -> Int64 -> IO [Word8]
 readByteString' buf size = mapM (`readSingleByte` buf) [0 .. (size - 1)]
 
-readSingleByte :: Int64 -> Ptr b -> IO Word8
-readSingleByte pos buffer = peekByteOff buffer (fromIntegral pos)
+readSingleByte :: Int64 -> BS.ByteString -> IO Word8
+readSingleByte pos buffer = return $ BS.index buffer (fromIntegral pos)
 
-readNoAdvance :: IORef Int -> Ptr b -> IO Word8
+readNoAdvance :: IORef Int -> BS.ByteString -> IO Word8
 readNoAdvance bufferPos buffer = do
     pos <- readIORef bufferPos
-    peekByteOff buffer pos :: IO Word8
+    return $ BS.index buffer pos
