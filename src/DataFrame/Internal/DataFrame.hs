@@ -86,6 +86,7 @@ asText d properMarkdown =
                 Nothing -> V.map (T.pack . show) column
         get (Just (UnboxedColumn column)) = V.map (T.pack . show) (V.convert column)
         get (Just (OptionalColumn column)) = V.map (T.pack . show) column
+        get Nothing = V.empty
         getTextColumnFromFrame df (i, name) =
             if i == 0
                 then V.fromList (map (T.pack . show) [0 .. (fst (dataframeDimensions df) - 1)])

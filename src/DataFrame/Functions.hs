@@ -15,14 +15,14 @@
 module DataFrame.Functions where
 
 import DataFrame.Internal.Column
-import DataFrame.Internal.Statistics
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
 import DataFrame.Internal.Expression (Expr (..), UExpr (..))
+import DataFrame.Internal.Statistics
 
 import Control.Monad
 import qualified Data.Char as Char
-import Data.Function
 import qualified Data.Foldable as F
+import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T

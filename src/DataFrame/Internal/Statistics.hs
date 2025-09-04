@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module DataFrame.Internal.Statistics where
 
 import qualified Data.Text as T
@@ -115,9 +116,13 @@ quantiles' qs q samp
         mutableSamp <- VU.thaw samp
         VA.sort mutableSamp
         sortedSamp <- VU.freeze mutableSamp
-        return $ VU.map (\i ->
-            let !p = fromIntegral i / fromIntegral q
-            in interpolate sortedSamp p n) qs
+        return $
+            VU.map
+                ( \i ->
+                    let !p = fromIntegral i / fromIntegral q
+                     in interpolate sortedSamp p n
+                )
+                qs
 {-# INLINE quantiles' #-}
 
 interpolate :: VU.Vector Double -> Double -> Int -> Double
@@ -125,7 +130,7 @@ interpolate sortedSamp p n =
     let !position = p * fromIntegral (n - 1)
         !i = floor position
         !f = position - fromIntegral i
-    in  if f == 0
+     in if f == 0
             then sortedSamp VU.! i
             else (1 - f) * sortedSamp VU.! i + f * sortedSamp VU.! (i + 1)
 {-# INLINE interpolate #-}
@@ -133,6 +138,5 @@ interpolate sortedSamp p n =
 interQuartileRange' :: VU.Vector Double -> Double
 interQuartileRange' samp =
     let quartiles = quantiles' (VU.fromList [1, 3]) 4 samp
-    in  quartiles VU.! 1 - quartiles VU.! 0
+     in quartiles VU.! 1 - quartiles VU.! 0
 {-# INLINE interQuartileRange' #-}
-

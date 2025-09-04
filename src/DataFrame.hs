@@ -219,8 +219,8 @@ import DataFrame.Internal.DataFrame as Dataframe (
     GroupedDataFrame,
     columnAsVector,
     empty,
+    toMarkdownTable,
     toMatrix,
-    toMarkdownTable
  )
 import DataFrame.Internal.Expression as Expression (Expr)
 import DataFrame.Operations.Aggregation as Aggregation (aggregate, distinct, groupBy)

@@ -261,21 +261,22 @@ isNull t = T.null t || t == "NA" || t == "NULL" || t == "null"
 
 processFile :: Handle -> Char -> [GrowingColumn] -> Int -> Int -> IO ()
 processFile !handle !sep !cols !chunk r = do
-    let go remain !rowIdx = parseWith (C8.hGetNonBlocking handle chunk) (parseRow sep) remain >>= \case
-            Fail unconsumed ctx er -> do
-                erpos <- hTell handle
-                fail $
-                    "Failed to parse CSV file around "
-                        <> show erpos
-                        <> " byte; due: "
-                        <> show er
-                        <> "; context: "
-                        <> show ctx
-            Partial c -> do
-                fail "Partial handler is called"
-            Done (unconsumed :: C8.ByteString) (row :: [C8.ByteString]) -> do
-                processRow rowIdx row cols
-                unless (null row || unconsumed == mempty) $ go unconsumed $! rowIdx + 1
+    let go remain !rowIdx =
+            parseWith (C8.hGetNonBlocking handle chunk) (parseRow sep) remain >>= \case
+                Fail unconsumed ctx er -> do
+                    erpos <- hTell handle
+                    fail $
+                        "Failed to parse CSV file around "
+                            <> show erpos
+                            <> " byte; due: "
+                            <> show er
+                            <> "; context: "
+                            <> show ctx
+                Partial c -> do
+                    fail "Partial handler is called"
+                Done (unconsumed :: C8.ByteString) (row :: [C8.ByteString]) -> do
+                    processRow rowIdx row cols
+                    unless (null row || unconsumed == mempty) $ go unconsumed $! rowIdx + 1
     go "" r
 
 parseLine :: Char -> BS.ByteString -> [BS.ByteString]

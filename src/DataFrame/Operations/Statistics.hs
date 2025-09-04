@@ -31,9 +31,9 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
-import DataFrame.Internal.Statistics
 import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn, unsafeGetColumn)
 import DataFrame.Internal.Row (showValue, toAny)
+import DataFrame.Internal.Statistics
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import DataFrame.Operations.Subset (filterJust)
