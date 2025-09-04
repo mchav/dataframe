@@ -8,7 +8,7 @@ import qualified Data.ByteString as BSO
 import Data.Char
 import Data.Foldable
 import Data.IORef
-import Data.List
+import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
@@ -84,7 +84,7 @@ readParquet path = do
                         then getTypeLength colPath
                         else Nothing
 
-            let primaryEncoding = fromMaybe EPLAIN (fmap fst (uncons (columnEncodings metadata)))
+            let primaryEncoding = fromMaybe EPLAIN (fmap fst (L.uncons (columnEncodings metadata)))
 
             let schemaTail = drop 1 (schema fileMetadata)
             let colPath = columnPathInSchema (columnMetaData colChunk)
@@ -115,7 +115,7 @@ readMetadataSizeFromFooter handle = do
     _ <- hGetBuf handle buf 8
 
     sizeBytes <- mapM (\i -> fromIntegral <$> (peekElemOff buf i :: IO Word8) :: IO Int32) [0 .. 3]
-    let size = fromIntegral $ foldl' (.|.) 0 $ zipWith shift sizeBytes [0, 8, 16, 24]
+    let size = fromIntegral $ L.foldl' (.|.) 0 $ zipWith shift sizeBytes [0, 8, 16, 24]
 
     magicStringBytes <- mapM (\i -> peekElemOff buf i :: IO Word8) [4 .. 7]
     let magicString = BSO.pack magicStringBytes
@@ -249,4 +249,4 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
 
     case cols of
         [] -> pure $ DI.fromList ([] :: [Maybe Int])
-        (c : cs) -> pure $ foldl' (\l r -> fromMaybe (error "concat failed") (DI.concatColumns l r)) c cs
+        (c : cs) -> pure $ L.foldl' (\l r -> fromMaybe (error "concat failed") (DI.concatColumns l r)) c cs
