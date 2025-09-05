@@ -25,13 +25,25 @@ import System.IO (writeFile)
 import System.Random (newStdGen, randomRs)
 import Type.Reflection (typeRep)
 
+import Control.Monad (void)
+import DataFrame.Display.Web.ChartJs
 import DataFrame.Internal.Column (Column (..), Columnable, isNumeric)
 import qualified DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import qualified DataFrame.Operations.Subset as D
-import DataFrame.Display.Web.ChartJs
+import System.Directory
+import System.Info
+import System.Process (
+    StdStream (NoStream),
+    createProcess,
+    proc,
+    std_err,
+    std_in,
+    std_out,
+    waitForProcess,
+ )
 
 newtype HtmlPlot = HtmlPlot T.Text deriving (Show)
 
@@ -899,7 +911,7 @@ plotAllHistograms df = do
         T.putStrLn $ "<!-- Histogram for " <> col <> " -->"
         plotHistogram col df
     let allPlots = L.foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> (T.replace minifiedChartJs "" contents)) "" xs
-    return (HtmlPlot allPlots)
+    return (HtmlPlot (T.concat ["\n<script>\n", minifiedChartJs, "\n</script>\n", allPlots]))
 
 plotCategoricalSummary :: (HasCallStack) => DataFrame -> IO HtmlPlot
 plotCategoricalSummary df = do
@@ -936,3 +948,33 @@ smartPlotBars colName df = do
                 then plotBarsWith colName Nothing config df
                 else plotBarsTopNWith 10 colName config df
         Nothing -> plotBars colName df
+
+showInDefaultBrowser :: HtmlPlot -> IO ()
+showInDefaultBrowser (HtmlPlot p) = do
+    plotId <- generateChartId
+    home <- getHomeDirectory
+    let operatingSystem = os
+    let path = "plot-" <> (T.unpack plotId) <> ".html"
+
+    let fullPath =
+            if operatingSystem == "mingw32"
+                then home <> "\\" <> path
+                else home <> "/" <> path
+    putStr "Saving plot to: "
+    putStrLn fullPath
+    T.writeFile fullPath p
+    if operatingSystem == "mingw32"
+        then openFileSilently "start" fullPath
+        else openFileSilently "xdg-open" fullPath
+    pure ()
+
+openFileSilently :: FilePath -> FilePath -> IO ()
+openFileSilently program path = do
+    (_, _, _, ph) <-
+        createProcess
+            (proc program [path])
+                { std_in = NoStream
+                , std_out = NoStream
+                , std_err = NoStream
+                }
+    void (waitForProcess ph)

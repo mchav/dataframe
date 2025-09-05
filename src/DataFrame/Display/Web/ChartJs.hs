@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module DataFrame.Display.Web.ChartJs where
 
 import qualified Data.Text as T
