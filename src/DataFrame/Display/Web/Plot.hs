@@ -898,7 +898,7 @@ plotAllHistograms df = do
     xs <- forM numericCols $ \col -> do
         T.putStrLn $ "<!-- Histogram for " <> col <> " -->"
         plotHistogram col df
-    let allPlots = L.foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> contents) "" xs
+    let allPlots = L.foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> (T.replace minifiedChartJs "" contents)) "" xs
     return (HtmlPlot allPlots)
 
 plotCategoricalSummary :: (HasCallStack) => DataFrame -> IO HtmlPlot
