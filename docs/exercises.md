@@ -9,7 +9,7 @@ Query all columns for a city with the ID 1661.
 
 ### Solution
 ```haskell
-ghci> df |> D.filterWhere (id F.== 1661)
+ghci> df |> D.filterWhere (id F.== F.lit 1661)
 ------------------------------------------------------------
 index |  id  |  name  | country_code | district | population
 ------|------|--------|--------------|----------|-----------
