@@ -188,7 +188,7 @@ UNION
 ```
 
 
-``haskell
+```haskell
 ghci> letterSort s = df |> D.derive "length" (F.lift T.length city) |> D.select [F.name city, "length"] |> D.sortBy s ["length"] |> D.take 1
 ghci> (letterSort D.Descending) <> (letterSort D.Ascending)
 --------------------------------------
