@@ -1,5 +1,16 @@
 # Revision history for dataframe
 
+## 0.3.1.0
+* Add new `selectBy` function which subsume all the other select functions. Specifically we can:
+    * `selectBy [byName "x"] df`: normal select.
+    * `selectBy [byProperty isNumeric] df`: all columns with a given property.
+    * `selectBy [byNameProperty (T.isPrefixOf "weight"))] df`: select by column name predicate.
+    * `selectBy [byIndexRange (0, 5)] df`: picks the first size columns.
+    * `selectBy [byTextRange ("a", "c")] df`: select names within a range.
+* Cut down dependencies to reduce binary/installation size.
+* Add module for web plots that uses chartjs.
+* Web plots can open on the browser.
+
 ## 0.3.0.4
 * Fix bug with parquet reader.
 

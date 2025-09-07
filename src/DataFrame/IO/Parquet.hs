@@ -1,25 +1,25 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeApplications #-}
 
-module DataFrame.IO.Parquet (
-    readParquet,
-) where
+module DataFrame.IO.Parquet where
 
 import Control.Monad
+import Data.Bits
 import qualified Data.ByteString as BSO
 import Data.Char
 import Data.Foldable
 import Data.IORef
-import Data.List
+import Data.Int
+import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
+import Data.Word
 import qualified DataFrame.Internal.Column as DI
 import DataFrame.Internal.DataFrame (DataFrame)
 import qualified DataFrame.Internal.DataFrame as DI
 import qualified DataFrame.Operations.Core as DI
-import Foreign
-import System.IO
 
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Dictionary
@@ -37,16 +37,14 @@ ghci> D.readParquet "./data/mtcars.parquet" df
 @
 -}
 readParquet :: String -> IO DataFrame
-readParquet path = withBinaryFile path ReadMode $ \handle -> do
-    (size, magicString) <- readMetadataSizeFromFooter handle
-    when (magicString /= "PAR1") $ error "Invalid Parquet file"
-
-    fileMetadata <- readMetadata handle size
-
+readParquet path = do
+    fileMetadata <- readMetadataFromPath path
     let columnPaths = getColumnPaths (drop 1 $ schema fileMetadata)
     let columnNames = map fst columnPaths
 
     colMap <- newIORef (M.empty :: M.Map T.Text DI.Column)
+
+    contents <- BSO.readFile path
 
     let schemaElements = schema fileMetadata
     let getTypeLength :: [String] -> Maybe Int32
@@ -79,7 +77,7 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                         else colDataPageOffset
             let colLength = columnTotalCompressedSize metadata
 
-            columnBytes <- readBytes handle colStart colLength
+            let columnBytes = map (BSO.index contents . fromIntegral) [colStart .. (colStart + colLength - 1)]
 
             pages <- readAllPages (columnCodec metadata) columnBytes
 
@@ -88,7 +86,7 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
                         then getTypeLength colPath
                         else Nothing
 
-            let primaryEncoding = fromMaybe EPLAIN (fmap fst (uncons (columnEncodings metadata)))
+            let primaryEncoding = fromMaybe EPLAIN (fmap fst (L.uncons (columnEncodings metadata)))
 
             let schemaTail = drop 1 (schema fileMetadata)
             let colPath = columnPathInSchema (columnMetaData colChunk)
@@ -105,20 +103,22 @@ readParquet path = withBinaryFile path ReadMode $ \handle -> do
 
     pure $ DI.fromNamedColumns orderedColumns
 
-readMetadataSizeFromFooter :: Handle -> IO (Integer, BSO.ByteString)
-readMetadataSizeFromFooter handle = do
-    footerOffSet <- numBytesInFile handle
-    buf <- mallocBytes 8 :: IO (Ptr Word8)
-    hSeek handle AbsoluteSeek (fromIntegral $ footerOffSet - 8)
-    _ <- hGetBuf handle buf 8
+readMetadataFromPath path = do
+    contents <- BSO.readFile path
+    let (size, magicString) = contents `seq` readMetadataSizeFromFooter contents
+    when (magicString /= "PAR1") $ error "Invalid Parquet file"
+    readMetadata contents size
 
-    sizeBytes <- mapM (\i -> fromIntegral <$> (peekElemOff buf i :: IO Word8) :: IO Int32) [0 .. 3]
-    let size = fromIntegral $ foldl' (.|.) 0 $ zipWith shift sizeBytes [0, 8, 16, 24]
-
-    magicStringBytes <- mapM (\i -> peekElemOff buf i :: IO Word8) [4 .. 7]
-    let magicString = BSO.pack magicStringBytes
-    free buf
-    return (size, magicString)
+readMetadataSizeFromFooter :: BSO.ByteString -> (Int, BSO.ByteString)
+readMetadataSizeFromFooter contents =
+    let
+        footerOffSet = BSO.length contents - 8
+        sizeBytes = map (fromIntegral @Word8 @Int32 . BSO.index contents) [footerOffSet .. footerOffSet + 3]
+        size = fromIntegral $ L.foldl' (.|.) 0 $ zipWith shift sizeBytes [0, 8, 16, 24]
+        magicStringBytes = map (BSO.index contents) [footerOffSet + 4 .. footerOffSet + 7]
+        magicString = BSO.pack magicStringBytes
+     in
+        (size, magicString)
 
 getColumnPaths :: [SchemaElement] -> [(T.Text, Int)]
 getColumnPaths schema = extractLeafPaths schema 0 []
@@ -247,4 +247,4 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
 
     case cols of
         [] -> pure $ DI.fromList ([] :: [Maybe Int])
-        (c : cs) -> pure $ foldl' (\l r -> fromMaybe (error "concat failed") (DI.concatColumns l r)) c cs
+        (c : cs) -> pure $ L.foldl' (\l r -> fromMaybe (error "concat failed") (DI.concatColumns l r)) c cs

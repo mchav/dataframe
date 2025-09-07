@@ -15,14 +15,14 @@
 module DataFrame.Functions where
 
 import DataFrame.Internal.Column
-import DataFrame.Internal.Statistics
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
 import DataFrame.Internal.Expression (Expr (..), UExpr (..))
+import DataFrame.Internal.Statistics
 
 import Control.Monad
 import qualified Data.Char as Char
-import Data.Function
 import qualified Data.Foldable as F
+import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -192,12 +192,12 @@ declareColumns df =
     let
         names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
         types = map (columnTypeString . (`unsafeGetColumn` df)) names
-        specs = zipWith (\name type_ -> (sanitize name, type_)) names types
+        specs = zipWith (\name type_ -> (name, sanitize name, type_)) names types
      in
-        fmap concat $ forM specs $ \(nm, tyStr) -> do
+        fmap concat $ forM specs $ \(raw, nm, tyStr) -> do
             ty <- typeFromString (words tyStr)
             traceShow (nm <> " :: Expr " <> T.pack tyStr) (pure ())
             let n = mkName (T.unpack nm)
             sig <- sigD n [t|Expr $(pure ty)|]
-            val <- valD (varP n) (normalB [|col $(TH.lift nm)|]) []
+            val <- valD (varP n) (normalB [|col $(TH.lift raw)|]) []
             pure [sig, val]

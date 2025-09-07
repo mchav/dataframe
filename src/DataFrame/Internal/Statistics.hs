@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module DataFrame.Internal.Statistics where
 
 import qualified Data.Text as T
@@ -131,6 +132,5 @@ quantiles' qs q samp
 interQuartileRange' :: VU.Vector Double -> Double
 interQuartileRange' samp =
     let quartiles = quantiles' (VU.fromList [1, 3]) 4 samp
-    in  quartiles VU.! 1 - quartiles VU.! 0
+     in quartiles VU.! 1 - quartiles VU.! 0
 {-# INLINE interQuartileRange' #-}
-

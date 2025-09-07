@@ -3,6 +3,7 @@
 module DataFrame.IO.Parquet.Dictionary where
 
 import Control.Monad
+import Data.Bits
 import Data.Char
 import Data.Int
 import Data.Maybe
@@ -15,7 +16,6 @@ import DataFrame.IO.Parquet.Levels
 import DataFrame.IO.Parquet.Time
 import DataFrame.IO.Parquet.Types
 import qualified DataFrame.Internal.Column as DI
-import Foreign
 import GHC.Float
 import GHC.IO (unsafePerformIO)
 import Text.Printf

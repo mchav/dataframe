@@ -126,9 +126,9 @@ interpret df (NumericAggregate name op (f :: VU.Vector b -> c)) =
         (TColumn column) = interpret @b df (Col name)
      in
         case column of
-            (UnboxedColumn (v :: VU.Vector d)) -> case testEquality (typeRep @d) (typeRep @b) of 
+            (UnboxedColumn (v :: VU.Vector d)) -> case testEquality (typeRep @d) (typeRep @b) of
                 Just Refl -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) (f v)
-                Nothing -> error "Invalid operation" 
+                Nothing -> error "Invalid operation"
             _ -> error "Invalid operation"
 interpret df (FoldAggregate name op start (f :: (a -> b -> a))) =
     let

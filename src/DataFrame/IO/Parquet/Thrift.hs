@@ -5,6 +5,7 @@ module DataFrame.IO.Parquet.Thrift where
 
 import Control.Monad
 import Data.Bits
+import qualified Data.ByteString as BS
 import Data.Char
 import Data.IORef
 import Data.Int
@@ -14,8 +15,6 @@ import qualified Data.Text as T
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Types
-import Foreign
-import System.IO
 
 data SchemaElement = SchemaElement
     { elementName :: T.Text
@@ -163,7 +162,7 @@ toTType t =
                 , (compactStruct, STRUCT)
                 ]
 
-readField :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO (Maybe (TType, Int16))
+readField :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO (Maybe (TType, Int16))
 readField buf pos lastFieldId fieldStack = do
     t <- readAndAdvance pos buf
     if t .&. 0x0f == 0
@@ -177,7 +176,7 @@ readField buf pos lastFieldId fieldStack = do
             let elemType = toTType (t .&. 0x0f)
             pure $ Just (elemType, identifier)
 
-skipToStructEnd :: Ptr Word8 -> IORef Int -> IO ()
+skipToStructEnd :: BS.ByteString -> IORef Int -> IO ()
 skipToStructEnd buf pos = do
     t <- readAndAdvance pos buf
     if t .&. 0x0f == 0
@@ -192,7 +191,7 @@ skipToStructEnd buf pos = do
             skipFieldData elemType buf pos
             skipToStructEnd buf pos
 
-skipFieldData :: TType -> Ptr Word8 -> IORef Int -> IO ()
+skipFieldData :: TType -> BS.ByteString -> IORef Int -> IO ()
 skipFieldData fieldType buf pos = case fieldType of
     BOOL -> return ()
     I32 -> readIntFromBuffer @Int32 buf pos >> pure ()
@@ -203,29 +202,24 @@ skipFieldData fieldType buf pos = case fieldType of
     STRUCT -> skipToStructEnd buf pos
     _ -> return ()
 
-skipList :: Ptr Word8 -> IORef Int -> IO ()
+skipList :: BS.ByteString -> IORef Int -> IO ()
 skipList buf pos = do
     sizeAndType <- readAndAdvance pos buf
     let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
     let elemType = toTType sizeAndType
     replicateM_ sizeOnly (skipFieldData elemType buf pos)
 
-readMetadata :: Handle -> Integer -> IO FileMetadata
-readMetadata handle size = do
-    metaDataBuf <- mallocBytes (fromIntegral size) :: IO (Ptr Word8)
-    footerOffSet <- numBytesInFile handle
-
-    hSeek handle AbsoluteSeek (fromIntegral $! footerOffSet - footerSize - size)
-
-    metadataBytesRead <- hGetBuf handle metaDataBuf (fromIntegral size)
+readMetadata :: BS.ByteString -> Int -> IO FileMetadata
+readMetadata contents size = do
+    let metadataStartPos = BS.length contents - footerSize - size
+    let metadataBytes = BS.pack $ map (BS.index contents) [metadataStartPos .. (metadataStartPos + size - 1)]
     let lastFieldId = 0
     let fieldStack = []
     bufferPos <- newIORef (0 :: Int)
-    metadata <- readFileMetaData defaultMetadata metaDataBuf bufferPos lastFieldId fieldStack
-    free metaDataBuf
+    metadata <- readFileMetaData defaultMetadata metadataBytes bufferPos lastFieldId fieldStack
     return metadata
 
-readFileMetaData :: FileMetadata -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO FileMetadata
+readFileMetaData :: FileMetadata -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO FileMetadata
 readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
     fieldContents <- readField metaDataBuf bufferPos lastFieldId fieldStack
     case fieldContents of
@@ -288,7 +282,7 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                 readFileMetaData (metadata{footerSigningKeyMetadata = footerSigningKeyMetadata}) metaDataBuf bufferPos identifier fieldStack
             n -> return $ error $ "UNIMPLEMENTED " ++ show n
 
-readSchemaElement :: SchemaElement -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO SchemaElement
+readSchemaElement :: SchemaElement -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO SchemaElement
 readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -333,7 +327,7 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                 skipFieldData elemType buf pos
                 readSchemaElement schemaElement buf pos identifier fieldStack
 
-readRowGroup :: RowGroup -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO RowGroup
+readRowGroup :: RowGroup -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO RowGroup
 readRowGroup r buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -364,7 +358,7 @@ readRowGroup r buf pos lastFieldId fieldStack = do
                 readRowGroup (r{ordinal = ordinal}) buf pos identifier fieldStack
             _ -> error $ "Unknown row group field: " ++ show identifier
 
-readColumnChunk :: ColumnChunk -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO ColumnChunk
+readColumnChunk :: ColumnChunk -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnChunk
 readColumnChunk c buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -394,7 +388,7 @@ readColumnChunk c buf pos lastFieldId fieldStack = do
                 readColumnChunk (c{columnChunkColumnIndexLength = columnChunkColumnIndexLength}) buf pos identifier fieldStack
             _ -> return c
 
-readColumnMetadata :: ColumnMetaData -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO ColumnMetaData
+readColumnMetadata :: ColumnMetaData -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnMetaData
 readColumnMetadata cm buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -463,7 +457,7 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
             17 -> return $ error "UNIMPLEMENTED"
             _ -> return cm
 
-readEncryptionAlgorithm :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
+readEncryptionAlgorithm :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
 readEncryptionAlgorithm buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -475,7 +469,7 @@ readEncryptionAlgorithm buf pos lastFieldId fieldStack = do
                 readAesGcmCtrV1 (AesGcmCtrV1{aadPrefix = [], aadFileUnique = [], supplyAadPrefix = False}) buf pos 0 []
             n -> return ENCRYPTION_ALGORITHM_UNKNOWN
 
-readColumnOrder :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO ColumnOrder
+readColumnOrder :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnOrder
 readColumnOrder buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -486,7 +480,7 @@ readColumnOrder buf pos lastFieldId fieldStack = do
                 return TYPE_ORDER
             _ -> return COLUMN_ORDER_UNKNOWN
 
-readAesGcmCtrV1 :: EncryptionAlgorithm -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
+readAesGcmCtrV1 :: EncryptionAlgorithm -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
 readAesGcmCtrV1 v@(AesGcmCtrV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -503,7 +497,7 @@ readAesGcmCtrV1 v@(AesGcmCtrV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos 
                 readAesGcmCtrV1 (v{supplyAadPrefix = supplyAadPrefix == compactBooleanTrue}) buf pos lastFieldId fieldStack
             _ -> return ENCRYPTION_ALGORITHM_UNKNOWN
 
-readAesGcmV1 :: EncryptionAlgorithm -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
+readAesGcmV1 :: EncryptionAlgorithm -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
 readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -520,7 +514,7 @@ readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFi
                 readAesGcmV1 (v{supplyAadPrefix = supplyAadPrefix == compactBooleanTrue}) buf pos lastFieldId fieldStack
             _ -> return ENCRYPTION_ALGORITHM_UNKNOWN
 
-readTypeOrder :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO ColumnOrder
+readTypeOrder :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnOrder
 readTypeOrder buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -530,7 +524,7 @@ readTypeOrder buf pos lastFieldId fieldStack = do
                 then return TYPE_ORDER
                 else readTypeOrder buf pos identifier fieldStack
 
-readKeyValue :: KeyValue -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO KeyValue
+readKeyValue :: KeyValue -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO KeyValue
 readKeyValue kv buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -544,7 +538,7 @@ readKeyValue kv buf pos lastFieldId fieldStack = do
                 readKeyValue (kv{value = v}) buf pos identifier fieldStack
             _ -> return kv
 
-readPageEncodingStats :: PageEncodingStats -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO PageEncodingStats
+readPageEncodingStats :: PageEncodingStats -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO PageEncodingStats
 readPageEncodingStats pes buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -561,10 +555,10 @@ readPageEncodingStats pes buf pos lastFieldId fieldStack = do
                 readPageEncodingStats (pes{pagesWithEncoding = encodedCount}) buf pos identifier []
             _ -> pure pes
 
-readParquetEncoding :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO ParquetEncoding
+readParquetEncoding :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ParquetEncoding
 readParquetEncoding buf pos lastFieldId fieldStack = parquetEncodingFromInt <$> readInt32FromBuffer buf pos
 
-readStatistics :: ColumnStatistics -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO ColumnStatistics
+readStatistics :: ColumnStatistics -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnStatistics
 readStatistics cs buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -596,7 +590,7 @@ readStatistics cs buf pos lastFieldId fieldStack = do
                 readStatistics (cs{isColumnMinValueExact = isMinValueExact == compactBooleanTrue}) buf pos identifier fieldStack
             _ -> pure cs
 
-readSizeStatistics :: SizeStatistics -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO SizeStatistics
+readSizeStatistics :: SizeStatistics -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO SizeStatistics
 readSizeStatistics ss buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -619,7 +613,7 @@ readSizeStatistics ss buf pos lastFieldId fieldStack = do
                 readSizeStatistics (ss{definitionLevelHistogram = definitionLevelHistogram}) buf pos identifier fieldStack
             _ -> pure ss
 
-footerSize :: Integer
+footerSize :: Int
 footerSize = 8
 
 toIntegralType :: Int32 -> TType
@@ -630,7 +624,7 @@ toIntegralType n
     | n == 6 = STRING
     | otherwise = STRING
 
-readLogicalType :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+readLogicalType :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
 readLogicalType buf pos lastFieldId fieldStack = do
     t <- readAndAdvance pos buf
     if t .&. 0x0f == 0
@@ -693,7 +687,7 @@ readLogicalType buf pos lastFieldId fieldStack = do
                     return GeographyType{crs = "", algorithm = SPHERICAL}
                 _ -> return LOGICAL_TYPE_UNKNOWN
 
-readIntType :: LogicalType -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+readIntType :: LogicalType -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
 readIntType v@(IntType bitWidth intIsSigned) buf pos lastFieldId fieldStack = do
     t <- readAndAdvance pos buf
     if t .&. 0x0f == 0
@@ -714,7 +708,7 @@ readIntType v@(IntType bitWidth intIsSigned) buf pos lastFieldId fieldStack = do
                     readIntType (v{intIsSigned = isSigned}) buf pos identifier fieldStack
                 _ -> error $ "UNKNOWN field ID for IntType: " ++ show identifier
 
-readDecimalType :: LogicalType -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+readDecimalType :: LogicalType -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
 readDecimalType v@(DecimalType p s) buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -728,7 +722,7 @@ readDecimalType v@(DecimalType p s) buf pos lastFieldId fieldStack = do
                 readDecimalType (v{decimalTypePrecision = p'}) buf pos lastFieldId fieldStack
             _ -> error $ "UNKNOWN field ID for DecimalType" ++ show identifier
 
-readTimeType :: LogicalType -> Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+readTimeType :: LogicalType -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
 readTimeType v@(TimeType _ _) buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -756,7 +750,7 @@ readTimeType v@(TimestampType _ _) buf pos lastFieldId fieldStack = do
                 readTimeType (v{unit = u}) buf pos lastFieldId fieldStack
             _ -> error $ "UNKNOWN field ID for TimestampType" ++ show identifier
 
-readUnit :: Ptr Word8 -> IORef Int -> Int16 -> [Int16] -> IO TimeUnit
+readUnit :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO TimeUnit
 readUnit buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of

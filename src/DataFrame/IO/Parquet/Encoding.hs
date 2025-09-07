@@ -2,7 +2,7 @@ module DataFrame.IO.Parquet.Encoding where
 
 import Data.Bits
 import Data.Foldable
-import Data.List (mapAccumL)
+import Data.List (foldl', mapAccumL)
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 
@@ -49,7 +49,7 @@ decodeRLEBitPackedHybrid bw need bs
     mask = if bw == 32 then maxBound else (1 `shiftL` bw) - 1
     go 0 rest acc = (reverse acc, rest)
     go n rest acc
-        | null rest = error $ "Premature end of stream: need " ++ show n ++ " more values"
+        | null rest = (reverse acc, rest)
         | otherwise =
             let (hdr64, afterHdr) = readUVarInt rest
                 isPacked = (hdr64 .&. 1) == 1

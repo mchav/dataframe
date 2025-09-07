@@ -115,7 +115,7 @@ deciles =
     TestCase
         ( assertEqual
             "Deciles"
-            (D.quantiles'
+            ( D.quantiles'
                 (VU.fromList [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
                 10
                 (VU.fromList [4, 7, 3, 1, 11, 6, 2, 9, 8, 10, 5])
