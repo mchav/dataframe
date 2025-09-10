@@ -29,6 +29,12 @@ pandas = do
     output <- readProcess "./benchmark/dataframe_benchmark/bin/python3" ["./benchmark/pandas/pandas_benchmark.py"] ""
     putStrLn output
 
+explorer :: IO ()
+explorer = do
+    _ <- readProcess "./benchmark/dataframe_benchmark/bin/mix" ["deps.get"] ""
+    output <- readProcess "./benchmark/dataframe_benchmark/bin/mix" ["run", "./benchmark/explorer/explorer_benchmark.exs"] ""
+    putStrLn output
+
 groupByHaskell :: IO ()
 groupByHaskell = do
     df <- D.readCsv "./data/housing.csv"
@@ -50,6 +56,11 @@ groupByPandas = do
     output <- readProcess "./benchmark/dataframe_benchmark/bin/python3" ["./benchmark/pandas/group_by.py"] ""
     putStrLn output
 
+groupByExplorer :: IO ()
+groupByExplorer = do
+    output <- readProcess "./benchmark/dataframe_benchmark/bin/mix" ["run", "./benchmark/explorer/group_by.exs"] ""
+    putStrLn output
+
 main = do
     output <- readProcess "cabal" ["build", "-O2"] ""
     putStrLn output
@@ -59,8 +70,10 @@ main = do
             [ bench "simpleStatsHaskell" $ nfIO haskell
             , bench "simpleStatsPandas" $ nfIO pandas
             , bench "simpleStatsPolars" $ nfIO polars
+            , bench "simpleStatsExplorer" $ nfIO explorer
             , bench "groupByHaskell" $ nfIO groupByHaskell
             , bench "groupByPolars" $ nfIO groupByPolars
             , bench "groupByPandas" $ nfIO groupByPandas
+            , bench "groupByExplorer" $ nfIO groupByExplorer
             ]
         ]
