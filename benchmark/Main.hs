@@ -73,21 +73,21 @@ main = do
   output <- readProcess "cabal" ["build", "-O2"] ""
   putStrLn output
   defaultMain
-        [ bgroup
-            "stats"
-            [ bench "simpleStatsHaskell" $ nfIO haskell
-            , bench "simpleStatsPandas" $ nfIO pandas
-            , bench "simpleStatsPolars" $ nfIO polars
-            , bench "groupByHaskell" $ nfIO groupByHaskell
-            , bench "groupByPolars" $ nfIO groupByPolars
-            , bench "groupByPandas" $ nfIO groupByPandas
-            ],
-          bgroup
-            "Parsing"
-            [ bench "effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv (9.0 MB)" $ nfIO parseCovidEffectsCSV
-            , bench "housing.csv (1.4 MB)" $ nfIO parseHousingCSV
-            , bench "starwars.csv (10 KB)" $ nfIO parseStarWarsCSV
-            , bench "chipotle.tsv (356 KB)" $ nfIO parseChipotleTSV
-            , bench "measurements.txt (135 KB)" $ nfIO parseMeasurementsTXT
-            ]
+    [ bgroup
+        "stats"
+        [ bench "simpleStatsHaskell" $ nfIO haskell
+        , bench "simpleStatsPandas" $ nfIO pandas
+        , bench "simpleStatsPolars" $ nfIO polars
+        , bench "groupByHaskell" $ nfIO groupByHaskell
+        , bench "groupByPolars" $ nfIO groupByPolars
+        , bench "groupByPandas" $ nfIO groupByPandas
+        ],
+      bgroup
+        "Parsing"
+        [ bench "effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv (9.0 MB)" $ nfIO parseCovidEffectsCSV
+        , bench "housing.csv (1.4 MB)" $ nfIO parseHousingCSV
+        , bench "starwars.csv (10 KB)" $ nfIO parseStarWarsCSV
+        , bench "chipotle.tsv (356 KB)" $ nfIO parseChipotleTSV
+        , bench "measurements.txt (135 KB)" $ nfIO parseMeasurementsTXT
         ]
+    ]
