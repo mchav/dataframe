@@ -68,8 +68,11 @@ parseChipotleTSV = void $ D.readTsv "./data/chipotle.tsv"
 parseMeasurementsTXT :: IO ()
 parseMeasurementsTXT = parseFile "./data/measurements.txt"
 
-main =
-    defaultMain
+main :: IO ()
+main = do
+  output <- readProcess "cabal" ["build", "-O2"] ""
+  putStrLn output
+  defaultMain
         [ bgroup
             "stats"
             [ bench "simpleStatsHaskell" $ nfIO haskell
