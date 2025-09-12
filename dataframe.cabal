@@ -117,7 +117,7 @@ benchmark dataframe-benchmark
     build-depends: base > 4 && < 5,
                    criterion >= 1 && < 2,
                    process >= 1.6 && < 2,
-                   text >= 2.0 && < 2,
+                   text >= 2.0 && < 3,
                    time >= 1.12 && < 2,
                    random >= 1 && < 2,
                    vector ^>= 0.13,
