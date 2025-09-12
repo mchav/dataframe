@@ -22,7 +22,7 @@ import qualified Prelude
 import Control.Exception (throw)
 import Control.Monad.ST
 import Data.Function ((&))
-import Data.Maybe (fromJust, fromMaybe, isJust)
+import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import DataFrame.Errors (DataFrameException (..), TypeErrorContext (..))
 import DataFrame.Internal.Column
@@ -159,6 +159,16 @@ filterJust name df = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "filterJust" (map fst $ M.toList $ columnIndices df)
     Just column@(OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isJust df & apply @(Maybe a) fromJust name
     Just column -> df
+
+{- | O(k) returns all rows with `Nothing` in a give column.
+
+> filterNothing df
+-}
+filterNothing :: T.Text -> DataFrame -> DataFrame
+filterNothing name df = case getColumn name df of
+    Nothing -> throw $ ColumnNotFoundException name "filterNothing" (map fst $ M.toList $ columnIndices df)
+    Just (OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isNothing df
+    _                                                 -> df
 
 {- | O(n * k) removes all rows with `Nothing` from the dataframe.
 

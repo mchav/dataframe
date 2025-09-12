@@ -255,6 +255,7 @@ import DataFrame.Operations.Subset as Subset (
     filterAllJust,
     filterBy,
     filterJust,
+    filterNothing,
     filterWhere,
     range,
     select,
