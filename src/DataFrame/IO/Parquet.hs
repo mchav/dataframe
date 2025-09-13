@@ -36,7 +36,7 @@ ghci> D.readParquet "./data/mtcars.parquet" df
 
 @
 -}
-readParquet :: String -> IO DataFrame
+readParquet :: FilePath -> IO DataFrame
 readParquet path = do
     fileMetadata <- readMetadataFromPath path
     let columnPaths = getColumnPaths (drop 1 $ schema fileMetadata)
