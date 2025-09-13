@@ -86,10 +86,9 @@ applyMany f names df = L.foldl' (flip (apply f)) df names
 -- | O(k) Convenience function that applies to an int column.
 applyInt ::
     (Columnable b) =>
-    {- | Column name
-    | function to apply
-    -}
+    -- | function to apply
     (Int -> b) ->
+    -- | Column name
     T.Text ->
     -- | DataFrame to apply operation to
     DataFrame ->
@@ -99,10 +98,9 @@ applyInt = apply
 -- | O(k) Convenience function that applies to an double column.
 applyDouble ::
     (Columnable b) =>
-    {- | Column name
-    | function to apply
-    -}
+    -- | function to apply
     (Double -> b) ->
+    -- | Column name
     T.Text ->
     -- | DataFrame to apply operation to
     DataFrame ->
@@ -112,16 +110,16 @@ applyDouble = apply
 {- | O(k * n) Apply a function to a column only if there is another column
 value that matches the given criterion.
 
-> applyWhere "Age" (<20) "Generation" (const "Gen-Z")
+> applyWhere (<20) "Age" (const "Gen-Z") "Generation" df
 -}
 applyWhere ::
     forall a b.
     (Columnable a, Columnable b) =>
-    (a -> Bool) -> -- Filter condition
-    T.Text -> -- Criterion Column
-    (b -> b) -> -- function to apply
-    T.Text -> -- Column name
-    DataFrame -> -- DataFrame to apply operation to
+    (a -> Bool) -> -- ^ Filter condition
+    T.Text -> -- ^ Criterion Column
+    (b -> b) -> -- ^ function to apply
+    T.Text -> -- ^ Column name
+    DataFrame -> -- ^ DataFrame to apply operation to
     DataFrame
 applyWhere condition filterColumnName f columnName df = case getColumn filterColumnName df of
     Nothing -> throw $ ColumnNotFoundException filterColumnName "applyWhere" (map fst $ M.toList $ columnIndices df)

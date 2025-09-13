@@ -74,7 +74,7 @@ clip n left right = min right $ max n left
 
 {- | O(n * k) Filter rows by a given condition.
 
-filter "x" even df
+> filter "x" even df
 -}
 filter ::
     forall a.
@@ -152,7 +152,7 @@ filterWhere expr df =
 
 {- | O(k) removes all rows with `Nothing` in a given column from the dataframe.
 
-> filterJust df
+> filterJust "col" df
 -}
 filterJust :: T.Text -> DataFrame -> DataFrame
 filterJust name df = case getColumn name df of
@@ -162,7 +162,7 @@ filterJust name df = case getColumn name df of
 
 {- | O(k) returns all rows with `Nothing` in a give column.
 
-> filterNothing df
+> filterNothing "col" df
 -}
 filterNothing :: T.Text -> DataFrame -> DataFrame
 filterNothing name df = case getColumn name df of
@@ -172,7 +172,7 @@ filterNothing name df = case getColumn name df of
 
 {- | O(n * k) removes all rows with `Nothing` from the dataframe.
 
-> filterJust df
+> filterAllJust df
 -}
 filterAllJust :: DataFrame -> DataFrame
 filterAllJust df = foldr filterJust df (columnNames df)
@@ -209,18 +209,37 @@ data SelectionCriteria
     | ColumnIndexRange (Int, Int)
     | ColumnName T.Text
 
+-- | Criteria for selecting a column by name.
+--
+-- > selectBy [byName "Age"] df
+--
+-- equivalent to:
+--
+-- > select ["Age"] df
 byName :: T.Text -> SelectionCriteria
 byName = ColumnName
 
+-- | Criteria for selecting columns whose property satisfies given predicate.
+--
+-- > selectBy [byProperty isNumeric] df
 byProperty :: (Column -> Bool) -> SelectionCriteria
 byProperty = ColumnProperty
 
+-- | Criteria for selecting columns whose name satisfies given predicate.
+--
+-- > selectBy [byNameProperty (T.isPrefixOf "weight")] df
 byNameProperty :: (T.Text -> Bool) -> SelectionCriteria
 byNameProperty = ColumnNameProperty
 
+-- | Criteria for selecting columns whose names are in the given lexicographic range (inclusive).
+--
+-- > selectBy [byNameRange ("a", "c")] df
 byNameRange :: (T.Text, T.Text) -> SelectionCriteria
 byNameRange = ColumnTextRange
 
+-- | Criteria for selecting columns whose indices are in the given (inclusive) range.
+--
+-- > selectBy [byIndexRange (0, 5)] df
 byIndexRange :: (Int, Int) -> SelectionCriteria
 byIndexRange = ColumnIndexRange
 

@@ -32,8 +32,7 @@ import DataFrame.IO.Parquet.Types
 
 ==== __Example__
 @
-ghci> D.readParquet "./data/mtcars.parquet" df
-
+ghci> D.readParquet ".\/data\/mtcars.parquet"
 @
 -}
 readParquet :: FilePath -> IO DataFrame

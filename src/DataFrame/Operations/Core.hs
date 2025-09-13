@@ -111,7 +111,7 @@ insertVectorWithDefault ::
     T.Text ->
     -- | Data to add to column
     V.Vector a ->
-    -- | DataFrame to add to column
+    -- | DataFrame to add the column to
     DataFrame ->
     DataFrame
 insertVectorWithDefault defaultValue name xs d =
@@ -131,7 +131,7 @@ insertUnboxedVector ::
     T.Text ->
     -- | Unboxed vector to add to column
     VU.Vector a ->
-    -- | DataFrame to add to column
+    -- | DataFrame to add the column to
     DataFrame ->
     DataFrame
 insertUnboxedVector name xs = insertColumn name (UnboxedColumn xs)
@@ -165,7 +165,7 @@ insertColumn ::
     T.Text ->
     -- | Column to add
     Column ->
-    -- | DataFrame to add to column
+    -- | DataFrame to add the column to
     DataFrame ->
     DataFrame
 insertColumn name column d =
@@ -513,7 +513,7 @@ valueCounts columnName df = case getColumn columnName df of
                 Just Refl -> M.toAscList column
 
 {- | A left fold for dataframes that takes the dataframe as the last object.
-this makes it easier to chain operations.
+This makes it easier to chain operations.
 
 ==== __Example__
 @

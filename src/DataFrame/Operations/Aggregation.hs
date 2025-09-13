@@ -113,7 +113,7 @@ mkGroupedColumns indices df acc name =
             let vs = indices `getIndicesUnboxed` column
              in insertUnboxedVector name vs acc
 
-{- | Aggregate a grouped dataframe using the expressions give.
+{- | Aggregate a grouped dataframe using the expressions given.
 All ungrouped columns will be dropped.
 -}
 aggregate :: [(T.Text, UExpr)] -> GroupedDataFrame -> DataFrame

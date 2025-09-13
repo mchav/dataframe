@@ -1,15 +1,15 @@
 # Revision history for dataframe
 
 ## 0.3.1.0
-* Add new `selectBy` function which subsume all the other select functions. Specifically we can:
+* Add new `selectBy` function which subsumes all the other select functions. Specifically we can:
     * `selectBy [byName "x"] df`: normal select.
     * `selectBy [byProperty isNumeric] df`: all columns with a given property.
-    * `selectBy [byNameProperty (T.isPrefixOf "weight"))] df`: select by column name predicate.
+    * `selectBy [byNameProperty (T.isPrefixOf "weight")] df`: select by column name predicate.
     * `selectBy [byIndexRange (0, 5)] df`: picks the first size columns.
-    * `selectBy [byTextRange ("a", "c")] df`: select names within a range.
+    * `selectBy [byNameRange ("a", "c")] df`: select names within a range.
 * Cut down dependencies to reduce binary/installation size.
 * Add module for web plots that uses chartjs.
-* Web plots can open on the browser.
+* Web plots can open in the browser.
 
 ## 0.3.0.4
 * Fix bug with parquet reader.
@@ -98,7 +98,7 @@ let withTotalPrice = D.derive "total_price" (D.lift fromIntegral (D.col @Int "qu
 We don't have good test coverage right now. This will help us determine where to invest.
 @oforero provided a script to make an HPC HTML report for coverage.
 
-### Convenience functions for comparisons 
+### Convenience functions for comparisons
 Instead of lifting all bool operations we provide `eq`, `leq` etc.
 
 ## 0.1.0.3
