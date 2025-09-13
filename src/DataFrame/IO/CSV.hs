@@ -71,7 +71,7 @@ data ReadOptions = ReadOptions
     , inferTypes :: Bool
     -- ^ Whether to try and infer types. (default: True)
     , safeRead :: Bool
-    -- ^ Whether to partially parse values into `Maybe`/Either`. (default: True)
+    -- ^ Whether to partially parse values into `Maybe`/`Either`. (default: True)
     , chunkSize :: Int
     -- ^ Default chunk size (in bytes) for csv reader. (default: 512'000)
     }
@@ -149,7 +149,7 @@ freezeGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef _) = do
 
 ==== __Example__
 @
-ghci> D.readCsv "./data/taxi.csv" df
+ghci> D.readCsv ".\/data\/taxi.csv"
 
 @
 -}
@@ -160,7 +160,7 @@ readCsv = readSeparated ',' defaultOptions
 
 ==== __Example__
 @
-ghci> D.readTsv "./data/taxi.tsv" df
+ghci> D.readTsv ".\/data\/taxi.tsv"
 
 @
 -}
@@ -171,7 +171,7 @@ readTsv = readSeparated '\t' defaultOptions
 
 ==== __Example__
 @
-ghci> D.readSeparated ';' D.defaultOptions "./data/taxi.txt" df
+ghci> D.readSeparated ';' D.defaultOptions ".\/data\/taxi.txt"
 
 @
 -}

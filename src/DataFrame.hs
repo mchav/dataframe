@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 {- |
 Module      : DataFrame
 Copyright   : (c) 2025
@@ -14,6 +12,7 @@ This module re-exports the most commonly used pieces of the @dataframe@ library 
 can get productive fast in GHCi, IHaskell, or scripts.
 
 __Naming convention__
+
 * Use the @D.@ (\"DataFrame\") prefix for core table operations.
 * Use the @F.@ (\"Functions\") prefix for the expression DSL (columns, math, aggregations).
 
@@ -49,17 +48,17 @@ index |    Column Name     | # Non-null Values | # Null Values | # Partially par
 9     | longitude          | 20640             | 0             | 0                  | 844             | Double
 
 -- 2) Project & filter
-ghci> let df1 = df1 = D.filter @Text "ocean_proximity" (== "ISLAND") df0 D.|> D.select ["median_house_value", "median_income", "ocean_proximity"]
+ghci> df1 = D.filter \@Text "ocean_proximity" (== \"ISLAND\") df0 D.|> D.select ["median_house_value", "median_income", "ocean_proximity"]
 
 -- 3) Add a derived column using the expression DSL
 --    (col types are explicit via TypeApplications)
-ghci> df2 = D.derive "rooms_per_household" (F.col @Double "total_rooms" / F.col @Double "households") df0
+ghci> df2 = D.derive "rooms_per_household" (F.col \@Double "total_rooms" / F.col \@Double "households") df0
 
 -- 4) Group + aggregate
 ghci> let grouped   = D.groupBy ["ocean_proximity"] df0
 ghci> let summary   =
          D.aggregate
-             [ F.maximum (F.col @Double "median_house_value") `F.as` "max_house_value"]
+             [ F.maximum (F.col \@Double "median_house_value") \`F.as\` "max_house_value"]
              grouped
 ghci> D.take 5 summary
 -----------------------------------------
@@ -80,6 +79,7 @@ Most users only need a handful of verbs:
 __I/O__
 
   * @D.readCsv :: FilePath -> IO DataFrame@
+  * @D.readTsv :: FilePath -> IO DataFrame@
   * @D.writeCsv :: FilePath -> DataFrame -> IO ()@
   * @D.readParquet :: FilePath -> IO DataFrame@
 
@@ -92,32 +92,32 @@ __Exploration__
 
 __Row ops__
 
-  * @D.filter  :: Columnable a => Text -> (a -> Bool) -> DataFrame -> DataFrame@
-  * @D.sortBy  :: SortOrder -> [Text] -> DataFrame -> DataFrame@
+  * @D.filter :: Columnable a => Text -> (a -> Bool) -> DataFrame -> DataFrame@
+  * @D.sortBy :: SortOrder -> [Text] -> DataFrame -> DataFrame@
 
 __Column ops__
 
-  * @D.select     :: [Text] -> DataFrame -> DataFrame@
-  * @D.exclude       :: [Text] -> DataFrame -> DataFrame@
-  * @D.rename     :: [(Text,Text)] -> DataFrame -> DataFrame@
+  * @D.select :: [Text] -> DataFrame -> DataFrame@
+  * @D.exclude :: [Text] -> DataFrame -> DataFrame@
+  * @D.rename :: [(Text,Text)] -> DataFrame -> DataFrame@
   * @D.derive :: Text -> D.Expr a -> DataFrame -> DataFrame@
 
 __Group & aggregate__
 
-  * @D.groupBy   :: [Text] -> DataFrame -> GroupedDataFrame@
+  * @D.groupBy :: [Text] -> DataFrame -> GroupedDataFrame@
   * @D.aggregate :: [(Text, F.UExpr)] -> GroupedDataFrame -> DataFrame@
 
 __Joins__
 
-  * @D.innerJoin / D.leftJoin / D.rightJoin / D.fullJoin@
+  * @D.innerJoin \/ D.leftJoin \/ D.rightJoin \/ D.fullJoin@
 
 == Expression DSL (F.*) at a glance
 Columns (typed):
 
 @
-F.col   @Text   "ocean_proximity"
-F.col   @Double "total_rooms"
-F.lit   @Double 1.0
+F.col \@Text   "ocean_proximity"
+F.col \@Double "total_rooms"
+F.lit \@Double 1.0
 @
 
 Math & comparisons (overloaded by type):
@@ -127,14 +127,14 @@ Math & comparisons (overloaded by type):
 (F.eq), (F.gt), (F.geq), (F.lt), (F.leq)
 @
 
-Aggregations (for 'D.aggregate'):
+Aggregations (for D.'aggregate'):
 
 @
-F.count @a (F.col @a "c")
-F.sum   @Double (F.col @Double "x")
-F.mean  @Double (F.col @Double "x")
-F.min   @t (F.col @t "x")
-F.max   @t (F.col @t "x")
+F.count \@a (F.col \@a "c")
+F.sum   \@Double (F.col \@Double "x")
+F.mean  \@Double (F.col \@Double "x")
+F.min   \@t (F.col \@t "x")
+F.max   \@t (F.col \@t "x")
 @
 
 == REPL power-tool: ':exposeColumns'
