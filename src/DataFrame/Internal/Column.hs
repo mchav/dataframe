@@ -64,6 +64,9 @@ It is used to type check expressions on columns.
 data TypedColumn a where
     TColumn :: (Columnable a) => Column -> TypedColumn a
 
+instance (Eq a) => Eq (TypedColumn a) where
+    (==) (TColumn a) (TColumn b) = a == b
+
 -- | Gets the underlying value from a TypedColumn.
 unwrapTypedColumn :: TypedColumn a -> Column
 unwrapTypedColumn (TColumn value) = value

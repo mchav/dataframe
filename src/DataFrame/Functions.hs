@@ -16,8 +16,9 @@ module DataFrame.Functions where
 
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
-import DataFrame.Internal.Expression (Expr (..), UExpr (..))
+import DataFrame.Internal.Expression (Expr (..), UExpr (..), eSize, interpret)
 import DataFrame.Internal.Statistics
+import DataFrame.Operations.Subset (exclude)
 
 import Control.Monad
 import qualified Data.Char as Char
@@ -33,6 +34,9 @@ import Debug.Trace (traceShow)
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
 import Type.Reflection (typeRep)
+import Prelude hiding (sum, minimum)
+
+import Debug.Trace (trace)
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n
@@ -48,7 +52,7 @@ lit :: (Columnable a) => a -> Expr a
 lit = Lit
 
 lift :: (Columnable a, Columnable b) => (a -> b) -> Expr a -> Expr b
-lift = Apply "udf"
+lift = UnaryOp "udf"
 
 lift2 :: (Columnable c, Columnable b, Columnable a) => (c -> b -> a) -> Expr c -> Expr b -> Expr a
 lift2 = BinOp "udf"
@@ -75,32 +79,129 @@ or :: Expr Bool -> Expr Bool -> Expr Bool
 or = BinOp "or" (||)
 
 not :: Expr Bool -> Expr Bool
-not = Apply "not" Prelude.not
+not = UnaryOp "not" Prelude.not
 
 count :: (Columnable a) => Expr a -> Expr Int
-count (Col name) = GeneralAggregate name "count" VG.length
-count _ = error "Argument can only be a column reference not an unevaluated expression"
+count expr = GeneralAggregate expr "count" VG.length
 
 minimum :: (Columnable a, Ord a) => Expr a -> Expr a
-minimum (Col name) = ReductionAggregate name "minimum" min
+minimum expr = ReductionAggregate expr "minimum" min
 
 maximum :: (Columnable a, Ord a) => Expr a -> Expr a
-maximum (Col name) = ReductionAggregate name "maximum" max
+maximum expr = ReductionAggregate expr "maximum" max
 
 sum :: forall a. (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
-sum (Col name) = NumericAggregate name "sum" VG.sum
+sum expr = NumericAggregate expr "sum" VG.sum
 
-mean :: (Columnable a, Num a) => Expr a -> Expr Double
-mean (Col name) = NumericAggregate name "mean" mean'
+mean :: Expr Double -> Expr Double
+mean expr = NumericAggregate expr "mean" mean'
 
-standardDeviation :: (Columnable a, Num a) => Expr a -> Expr Double
-standardDeviation (Col name) = NumericAggregate name "stddev" (sqrt . variance')
+standardDeviation :: Expr Double -> Expr Double
+standardDeviation expr = NumericAggregate expr "stddev" (sqrt . variance')
 
 zScore :: Expr Double -> Expr Double
-zScore c@(Col name) = (c - mean c) / (standardDeviation c)
+zScore c = (c - mean c) / (standardDeviation c)
 
 reduce :: forall a b. (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
-reduce (Col name) = FoldAggregate name "foldUdf"
+reduce expr = FoldAggregate expr "foldUdf"
+
+generatePrograms :: [Expr Double] -> [Expr Double] -> [Expr Double]
+generatePrograms vars existingPrograms =
+    existingPrograms ++
+    [ transform p
+    | p <- existingPrograms
+    , transform <- [mean, zScore, standardDeviation, minimum, abs, exp, negate, sum]
+    ] ++
+    [ p + q
+    | p <- existingPrograms
+    , q <- existingPrograms
+    ] ++
+    [ p * q
+    | p <- existingPrograms
+    , q <- existingPrograms
+    ] ++
+    [ p / q
+    | p <- existingPrograms
+    , q <- existingPrograms
+    ] ++
+    [ t p
+    | v <- vars
+    , p <- existingPrograms
+    , t <- transformsWithVar v
+    ]
+  where
+    transformsWithVar v =
+        [ \v' -> v + v'
+        , \v' -> v' * v
+        , \v' -> v' / v
+        ]
+
+-- | Deduplicate programs pick the least smallest one by size.
+deduplicate :: DataFrame
+            -> [Expr Double]
+            -> [Expr Double]
+deduplicate df = go []
+  where
+    go _ [] = []
+    go seen (x : xs)
+        | any (equivalent df x) seen = go seen xs
+        | otherwise = x : go (x : seen) xs
+
+-- | Checks if two programs generate the same outputs given all the same inputs.
+equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
+equivalent df p1 p2 = interpret df p1 Prelude.== interpret df p2
+
+search :: T.Text -> Int -> DataFrame -> Either String (Expr Double)
+search target d df = let
+        df' = exclude [target] df
+        names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
+        variables = map col names
+    in case searchStream df' (interpret df (Col target)) variables d of
+            Nothing -> Left "No programs found"
+            Just p -> Right p
+
+searchStream ::
+    DataFrame ->
+    -- | Examples
+    TypedColumn Double ->
+    -- | Programs
+    [Expr Double] ->
+    -- | Search depth
+    Int ->
+    Maybe (Expr Double)
+searchStream df outputs programs d
+    | d Prelude.== 0 = case ps of
+        []    -> Nothing
+        (x:_) -> trace ("\n\n\n\n" ++ (L.intercalate "\n" $ map show ps)) $ Just x
+    | otherwise =
+        case findFirst ps of
+            Just p -> Just p
+            Nothing -> searchStream df outputs (generatePrograms (map col names) ps) (d - 1)
+  where
+    ps = trace (L.intercalate "\n" $ map show programs) $ pickTopN df outputs 10 $ deduplicate df programs
+    names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
+    findFirst [] = Nothing
+    findFirst (p : ps')
+        | satisfiesExamples df outputs p = Just p
+        | otherwise = findFirst ps'
+
+pickTopN :: DataFrame
+         -> TypedColumn Double
+         -> Int
+         -> [Expr Double]
+         -> [Expr Double]
+pickTopN df (TColumn col) n ps = let
+        l = VU.convert (toVector @Double col)
+        asDoubleVector e = let
+                (TColumn col') = interpret df e
+            in VU.convert (toVector @Double col')
+    in take n (L.sortBy (\e e' -> (flip compare) (correlation' l (asDoubleVector e)) (correlation' l (asDoubleVector e'))) ps)
+
+satisfiesExamples :: DataFrame -> TypedColumn Double -> Expr Double -> Bool
+satisfiesExamples df col expr = let
+        result = interpret df expr
+    in result Prelude.== col
+
 
 -- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
 isReservedId :: T.Text -> Bool

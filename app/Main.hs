@@ -10,35 +10,23 @@ import qualified DataFrame.Functions as F -- import for column expressions.
 
 import DataFrame ((|>)) -- import chaining operator with unqualified.
 
-import Control.Monad (replicateM)
-import Data.Time
-import qualified Data.Vector.Unboxed as VU
-import System.Random.Stateful
+import Control.Monad
+import qualified Data.List as L
+import Data.Maybe
+import Data.Function
 
 main :: IO ()
 main = do
-    let n = 100_000_000
-    g <- newIOGenM =<< newStdGen
-    let range = (-20.0 :: Double, 20.0 :: Double)
-    startGeneration <- getCurrentTime
-    ns <- VU.replicateM n (uniformRM range g)
-    xs <- VU.replicateM n (uniformRM range g)
-    ys <- VU.replicateM n (uniformRM range g)
-    let df = D.fromUnnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
-    endGeneration <- getCurrentTime
-    let generationTime = diffUTCTime endGeneration startGeneration
-    putStrLn $ "Data generation Time: " ++ (show generationTime)
-    startCalculation <- getCurrentTime
-    print $ D.mean "0" df
-    print $ D.variance "1" df
-    print $ D.correlation "1" "2" df
-    endCalculation <- getCurrentTime
-    let calculationTime = diffUTCTime endCalculation startCalculation
-    putStrLn $ "Calculation Time: " ++ (show calculationTime)
-    startFilter <- getCurrentTime
-    print $ D.filter "0" (>= (19.9 :: Double)) df D.|> D.take 10
-    endFilter <- getCurrentTime
-    let filterTime = diffUTCTime endFilter startFilter
-    putStrLn $ "Filter Time: " ++ (show filterTime)
-    let totalTime = diffUTCTime endFilter startGeneration
-    putStrLn $ "Total Time: " ++ (show totalTime)
+    df' <- D.readCsv "./data/housing.csv"
+    let df = df' |> D.exclude ["total_bedrooms", "ocean_proximity"]
+
+    let expr = ((F.col @Double "housing_median_age" + (F.col @Double "median_income" * F.col @Double "latitude")) + ((F.col @Double "median_income" + F.col @Double "median_income") / (F.col @Double "median_income" + F.col @Double "latitude"))) / F.col @Double "latitude"
+
+    let augmented = D.derive "generated_feature" expr df'
+
+    let correlationWithHouseValue columnName = (columnName, fromMaybe 0 (D.correlation columnName "median_house_value" augmented))
+
+    let correlations = map correlationWithHouseValue (D.columnNames augmented)
+
+    mapM_ print (L.sortBy (flip compare `on` snd) correlations)
+    -- print $ F.search ("median_house_value") 4 df

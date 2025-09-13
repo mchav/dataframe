@@ -29,9 +29,10 @@ import DataFrame.Internal.Types
 import Type.Reflection (typeRep)
 
 data Expr a where
+    Variable :: (Columnable a) => Expr a
     Col :: (Columnable a) => T.Text -> Expr a
     Lit :: (Columnable a) => a -> Expr a
-    Apply ::
+    UnaryOp ::
         ( Columnable a
         , Columnable b
         ) =>
@@ -51,13 +52,13 @@ data Expr a where
         Expr a
     GeneralAggregate ::
         (Columnable a) =>
-        T.Text -> -- Column name
+        Expr b ->
         T.Text -> -- Operation name
         (forall v b. (VG.Vector v b, Columnable b) => v b -> a) ->
         Expr a
     ReductionAggregate ::
         (Columnable a) =>
-        T.Text -> -- Column name
+        Expr a ->
         T.Text -> -- Operation name
         (forall a. (Columnable a) => a -> a -> a) ->
         Expr a
@@ -69,14 +70,14 @@ data Expr a where
         , Num a
         , Num b
         ) =>
-        T.Text -> -- Column name
+        Expr b -> -- Column name
         T.Text -> -- Operation name
         (VU.Vector b -> a) ->
         Expr a
     FoldAggregate ::
         forall a b.
         (Columnable a, Columnable b) =>
-        T.Text -> -- Column name
+        Expr b -> -- Column name
         T.Text -> -- Operation name
         a ->
         (a -> b -> a) ->
@@ -90,7 +91,7 @@ interpret df (Lit value) = TColumn $ fromVector $ V.replicate (fst $ dataframeDi
 interpret df (Col name) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
     Just col -> TColumn col
-interpret df (Apply _ (f :: c -> d) value) =
+interpret df (UnaryOp _ (f :: c -> d) value) =
     let
         (TColumn value') = interpret @c df value
      in
@@ -112,27 +113,27 @@ interpret df (BinOp _ (f :: c -> d -> e) left right) =
         (TColumn right') = interpret @d df right
      in
         TColumn $ fromMaybe (error "mapColumn returned nothing") (zipWithColumns f left' right')
-interpret df (ReductionAggregate name op (f :: forall a. (Columnable a) => a -> a -> a)) =
+interpret df (ReductionAggregate expr op (f :: forall a. (Columnable a) => a -> a -> a)) =
     let
-        (TColumn column) = interpret @a df (Col name)
+        (TColumn column) = interpret @a df expr
      in
         case headColumn @a column of
             Nothing -> error "Invalid operation"
             Just h -> case ifoldlColumn (\acc _ v -> f acc v) h column of
                 Nothing -> error "Invalid operation"
                 Just value -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
-interpret df (NumericAggregate name op (f :: VU.Vector b -> c)) =
+interpret df (NumericAggregate expr op (f :: VU.Vector b -> c)) =
     let
-        (TColumn column) = interpret @b df (Col name)
+        (TColumn column) = interpret @b df expr
      in
         case column of
             (UnboxedColumn (v :: VU.Vector d)) -> case testEquality (typeRep @d) (typeRep @b) of
                 Just Refl -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) (f v)
                 Nothing -> error "Invalid operation"
             _ -> error "Invalid operation"
-interpret df (FoldAggregate name op start (f :: (a -> b -> a))) =
+interpret df (FoldAggregate expr op start (f :: (a -> b -> a))) =
     let
-        (TColumn column) = interpret @b df (Col name)
+        (TColumn column) = interpret @b df expr
      in
         case headColumn @a column of
             Nothing -> error "Invalid operation"
@@ -146,7 +147,7 @@ interpretAggregation gdf (Lit value) = TColumn $ fromVector $ V.replicate (VG.le
 interpretAggregation gdf@(Grouped df names indices os) (Col name) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
     Just col -> TColumn $ atIndicesStable (VG.map (indices `VG.unsafeIndex`) (VG.init os)) col
-interpretAggregation gdf (Apply _ (f :: c -> d) expr) =
+interpretAggregation gdf (UnaryOp _ (f :: c -> d) expr) =
     let
         (TColumn value) = interpretAggregation @c gdf expr
      in
@@ -161,7 +162,7 @@ interpretAggregation gdf (BinOp _ (f :: c -> d -> e) left right) =
         case zipWithColumns f left' right' of
             Nothing -> error "Type error in binary operation"
             Just col -> TColumn col
-interpretAggregation gdf@(Grouped df names indices os) (GeneralAggregate name op (f :: forall v b. (VG.Vector v b, Columnable b) => v b -> c)) = case getColumn name df of
+interpretAggregation gdf@(Grouped df names indices os) (GeneralAggregate (Col name) op (f :: forall v b. (VG.Vector v b, Columnable b) => v b -> c)) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
     Just (BoxedColumn col) ->
         TColumn $
@@ -212,7 +213,7 @@ interpretAggregation gdf@(Grouped df names indices os) (GeneralAggregate name op
                                 (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
                             )
                     )
-interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate name op (f :: forall a. (Columnable a) => a -> a -> a)) = case getColumn name df of
+interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate (Col name) op (f :: forall a. (Columnable a) => a -> a -> a)) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
     Just (BoxedColumn col) -> TColumn $
         fromVector $
@@ -267,7 +268,7 @@ interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate name 
             | otherwise =
                 let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                  in go (f acc x) (j + 1) e
-interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate name op s (f :: (a -> b -> a))) = case getColumn name df of
+interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate (Col name) op s (f :: (a -> b -> a))) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
     Just (BoxedColumn (col :: V.Vector c)) -> case testEquality (typeRep @b) (typeRep @c) of
         Nothing -> error "Type mismatch"
@@ -328,7 +329,7 @@ interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate name op s 
                 | otherwise =
                     let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                      in go (f acc x) (j + 1) e
-interpretAggregation gdf@(Grouped df names indices os) (NumericAggregate name op (f :: VU.Vector b -> c)) = case getColumn name df of
+interpretAggregation gdf@(Grouped df names indices os) (NumericAggregate (Col name) op (f :: VU.Vector b -> c)) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
     Just (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @b) (typeRep @d) of
         Nothing -> case testEquality (typeRep @d) (typeRep @Int) of
@@ -397,13 +398,13 @@ instance (Num a, Columnable a) => Num (Expr a) where
     fromInteger = Lit . fromInteger
 
     negate :: Expr a -> Expr a
-    negate = Apply "negate" negate
+    negate = UnaryOp "negate" negate
 
     abs :: (Num a) => Expr a -> Expr a
-    abs = Apply "abs" abs
+    abs = UnaryOp "abs" abs
 
     signum :: (Num a) => Expr a -> Expr a
-    signum = Apply "signum" signum
+    signum = UnaryOp "signum" signum
 
 instance (Fractional a, Columnable a) => Fractional (Expr a) where
     fromRational :: (Fractional a, Columnable a) => Rational -> Expr a
@@ -416,34 +417,51 @@ instance (Floating a, Columnable a) => Floating (Expr a) where
     pi :: (Floating a, Columnable a) => Expr a
     pi = Lit pi
     exp :: (Floating a, Columnable a) => Expr a -> Expr a
-    exp = Apply "exp" exp
+    exp = UnaryOp "exp" exp
     log :: (Floating a, Columnable a) => Expr a -> Expr a
-    log = Apply "log" log
+    log = UnaryOp "log" log
     sin :: (Floating a, Columnable a) => Expr a -> Expr a
-    sin = Apply "sin" sin
+    sin = UnaryOp "sin" sin
     cos :: (Floating a, Columnable a) => Expr a -> Expr a
-    cos = Apply "cos" cos
+    cos = UnaryOp "cos" cos
     asin :: (Floating a, Columnable a) => Expr a -> Expr a
-    asin = Apply "asin" asin
+    asin = UnaryOp "asin" asin
     acos :: (Floating a, Columnable a) => Expr a -> Expr a
-    acos = Apply "acos" acos
+    acos = UnaryOp "acos" acos
     atan :: (Floating a, Columnable a) => Expr a -> Expr a
-    atan = Apply "atan" atan
+    atan = UnaryOp "atan" atan
     sinh :: (Floating a, Columnable a) => Expr a -> Expr a
-    sinh = Apply "sinh" sinh
+    sinh = UnaryOp "sinh" sinh
     cosh :: (Floating a, Columnable a) => Expr a -> Expr a
-    cosh = Apply "cosh" cosh
+    cosh = UnaryOp "cosh" cosh
     asinh :: (Floating a, Columnable a) => Expr a -> Expr a
-    asinh = Apply "asinh" sinh
+    asinh = UnaryOp "asinh" sinh
     acosh :: (Floating a, Columnable a) => Expr a -> Expr a
-    acosh = Apply "acosh" acosh
+    acosh = UnaryOp "acosh" acosh
     atanh :: (Floating a, Columnable a) => Expr a -> Expr a
-    atanh = Apply "atanh" atanh
+    atanh = UnaryOp "atanh" atanh
 
 instance (Show a) => Show (Expr a) where
     show :: forall a. (Show a) => Expr a -> String
+    show Variable = "<variable>"
     show (Col name) = "col@" ++ show (typeRep @a) ++ "(" ++ T.unpack name ++ ")"
     show (Lit value) = show value
-    show (Apply name f value) = T.unpack name ++ "(" ++ show value ++ ")"
+    show (UnaryOp name f value) = T.unpack name ++ "(" ++ show value ++ ")"
     show (BinOp name f a b) = T.unpack name ++ "(" ++ show a ++ ", " ++ show b ++ ")"
-    show (NumericAggregate columnName op f) = T.unpack op ++ "(" ++ T.unpack columnName ++ ")"
+    show (NumericAggregate expr op _) = T.unpack op ++ "(" ++ show expr ++ ")"
+    show (GeneralAggregate expr op _) = T.unpack op ++ "(" ++ "<cannot show expression>" ++ ")"
+    show (ReductionAggregate expr op _) = T.unpack op ++ "(" ++ show expr ++ ")"
+    show (FoldAggregate expr op _ _ )   = T.unpack op ++ "(" ++ show expr ++ ")"
+
+instance (Show a, Columnable a) => Show (Expr a -> Expr a) where
+    show :: forall a. (Show a, Columnable a) => (Expr a -> Expr a) -> String
+    show f = show (f (Variable :: Expr a))
+
+eSize :: Expr a -> Int
+eSize Variable = 1
+eSize (Col _)  = 1
+eSize (Lit _)  = 1
+eSize (UnaryOp _ _ e) = 1 + eSize e
+eSize (BinOp _ _ l r) = 1 + eSize l + eSize r
+eSize _ = 1
+
