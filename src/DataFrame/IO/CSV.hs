@@ -153,7 +153,7 @@ ghci> D.readCsv "./data/taxi.csv" df
 
 @
 -}
-readCsv :: String -> IO DataFrame
+readCsv :: FilePath -> IO DataFrame
 readCsv = readSeparated ',' defaultOptions
 
 {- | Read TSV (tab separated) file from path and load it into a dataframe.
@@ -164,7 +164,7 @@ ghci> D.readTsv "./data/taxi.tsv" df
 
 @
 -}
-readTsv :: String -> IO DataFrame
+readTsv :: FilePath -> IO DataFrame
 readTsv = readSeparated '\t' defaultOptions
 
 {- | Read text file with specified delimiter into a dataframe.
@@ -175,7 +175,7 @@ ghci> D.readSeparated ';' D.defaultOptions "./data/taxi.txt" df
 
 @
 -}
-readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
+readSeparated :: Char -> ReadOptions -> FilePath -> IO DataFrame
 readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
     hSetBuffering handle (BlockBuffering (Just (chunkSize opts)))
 
@@ -355,14 +355,14 @@ freezeGrowingColumn (GrowingText gv nullsRef) = do
                     else VM.write mvec i (Just (vec V.! i))
             OptionalColumn <$> V.freeze mvec
 
-writeCsv :: String -> DataFrame -> IO ()
+writeCsv :: FilePath -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
 
 writeSeparated ::
     -- | Separator
     Char ->
     -- | Path to write to
-    String ->
+    FilePath ->
     DataFrame ->
     IO ()
 writeSeparated c filepath df = withFile filepath WriteMode $ \handle -> do
