@@ -17,8 +17,6 @@ import DataFrame.IO.Parquet.Time
 import DataFrame.IO.Parquet.Types
 import qualified DataFrame.Internal.Column as DI
 import GHC.Float
-import GHC.IO (unsafePerformIO)
-import Text.Printf
 
 dictCardinality :: DictVals -> Int
 dictCardinality (DBool ds) = length ds

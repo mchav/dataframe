@@ -9,35 +9,28 @@
 
 module DataFrame.Operations.Statistics where
 
-import Data.Bifunctor (second)
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Algorithms.Intro as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
-import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Prelude as P
 
 import Control.Exception (throw)
 import Control.Monad
-import Control.Monad.ST (runST)
-import qualified Data.Bifunctor as Data
-import Data.Foldable (asum)
 import Data.Function ((&))
 import Data.Maybe (fromMaybe, isJust)
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
-import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn, unsafeGetColumn)
+import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
 import DataFrame.Internal.Row (showValue, toAny)
 import DataFrame.Internal.Statistics
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import DataFrame.Operations.Subset (filterJust)
-import GHC.Float (int2Double)
 import Text.Printf (printf)
 import Type.Reflection (typeRep)
 
@@ -46,7 +39,7 @@ import Type.Reflection (typeRep)
 __Examples:__
 
 @
-ghci> df <- D.readCsv "./data/housing.csv"
+ghci> df <- D.readCsv ".\/data\/housing.csv"
 
 ghci> D.frequencies "ocean_proximity" df
 
@@ -140,7 +133,7 @@ applyStatistic f name df = join $ fmap apply (_getColumnAsDouble name (filterJus
 applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
 applyStatistics f name df = fmap f (_getColumnAsDouble name (filterJust name df))
 
--- | Descriprive statistics of the numeric columns.
+-- | Descriptive statistics of the numeric columns.
 summarize :: DataFrame -> DataFrame
 summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic", fromList ["Count" :: T.Text, "Mean", "Minimum", "25%", "Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
   where

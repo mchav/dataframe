@@ -9,16 +9,16 @@ import qualified Data.Vector as V
 import Control.Exception (throw)
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
-import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
+import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Row
 import DataFrame.Operations.Core
 
--- | Sort order taken as a parameter by the sortby function.
+-- | Sort order taken as a parameter by the 'sortBy' function.
 data SortOrder = Ascending | Descending deriving (Eq)
 
 {- | O(k log n) Sorts the dataframe by a given row.
 
-> sortBy "Age" df
+> sortBy Ascending ["Age"] df
 -}
 sortBy ::
     SortOrder ->

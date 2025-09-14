@@ -23,9 +23,8 @@ import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
-import Control.Applicative (many, (*>), (<$>), (<*), (<*>), (<|>))
-import Control.Monad (forM_, unless, void, when, zipWithM_)
-import Control.Monad.ST (runST)
+import Control.Applicative (many, (<|>))
+import Control.Monad (forM_, unless, zipWithM_)
 import Data.Attoparsec.ByteString.Char8 hiding (endOfLine)
 import Data.Bits (shiftL)
 import Data.Char
@@ -34,15 +33,10 @@ import Data.Function (on)
 import Data.Functor
 import Data.IORef
 import Data.Maybe
-import Data.Type.Equality (
-    TestEquality (testEquality),
-    type (:~:) (Refl),
- )
-import DataFrame.Internal.Column (Column (..), MutableColumn (..), columnLength, freezeColumn', fromVector, writeColumn)
+import Data.Type.Equality (TestEquality (testEquality))
+import DataFrame.Internal.Column (Column (..), columnLength)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
-import DataFrame.Operations.Typing
-import GHC.IO.Handle (Handle)
 import System.IO
 import Type.Reflection
 import Prelude hiding (concat, takeWhile)
@@ -71,7 +65,7 @@ data ReadOptions = ReadOptions
     , inferTypes :: Bool
     -- ^ Whether to try and infer types. (default: True)
     , safeRead :: Bool
-    -- ^ Whether to partially parse values into `Maybe`/Either`. (default: True)
+    -- ^ Whether to partially parse values into `Maybe`/`Either`. (default: True)
     , chunkSize :: Int
     -- ^ Default chunk size (in bytes) for csv reader. (default: 512'000)
     }
@@ -149,33 +143,33 @@ freezeGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef _) = do
 
 ==== __Example__
 @
-ghci> D.readCsv "./data/taxi.csv" df
+ghci> D.readCsv ".\/data\/taxi.csv"
 
 @
 -}
-readCsv :: String -> IO DataFrame
+readCsv :: FilePath -> IO DataFrame
 readCsv = readSeparated ',' defaultOptions
 
 {- | Read TSV (tab separated) file from path and load it into a dataframe.
 
 ==== __Example__
 @
-ghci> D.readTsv "./data/taxi.tsv" df
+ghci> D.readTsv ".\/data\/taxi.tsv"
 
 @
 -}
-readTsv :: String -> IO DataFrame
+readTsv :: FilePath -> IO DataFrame
 readTsv = readSeparated '\t' defaultOptions
 
 {- | Read text file with specified delimiter into a dataframe.
 
 ==== __Example__
 @
-ghci> D.readSeparated ';' D.defaultOptions "./data/taxi.txt" df
+ghci> D.readSeparated ';' D.defaultOptions ".\/data\/taxi.txt"
 
 @
 -}
-readSeparated :: Char -> ReadOptions -> String -> IO DataFrame
+readSeparated :: Char -> ReadOptions -> FilePath -> IO DataFrame
 readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
     hSetBuffering handle (BlockBuffering (Just (chunkSize opts)))
 
@@ -355,14 +349,14 @@ freezeGrowingColumn (GrowingText gv nullsRef) = do
                     else VM.write mvec i (Just (vec V.! i))
             OptionalColumn <$> V.freeze mvec
 
-writeCsv :: String -> DataFrame -> IO ()
+writeCsv :: FilePath -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
 
 writeSeparated ::
     -- | Separator
     Char ->
     -- | Path to write to
-    String ->
+    FilePath ->
     DataFrame ->
     IO ()
 writeSeparated c filepath df = withFile filepath WriteMode $ \handle -> do

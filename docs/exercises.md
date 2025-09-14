@@ -9,7 +9,7 @@ Query all columns for a city with the ID 1661.
 
 ### Solution
 ```haskell
-ghci> df |> D.filterWhere (id F.== 1661)
+ghci> df |> D.filterWhere (id F.== F.lit 1661)
 ------------------------------------------------------------
 index |  id  |  name  | country_code | district | population
 ------|------|--------|--------------|----------|-----------
@@ -188,7 +188,7 @@ UNION
 ```
 
 
-``haskell
+```haskell
 ghci> letterSort s = df |> D.derive "length" (F.lift T.length city) |> D.select [F.name city, "length"] |> D.sortBy s ["length"] |> D.take 1
 ghci> (letterSort D.Descending) <> (letterSort D.Ascending)
 --------------------------------------

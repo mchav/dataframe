@@ -14,7 +14,6 @@
 module DataFrame.Internal.Expression where
 
 import Control.Exception (throw)
-import Data.Data (Typeable)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T

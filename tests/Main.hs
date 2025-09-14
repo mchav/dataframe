@@ -3,23 +3,15 @@
 
 module Main where
 
-import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
-import qualified DataFrame.Internal.Column as D
 import qualified DataFrame.Internal.Column as DI
-import qualified DataFrame.Internal.DataFrame as D
-import qualified DataFrame.Internal.DataFrame as DI
 import qualified DataFrame.Operations.Typing as D
 import qualified System.Exit as Exit
 
-import Control.Exception
 import Data.Time
 import Test.HUnit
-
-import Assertions
 
 import qualified Functions
 import qualified Operations.Apply

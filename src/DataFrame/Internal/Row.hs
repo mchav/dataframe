@@ -22,15 +22,14 @@ import Control.Monad.ST (runST)
 import Data.Function (on)
 import Data.Maybe (fromMaybe)
 import Data.Type.Equality (TestEquality (..))
-import Data.Typeable (Typeable, type (:~:) (..))
-import Data.Word (Word16, Word32, Word64, Word8)
+import Data.Typeable (type (:~:) (..))
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame
 import DataFrame.Internal.Types
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 import Text.Read (Lexeme (Ident), lexP, parens, readListPrec, readListPrecDefault, readPrec)
-import Type.Reflection (TypeRep, typeOf, typeRep)
+import Type.Reflection (typeOf, typeRep)
 
 data Any where
     Value :: (Columnable' a) => a -> Any
