@@ -113,10 +113,10 @@ ghci> let df = D.fromUnamedColumns [D.fromList ["Monday", "Tuesday", "Wednesday"
         ‘D.fromNamedColumns’ (imported from DataFrame)
 ```
 
-This is a subtle error. The above example is missing an extra `n` in `Unnamed`. What the error means is: given everything I have access to (the so-called "scope") there is nothing by the name of `D.fromUnamedColumns`. Haskell the suggests some names that look close to the name you typed. This is the easiest kind of error to read.
+This is a subtle error. The above example is missing an extra `n` in `Unnamed`. What the error means is: given everything I have access to (the so-called "scope") there is nothing by the name of `D.fromUnamedColumns`. Haskell then suggests some names that look close to the name you typed. This is the easiest kind of error to read.
 
 ##### Forgetting `D.fromList`
-`[1,2,3]` is a regular Haskell list. Out function `D.fromList` takes the list and converts it to a dataframe column. Forgetting to add the `fromList` results in a type error:
+`[1,2,3]` is a regular Haskell list. Our function `D.fromList` takes the list and converts it to a dataframe column. Forgetting to add the `fromList` results in a type error:
 
 ```haskell
 ghci> let df = D.fromUnnamedColumns [["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], D.fromList [24, 20, 22, 23, 25, 26, 26], D.fromList [14, 13, 13, 13, 14, 15, 15]]
@@ -234,7 +234,7 @@ We'll make it a habit to always inspect a function's structure whenever we intro
 
 ## Peeking into the data
 
-So, you have dome data in a dataframe. What do you do with it now? Typically, you'd try and understand the structure of the data: what are the names of the different columns, what kind of data is in each column, how many values are in the data etc. We provide three functions to help do this:
+So, you have some data in a dataframe. What do you do with it now? Typically, you'd try and understand the structure of the data: what are the names of the different columns, what kind of data is in each column, how many values are in the data etc. We provide three functions to help do this:
 
 * `take`,
 * `describeColumns`, and,
@@ -333,7 +333,7 @@ The compiler is just keeping you honest.
 <TODO>
 
 ## Data preparation
-Data in the wild doesn't always come in a form that's easy to work with. A data analysis tool should make preparing and cleaning data easy. There are a number of common issues that data analysis too must handle. We'll go through a few common ones and show how to deal with them in Haskell.
+Data in the wild doesn't always come in a form that's easy to work with. A data analysis tool should make preparing and cleaning data easy. There are a number of common issues that data analysis tool must handle. We'll go through a few common ones and show how to deal with them in Haskell.
 
 ### Handling missing data
 Data is oftentimes incomplete. Sometimes because of legitimate reasons, often times because of errors. Handling missing data is a foundational tasks in data analysis. In Haskell, potentially missing values are represented by a "wrapper" type called [`Maybe`](https://en.wikibooks.org/wiki/Haskell/Understanding_monads/Maybe).
