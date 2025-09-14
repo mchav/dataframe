@@ -26,6 +26,7 @@ import qualified Data.Foldable as F
 import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
+import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as VB
 import qualified Data.Vector.Generic as VG
@@ -103,7 +104,7 @@ variance :: Expr Double -> Expr Double
 variance expr = NumericAggregate expr "variance" variance'
 
 zScore :: Expr Double -> Expr Double
-zScore c = (c - mean c) / (standardDeviation c)
+zScore c = (c - mean c) / standardDeviation c
 
 reduce :: forall a b. (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
 reduce expr = FoldAggregate expr "foldUdf"
@@ -113,21 +114,22 @@ generatePrograms vars existingPrograms =
     existingPrograms ++
     [ transform p
     | p <- existingPrograms
-    , transform <- [zScore, abs, negate, sum,
-                    (log . (+ (Lit 1))), maximum, minimum,
-                    variance, exp]
+    , transform <- [zScore, abs, sum,
+                    log . (+ Lit 1), exp]
     ] ++
     [ p + q
-    | p <- existingPrograms
-    , q <- existingPrograms
+    | (i, p) <- zip [0..] existingPrograms
+    , (j, q) <- zip [0..] existingPrograms
+    , i Prelude.>= j
     ] ++
     [ p - q
     | p <- existingPrograms
     , q <- existingPrograms
     ] ++
     [ p * q
-    | p <- existingPrograms
-    , q <- existingPrograms
+    | (i, p) <- zip [0..] existingPrograms
+    , (j, q) <- zip [0..] existingPrograms
+    , i Prelude.>= j
     ] ++
     [ p / q
     | p <- existingPrograms
@@ -152,12 +154,14 @@ generatePrograms vars existingPrograms =
 deduplicate :: DataFrame
             -> [Expr Double]
             -> [Expr Double]
-deduplicate df = go [] . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
+deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
   where
     go _ [] = []
     go seen (x : xs)
-        | any (equivalent df x) seen = go seen xs
-        | otherwise = x : go (x : seen) xs
+        | S.member res seen = go seen xs
+        | otherwise = x : go (S.insert res seen) xs
+            where
+                res = interpret df x
 
 -- | Checks if two programs generate the same outputs given all the same inputs.
 equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
@@ -184,13 +188,13 @@ searchStream ::
 searchStream df outputs programs d
     | d Prelude.== 0 = case ps of
         []    -> Nothing
-        (x:_) -> trace ("\n\n\n\n" ++ (L.intercalate "\n" $ map show ps)) $ Just x
+        (x:_) -> Just x
     | otherwise =
         case findFirst ps of
             Just p -> Just p
             Nothing -> searchStream df outputs (generatePrograms (map col names) ps) (d - 1)
   where
-    ps = trace (L.intercalate "\n" $ map show programs) $ pickTopN df outputs 10 $ deduplicate df programs
+    ps = pickTopN df outputs 10 $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
     findFirst [] = Nothing
     findFirst (p : ps')
@@ -208,7 +212,7 @@ pickTopN df (TColumn col) n ps = let
         asDoubleVector e = let
                 (TColumn col') = interpret df e
             in VU.convert (toVector @Double col')
-    in trace (show $ correlation' l (asDoubleVector (head ordered))) $ ordered
+    in ordered
 
 satisfiesExamples :: DataFrame -> TypedColumn Double -> Expr Double -> Bool
 satisfiesExamples df col expr = let

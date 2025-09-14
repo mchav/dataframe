@@ -67,6 +67,9 @@ data TypedColumn a where
 instance (Eq a) => Eq (TypedColumn a) where
     (==) (TColumn a) (TColumn b) = a == b
 
+instance (Ord a) => Ord (TypedColumn a) where
+    (compare) (TColumn a) (TColumn b) = compare a b
+
 -- | Gets the underlying value from a TypedColumn.
 unwrapTypedColumn :: TypedColumn a -> Column
 unwrapTypedColumn (TColumn value) = value
@@ -107,6 +110,21 @@ instance Show Column where
     show (BoxedColumn column) = show column
     show (UnboxedColumn column) = show column
     show (OptionalColumn column) = show column
+
+instance Ord Column where
+    (<=) (BoxedColumn (a :: VB.Vector t1)) (BoxedColumn (b :: VB.Vector t2)) =
+        case testEquality (typeRep @t1) (typeRep @t2) of
+            Nothing -> False
+            Just Refl -> a <= b
+    (<=) (OptionalColumn (a :: VB.Vector t1)) (OptionalColumn (b :: VB.Vector t2)) =
+        case testEquality (typeRep @t1) (typeRep @t2) of
+            Nothing -> False
+            Just Refl -> a <= b
+    (<=) (UnboxedColumn (a :: VU.Vector t1)) (UnboxedColumn (b :: VU.Vector t2)) =
+        case testEquality (typeRep @t1) (typeRep @t2) of
+            Nothing -> False
+            Just Refl -> a <= b
+    (<=) _ _ = False
 
 instance Eq Column where
     (==) :: Column -> Column -> Bool
