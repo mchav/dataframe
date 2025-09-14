@@ -14,9 +14,11 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 
+import Control.Exception (throw)
 import Data.Function (on)
 import Data.List (sortBy, transpose, (\\))
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
+import DataFrame.Errors (DataFrameException(..))
 import DataFrame.Display.Terminal.PrettyPrint
 import DataFrame.Internal.Column
 import Text.Printf
@@ -56,7 +58,7 @@ instance Eq GroupedDataFrame where
 instance Eq DataFrame where
     (==) :: DataFrame -> DataFrame -> Bool
     a == b =
-        map fst (M.toList $ columnIndices a) == map fst (M.toList $ columnIndices b)
+        M.keys (columnIndices a) == M.keys (columnIndices b)
             && foldr (\(name, index) acc -> acc && (columns a V.!? index == (columns b V.!? (columnIndices b M.! name)))) True (M.toList $ columnIndices a)
 
 instance Show DataFrame where
@@ -110,7 +112,9 @@ getColumn name df = do
     columns df V.!? i
 
 unsafeGetColumn :: T.Text -> DataFrame -> Column
-unsafeGetColumn name df = columns df V.! (columnIndices df M.! name)
+unsafeGetColumn name df = case getColumn name df of
+    Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
+    Just col -> col
 
 null :: DataFrame -> Bool
 null df = V.null (columns df)

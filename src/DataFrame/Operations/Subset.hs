@@ -85,7 +85,7 @@ filter ::
     DataFrame ->
     DataFrame
 filter filterColumnName condition df = case getColumn filterColumnName df of
-    Nothing -> throw $ ColumnNotFoundException filterColumnName "filter" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException filterColumnName "filter" (M.keys $ columnIndices df)
     Just (BoxedColumn (column :: V.Vector b)) -> filterByVector filterColumnName column condition df
     Just (OptionalColumn (column :: V.Vector b)) -> filterByVector filterColumnName column condition df
     Just (UnboxedColumn (column :: VU.Vector b)) -> filterByVector filterColumnName column condition df
@@ -154,7 +154,7 @@ filterWhere expr df =
 -}
 filterJust :: T.Text -> DataFrame -> DataFrame
 filterJust name df = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "filterJust" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "filterJust" (M.keys $ columnIndices df)
     Just column@(OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isJust df & apply @(Maybe a) fromJust name
     Just column -> df
 
@@ -164,7 +164,7 @@ filterJust name df = case getColumn name df of
 -}
 filterNothing :: T.Text -> DataFrame -> DataFrame
 filterNothing name df = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "filterNothing" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "filterNothing" (M.keys $ columnIndices df)
     Just (OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isNothing df
     _                                                 -> df
 

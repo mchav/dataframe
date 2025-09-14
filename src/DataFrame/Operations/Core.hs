@@ -206,7 +206,7 @@ index | numbers | others
 @
 -}
 cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
-cloneColumn original new df = fromMaybe (throw $ ColumnNotFoundException original "cloneColumn" (map fst $ M.toList $ columnIndices df)) $ do
+cloneColumn original new df = fromMaybe (throw $ ColumnNotFoundException original "cloneColumn" (M.keys $ columnIndices df)) $ do
     column <- getColumn original df
     return $ insertColumn new column df
 
@@ -291,7 +291,7 @@ renameMany :: [(T.Text, T.Text)] -> DataFrame -> DataFrame
 renameMany replacements df = fold (uncurry rename) replacements df
 
 renameSafe :: T.Text -> T.Text -> DataFrame -> Either DataFrameException DataFrame
-renameSafe orig new df = fromMaybe (Left $ ColumnNotFoundException orig "rename" (map fst $ M.toList $ columnIndices df)) $ do
+renameSafe orig new df = fromMaybe (Left $ ColumnNotFoundException orig "rename" (M.keys $ columnIndices df)) $ do
     columnIndex <- M.lookup orig (columnIndices df)
     let origRemoved = M.delete orig (columnIndices df)
     let newAdded = M.insert new columnIndex origRemoved
@@ -462,7 +462,7 @@ ghci> D.valueCounts @Int "0" df
 -}
 valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Int)]
 valueCounts columnName df = case getColumn columnName df of
-    Nothing -> throw $ ColumnNotFoundException columnName "valueCounts" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException columnName "valueCounts" (M.keys $ columnIndices df)
     Just (BoxedColumn (column' :: V.Vector c)) ->
         let
             column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
