@@ -2,17 +2,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-import qualified Data.Vector.Unboxed as VU
-import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 
-import Control.Monad (replicateM)
 import Criterion.Main
-import Data.Time
 import DataFrame ((|>))
 import System.Process
-import System.Random.Stateful
 
 haskell :: IO ()
 haskell = do

@@ -16,7 +16,6 @@ import qualified Data.Vector.Unboxed as VU
 
 import Data.Function (on)
 import Data.List (sortBy, transpose, (\\))
-import Data.Maybe (isJust)
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import DataFrame.Display.Terminal.PrettyPrint
 import DataFrame.Internal.Column

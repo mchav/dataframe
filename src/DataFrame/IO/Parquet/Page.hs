@@ -4,25 +4,16 @@
 module DataFrame.IO.Parquet.Page where
 
 import Codec.Compression.Zstd.Streaming
-import Control.Monad
 import Data.Bits
 import qualified Data.ByteString as BSO
-import Data.Char
-import Data.Foldable
 import Data.Int
-import Data.List
 import Data.Maybe
-import qualified Data.Text as T
 import Data.Word
 import DataFrame.IO.Parquet.Binary
-import DataFrame.IO.Parquet.Dictionary
-import DataFrame.IO.Parquet.Levels
 import DataFrame.IO.Parquet.Thrift
 import DataFrame.IO.Parquet.Types
-import qualified DataFrame.Internal.Column as DI
 import GHC.Float
-import qualified Snappy as Snappy
-import Text.Printf
+import qualified Snappy
 
 isDataPage :: Page -> Bool
 isDataPage page = case pageTypeHeader (pageHeader page) of

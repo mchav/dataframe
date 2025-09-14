@@ -9,7 +9,7 @@ import qualified Data.Vector as V
 import Control.Exception (throw)
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
-import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
+import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Row
 import DataFrame.Operations.Core
 

@@ -11,7 +11,6 @@ module DataFrame.Display.Terminal.Plot where
 import Control.Monad
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
@@ -22,10 +21,9 @@ import qualified Data.Vector.Unboxed as VU
 import GHC.Stack (HasCallStack)
 import Type.Reflection (typeRep)
 
-import DataFrame.Internal.Column (Column (..), Columnable, isNumeric)
+import DataFrame.Internal.Column (Column (..), isNumeric)
 import qualified DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
-import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import qualified DataFrame.Operations.Subset as D
 import Granite

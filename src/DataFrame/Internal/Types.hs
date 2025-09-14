@@ -15,13 +15,9 @@ module DataFrame.Internal.Types where
 
 import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Kind (Constraint, Type)
-import Data.Maybe (fromMaybe)
-import Data.Type.Equality (TestEquality (..))
-import Data.Typeable (Typeable, type (:~:) (..))
-import qualified Data.Vector as VB
+import Data.Typeable (Typeable)
 import qualified Data.Vector.Unboxed as VU
 import Data.Word (Word16, Word32, Word64, Word8)
-import Type.Reflection (TypeRep, typeOf, typeRep)
 
 type Columnable' a = (Typeable a, Show a, Ord a, Eq a, Read a)
 

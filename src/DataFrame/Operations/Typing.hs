@@ -6,7 +6,6 @@
 
 module DataFrame.Operations.Typing where
 
-import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU

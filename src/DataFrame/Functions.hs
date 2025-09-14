@@ -21,18 +21,15 @@ import DataFrame.Internal.Statistics
 
 import Control.Monad
 import qualified Data.Char as Char
-import qualified Data.Foldable as F
 import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
-import qualified Data.Vector as VB
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import Debug.Trace (traceShow)
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
-import Type.Reflection (typeRep)
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n

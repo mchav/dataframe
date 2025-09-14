@@ -3,15 +3,11 @@
 
 module DataFrame.Internal.Statistics where
 
-import qualified Data.Text as T
-import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Intro as VA
-import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Exception (throw)
-import Control.Monad
 import Control.Monad.ST (runST)
 import DataFrame.Errors (DataFrameException (..))
 

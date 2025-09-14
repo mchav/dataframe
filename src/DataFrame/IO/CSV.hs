@@ -23,9 +23,8 @@ import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
-import Control.Applicative (many, (*>), (<$>), (<*), (<*>), (<|>))
-import Control.Monad (forM_, unless, void, when, zipWithM_)
-import Control.Monad.ST (runST)
+import Control.Applicative (many, (<|>))
+import Control.Monad (forM_, unless, zipWithM_)
 import Data.Attoparsec.ByteString.Char8 hiding (endOfLine)
 import Data.Bits (shiftL)
 import Data.Char
@@ -34,15 +33,10 @@ import Data.Function (on)
 import Data.Functor
 import Data.IORef
 import Data.Maybe
-import Data.Type.Equality (
-    TestEquality (testEquality),
-    type (:~:) (Refl),
- )
-import DataFrame.Internal.Column (Column (..), MutableColumn (..), columnLength, freezeColumn', fromVector, writeColumn)
+import Data.Type.Equality (TestEquality (testEquality))
+import DataFrame.Internal.Column (Column (..), columnLength)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
-import DataFrame.Operations.Typing
-import GHC.IO.Handle (Handle)
 import System.IO
 import Type.Reflection
 import Prelude hiding (concat, takeWhile)
