@@ -5,6 +5,7 @@
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 
+import Control.Monad (void)
 import Criterion.Main
 import DataFrame ((|>))
 import System.Process
@@ -31,8 +32,8 @@ groupByHaskell = do
         df
             |> D.groupBy ["ocean_proximity"]
             |> D.aggregate
-                [ (F.minimum (F.col @Double "median_house_value")) `F.as` "minimum_median_house_value"
-                , (F.maximum (F.col @Double "median_house_value")) `F.as` "maximum_median_house_value"
+                [ F.minimum (F.col @Double "median_house_value") `F.as` "minimum_median_house_value"
+                , F.maximum (F.col @Double "median_house_value") `F.as` "maximum_median_house_value"
                 ]
 
 groupByPolars :: IO ()
@@ -45,17 +46,44 @@ groupByPandas = do
     output <- readProcess "./benchmark/dataframe_benchmark/bin/python3" ["./benchmark/pandas/group_by.py"] ""
     putStrLn output
 
+parseFile :: String -> IO ()
+parseFile path = void $ D.readCsv path
+
+parseCovidEffectsCSV :: IO ()
+parseCovidEffectsCSV = parseFile "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
+
+parseHousingCSV :: IO ()
+parseHousingCSV = parseFile "./data/housing.csv"
+
+parseStarWarsCSV :: IO ()
+parseStarWarsCSV = parseFile "./data/starwars.csv"
+
+parseChipotleTSV :: IO ()
+parseChipotleTSV = void $ D.readTsv "./data/chipotle.tsv"
+
+parseMeasurementsTXT :: IO ()
+parseMeasurementsTXT = parseFile "./data/measurements.txt"
+
+main :: IO ()
 main = do
-    output <- readProcess "cabal" ["build", "-O2"] ""
-    putStrLn output
-    defaultMain
-        [ bgroup
-            "stats"
-            [ bench "simpleStatsHaskell" $ nfIO haskell
-            , bench "simpleStatsPandas" $ nfIO pandas
-            , bench "simpleStatsPolars" $ nfIO polars
-            , bench "groupByHaskell" $ nfIO groupByHaskell
-            , bench "groupByPolars" $ nfIO groupByPolars
-            , bench "groupByPandas" $ nfIO groupByPandas
-            ]
+  output <- readProcess "cabal" ["build", "-O2"] ""
+  putStrLn output
+  defaultMain
+    [ bgroup
+        "stats"
+        [ bench "simpleStatsHaskell" $ nfIO haskell
+        , bench "simpleStatsPandas" $ nfIO pandas
+        , bench "simpleStatsPolars" $ nfIO polars
+        , bench "groupByHaskell" $ nfIO groupByHaskell
+        , bench "groupByPolars" $ nfIO groupByPolars
+        , bench "groupByPandas" $ nfIO groupByPandas
+        ],
+      bgroup
+        "Parsing"
+        [ bench "effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv (9.0 MB)" $ nfIO parseCovidEffectsCSV
+        , bench "housing.csv (1.4 MB)" $ nfIO parseHousingCSV
+        , bench "starwars.csv (10 KB)" $ nfIO parseStarWarsCSV
+        , bench "chipotle.tsv (356 KB)" $ nfIO parseChipotleTSV
+        , bench "measurements.txt (135 KB)" $ nfIO parseMeasurementsTXT
         ]
+    ]
