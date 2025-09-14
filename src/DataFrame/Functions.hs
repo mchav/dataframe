@@ -34,7 +34,7 @@ import Debug.Trace (traceShow)
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
 import Type.Reflection (typeRep)
-import Prelude hiding (sum, minimum)
+import Prelude hiding (sum, minimum, maximum)
 
 import Debug.Trace (trace)
 
@@ -99,6 +99,9 @@ mean expr = NumericAggregate expr "mean" mean'
 standardDeviation :: Expr Double -> Expr Double
 standardDeviation expr = NumericAggregate expr "stddev" (sqrt . variance')
 
+variance :: Expr Double -> Expr Double
+variance expr = NumericAggregate expr "variance" variance'
+
 zScore :: Expr Double -> Expr Double
 zScore c = (c - mean c) / (standardDeviation c)
 
@@ -110,9 +113,15 @@ generatePrograms vars existingPrograms =
     existingPrograms ++
     [ transform p
     | p <- existingPrograms
-    , transform <- [mean, zScore, standardDeviation, minimum, abs, exp, negate, sum]
+    , transform <- [zScore, abs, negate, sum,
+                    (log . (+ (Lit 1))), maximum, minimum,
+                    variance, exp]
     ] ++
     [ p + q
+    | p <- existingPrograms
+    , q <- existingPrograms
+    ] ++
+    [ p - q
     | p <- existingPrograms
     , q <- existingPrograms
     ] ++
@@ -134,13 +143,16 @@ generatePrograms vars existingPrograms =
         [ \v' -> v + v'
         , \v' -> v' * v
         , \v' -> v' / v
+        , \v' -> v / v'
+        , \v' -> v' - v
+        , \v' -> v - v'
         ]
 
 -- | Deduplicate programs pick the least smallest one by size.
 deduplicate :: DataFrame
             -> [Expr Double]
             -> [Expr Double]
-deduplicate df = go []
+deduplicate df = go [] . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
   where
     go _ [] = []
     go seen (x : xs)
@@ -192,10 +204,11 @@ pickTopN :: DataFrame
          -> [Expr Double]
 pickTopN df (TColumn col) n ps = let
         l = VU.convert (toVector @Double col)
+        ordered = take n (L.sortBy (\e e' -> (flip compare) (fmap abs $ correlation' l (asDoubleVector e)) (fmap abs $ correlation' l (asDoubleVector e'))) ps)
         asDoubleVector e = let
                 (TColumn col') = interpret df e
             in VU.convert (toVector @Double col')
-    in take n (L.sortBy (\e e' -> (flip compare) (correlation' l (asDoubleVector e)) (correlation' l (asDoubleVector e'))) ps)
+    in trace (show $ correlation' l (asDoubleVector (head ordered))) $ ordered
 
 satisfiesExamples :: DataFrame -> TypedColumn Double -> Expr Double -> Bool
 satisfiesExamples df col expr = let

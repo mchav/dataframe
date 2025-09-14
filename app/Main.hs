@@ -18,15 +18,15 @@ import Data.Function
 main :: IO ()
 main = do
     df' <- D.readCsv "./data/housing.csv"
-    let df = df' |> D.exclude ["total_bedrooms", "ocean_proximity"]
+    let df = df' |> D.exclude ["total_bedrooms", "ocean_proximity", "median_income"]
 
-    let expr = ((F.col @Double "housing_median_age" + (F.col @Double "median_income" * F.col @Double "latitude")) + ((F.col @Double "median_income" + F.col @Double "median_income") / (F.col @Double "median_income" + F.col @Double "latitude"))) / F.col @Double "latitude"
+    -- let expr = ((F.col @Double "housing_median_age" + (F.col @Double "median_income" * F.col @Double "latitude")) + ((F.col @Double "median_income" + F.col @Double "median_income") / (F.col @Double "median_income" + F.col @Double "latitude"))) / F.col @Double "latitude"
 
-    let augmented = D.derive "generated_feature" expr df'
+    -- let augmented = D.derive "generated_feature" expr df'
 
-    let correlationWithHouseValue columnName = (columnName, fromMaybe 0 (D.correlation columnName "median_house_value" augmented))
+    -- let correlationWithHouseValue columnName = (columnName, fromMaybe 0 (D.correlation columnName "median_house_value" augmented))
 
-    let correlations = map correlationWithHouseValue (D.columnNames augmented)
+    -- let correlations = map correlationWithHouseValue (D.columnNames augmented)
 
-    mapM_ print (L.sortBy (flip compare `on` snd) correlations)
-    -- print $ F.search ("median_house_value") 4 df
+    -- mapM_ print (L.sortBy (flip compare `on` snd) correlations)
+    print $ F.search ("median_house_value") 1 df

@@ -391,6 +391,9 @@ instance (Num a, Columnable a) => Num (Expr a) where
     (+) :: Expr a -> Expr a -> Expr a
     (+) = BinOp "add" (+)
 
+    (-) :: Expr a -> Expr a -> Expr a
+    (-) = BinOp "sub" (+)
+
     (*) :: Expr a -> Expr a -> Expr a
     (*) = BinOp "mult" (*)
 
@@ -405,6 +408,11 @@ instance (Num a, Columnable a) => Num (Expr a) where
 
     signum :: (Num a) => Expr a -> Expr a
     signum = UnaryOp "signum" signum
+
+add = (+)
+divide = (/)
+sub = (-)
+mult = (*)
 
 instance (Fractional a, Columnable a) => Fractional (Expr a) where
     fromRational :: (Fractional a, Columnable a) => Rational -> Expr a
@@ -444,14 +452,14 @@ instance (Floating a, Columnable a) => Floating (Expr a) where
 instance (Show a) => Show (Expr a) where
     show :: forall a. (Show a) => Expr a -> String
     show Variable = "<variable>"
-    show (Col name) = "col@" ++ show (typeRep @a) ++ "(" ++ T.unpack name ++ ")"
+    show (Col name) = "(col @" ++ show (typeRep @a) ++ " " ++ show name ++ ")"
     show (Lit value) = show value
-    show (UnaryOp name f value) = T.unpack name ++ "(" ++ show value ++ ")"
-    show (BinOp name f a b) = T.unpack name ++ "(" ++ show a ++ ", " ++ show b ++ ")"
-    show (NumericAggregate expr op _) = T.unpack op ++ "(" ++ show expr ++ ")"
-    show (GeneralAggregate expr op _) = T.unpack op ++ "(" ++ "<cannot show expression>" ++ ")"
-    show (ReductionAggregate expr op _) = T.unpack op ++ "(" ++ show expr ++ ")"
-    show (FoldAggregate expr op _ _ )   = T.unpack op ++ "(" ++ show expr ++ ")"
+    show (UnaryOp name f value) = "(" ++ T.unpack name ++ " " ++ show value ++ ")"
+    show (BinOp name f a b) = "(" ++ T.unpack name ++ " " ++ show a ++ " " ++ show b ++ ")"
+    show (NumericAggregate expr op _) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
+    show (GeneralAggregate expr op _) = "(" ++ T.unpack op ++ " " ++ "<cannot show expression>" ++ ")"
+    show (ReductionAggregate expr op _) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
+    show (FoldAggregate expr op _ _ )   = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
 
 instance (Show a, Columnable a) => Show (Expr a -> Expr a) where
     show :: forall a. (Show a, Columnable a) => (Expr a -> Expr a) -> String
