@@ -3,15 +3,11 @@
 
 module DataFrame.Internal.Statistics where
 
-import qualified Data.Text as T
-import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Intro as VA
-import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Exception (throw)
-import Control.Monad
 import Control.Monad.ST (runST)
 import DataFrame.Errors (DataFrameException (..))
 
@@ -115,25 +111,19 @@ quantiles' qs q samp
         let !n = VU.length samp
         mutableSamp <- VU.thaw samp
         VA.sort mutableSamp
-        sortedSamp <- VU.freeze mutableSamp
-        return $
-            VU.map
-                ( \i ->
-                    let !p = fromIntegral i / fromIntegral q
-                     in interpolate sortedSamp p n
-                )
-                qs
+        VU.mapM (\i -> do
+            let !p = fromIntegral i / fromIntegral q
+                !position = p * fromIntegral (n - 1)
+                !index = floor position
+                !f = position - fromIntegral index
+            x <- VUM.read mutableSamp index
+            if f == 0
+                then return x
+                else do
+                    y <- VUM.read mutableSamp (index + 1)
+                    return $ (1 - f) * x + f * y
+            ) qs
 {-# INLINE quantiles' #-}
-
-interpolate :: VU.Vector Double -> Double -> Int -> Double
-interpolate sortedSamp p n =
-    let !position = p * fromIntegral (n - 1)
-        !i = floor position
-        !f = position - fromIntegral i
-     in if f == 0
-            then sortedSamp VU.! i
-            else (1 - f) * sortedSamp VU.! i + f * sortedSamp VU.! (i + 1)
-{-# INLINE interpolate #-}
 
 interQuartileRange' :: VU.Vector Double -> Double
 interQuartileRange' samp =

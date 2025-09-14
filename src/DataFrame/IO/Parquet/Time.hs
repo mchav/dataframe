@@ -2,7 +2,6 @@
 
 module DataFrame.IO.Parquet.Time where
 
-import Data.Int
 import Data.Time
 import Data.Word
 

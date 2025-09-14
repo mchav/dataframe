@@ -8,7 +8,6 @@ import Control.Monad
 import Data.Bits
 import qualified Data.ByteString as BSO
 import Data.Char
-import Data.Foldable
 import Data.IORef
 import Data.Int
 import qualified Data.List as L
@@ -18,10 +17,8 @@ import qualified Data.Text as T
 import Data.Word
 import qualified DataFrame.Internal.Column as DI
 import DataFrame.Internal.DataFrame (DataFrame)
-import qualified DataFrame.Internal.DataFrame as DI
 import qualified DataFrame.Operations.Core as DI
 
-import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Dictionary
 import DataFrame.IO.Parquet.Levels
 import DataFrame.IO.Parquet.Page
@@ -32,11 +29,10 @@ import DataFrame.IO.Parquet.Types
 
 ==== __Example__
 @
-ghci> D.readParquet "./data/mtcars.parquet" df
-
+ghci> D.readParquet ".\/data\/mtcars.parquet"
 @
 -}
-readParquet :: String -> IO DataFrame
+readParquet :: FilePath -> IO DataFrame
 readParquet path = do
     fileMetadata <- readMetadataFromPath path
     let columnPaths = getColumnPaths (drop 1 $ schema fileMetadata)

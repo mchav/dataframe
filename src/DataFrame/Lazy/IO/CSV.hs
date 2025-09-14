@@ -8,37 +8,28 @@
 
 module DataFrame.Lazy.IO.CSV where
 
-import qualified Data.ByteString.Char8 as C
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.IO as TLIO
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
-import Control.Applicative (many, (*>), (<$>), (<*), (<*>), (<|>))
-import Control.Monad (forM_, replicateM_, unless, void, when, zipWithM_)
+import Control.Applicative (many, (<|>))
+import Control.Monad (forM_, unless, when, zipWithM_)
 import Data.Attoparsec.Text
 import Data.Char
 import Data.Foldable (fold)
 import Data.Function (on)
 import Data.IORef
 import Data.Maybe
-import Data.Text.Encoding (decodeUtf8Lenient)
-import Data.Type.Equality (
-    TestEquality (testEquality),
-    type (:~:) (Refl),
- )
+import Data.Type.Equality (TestEquality (testEquality))
 import DataFrame.Internal.Column (Column (..), MutableColumn (..), columnLength, freezeColumn', writeColumn)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
-import DataFrame.Operations.Typing
-import GHC.IO.Handle (Handle)
 import System.IO
 import Type.Reflection
 import Prelude hiding (concat, takeWhile)
@@ -65,18 +56,18 @@ defaultOptions = ReadOptions{hasHeader = True, inferTypes = True, safeRead = Tru
 Note this file stores intermediate temporary files
 while converting the CSV from a row to a columnar format.
 -}
-readCsv :: String -> IO DataFrame
+readCsv :: FilePath -> IO DataFrame
 readCsv path = fst <$> readSeparated ',' defaultOptions path
 
 {- | Reads a tab separated file from the given path.
 Note this file stores intermediate temporary files
 while converting the CSV from a row to a columnar format.
 -}
-readTsv :: String -> IO DataFrame
+readTsv :: FilePath -> IO DataFrame
 readTsv path = fst <$> readSeparated '\t' defaultOptions path
 
 -- | Reads a character separated file into a dataframe using mutable vectors.
-readSeparated :: Char -> ReadOptions -> String -> IO (DataFrame, (Integer, T.Text, Int))
+readSeparated :: Char -> ReadOptions -> FilePath -> IO (DataFrame, (Integer, T.Text, Int))
 readSeparated c opts path = do
     totalRows <- case totalRows opts of
         Nothing -> countRows c path >>= \total -> if hasHeader opts then return (total - 1) else return total
@@ -289,14 +280,14 @@ countRows c path = withFile path ReadMode $! go 0 ""
                         go (n + 1) unconsumed h
 {-# INLINE countRows #-}
 
-writeCsv :: String -> DataFrame -> IO ()
+writeCsv :: FilePath -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
 
 writeSeparated ::
     -- | Separator
     Char ->
     -- | Path to write to
-    String ->
+    FilePath ->
     DataFrame ->
     IO ()
 writeSeparated c filepath df = withFile filepath WriteMode $ \handle -> do

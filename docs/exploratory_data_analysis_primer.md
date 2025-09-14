@@ -5,7 +5,7 @@ Exploratory data analysis (EDA), in brief, is what you do when you first get a d
 * check for completeness/correctness of data.
 * understand the relationships between the explanatory variables.
 * understand the relationship between the explanatory and outcome variables.
-* preliminarily determine what models would be appropriate for our data. 
+* preliminarily determine what models would be appropriate for our data.
 
 It's important for EDA tools to be feature-rich and intuitive so we can answer many different kinds of questions about the data without the tool getting in the way.
 
@@ -51,7 +51,7 @@ For quantitative data our goal is to understand the population distribution thro
 * shape (is the data normally distributed? does it skew left or right?),
 * and outliers (how common are outliers)
 
-We can calculate sample statistics from the data such as the sample mean, sample variance etc. Although it's most often useful to use graphs to visualize the data's distribution, univariate non-graphical EDA describes aspects of the data's histogram. 
+We can calculate sample statistics from the data such as the sample mean, sample variance etc. Although it's most often useful to use graphs to visualize the data's distribution, univariate non-graphical EDA describes aspects of the data's histogram.
 
 ### Missing data
 Arguably the first thing to do when presented with a datset is check for null values.
@@ -80,8 +80,8 @@ It seems we have most of the data except some missing total bedrooms. Dealing wi
 ### Central tendency
 The central tendency of a distribution describes a "typical" value of that distribution. The most common statistical measures of central tendency are arithmetic mean and median. For symmetric distributions the mean and the median are the same. But for a skewed distribution the mean is pulled towards the "heavier" side wherease the median is more robust to these changes.
 
-For a given column calulating the mean and median is fairly straightfoward and shown below. 
-            
+For a given column calculating the mean and median is fairly straightfoward and shown below.
+
 ```haskell
 ghci> D.mean "housing_median_age" df
 Just 28.63948643410852

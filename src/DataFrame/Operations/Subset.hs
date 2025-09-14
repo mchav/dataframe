@@ -11,7 +11,6 @@ module DataFrame.Operations.Subset where
 
 import qualified Data.List as L
 import qualified Data.Map as M
-import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
@@ -22,13 +21,12 @@ import qualified Prelude
 import Control.Exception (throw)
 import Control.Monad.ST
 import Data.Function ((&))
-import Data.Maybe (fromJust, fromMaybe, isJust)
-import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
+import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
+import Data.Type.Equality (TestEquality (..))
 import DataFrame.Errors (DataFrameException (..), TypeErrorContext (..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
 import DataFrame.Internal.Expression
-import DataFrame.Internal.Row (Any, mkRowFromArgs, toAny)
 import DataFrame.Operations.Core
 import DataFrame.Operations.Transformations (apply)
 import Type.Reflection
@@ -74,7 +72,7 @@ clip n left right = min right $ max n left
 
 {- | O(n * k) Filter rows by a given condition.
 
-filter "x" even df
+> filter "x" even df
 -}
 filter ::
     forall a.
@@ -152,7 +150,7 @@ filterWhere expr df =
 
 {- | O(k) removes all rows with `Nothing` in a given column from the dataframe.
 
-> filterJust df
+> filterJust "col" df
 -}
 filterJust :: T.Text -> DataFrame -> DataFrame
 filterJust name df = case getColumn name df of
@@ -160,9 +158,19 @@ filterJust name df = case getColumn name df of
     Just column@(OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isJust df & apply @(Maybe a) fromJust name
     Just column -> df
 
+{- | O(k) returns all rows with `Nothing` in a give column.
+
+> filterNothing "col" df
+-}
+filterNothing :: T.Text -> DataFrame -> DataFrame
+filterNothing name df = case getColumn name df of
+    Nothing -> throw $ ColumnNotFoundException name "filterNothing" (map fst $ M.toList $ columnIndices df)
+    Just (OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isNothing df
+    _                                                 -> df
+
 {- | O(n * k) removes all rows with `Nothing` from the dataframe.
 
-> filterJust df
+> filterAllJust df
 -}
 filterAllJust :: DataFrame -> DataFrame
 filterAllJust df = foldr filterJust df (columnNames df)
@@ -199,18 +207,37 @@ data SelectionCriteria
     | ColumnIndexRange (Int, Int)
     | ColumnName T.Text
 
+-- | Criteria for selecting a column by name.
+--
+-- > selectBy [byName "Age"] df
+--
+-- equivalent to:
+--
+-- > select ["Age"] df
 byName :: T.Text -> SelectionCriteria
 byName = ColumnName
 
+-- | Criteria for selecting columns whose property satisfies given predicate.
+--
+-- > selectBy [byProperty isNumeric] df
 byProperty :: (Column -> Bool) -> SelectionCriteria
 byProperty = ColumnProperty
 
+-- | Criteria for selecting columns whose name satisfies given predicate.
+--
+-- > selectBy [byNameProperty (T.isPrefixOf "weight")] df
 byNameProperty :: (T.Text -> Bool) -> SelectionCriteria
 byNameProperty = ColumnNameProperty
 
+-- | Criteria for selecting columns whose names are in the given lexicographic range (inclusive).
+--
+-- > selectBy [byNameRange ("a", "c")] df
 byNameRange :: (T.Text, T.Text) -> SelectionCriteria
 byNameRange = ColumnTextRange
 
+-- | Criteria for selecting columns whose indices are in the given (inclusive) range.
+--
+-- > selectBy [byIndexRange (0, 5)] df
 byIndexRange :: (Int, Int) -> SelectionCriteria
 byIndexRange = ColumnIndexRange
 
