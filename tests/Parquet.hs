@@ -4,11 +4,9 @@ module Parquet where
 
 import qualified DataFrame as D
 
-import Assertions
 import Data.Int
 import Data.Text (Text)
 import Data.Time
-import Data.Time.Calendar
 import GHC.IO (unsafePerformIO)
 import Test.HUnit
 

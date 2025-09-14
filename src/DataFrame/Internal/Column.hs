@@ -17,8 +17,6 @@
 
 module DataFrame.Internal.Column where
 
-import qualified Data.ByteString.Char8 as C
-import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as VB
@@ -30,19 +28,12 @@ import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
-import Data.Int
-import Data.Kind (Constraint, Type)
 import Data.Maybe
-import Data.Proxy
-import Data.Text.Encoding (decodeUtf8Lenient)
-import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
-import Data.Typeable (Typeable, cast)
-import Data.Word
+import Data.Type.Equality (TestEquality (..))
 import DataFrame.Errors
 import DataFrame.Internal.Parsing
 import DataFrame.Internal.Types
 import Type.Reflection
-import Unsafe.Coerce (unsafeCoerce)
 
 {- | Our representation of a column is a GADT that can store data based on the underlying data.
 

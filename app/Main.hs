@@ -6,11 +6,6 @@
 {-# LANGUAGE TypeApplications #-}
 
 import qualified DataFrame as D -- import for general functionality.
-import qualified DataFrame.Functions as F -- import for column expressions.
-
-import DataFrame ((|>)) -- import chaining operator with unqualified.
-
-import Control.Monad (replicateM)
 import Data.Time
 import qualified Data.Vector.Unboxed as VU
 import System.Random.Stateful

@@ -21,10 +21,10 @@ import Control.Exception (throw)
 import Data.Either
 import Data.Function (on, (&))
 import Data.Maybe
-import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
+import Data.Type.Equality (TestEquality (..))
 import DataFrame.Errors
 import DataFrame.Internal.Column (Column (..), Columnable, columnLength, columnTypeString, expandColumn, fromList, fromVector)
-import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn, null)
+import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
 import DataFrame.Internal.Parsing (isNullish)
 import Type.Reflection
 import Prelude hiding (null)

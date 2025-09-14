@@ -10,18 +10,15 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Generic as VG
-import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
 import Data.Maybe
 import DataFrame.Errors (DataFrameException (..), TypeErrorContext (..))
-import DataFrame.Internal.Column (Column (..), Columnable, TypedColumn (TColumn), columnTypeString, ifoldrColumn, imapColumn, mapColumn, unwrapTypedColumn)
+import DataFrame.Internal.Column (Column (..), Columnable, columnTypeString, ifoldrColumn, imapColumn, mapColumn, unwrapTypedColumn)
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Internal.Expression
-import DataFrame.Internal.Row (Any, mkRowFromArgs, toAny)
 import DataFrame.Operations.Core
-import Type.Reflection (TypeRep, typeOf, typeRep)
+import Type.Reflection (TypeRep, typeRep)
 
 -- | O(k) Apply a function to a given column in a dataframe.
 apply ::

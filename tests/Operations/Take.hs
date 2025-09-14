@@ -3,10 +3,8 @@
 module Operations.Take where
 
 import qualified DataFrame as D
-import qualified DataFrame.Internal.Column as D
 import qualified DataFrame.Internal.Column as DI
 import qualified DataFrame.Internal.DataFrame as D
-import qualified DataFrame.Internal.DataFrame as DI
 
 import Test.HUnit
 

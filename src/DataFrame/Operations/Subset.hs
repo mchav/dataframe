@@ -11,7 +11,6 @@ module DataFrame.Operations.Subset where
 
 import qualified Data.List as L
 import qualified Data.Map as M
-import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
@@ -23,12 +22,11 @@ import Control.Exception (throw)
 import Control.Monad.ST
 import Data.Function ((&))
 import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
-import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
+import Data.Type.Equality (TestEquality (..))
 import DataFrame.Errors (DataFrameException (..), TypeErrorContext (..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
 import DataFrame.Internal.Expression
-import DataFrame.Internal.Row (Any, mkRowFromArgs, toAny)
 import DataFrame.Operations.Core
 import DataFrame.Operations.Transformations (apply)
 import Type.Reflection

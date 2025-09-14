@@ -8,44 +8,30 @@
 
 module DataFrame.Operations.Aggregation where
 
-import qualified Data.Set as S
-import qualified DataFrame.Functions as F
-
 import qualified Data.List as L
 import qualified Data.Map as M
-import qualified Data.Map.Strict as MS
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Merge as VA
 import qualified Data.Vector.Generic as VG
-import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
-import Control.Monad (foldM_)
 import Control.Monad.ST (runST)
-import Data.Function ((&))
 import Data.Hashable
-import Data.List ((\\))
-import Data.Maybe
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import DataFrame.Errors
 import DataFrame.Internal.Column (
     Column (..),
     Columnable,
     atIndicesStable,
-    columnVersionString,
-    fromVector,
     getIndices,
     getIndicesUnboxed,
     unwrapTypedColumn,
  )
-import DataFrame.Internal.DataFrame (DataFrame (..), GroupedDataFrame (..), empty, getColumn, unsafeGetColumn)
+import DataFrame.Internal.DataFrame (DataFrame (..), GroupedDataFrame (..))
 import DataFrame.Internal.Expression
-import DataFrame.Internal.Parsing
-import DataFrame.Internal.Types
 import DataFrame.Operations.Core
-import DataFrame.Operations.Merge
 import DataFrame.Operations.Subset
 import Type.Reflection (typeOf, typeRep)
 
