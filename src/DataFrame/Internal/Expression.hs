@@ -87,7 +87,7 @@ data UExpr where
 interpret :: forall a. (Columnable a) => DataFrame -> Expr a -> TypedColumn a
 interpret df (Lit value) = TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
 interpret df (Col name) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just col -> TColumn col
 interpret df (Apply _ (f :: c -> d) value) =
     let
@@ -143,7 +143,7 @@ interpret _ expr = error ("Invalid operation for dataframe: " ++ show expr)
 interpretAggregation :: forall a. (Columnable a) => GroupedDataFrame -> Expr a -> TypedColumn a
 interpretAggregation gdf (Lit value) = TColumn $ fromVector $ V.replicate (VG.length (offsets gdf) - 1) value
 interpretAggregation gdf@(Grouped df names indices os) (Col name) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just col -> TColumn $ atIndicesStable (VG.map (indices `VG.unsafeIndex`) (VG.init os)) col
 interpretAggregation gdf (Apply _ (f :: c -> d) expr) =
     let
@@ -161,7 +161,7 @@ interpretAggregation gdf (BinOp _ (f :: c -> d -> e) left right) =
             Nothing -> error "Type error in binary operation"
             Just col -> TColumn col
 interpretAggregation gdf@(Grouped df names indices os) (GeneralAggregate name op (f :: forall v b. (VG.Vector v b, Columnable b) => v b -> c)) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just (BoxedColumn col) ->
         TColumn $
             fromVector $
@@ -212,7 +212,7 @@ interpretAggregation gdf@(Grouped df names indices os) (GeneralAggregate name op
                             )
                     )
 interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate name op (f :: forall a. (Columnable a) => a -> a -> a)) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just (BoxedColumn col) -> TColumn $
         fromVector $
             VG.generate (VG.length os - 1) $ \g ->
@@ -267,7 +267,7 @@ interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate name 
                 let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                  in go (f acc x) (j + 1) e
 interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate name op s (f :: (a -> b -> a))) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just (BoxedColumn (col :: V.Vector c)) -> case testEquality (typeRep @b) (typeRep @c) of
         Nothing -> error "Type mismatch"
         Just Refl -> TColumn $
@@ -328,7 +328,7 @@ interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate name op s 
                     let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                      in go (f acc x) (j + 1) e
 interpretAggregation gdf@(Grouped df names indices os) (NumericAggregate name op (f :: VU.Vector b -> c)) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @b) (typeRep @d) of
         Nothing -> case testEquality (typeRep @d) (typeRep @Int) of
             Just Refl -> case sUnbox @c of

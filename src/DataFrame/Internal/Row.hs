@@ -89,7 +89,7 @@ mkRowFromArgs :: [T.Text] -> DataFrame -> Int -> Row
 mkRowFromArgs names df i = V.map get (V.fromList names)
   where
     get name = case getColumn name df of
-        Nothing -> throw $ ColumnNotFoundException name "[INTERNAL] mkRowFromArgs" (map fst $ M.toList $ columnIndices df)
+        Nothing -> throw $ ColumnNotFoundException name "[INTERNAL] mkRowFromArgs" (M.keys $ columnIndices df)
         Just (BoxedColumn column) -> toAny (column V.! i)
         Just (UnboxedColumn column) -> toAny (column VU.! i)
         Just (OptionalColumn column) -> toAny (column V.! i)

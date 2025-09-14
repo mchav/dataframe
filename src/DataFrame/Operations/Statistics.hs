@@ -63,7 +63,7 @@ frequencies name df =
         freqs col = L.foldl' (\d (col, k) -> insertVector (showValue @a col) (V.fromList [toAny k, calculatePercentage (counts @a) k]) d) initDf counts
      in
         case getColumn name df of
-            Nothing -> throw $ ColumnNotFoundException name "frequencies" (map fst $ M.toList $ columnIndices df)
+            Nothing -> throw $ ColumnNotFoundException name "frequencies" (M.keys $ columnIndices df)
             Just ((BoxedColumn (column :: V.Vector a))) -> freqs column
             Just ((OptionalColumn (column :: V.Vector a))) -> freqs column
             Just ((UnboxedColumn (column :: VU.Vector a))) -> freqs column
@@ -108,14 +108,14 @@ _getColumnAsDouble name df = case getColumn name df of
             SFalse -> case sFloating @a of
                 STrue -> Just (VU.map realToFrac f)
                 SFalse -> Nothing
-    Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (M.keys $ columnIndices df)
     _ -> Nothing
 {-# INLINE _getColumnAsDouble #-}
 
 -- | Calculates the sum of a given column as a standalone value.
 sum :: forall a. (Columnable a, Num a, VU.Unbox a) => T.Text -> DataFrame -> Maybe a
 sum name df = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "sum" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "sum" (M.keys $ columnIndices df)
     Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @a) of
         Just Refl -> Just $ VG.sum column
         Nothing -> Nothing
