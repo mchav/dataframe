@@ -25,6 +25,12 @@ pandas = do
     output <- readProcess "./benchmark/dataframe_benchmark/bin/python3" ["./benchmark/pandas/pandas_benchmark.py"] ""
     putStrLn output
 
+explorer :: IO ()
+explorer = do
+    _ <- readProcess "./benchmark/dataframe_benchmark/bin/mix" ["deps.get"] ""
+    output <- readProcess "./benchmark/dataframe_benchmark/bin/mix" ["run", "./benchmark/explorer/explorer_benchmark.exs"] ""
+    putStrLn output
+
 groupByHaskell :: IO ()
 groupByHaskell = do
     df <- D.readCsv "./data/housing.csv"
@@ -44,6 +50,11 @@ groupByPolars = do
 groupByPandas :: IO ()
 groupByPandas = do
     output <- readProcess "./benchmark/dataframe_benchmark/bin/python3" ["./benchmark/pandas/group_by.py"] ""
+    putStrLn output
+
+groupByExplorer :: IO ()
+groupByExplorer = do
+    output <- readProcess "./benchmark/dataframe_benchmark/bin/mix" ["run", "./benchmark/explorer/group_by.exs"] ""
     putStrLn output
 
 parseFile :: String -> IO ()
@@ -77,6 +88,7 @@ main = do
         , bench "groupByHaskell" $ nfIO groupByHaskell
         , bench "groupByPolars" $ nfIO groupByPolars
         , bench "groupByPandas" $ nfIO groupByPandas
+        , bench "groupByExplorer" $ nfIO groupByExplorer
         ],
       bgroup
         "Parsing"
