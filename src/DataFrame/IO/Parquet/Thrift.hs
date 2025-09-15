@@ -496,6 +496,8 @@ readAesGcmCtrV1 v@(AesGcmCtrV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos 
                 supplyAadPrefix <- readAndAdvance pos buf
                 readAesGcmCtrV1 (v{supplyAadPrefix = supplyAadPrefix == compactBooleanTrue}) buf pos lastFieldId fieldStack
             _ -> return ENCRYPTION_ALGORITHM_UNKNOWN
+readAesGcmCtrV1 _ _ _ _ _ = 
+    undefined
 
 readAesGcmV1 :: EncryptionAlgorithm -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
 readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFieldId fieldStack = do
@@ -513,6 +515,8 @@ readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFi
                 supplyAadPrefix <- readAndAdvance pos buf
                 readAesGcmV1 (v{supplyAadPrefix = supplyAadPrefix == compactBooleanTrue}) buf pos lastFieldId fieldStack
             _ -> return ENCRYPTION_ALGORITHM_UNKNOWN
+readAesGcmV1 _ _ _ _ _ = 
+    undefined
 
 readTypeOrder :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnOrder
 readTypeOrder buf pos lastFieldId fieldStack = do
@@ -707,6 +711,8 @@ readIntType v@(IntType bitWidth intIsSigned) buf pos lastFieldId fieldStack = do
                     let isSigned = (t .&. 0x0f) == compactBooleanTrue
                     readIntType (v{intIsSigned = isSigned}) buf pos identifier fieldStack
                 _ -> error $ "UNKNOWN field ID for IntType: " ++ show identifier
+readIntType _ _ _ _ _ = 
+    undefined
 
 readDecimalType :: LogicalType -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
 readDecimalType v@(DecimalType p s) buf pos lastFieldId fieldStack = do
@@ -721,6 +727,8 @@ readDecimalType v@(DecimalType p s) buf pos lastFieldId fieldStack = do
                 p' <- readInt32FromBuffer buf pos
                 readDecimalType (v{decimalTypePrecision = p'}) buf pos lastFieldId fieldStack
             _ -> error $ "UNKNOWN field ID for DecimalType" ++ show identifier
+readDecimalType _ _ _ _ _ = 
+    undefined
 
 readTimeType :: LogicalType -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
 readTimeType v@(TimeType _ _) buf pos lastFieldId fieldStack = do
@@ -749,7 +757,9 @@ readTimeType v@(TimestampType _ _) buf pos lastFieldId fieldStack = do
                 u <- readUnit buf pos 0 []
                 readTimeType (v{unit = u}) buf pos lastFieldId fieldStack
             _ -> error $ "UNKNOWN field ID for TimestampType" ++ show identifier
-
+readTimeType _ _ _ _ _ = 
+    undefined
+    
 readUnit :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO TimeUnit
 readUnit buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
