@@ -23,7 +23,10 @@ source-repository head
 
 common warnings
     -- TODO add more warnings, eventually -Wall
-    ghc-options: -Wunused-packages -Wunused-imports
+    ghc-options:
+        -Wincomplete-patterns
+        -Wunused-imports
+        -Wunused-packages
 
 library
     import: warnings

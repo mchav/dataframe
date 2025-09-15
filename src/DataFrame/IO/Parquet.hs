@@ -263,7 +263,9 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
                     ERLE_DICTIONARY -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
                     EPLAIN_DICTIONARY -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
                     other -> error ("Unsupported v2 encoding: " ++ show other)
-
+            DictionaryPageHeader{} -> undefined
+            INDEX_PAGE_HEADER -> undefined
+            PAGE_TYPE_HEADER_UNKNOWN -> undefined
     case cols of
         [] -> pure $ DI.fromList ([] :: [Maybe Int])
         (c : cs) ->
