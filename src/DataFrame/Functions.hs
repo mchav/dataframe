@@ -45,59 +45,58 @@ lit :: (Columnable a) => a -> Expr a
 lit = Lit
 
 lift :: (Columnable a, Columnable b) => (a -> b) -> Expr a -> Expr b
-lift = Apply "udf"
+lift = UnaryOp "udf"
 
 lift2 :: (Columnable c, Columnable b, Columnable a) => (c -> b -> a) -> Expr c -> Expr b -> Expr a
-lift2 = BinOp "udf"
+lift2 = BinaryOp "udf"
 
 (==) :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
-(==) = BinOp "eq" (Prelude.==)
+(==) = BinaryOp "eq" (Prelude.==)
 
 (<) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-(<) = BinOp "lt" (Prelude.<)
+(<) = BinaryOp "lt" (Prelude.<)
 
 (>) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-(>) = BinOp "gt" (Prelude.>)
+(>) = BinaryOp "gt" (Prelude.>)
 
 (<=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-(<=) = BinOp "leq" (Prelude.<=)
+(<=) = BinaryOp "leq" (Prelude.<=)
 
 (>=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-(>=) = BinOp "geq" (Prelude.>=)
+(>=) = BinaryOp "geq" (Prelude.>=)
 
 and :: Expr Bool -> Expr Bool -> Expr Bool
-and = BinOp "and" (&&)
+and = BinaryOp "and" (&&)
 
 or :: Expr Bool -> Expr Bool -> Expr Bool
-or = BinOp "or" (||)
+or = BinaryOp "or" (||)
 
 not :: Expr Bool -> Expr Bool
-not = Apply "not" Prelude.not
+not = UnaryOp "not" Prelude.not
 
 count :: (Columnable a) => Expr a -> Expr Int
-count (Col name) = GeneralAggregate name "count" VG.length
-count _ = error "Argument can only be a column reference not an unevaluated expression"
+count expr = AggFold expr "foldUdf" 0 (\acc _ -> acc + 1)
 
 minimum :: (Columnable a, Ord a) => Expr a -> Expr a
-minimum (Col name) = ReductionAggregate name "minimum" min
+minimum expr = AggReduce expr "minimum" min
 
 maximum :: (Columnable a, Ord a) => Expr a -> Expr a
-maximum (Col name) = ReductionAggregate name "maximum" max
+maximum expr = AggReduce expr "maximum" max
 
 sum :: forall a. (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
-sum (Col name) = NumericAggregate name "sum" VG.sum
+sum expr = AggNumericVector expr "sum" VG.sum
 
-mean :: (Columnable a, Num a) => Expr a -> Expr Double
-mean (Col name) = NumericAggregate name "mean" mean'
+mean :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
+mean expr = AggNumericVector expr "mean" mean'
 
-standardDeviation :: (Columnable a, Num a) => Expr a -> Expr Double
-standardDeviation (Col name) = NumericAggregate name "stddev" (sqrt . variance')
+standardDeviation :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
+standardDeviation expr = AggNumericVector expr "stddev" (sqrt . variance')
 
 zScore :: Expr Double -> Expr Double
-zScore c@(Col name) = (c - mean c) / (standardDeviation c)
+zScore c = (c - mean c) / standardDeviation c
 
 reduce :: forall a b. (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
-reduce (Col name) = FoldAggregate name "foldUdf"
+reduce expr = AggFold expr "foldUdf"
 
 -- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
 isReservedId :: T.Text -> Bool

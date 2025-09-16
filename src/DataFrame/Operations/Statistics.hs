@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -121,11 +120,11 @@ sum name df = case getColumn name df of
         Nothing -> Nothing
 
 applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
-applyStatistic f name df = join $ fmap apply (_getColumnAsDouble name (filterJust name df))
+applyStatistic f name df = apply =<< _getColumnAsDouble name (filterJust name df)
   where
     apply col =
         let
-            res = (f col)
+            res = f col
          in
             if isNaN res then Nothing else pure res
 {-# INLINE applyStatistic #-}
@@ -163,7 +162,7 @@ summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic"
 
 -- | Round a @Double@ to Specified Precision
 roundTo :: Int -> Double -> Double
-roundTo n x = fromInteger (round $ x * (10 ^ n)) / (10.0 ^^ n)
+roundTo n x = fromInteger (round $ x * 10 ^ n) / 10.0 ^^ n
 
 toPct2dp :: Double -> String
 toPct2dp x
