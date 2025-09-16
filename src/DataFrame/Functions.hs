@@ -166,17 +166,27 @@ deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
 equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
 equivalent df p1 p2 = interpret df p1 Prelude.== interpret df p2
 
-search :: T.Text -> Int -> DataFrame -> Either String (Expr Double)
-search target d df = let
+createFeatureExpression ::
+    -- | Target expression
+    T.Text ->
+    -- | Depth of search (Roughly, how many terms in the final expression)
+    Int ->
+    -- | Beam size - the number of candidate expressions to consider at a time.
+    Int ->
+    DataFrame ->
+    Either String (Expr Double)
+createFeatureExpression target d b df = let
         df' = exclude [target] df
         names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
         variables = map col names
-    in case searchStream df' (interpret df (Col target)) variables d of
+    in case beamSearch df' b (interpret df (Col target)) variables d of
             Nothing -> Left "No programs found"
             Just p -> Right p
 
-searchStream ::
+beamSearch ::
     DataFrame ->
+    -- | Beam size
+    Int ->
     -- | Examples
     TypedColumn Double ->
     -- | Programs
@@ -184,16 +194,16 @@ searchStream ::
     -- | Search depth
     Int ->
     Maybe (Expr Double)
-searchStream df outputs programs d
+beamSearch df b outputs programs d
     | d Prelude.== 0 = case ps of
         []    -> Nothing
         (x:_) -> Just x
     | otherwise =
         case findFirst ps of
             Just p -> Just p
-            Nothing -> searchStream df outputs (generatePrograms (map col names) ps) (d - 1)
+            Nothing -> beamSearch df b outputs (generatePrograms (map col names) ps) (d - 1)
   where
-    ps = pickTopN df outputs 100 $ deduplicate df programs
+    ps = pickTopN df outputs b $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
     findFirst [] = Nothing
     findFirst (p : ps')
