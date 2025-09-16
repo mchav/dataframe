@@ -151,14 +151,15 @@ deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
   where
     go _ [] = []
     go seen (x : xs)
-        | hasNaN = go seen xs
+        | hasInvalid = go seen xs
         | S.member res seen = go seen xs
         | otherwise = x : go (S.insert res seen) xs
             where
                 res = interpret df x
-                hasNaN = case res of
+                infinity = read @Double "Infinity"
+                hasInvalid = case res of
                     (TColumn (UnboxedColumn (col :: VU.Vector a))) -> case testEquality (typeRep @Double) (typeRep @a) of
-                                    Just Refl -> VU.any isNaN col
+                                    Just Refl -> VU.any (\n -> isNaN n || isInfinite n) col
                                     Nothing -> False
                     _ -> False
 
@@ -217,7 +218,10 @@ pickTopN :: DataFrame
          -> [Expr Double]
 pickTopN df (TColumn col) n ps = let
         l = VU.convert (toVector @Double col)
-        ordered = take n (L.sortBy (\e e' -> compare (abs <$> correlation' l (asDoubleVector e')) (abs <$> correlation' l (asDoubleVector e))) ps)
+        ordered = take n (L.sortBy (\e e' -> let
+                c1 = abs <$> correlation' l (asDoubleVector e')
+                c2 = abs <$> correlation' l (asDoubleVector e)
+            in if maybe False isInfinite c1 || maybe False isInfinite c2 then LT else compare c1 c2) ps)
         asDoubleVector e = let
                 (TColumn col') = interpret df e
             in VU.convert (toVector @Double col')
