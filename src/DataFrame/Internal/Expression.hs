@@ -414,12 +414,24 @@ instance (Num a, Columnable a) => Num (Expr a) where
     signum :: (Num a) => Expr a -> Expr a
     signum = UnaryOp "signum" signum
 
+add :: (Num a, Columnable a) => Expr a -> Expr a -> Expr a
+add = (+)
+
+sub :: (Num a, Columnable a) => Expr a -> Expr a -> Expr a
+sub = (-)
+
+mult :: (Num a, Columnable a) => Expr a -> Expr a -> Expr a
+mult = (*)
+
 instance (Fractional a, Columnable a) => Fractional (Expr a) where
     fromRational :: (Fractional a, Columnable a) => Rational -> Expr a
     fromRational = Lit . fromRational
 
     (/) :: (Fractional a, Columnable a) => Expr a -> Expr a -> Expr a
     (/) = BinaryOp "divide" (/)
+
+divide :: (Fractional a, Columnable a) => Expr a -> Expr a -> Expr a
+divide = (/)
 
 instance (Floating a, Columnable a) => Floating (Expr a) where
     pi :: (Floating a, Columnable a) => Expr a
@@ -451,11 +463,14 @@ instance (Floating a, Columnable a) => Floating (Expr a) where
 
 instance (Show a) => Show (Expr a) where
     show :: forall a. (Show a) => Expr a -> String
-    show (Col name) = "col@" ++ show (typeRep @a) ++ "(" ++ T.unpack name ++ ")"
+    show (Col name) = "(col @" ++ show (typeRep @a) ++ " " ++ show name ++ ")"
     show (Lit value) = show value
-    show (UnaryOp name f value) = T.unpack name ++ "(" ++ show value ++ ")"
-    show (BinaryOp name f a b) = T.unpack name ++ "(" ++ show a ++ ", " ++ show b ++ ")"
-    show (AggNumericVector e op f) = T.unpack op ++ "(" ++ show e ++ ")"
+    show (UnaryOp name f value) = "(" ++ T.unpack name ++ " " ++ show value ++ ")"
+    show (BinaryOp name f a b) = "(" ++ T.unpack name ++ " " ++ show a ++ " " ++ show b ++ ")"
+    show (AggNumericVector expr op _) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
+    show (AggVector expr op _) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
+    show (AggReduce expr op _) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
+    show (AggFold expr op _ _ )   = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
 
 eSize :: Expr a -> Int
 eSize (Col _)  = 1
