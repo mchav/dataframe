@@ -31,13 +31,12 @@ import qualified Data.Text as T
 import qualified Data.Vector as VB
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
-import Debug.Trace (traceShow)
+import Debug.Trace ( traceShow, trace )
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
-import Type.Reflection (typeRep)
+import Type.Reflection (typeRep, type (:~:) (Refl))
 import Prelude hiding (sum, minimum, maximum)
-
-import Debug.Trace (trace)
+import Data.Type.Equality
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n
@@ -114,8 +113,7 @@ generatePrograms vars existingPrograms =
     existingPrograms ++
     [ transform p
     | p <- existingPrograms
-    , transform <- [zScore, abs, sum,
-                    log . (+ Lit 1), exp]
+    , transform <- [zScore, abs, log . (+ Lit 1), exp]
     ] ++
     [ p + q
     | (i, p) <- zip [0..] existingPrograms
@@ -142,12 +140,12 @@ generatePrograms vars existingPrograms =
     ]
   where
     transformsWithVar v =
-        [ \v' -> v + v'
-        , \v' -> v' * v
-        , \v' -> v' / v
-        , \v' -> v / v'
+        [ (v +)
+        , (* v)
+        , (/ v)
+        , (v /)
         , \v' -> v' - v
-        , \v' -> v - v'
+        , (v -)
         ]
 
 -- | Deduplicate programs pick the least smallest one by size.
@@ -158,10 +156,16 @@ deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
   where
     go _ [] = []
     go seen (x : xs)
+        | hasNaN = go seen xs
         | S.member res seen = go seen xs
         | otherwise = x : go (S.insert res seen) xs
             where
                 res = interpret df x
+                hasNaN = case res of
+                    (TColumn (UnboxedColumn (col :: VU.Vector a))) -> case testEquality (typeRep @Double) (typeRep @a) of
+                                    Just Refl -> VU.any isNaN col
+                                    Nothing -> False
+                    _ -> False
 
 -- | Checks if two programs generate the same outputs given all the same inputs.
 equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
@@ -194,7 +198,7 @@ searchStream df outputs programs d
             Just p -> Just p
             Nothing -> searchStream df outputs (generatePrograms (map col names) ps) (d - 1)
   where
-    ps = pickTopN df outputs 10 $ deduplicate df programs
+    ps = pickTopN df outputs 100 $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
     findFirst [] = Nothing
     findFirst (p : ps')
@@ -208,7 +212,7 @@ pickTopN :: DataFrame
          -> [Expr Double]
 pickTopN df (TColumn col) n ps = let
         l = VU.convert (toVector @Double col)
-        ordered = take n (L.sortBy (\e e' -> (flip compare) (fmap abs $ correlation' l (asDoubleVector e)) (fmap abs $ correlation' l (asDoubleVector e'))) ps)
+        ordered = take n (L.sortBy (\e e' -> compare (abs <$> correlation' l (asDoubleVector e')) (abs <$> correlation' l (asDoubleVector e))) ps)
         asDoubleVector e = let
                 (TColumn col') = interpret df e
             in VU.convert (toVector @Double col')

@@ -202,7 +202,7 @@ where
 
 import DataFrame.Display.Terminal.Plot as Plot
 import DataFrame.Errors as Errors
-import DataFrame.IO.CSV as CSV (ReadOptions (..), defaultOptions, readCsv, readSeparated, readTsv)
+import DataFrame.IO.CSV as CSV (ReadOptions (..), defaultOptions, readCsv, readSeparated, readTsv, writeCsv, writeSeparated)
 import DataFrame.IO.Parquet as Parquet (readParquet)
 import DataFrame.Internal.Column as Column (
     Column,
