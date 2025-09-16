@@ -30,6 +30,11 @@ import Type.Reflection (typeRep, Typeable)
 data Expr a where
     Col :: (Columnable a) => T.Text -> Expr a
     Lit :: (Columnable a) => a -> Expr a
+    If :: (Columnable a)
+        => Expr Bool
+        -> Expr a
+        -> Expr a
+        -> Expr a
     UnaryOp ::
         ( Columnable a
         , Columnable b
@@ -92,6 +97,13 @@ interpret df (Lit value) = TColumn $ fromVector $ V.replicate (fst $ dataframeDi
 interpret df (Col name) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just col -> TColumn col
+interpret df (If cond l r) =
+    let
+        (TColumn conditions) = interpret @Bool df cond
+        (TColumn left) = interpret @a df l
+        (TColumn right) = interpret @a df r
+     in
+        TColumn $ fromMaybe (error "zipWithColumns returned nothing") $ zipWithColumns (\(c :: Bool) (l' :: a, r' :: a)-> if c then l' else r') conditions (zipColumns left right)
 interpret df (UnaryOp _ (f :: c -> d) value) =
     let
         (TColumn value') = interpret @c df value
@@ -155,6 +167,13 @@ interpretAggregation gdf (UnaryOp _ (f :: c -> d) expr) =
         case mapColumn f value of
             Nothing -> error "Type error in interpretation"
             Just col -> TColumn col
+interpretAggregation gdf (If cond l r) =
+    let
+        (TColumn conditions) = interpretAggregation @Bool gdf cond
+        (TColumn left) = interpretAggregation @a gdf l
+        (TColumn right) = interpretAggregation @a gdf r
+     in
+        TColumn $ fromMaybe (error "zipWithColumns returned nothing") $ zipWithColumns (\(c :: Bool) (l' :: a, r' :: a)-> if c then l' else r') conditions (zipColumns left right)
 interpretAggregation gdf (BinaryOp _ (f :: c -> d -> e) left right) =
     let
         (TColumn left') = interpretAggregation @c gdf left
@@ -465,6 +484,7 @@ instance (Show a) => Show (Expr a) where
     show :: forall a. (Show a) => Expr a -> String
     show (Col name) = "(col @" ++ show (typeRep @a) ++ " " ++ show name ++ ")"
     show (Lit value) = show value
+    show (If cond l r) = "(ifThenElse " ++ show l ++ " " ++ show r ++ ")"
     show (UnaryOp name f value) = "(" ++ T.unpack name ++ " " ++ show value ++ ")"
     show (BinaryOp name f a b) = "(" ++ T.unpack name ++ " " ++ show a ++ " " ++ show b ++ ")"
     show (AggNumericVector expr op _) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
@@ -475,6 +495,7 @@ instance (Show a) => Show (Expr a) where
 eSize :: Expr a -> Int
 eSize (Col _)  = 1
 eSize (Lit _)  = 1
+eSize (If c l r) = 1 + eSize c + eSize l + eSize r
 eSize (UnaryOp _ _ e) = 1 + eSize e
 eSize (BinaryOp _ _ l r) = 1 + eSize l + eSize r
 eSize (AggNumericVector expr op _) = eSize expr + 1

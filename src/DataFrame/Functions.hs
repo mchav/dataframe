@@ -46,6 +46,9 @@ col = Col
 as :: (Columnable a) => Expr a -> T.Text -> (T.Text, UExpr)
 as expr name = (name, Wrap expr)
 
+ifThenElse :: (Columnable a) => Expr Bool -> Expr a -> Expr a -> Expr a
+ifThenElse = If
+
 lit :: (Columnable a) => a -> Expr a
 lit = Lit
 
