@@ -55,6 +55,14 @@ It is used to type check expressions on columns.
 data TypedColumn a where
     TColumn :: (Columnable a) => Column -> TypedColumn a
 
+instance (Eq a) => Eq (TypedColumn a) where
+    (==) :: Eq a => TypedColumn a -> TypedColumn a -> Bool
+    (==) (TColumn a) (TColumn b) = a == b
+
+instance (Ord a) => Ord (TypedColumn a) where
+    (<=) :: TypedColumn a -> TypedColumn a -> Bool
+    (<=) (TColumn l) (TColumn r) = l <= r
+
 -- | Gets the underlying value from a TypedColumn.
 unwrapTypedColumn :: TypedColumn a -> Column
 unwrapTypedColumn (TColumn value) = value
@@ -88,6 +96,7 @@ columnTypeString column = case column of
     OptionalColumn (column :: VB.Vector a) -> show (typeRep @a)
 
 instance (Show a) => Show (TypedColumn a) where
+    show :: Show a => TypedColumn a -> String
     show (TColumn col) = show col
 
 instance Show Column where
@@ -111,6 +120,22 @@ instance Eq Column where
             Nothing -> False
             Just Refl -> a == b
     (==) _ _ = False
+
+instance Ord Column where
+    (<=) :: Column -> Column -> Bool
+    (<=) (BoxedColumn (a :: VB.Vector t1)) (BoxedColumn (b :: VB.Vector t2)) =
+        case testEquality (typeRep @t1) (typeRep @t2) of
+            Nothing -> False
+            Just Refl -> a <= b
+    (<=) (OptionalColumn (a :: VB.Vector t1)) (OptionalColumn (b :: VB.Vector t2)) =
+        case testEquality (typeRep @t1) (typeRep @t2) of
+            Nothing -> False
+            Just Refl -> a <= b
+    (<=) (UnboxedColumn (a :: VU.Vector t1)) (UnboxedColumn (b :: VU.Vector t2)) =
+        case testEquality (typeRep @t1) (typeRep @t2) of
+            Nothing -> False
+            Just Refl -> a <= b
+    (<=) _ _ = False
 
 {- | A class for converting a vector to a column of the appropriate type.
 Given each Rep we tell the `toColumnRep` function which Column type to pick.
