@@ -178,4 +178,4 @@ impute columnName value df = case getColumn columnName df of
         Left (TypeMismatchException context) -> throw $ TypeMismatchException (context{callingFunctionName = Just "impute"})
         Left exception -> throw exception
         Right res -> res
-    _ -> error "Cannot impute to a non-Empty column"
+    _ -> error $ "Cannot impute to a non-Empty column: " ++ T.unpack columnName
