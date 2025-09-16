@@ -170,7 +170,7 @@ deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
 equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
 equivalent df p1 p2 = interpret df p1 Prelude.== interpret df p2
 
-createFeatureExpression ::
+synthesizeFeatureExpr ::
     -- | Target expression
     T.Text ->
     -- | Depth of search (Roughly, how many terms in the final expression)
@@ -179,7 +179,7 @@ createFeatureExpression ::
     Int ->
     DataFrame ->
     Either String (Expr Double)
-createFeatureExpression target d b df = let
+synthesizeFeatureExpr target d b df = let
         df' = exclude [target] df
         names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
         variables = map col names
