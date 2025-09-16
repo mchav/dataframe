@@ -16,20 +16,25 @@ module DataFrame.Functions where
 
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
-import DataFrame.Internal.Expression (Expr (..), UExpr (..))
+import DataFrame.Internal.Expression (Expr (..), UExpr (..), eSize, interpret)
 import DataFrame.Internal.Statistics
+import DataFrame.Operations.Subset (exclude)
 
 import Control.Monad
 import qualified Data.Char as Char
 import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
+import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
-import Debug.Trace (traceShow)
+import Debug.Trace ( traceShow )
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
+import Type.Reflection (typeRep)
+import Prelude hiding (sum, minimum, maximum)
+import Data.Type.Equality
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n
@@ -97,6 +102,131 @@ zScore c = (c - mean c) / standardDeviation c
 
 reduce :: forall a b. (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
 reduce expr = AggFold expr "foldUdf"
+
+generatePrograms :: [Expr Double] -> [Expr Double] -> [Expr Double]
+generatePrograms vars existingPrograms =
+    existingPrograms ++
+    [ transform p
+    | p <- existingPrograms
+    , transform <- [zScore, abs, log . (+ Lit 1), exp]
+    ] ++
+    [ p + q
+    | (i, p) <- zip [0..] existingPrograms
+    , (j, q) <- zip [0..] existingPrograms
+    , i Prelude.>= j
+    ] ++
+    [ p - q
+    | p <- existingPrograms
+    , q <- existingPrograms
+    ] ++
+    [ p * q
+    | (i, p) <- zip [0..] existingPrograms
+    , (j, q) <- zip [0..] existingPrograms
+    , i Prelude.>= j
+    ] ++
+    [ p / q
+    | p <- existingPrograms
+    , q <- existingPrograms
+    ] ++
+    [ t p
+    | v <- vars
+    , p <- existingPrograms
+    , t <- transformsWithVar v
+    ]
+  where
+    transformsWithVar v =
+        [ (v +)
+        , (* v)
+        , (/ v)
+        , (v /)
+        , \v' -> v' - v
+        , (v -)
+        ]
+
+-- | Deduplicate programs pick the least smallest one by size.
+deduplicate :: DataFrame
+            -> [Expr Double]
+            -> [Expr Double]
+deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
+  where
+    go _ [] = []
+    go seen (x : xs)
+        | hasNaN = go seen xs
+        | S.member res seen = go seen xs
+        | otherwise = x : go (S.insert res seen) xs
+            where
+                res = interpret df x
+                hasNaN = case res of
+                    (TColumn (UnboxedColumn (col :: VU.Vector a))) -> case testEquality (typeRep @Double) (typeRep @a) of
+                                    Just Refl -> VU.any isNaN col
+                                    Nothing -> False
+                    _ -> False
+
+-- | Checks if two programs generate the same outputs given all the same inputs.
+equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
+equivalent df p1 p2 = interpret df p1 Prelude.== interpret df p2
+
+createFeatureExpression ::
+    -- | Target expression
+    T.Text ->
+    -- | Depth of search (Roughly, how many terms in the final expression)
+    Int ->
+    -- | Beam size - the number of candidate expressions to consider at a time.
+    Int ->
+    DataFrame ->
+    Either String (Expr Double)
+createFeatureExpression target d b df = let
+        df' = exclude [target] df
+        names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
+        variables = map col names
+    in case beamSearch df' b (interpret df (Col target)) variables d of
+            Nothing -> Left "No programs found"
+            Just p -> Right p
+
+beamSearch ::
+    DataFrame ->
+    -- | Beam size
+    Int ->
+    -- | Examples
+    TypedColumn Double ->
+    -- | Programs
+    [Expr Double] ->
+    -- | Search depth
+    Int ->
+    Maybe (Expr Double)
+beamSearch df b outputs programs d
+    | d Prelude.== 0 = case ps of
+        []    -> Nothing
+        (x:_) -> Just x
+    | otherwise =
+        case findFirst ps of
+            Just p -> Just p
+            Nothing -> beamSearch df b outputs (generatePrograms (map col names) ps) (d - 1)
+  where
+    ps = pickTopN df outputs b $ deduplicate df programs
+    names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
+    findFirst [] = Nothing
+    findFirst (p : ps')
+        | satisfiesExamples df outputs p = Just p
+        | otherwise = findFirst ps'
+
+pickTopN :: DataFrame
+         -> TypedColumn Double
+         -> Int
+         -> [Expr Double]
+         -> [Expr Double]
+pickTopN df (TColumn col) n ps = let
+        l = VU.convert (toVector @Double col)
+        ordered = take n (L.sortBy (\e e' -> compare (abs <$> correlation' l (asDoubleVector e')) (abs <$> correlation' l (asDoubleVector e))) ps)
+        asDoubleVector e = let
+                (TColumn col') = interpret df e
+            in VU.convert (toVector @Double col')
+    in ordered
+
+satisfiesExamples :: DataFrame -> TypedColumn Double -> Expr Double -> Bool
+satisfiesExamples df col expr = let
+        result = interpret df expr
+    in result Prelude.== col
 
 -- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
 isReservedId :: T.Text -> Bool

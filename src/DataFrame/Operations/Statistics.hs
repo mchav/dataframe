@@ -18,7 +18,6 @@ import qualified Data.Vector.Unboxed as VU
 import Prelude as P
 
 import Control.Exception (throw)
-import Control.Monad
 import Data.Function ((&))
 import Data.Maybe (fromMaybe, isJust)
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))

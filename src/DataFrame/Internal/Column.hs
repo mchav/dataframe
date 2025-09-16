@@ -56,12 +56,10 @@ data TypedColumn a where
     TColumn :: (Columnable a) => Column -> TypedColumn a
 
 instance (Eq a) => Eq (TypedColumn a) where
-    (==) :: Eq a => TypedColumn a -> TypedColumn a -> Bool
     (==) (TColumn a) (TColumn b) = a == b
 
 instance (Ord a) => Ord (TypedColumn a) where
-    (<=) :: TypedColumn a -> TypedColumn a -> Bool
-    (<=) (TColumn l) (TColumn r) = l <= r
+    (compare) (TColumn a) (TColumn b) = compare a b
 
 -- | Gets the underlying value from a TypedColumn.
 unwrapTypedColumn :: TypedColumn a -> Column
