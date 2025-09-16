@@ -1,5 +1,13 @@
 # Revision history for dataframe
 
+## 0.3.1.1
+* Aggregation now works on expressions rather than just column references.
+* Export writeCsv
+* Loosen bounds for dependencies to keep library on stackage.
+* Add `filterNothing` function that returns all empty rows of a column.
+* Add `IfThenElse` function for conditional expressions.
+* Add `synthesizeFeatureExpr` function that does a search for a predictive variable in a `Double` dataframe.
+
 ## 0.3.1.0
 * Add new `selectBy` function which subsumes all the other select functions. Specifically we can:
     * `selectBy [byName "x"] df`: normal select.
