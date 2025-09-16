@@ -160,12 +160,14 @@ instance
     (Columnable a, VU.Unbox a) =>
     ColumnifyRep 'RUnboxed a
     where
+    toColumnRep :: (Columnable a, VUM.Unbox a) => VB.Vector a -> Column
     toColumnRep = UnboxedColumn . VU.convert
 
 instance
     (Columnable a) =>
     ColumnifyRep 'RBoxed a
     where
+    toColumnRep :: Columnable a => VB.Vector a -> Column
     toColumnRep = BoxedColumn
 
 instance
