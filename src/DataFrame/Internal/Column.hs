@@ -17,8 +17,6 @@
 
 module DataFrame.Internal.Column where
 
-import qualified Data.ByteString.Char8 as C
-import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as VB
@@ -30,19 +28,12 @@ import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
-import Data.Int
-import Data.Kind (Constraint, Type)
 import Data.Maybe
-import Data.Proxy
-import Data.Text.Encoding (decodeUtf8Lenient)
-import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
-import Data.Typeable (Typeable, cast)
-import Data.Word
+import Data.Type.Equality (TestEquality (..))
 import DataFrame.Errors
 import DataFrame.Internal.Parsing
 import DataFrame.Internal.Types
 import Type.Reflection
-import Unsafe.Coerce (unsafeCoerce)
 
 {- | Our representation of a column is a GADT that can store data based on the underlying data.
 
@@ -103,6 +94,7 @@ columnTypeString column = case column of
     OptionalColumn (column :: VB.Vector a) -> show (typeRep @a)
 
 instance (Show a) => Show (TypedColumn a) where
+    show :: Show a => TypedColumn a -> String
     show (TColumn col) = show col
 
 instance Show Column where
@@ -110,21 +102,6 @@ instance Show Column where
     show (BoxedColumn column) = show column
     show (UnboxedColumn column) = show column
     show (OptionalColumn column) = show column
-
-instance Ord Column where
-    (<=) (BoxedColumn (a :: VB.Vector t1)) (BoxedColumn (b :: VB.Vector t2)) =
-        case testEquality (typeRep @t1) (typeRep @t2) of
-            Nothing -> False
-            Just Refl -> a <= b
-    (<=) (OptionalColumn (a :: VB.Vector t1)) (OptionalColumn (b :: VB.Vector t2)) =
-        case testEquality (typeRep @t1) (typeRep @t2) of
-            Nothing -> False
-            Just Refl -> a <= b
-    (<=) (UnboxedColumn (a :: VU.Vector t1)) (UnboxedColumn (b :: VU.Vector t2)) =
-        case testEquality (typeRep @t1) (typeRep @t2) of
-            Nothing -> False
-            Just Refl -> a <= b
-    (<=) _ _ = False
 
 instance Eq Column where
     (==) :: Column -> Column -> Bool
@@ -141,6 +118,22 @@ instance Eq Column where
             Nothing -> False
             Just Refl -> a == b
     (==) _ _ = False
+
+instance Ord Column where
+    (<=) :: Column -> Column -> Bool
+    (<=) (BoxedColumn (a :: VB.Vector t1)) (BoxedColumn (b :: VB.Vector t2)) =
+        case testEquality (typeRep @t1) (typeRep @t2) of
+            Nothing -> False
+            Just Refl -> a <= b
+    (<=) (OptionalColumn (a :: VB.Vector t1)) (OptionalColumn (b :: VB.Vector t2)) =
+        case testEquality (typeRep @t1) (typeRep @t2) of
+            Nothing -> False
+            Just Refl -> a <= b
+    (<=) (UnboxedColumn (a :: VU.Vector t1)) (UnboxedColumn (b :: VU.Vector t2)) =
+        case testEquality (typeRep @t1) (typeRep @t2) of
+            Nothing -> False
+            Just Refl -> a <= b
+    (<=) _ _ = False
 
 {- | A class for converting a vector to a column of the appropriate type.
 Given each Rep we tell the `toColumnRep` function which Column type to pick.
@@ -165,12 +158,14 @@ instance
     (Columnable a, VU.Unbox a) =>
     ColumnifyRep 'RUnboxed a
     where
+    toColumnRep :: (Columnable a, VUM.Unbox a) => VB.Vector a -> Column
     toColumnRep = UnboxedColumn . VU.convert
 
 instance
     (Columnable a) =>
     ColumnifyRep 'RBoxed a
     where
+    toColumnRep :: Columnable a => VB.Vector a -> Column
     toColumnRep = BoxedColumn
 
 instance

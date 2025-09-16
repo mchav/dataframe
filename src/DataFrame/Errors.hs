@@ -11,7 +11,6 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception
 import Data.Array
-import Data.Either
 import Data.Typeable (Typeable)
 import DataFrame.Display.Terminal.Colours
 import Type.Reflection (TypeRep)

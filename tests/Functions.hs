@@ -2,8 +2,6 @@
 
 module Functions where
 
-import Control.Exception
-import qualified Data.Text as T
 import DataFrame.Functions (sanitize)
 import Test.HUnit
 

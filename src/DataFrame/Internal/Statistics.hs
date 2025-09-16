@@ -3,20 +3,16 @@
 
 module DataFrame.Internal.Statistics where
 
-import qualified Data.Text as T
-import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Intro as VA
-import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Exception (throw)
-import Control.Monad
 import Control.Monad.ST (runST)
 import DataFrame.Errors (DataFrameException (..))
 
-mean' :: VU.Vector Double -> Double
-mean' samp = VU.sum samp / fromIntegral (VU.length samp)
+mean' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
+mean' samp = VU.sum (VU.map realToFrac samp) / fromIntegral (VU.length samp)
 {-# INLINE mean' #-}
 
 median' :: VU.Vector Double -> Double
@@ -38,12 +34,12 @@ median' samp
 -- accumulator: count, mean, m2
 data VarAcc = VarAcc !Int !Double !Double deriving (Show)
 
-varianceStep :: VarAcc -> Double -> VarAcc
+varianceStep :: Real a => VarAcc -> a -> VarAcc
 varianceStep (VarAcc !n !mean !m2) !x =
     let !n' = n + 1
-        !delta = x - mean
+        !delta = realToFrac x - mean
         !mean' = mean + delta / fromIntegral n'
-        !m2' = m2 + delta * (x - mean')
+        !m2' = m2 + delta * (realToFrac x - mean')
      in VarAcc n' mean' m2'
 {-# INLINE varianceStep #-}
 
@@ -53,7 +49,7 @@ computeVariance (VarAcc !n _ !m2)
     | otherwise = m2 / fromIntegral (n - 1)
 {-# INLINE computeVariance #-}
 
-variance' :: VU.Vector Double -> Double
+variance' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
 variance' = computeVariance . VU.foldl' varianceStep (VarAcc 0 0 0)
 {-# INLINE variance' #-}
 

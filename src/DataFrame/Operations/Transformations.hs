@@ -10,18 +10,15 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Generic as VG
-import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
 import Data.Maybe
 import DataFrame.Errors (DataFrameException (..), TypeErrorContext (..))
-import DataFrame.Internal.Column (Column (..), Columnable, TypedColumn (TColumn), columnTypeString, ifoldrColumn, imapColumn, mapColumn, unwrapTypedColumn)
+import DataFrame.Internal.Column (Column (..), Columnable, columnTypeString, ifoldrColumn, imapColumn, mapColumn, unwrapTypedColumn)
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Internal.Expression
-import DataFrame.Internal.Row (Any, mkRowFromArgs, toAny)
 import DataFrame.Operations.Core
-import Type.Reflection (TypeRep, typeOf, typeRep)
+import Type.Reflection (TypeRep, typeRep)
 
 -- | O(k) Apply a function to a given column in a dataframe.
 apply ::
@@ -50,7 +47,7 @@ safeApply ::
     DataFrame ->
     Either DataFrameException DataFrame
 safeApply f columnName d = case getColumn columnName d of
-    Nothing -> Left $ ColumnNotFoundException columnName "apply" (map fst $ M.toList $ columnIndices d)
+    Nothing -> Left $ ColumnNotFoundException columnName "apply" (M.keys $ columnIndices d)
     Just column -> case mapColumn f column of
         Nothing ->
             Left $
@@ -122,7 +119,7 @@ applyWhere ::
     DataFrame -> -- ^ DataFrame to apply operation to
     DataFrame
 applyWhere condition filterColumnName f columnName df = case getColumn filterColumnName df of
-    Nothing -> throw $ ColumnNotFoundException filterColumnName "applyWhere" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException filterColumnName "applyWhere" (M.keys $ columnIndices df)
     Just column -> case ifoldrColumn (\i val acc -> if condition val then V.cons i acc else acc) V.empty column of
         Nothing ->
             throw $
@@ -153,7 +150,7 @@ applyAtIndex ::
     DataFrame ->
     DataFrame
 applyAtIndex i f columnName df = case getColumn columnName df of
-    Nothing -> throw $ ColumnNotFoundException columnName "applyAtIndex" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException columnName "applyAtIndex" (M.keys $ columnIndices df)
     Just column -> case imapColumn (\index value -> if index == i then f value else value) column of
         Nothing ->
             throw $
@@ -176,7 +173,7 @@ impute ::
     DataFrame ->
     DataFrame
 impute columnName value df = case getColumn columnName df of
-    Nothing -> throw $ ColumnNotFoundException columnName "impute" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException columnName "impute" (M.keys $ columnIndices df)
     Just (OptionalColumn _) -> case safeApply (fromMaybe value) columnName df of
         Left (TypeMismatchException context) -> throw $ TypeMismatchException (context{callingFunctionName = Just "impute"})
         Left exception -> throw exception

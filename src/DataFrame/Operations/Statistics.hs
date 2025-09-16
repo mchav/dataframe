@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -9,35 +8,27 @@
 
 module DataFrame.Operations.Statistics where
 
-import Data.Bifunctor (second)
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Algorithms.Intro as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
-import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Prelude as P
 
 import Control.Exception (throw)
-import Control.Monad
-import Control.Monad.ST (runST)
-import qualified Data.Bifunctor as Data
-import Data.Foldable (asum)
 import Data.Function ((&))
 import Data.Maybe (fromMaybe, isJust)
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
-import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn, unsafeGetColumn)
+import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
 import DataFrame.Internal.Row (showValue, toAny)
 import DataFrame.Internal.Statistics
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import DataFrame.Operations.Subset (filterJust)
-import GHC.Float (int2Double)
 import Text.Printf (printf)
 import Type.Reflection (typeRep)
 
@@ -70,7 +61,7 @@ frequencies name df =
         freqs col = L.foldl' (\d (col, k) -> insertVector (showValue @a col) (V.fromList [toAny k, calculatePercentage (counts @a) k]) d) initDf counts
      in
         case getColumn name df of
-            Nothing -> throw $ ColumnNotFoundException name "frequencies" (map fst $ M.toList $ columnIndices df)
+            Nothing -> throw $ ColumnNotFoundException name "frequencies" (M.keys $ columnIndices df)
             Just ((BoxedColumn (column :: V.Vector a))) -> freqs column
             Just ((OptionalColumn (column :: V.Vector a))) -> freqs column
             Just ((UnboxedColumn (column :: VU.Vector a))) -> freqs column
@@ -115,24 +106,24 @@ _getColumnAsDouble name df = case getColumn name df of
             SFalse -> case sFloating @a of
                 STrue -> Just (VU.map realToFrac f)
                 SFalse -> Nothing
-    Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (M.keys $ columnIndices df)
     _ -> Nothing
 {-# INLINE _getColumnAsDouble #-}
 
 -- | Calculates the sum of a given column as a standalone value.
 sum :: forall a. (Columnable a, Num a, VU.Unbox a) => T.Text -> DataFrame -> Maybe a
 sum name df = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "sum" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "sum" (M.keys $ columnIndices df)
     Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @a) of
         Just Refl -> Just $ VG.sum column
         Nothing -> Nothing
 
 applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
-applyStatistic f name df = join $ fmap apply (_getColumnAsDouble name (filterJust name df))
+applyStatistic f name df = apply =<< _getColumnAsDouble name (filterJust name df)
   where
     apply col =
         let
-            res = (f col)
+            res = f col
          in
             if isNaN res then Nothing else pure res
 {-# INLINE applyStatistic #-}
@@ -170,7 +161,7 @@ summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic"
 
 -- | Round a @Double@ to Specified Precision
 roundTo :: Int -> Double -> Double
-roundTo n x = fromInteger (round $ x * (10 ^ n)) / (10.0 ^^ n)
+roundTo n x = fromInteger (round $ x * 10 ^ n) / 10.0 ^^ n
 
 toPct2dp :: Double -> String
 toPct2dp x

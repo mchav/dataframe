@@ -8,22 +8,16 @@
 
 module DataFrame.Lazy.Internal.DataFrame where
 
-import Control.Monad (foldM, forM)
-import Data.IORef
-import Data.Kind
+import Control.Monad (foldM)
 import qualified Data.List as L
-import qualified Data.Map as M
 import qualified Data.Text as T
-import qualified Data.Vector as V
 import qualified DataFrame.Internal.Column as C
 import qualified DataFrame.Internal.DataFrame as D
 import qualified DataFrame.Internal.Expression as E
 import qualified DataFrame.Lazy.IO.CSV as D
-import qualified DataFrame.Operations.Core as D
-import DataFrame.Operations.Merge
+import DataFrame.Operations.Merge ()
 import qualified DataFrame.Operations.Subset as D
 import qualified DataFrame.Operations.Transformations as D
-import System.FilePath
 
 data LazyOperation where
     Derive :: (C.Columnable a) => T.Text -> E.Expr a -> LazyOperation

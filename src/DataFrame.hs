@@ -265,9 +265,6 @@ import DataFrame.Operations.Subset as Subset (
  )
 import DataFrame.Operations.Transformations as Transformations
 
-import Data.Function
-import Data.List
-import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import Data.Function ((&))
 
 (|>) = (&)

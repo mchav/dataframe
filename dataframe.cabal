@@ -23,7 +23,7 @@ source-repository head
 
 common warnings
     -- TODO add more warnings, eventually -Wall
-    ghc-options: -Wunused-packages
+    ghc-options: -Wunused-packages -Wunused-imports
 
 library
     import: warnings
@@ -75,7 +75,6 @@ library
                       bytestring-lexing >= 0.5 && < 0.6,
                       containers >= 0.6.7 && < 0.8,
                       directory >= 1.3.0.0 && < 2,
-                      filepath >= 1.0.0.0 && < 2,
                       granite ^>= 0.2,
                       hashable >= 1.2 && < 2,
                       process ^>= 1.6,
@@ -112,11 +111,13 @@ benchmark dataframe-benchmark
     build-depends: base > 4 && < 5,
                    criterion >= 1 && < 2,
                    process >= 1.6 && < 2,
-                   time >= 1.12 && < 2,
-                   random >= 1 && < 2,
-                   vector ^>= 0.13,
                    dataframe ^>= 0.3
     default-language: Haskell2010
+    ghc-options:
+      -O2
+      -threaded
+      -rtsopts
+      -with-rtsopts=-N
 
 test-suite tests
     import: warnings

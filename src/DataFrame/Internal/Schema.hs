@@ -13,7 +13,7 @@ import qualified Data.Proxy as P
 import qualified Data.Text as T
 
 import Data.Maybe
-import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
+import Data.Type.Equality (TestEquality (..))
 import DataFrame.Internal.Column
 import Type.Reflection (typeRep)
 

@@ -14,7 +14,6 @@
 module DataFrame.Internal.Expression where
 
 import Control.Exception (throw)
-import Data.Data (Typeable)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -26,10 +25,9 @@ import DataFrame.Errors (DataFrameException (ColumnNotFoundException))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame
 import DataFrame.Internal.Types
-import Type.Reflection (typeRep)
+import Type.Reflection (typeRep, Typeable)
 
 data Expr a where
-    Variable :: (Columnable a) => Expr a
     Col :: (Columnable a) => T.Text -> Expr a
     Lit :: (Columnable a) => a -> Expr a
     UnaryOp ::
@@ -40,7 +38,7 @@ data Expr a where
         (b -> a) ->
         Expr b ->
         Expr a
-    BinOp ::
+    BinaryOp ::
         ( Columnable c
         , Columnable b
         , Columnable a
@@ -50,19 +48,22 @@ data Expr a where
         Expr c ->
         Expr b ->
         Expr a
-    GeneralAggregate ::
-        (Columnable a) =>
+    AggVector ::
+        ( VG.Vector v b
+        , Typeable v
+        , Columnable a
+        , Columnable b) =>
         Expr b ->
         T.Text -> -- Operation name
-        (forall v b. (VG.Vector v b, Columnable b) => v b -> a) ->
+        (v b -> a) ->
         Expr a
-    ReductionAggregate ::
+    AggReduce ::
         (Columnable a) =>
         Expr a ->
         T.Text -> -- Operation name
         (forall a. (Columnable a) => a -> a -> a) ->
         Expr a
-    NumericAggregate ::
+    AggNumericVector ::
         ( Columnable a
         , Columnable b
         , VU.Unbox a
@@ -70,14 +71,14 @@ data Expr a where
         , Num a
         , Num b
         ) =>
-        Expr b -> -- Column name
+        Expr b ->
         T.Text -> -- Operation name
         (VU.Vector b -> a) ->
         Expr a
-    FoldAggregate ::
+    AggFold ::
         forall a b.
         (Columnable a, Columnable b) =>
-        Expr b -> -- Column name
+        Expr b ->
         T.Text -> -- Operation name
         a ->
         (a -> b -> a) ->
@@ -89,7 +90,7 @@ data UExpr where
 interpret :: forall a. (Columnable a) => DataFrame -> Expr a -> TypedColumn a
 interpret df (Lit value) = TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
 interpret df (Col name) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just col -> TColumn col
 interpret df (UnaryOp _ (f :: c -> d) value) =
     let
@@ -97,23 +98,23 @@ interpret df (UnaryOp _ (f :: c -> d) value) =
      in
         -- TODO: Handle this gracefully.
         TColumn $ fromMaybe (error "mapColumn returned nothing") (mapColumn f value')
-interpret df (BinOp _ (f :: c -> d -> e) (Lit left) right) =
+interpret df (BinaryOp _ (f :: c -> d -> e) (Lit left) right) =
     let
         (TColumn right') = interpret @d df right
      in
         TColumn $ fromMaybe (error "mapColumn returned nothing") (mapColumn (f left) right')
-interpret df (BinOp _ (f :: c -> d -> e) left (Lit right)) =
+interpret df (BinaryOp _ (f :: c -> d -> e) left (Lit right)) =
     let
         (TColumn left') = interpret @c df left
      in
         TColumn $ fromMaybe (error "mapColumn returned nothing") (mapColumn (`f` right) left')
-interpret df (BinOp _ (f :: c -> d -> e) left right) =
+interpret df (BinaryOp _ (f :: c -> d -> e) left right) =
     let
         (TColumn left') = interpret @c df left
         (TColumn right') = interpret @d df right
      in
         TColumn $ fromMaybe (error "mapColumn returned nothing") (zipWithColumns f left' right')
-interpret df (ReductionAggregate expr op (f :: forall a. (Columnable a) => a -> a -> a)) =
+interpret df (AggReduce expr op (f :: forall a. (Columnable a) => a -> a -> a)) =
     let
         (TColumn column) = interpret @a df expr
      in
@@ -122,7 +123,7 @@ interpret df (ReductionAggregate expr op (f :: forall a. (Columnable a) => a -> 
             Just h -> case ifoldlColumn (\acc _ v -> f acc v) h column of
                 Nothing -> error "Invalid operation"
                 Just value -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
-interpret df (NumericAggregate expr op (f :: VU.Vector b -> c)) =
+interpret df (AggNumericVector expr op (f :: VU.Vector b -> c)) =
     let
         (TColumn column) = interpret @b df expr
      in
@@ -131,7 +132,7 @@ interpret df (NumericAggregate expr op (f :: VU.Vector b -> c)) =
                 Just Refl -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) (f v)
                 Nothing -> error "Invalid operation"
             _ -> error "Invalid operation"
-interpret df (FoldAggregate expr op start (f :: (a -> b -> a))) =
+interpret df (AggFold expr op start (f :: (a -> b -> a))) =
     let
         (TColumn column) = interpret @b df expr
      in
@@ -145,7 +146,7 @@ interpret _ expr = error ("Invalid operation for dataframe: " ++ show expr)
 interpretAggregation :: forall a. (Columnable a) => GroupedDataFrame -> Expr a -> TypedColumn a
 interpretAggregation gdf (Lit value) = TColumn $ fromVector $ V.replicate (VG.length (offsets gdf) - 1) value
 interpretAggregation gdf@(Grouped df names indices os) (Col name) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
+    Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just col -> TColumn $ atIndicesStable (VG.map (indices `VG.unsafeIndex`) (VG.init os)) col
 interpretAggregation gdf (UnaryOp _ (f :: c -> d) expr) =
     let
@@ -154,7 +155,7 @@ interpretAggregation gdf (UnaryOp _ (f :: c -> d) expr) =
         case mapColumn f value of
             Nothing -> error "Type error in interpretation"
             Just col -> TColumn col
-interpretAggregation gdf (BinOp _ (f :: c -> d -> e) left right) =
+interpretAggregation gdf (BinaryOp _ (f :: c -> d -> e) left right) =
     let
         (TColumn left') = interpretAggregation @c gdf left
         (TColumn right') = interpretAggregation @d gdf right
@@ -162,60 +163,69 @@ interpretAggregation gdf (BinOp _ (f :: c -> d -> e) left right) =
         case zipWithColumns f left' right' of
             Nothing -> error "Type error in binary operation"
             Just col -> TColumn col
-interpretAggregation gdf@(Grouped df names indices os) (GeneralAggregate (Col name) op (f :: forall v b. (VG.Vector v b, Columnable b) => v b -> c)) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
-    Just (BoxedColumn col) ->
-        TColumn $
-            fromVector $
-                V.generate
-                    (VG.length os - 1)
-                    ( \i ->
-                        f
-                            ( V.generate
-                                (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
+interpretAggregation gdf@(Grouped df names indices os) (AggVector expr op (f :: v b -> c)) =
+    case unwrapTypedColumn (interpretAggregation @b gdf expr) of
+        BoxedColumn (col :: V.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
+            Nothing -> error "Type mismatch"
+            Just Refl -> case testEquality (typeRep @v) (typeRep @V.Vector) of
+                Nothing -> error "Container mismatch"
+                Just Refl -> TColumn $
+                    fromVector $
+                        V.generate
+                            (VG.length os - 1)
+                            ( \i ->
+                                f
+                                    ( V.generate
+                                        (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
+                                        (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
+                                    )
                             )
-                    )
-    Just (UnboxedColumn col) -> case sUnbox @c of
-        SFalse ->
-            TColumn $
-                fromVector $
-                    V.generate
-                        (VG.length os - 1)
-                        ( \i ->
-                            f
-                                ( VU.generate
-                                    (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                    (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
-                                )
-                        )
-        STrue ->
-            TColumn $
-                fromUnboxedVector $
-                    VU.generate
-                        (VG.length os - 1)
-                        ( \i ->
-                            f
-                                ( VU.generate
-                                    (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                    (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
-                                )
-                        )
-    Just (OptionalColumn col) ->
-        TColumn $
-            fromVector $
-                V.generate
-                    (VG.length os - 1)
-                    ( \i ->
-                        f
-                            ( V.generate
-                                (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
+        UnboxedColumn (col :: VU.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
+            Just Refl -> case testEquality (typeRep @v) (typeRep @VU.Vector) of
+                Nothing -> error "Container mismatch"
+                Just Refl ->
+                    case sUnbox @c of
+                        SFalse ->
+                            TColumn $
+                                fromVector $
+                                    V.generate
+                                        (VG.length os - 1)
+                                        ( \i ->
+                                            f
+                                                ( VU.generate
+                                                    (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
+                                                    (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
+                                                )
+                                        )
+                        STrue ->
+                            TColumn $
+                                fromUnboxedVector $
+                                    VU.generate
+                                        (VG.length os - 1)
+                                        ( \i ->
+                                            f
+                                                ( VU.generate
+                                                    (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
+                                                    (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
+                                                )
+                                        )
+        OptionalColumn (col :: V.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
+            Nothing -> error "Type mismatch"
+            Just Refl -> case testEquality (typeRep @v) (typeRep @V.Vector) of
+                Nothing -> error "Container mismatch"
+                Just Refl -> TColumn $
+                    fromVector $
+                        V.generate
+                            (VG.length os - 1)
+                            ( \i ->
+                                f
+                                    ( V.generate
+                                        (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
+                                        (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
+                                    )
                             )
-                    )
-interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate (Col name) op (f :: forall a. (Columnable a) => a -> a -> a)) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
-    Just (BoxedColumn col) -> TColumn $
+interpretAggregation gdf@(Grouped df names indices os) (AggReduce expr op (f :: forall a. (Columnable a) => a -> a -> a)) = case unwrapTypedColumn (interpretAggregation @a gdf expr) of
+    BoxedColumn col -> TColumn $
         fromVector $
             VG.generate (VG.length os - 1) $ \g ->
                 let !start = os `VG.unsafeIndex` g
@@ -228,7 +238,7 @@ interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate (Col 
             | otherwise =
                 let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                  in go (f acc x) (j + 1) e
-    Just (UnboxedColumn col) -> case sUnbox @a of
+    UnboxedColumn col -> case sUnbox @a of
         SFalse -> TColumn $
             fromVector $
                 VG.generate (VG.length os - 1) $ \g ->
@@ -255,7 +265,7 @@ interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate (Col 
                 | otherwise =
                     let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                      in go (f acc x) (j + 1) e
-    Just (OptionalColumn col) -> TColumn $
+    OptionalColumn col -> TColumn $
         fromVector $
             VG.generate (VG.length os - 1) $ \g ->
                 let !start = os `VG.unsafeIndex` g
@@ -268,9 +278,8 @@ interpretAggregation gdf@(Grouped df names indices os) (ReductionAggregate (Col 
             | otherwise =
                 let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                  in go (f acc x) (j + 1) e
-interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate (Col name) op s (f :: (a -> b -> a))) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
-    Just (BoxedColumn (col :: V.Vector c)) -> case testEquality (typeRep @b) (typeRep @c) of
+interpretAggregation gdf@(Grouped df names indices os) (AggFold expr op s (f :: (a -> b -> a))) = case unwrapTypedColumn (interpretAggregation @b gdf expr) of
+    BoxedColumn (col :: V.Vector c) -> case testEquality (typeRep @b) (typeRep @c) of
         Nothing -> error "Type mismatch"
         Just Refl -> TColumn $
             fromVector $
@@ -285,7 +294,7 @@ interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate (Col name)
                 | otherwise =
                     let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                      in go (f acc x) (j + 1) e
-    Just (UnboxedColumn (col :: VU.Vector c)) -> case testEquality (typeRep @b) (typeRep @c) of
+    UnboxedColumn (col :: VU.Vector c) -> case testEquality (typeRep @b) (typeRep @c) of
         Nothing -> error "Type mismatch"
         Just Refl -> case sUnbox @a of
             SFalse -> TColumn $
@@ -314,7 +323,7 @@ interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate (Col name)
                 | otherwise =
                     let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                      in go (f acc x) (j + 1) e
-    Just (OptionalColumn (col :: V.Vector c)) -> case testEquality (typeRep @b) (typeRep @c) of
+    OptionalColumn (col :: V.Vector c) -> case testEquality (typeRep @b) (typeRep @c) of
         Nothing -> error "Type mismatch"
         Just Refl -> TColumn $
             fromVector $
@@ -329,9 +338,8 @@ interpretAggregation gdf@(Grouped df names indices os) (FoldAggregate (Col name)
                 | otherwise =
                     let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
                      in go (f acc x) (j + 1) e
-interpretAggregation gdf@(Grouped df names indices os) (NumericAggregate (Col name) op (f :: VU.Vector b -> c)) = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "" (map fst $ M.toList $ columnIndices df)
-    Just (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @b) (typeRep @d) of
+interpretAggregation gdf@(Grouped df names indices os) (AggNumericVector expr op (f :: VU.Vector b -> c)) = case unwrapTypedColumn (interpretAggregation @b gdf expr) of
+    UnboxedColumn (col :: VU.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
         Nothing -> case testEquality (typeRep @d) (typeRep @Int) of
             Just Refl -> case sUnbox @c of
                 SFalse ->
@@ -359,7 +367,7 @@ interpretAggregation gdf@(Grouped df names indices os) (NumericAggregate (Col na
                                         )
                                 )
         Just Refl -> case sNumeric @d of
-            SFalse -> error $ "Cannot apply numeric aggregation to non-numeric column: " ++ T.unpack name
+            SFalse -> error $ "Cannot apply numeric aggregation to non-numeric column: " ++ show expr
             STrue -> case sUnbox @c of
                 SFalse ->
                     TColumn $
@@ -385,17 +393,14 @@ interpretAggregation gdf@(Grouped df names indices os) (NumericAggregate (Col na
                                             (\j -> col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
                                         )
                                 )
-    _ -> error $ "Cannot apply numeric aggregation to non-numeric column: " ++ T.unpack name
+    _ -> error $ "Cannot apply numeric aggregation to non-numeric: " ++ show expr
 
 instance (Num a, Columnable a) => Num (Expr a) where
     (+) :: Expr a -> Expr a -> Expr a
-    (+) = BinOp "add" (+)
-
-    (-) :: Expr a -> Expr a -> Expr a
-    (-) = BinOp "sub" (+)
+    (+) = BinaryOp "add" (+)
 
     (*) :: Expr a -> Expr a -> Expr a
-    (*) = BinOp "mult" (*)
+    (*) = BinaryOp "mult" (*)
 
     fromInteger :: Integer -> Expr a
     fromInteger = Lit . fromInteger
@@ -409,17 +414,12 @@ instance (Num a, Columnable a) => Num (Expr a) where
     signum :: (Num a) => Expr a -> Expr a
     signum = UnaryOp "signum" signum
 
-add = (+)
-divide = (/)
-sub = (-)
-mult = (*)
-
 instance (Fractional a, Columnable a) => Fractional (Expr a) where
     fromRational :: (Fractional a, Columnable a) => Rational -> Expr a
     fromRational = Lit . fromRational
 
     (/) :: (Fractional a, Columnable a) => Expr a -> Expr a -> Expr a
-    (/) = BinOp "divide" (/)
+    (/) = BinaryOp "divide" (/)
 
 instance (Floating a, Columnable a) => Floating (Expr a) where
     pi :: (Floating a, Columnable a) => Expr a
@@ -451,25 +451,15 @@ instance (Floating a, Columnable a) => Floating (Expr a) where
 
 instance (Show a) => Show (Expr a) where
     show :: forall a. (Show a) => Expr a -> String
-    show Variable = "<variable>"
-    show (Col name) = "(col @" ++ show (typeRep @a) ++ " " ++ show name ++ ")"
+    show (Col name) = "col@" ++ show (typeRep @a) ++ "(" ++ T.unpack name ++ ")"
     show (Lit value) = show value
-    show (UnaryOp name f value) = "(" ++ T.unpack name ++ " " ++ show value ++ ")"
-    show (BinOp name f a b) = "(" ++ T.unpack name ++ " " ++ show a ++ " " ++ show b ++ ")"
-    show (NumericAggregate expr op _) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
-    show (GeneralAggregate expr op _) = "(" ++ T.unpack op ++ " " ++ "<cannot show expression>" ++ ")"
-    show (ReductionAggregate expr op _) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
-    show (FoldAggregate expr op _ _ )   = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
-
-instance (Show a, Columnable a) => Show (Expr a -> Expr a) where
-    show :: forall a. (Show a, Columnable a) => (Expr a -> Expr a) -> String
-    show f = show (f (Variable :: Expr a))
+    show (UnaryOp name f value) = T.unpack name ++ "(" ++ show value ++ ")"
+    show (BinaryOp name f a b) = T.unpack name ++ "(" ++ show a ++ ", " ++ show b ++ ")"
+    show (AggNumericVector e op f) = T.unpack op ++ "(" ++ show e ++ ")"
 
 eSize :: Expr a -> Int
-eSize Variable = 1
 eSize (Col _)  = 1
 eSize (Lit _)  = 1
 eSize (UnaryOp _ _ e) = 1 + eSize e
-eSize (BinOp _ _ l r) = 1 + eSize l + eSize r
+eSize (BinaryOp _ _ l r) = 1 + eSize l + eSize r
 eSize _ = 1
-

@@ -4,7 +4,6 @@ module DataFrame.Operations.Merge where
 
 import qualified Data.List as L
 import qualified Data.Text as T
-import qualified Data.Vector as V
 import qualified DataFrame.Internal.Column as D
 import qualified DataFrame.Internal.DataFrame as D
 import qualified DataFrame.Operations.Core as D
