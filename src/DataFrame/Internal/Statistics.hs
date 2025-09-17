@@ -15,7 +15,7 @@ mean' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
 mean' samp = VU.sum (VU.map realToFrac samp) / fromIntegral (VU.length samp)
 {-# INLINE mean' #-}
 
-median' :: VU.Vector Double -> Double
+median' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
 median' samp
     | VU.null samp = throw $ EmptyDataSetException "median"
     | otherwise = runST $ do
@@ -25,10 +25,10 @@ median' samp
             middleIndex = len `div` 2
         middleElement <- VUM.read mutableSamp middleIndex
         if odd len
-            then pure middleElement
+            then pure (realToFrac middleElement)
             else do
                 prev <- VUM.read mutableSamp (middleIndex - 1)
-                pure ((middleElement + prev) / 2)
+                pure (realToFrac (middleElement + prev) / 2)
 {-# INLINE median' #-}
 
 -- accumulator: count, mean, m2
