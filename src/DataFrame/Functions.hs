@@ -97,6 +97,12 @@ sum expr = AggNumericVector expr "sum" VG.sum
 mean :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 mean expr = AggNumericVector expr "mean" mean'
 
+median :: Expr Double -> Expr Double
+median expr = AggNumericVector expr "mean" median'
+
+percentile :: Int -> Expr Double -> Expr Double
+percentile n expr = AggNumericVector expr (T.pack $ "percentile " ++ show n) ((VU.! 0) . quantiles' (VU.fromList [n]) 100)
+
 standardDeviation :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 standardDeviation expr = AggNumericVector expr "stddev" (sqrt . variance')
 
@@ -117,6 +123,11 @@ generatePrograms vars existingPrograms =
     | (i, p) <- zip [0..] existingPrograms
     , (j, q) <- zip [0..] existingPrograms
     , i Prelude.>= j
+    ] ++
+    [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
+    | p <- existingPrograms
+    , q <- existingPrograms ++ [lit 1, lit 0, lit (-1)]
+    , n <- [1, 25, 50, 75, 99]
     ] ++
     [ p - q
     | p <- existingPrograms
