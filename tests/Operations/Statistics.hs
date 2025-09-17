@@ -16,7 +16,7 @@ medianOfOddLengthDataSet =
     TestCase
         ( assertEqual
             "Median of an odd length data set"
-            (D.median' (VU.fromList [179.94, 231.94, 839.06, 534.23, 248.94]))
+            (D.median' (VU.fromList @Double [179.94, 231.94, 839.06, 534.23, 248.94]))
             248.94
         )
 
@@ -25,7 +25,7 @@ medianOfEvenLengthDataSet =
     TestCase
         ( assertEqual
             "Median of an even length data set"
-            (D.median' (VU.fromList [179.94, 231.94, 839.06, 534.23, 248.94, 276.37]))
+            (D.median' (VU.fromList @Double [179.94, 231.94, 839.06, 534.23, 248.94, 276.37]))
             262.655
         )
 
@@ -35,7 +35,7 @@ medianOfEmptyDataSet =
         ( assertExpectException
             "[Error Case]"
             (D.emptyDataSetError "median")
-            (print $ D.median' (VU.fromList []))
+            (print $ D.median' (VU.fromList @Double []))
         )
 
 skewnessOfDataSetWithSameElements :: Test
