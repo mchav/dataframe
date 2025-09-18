@@ -194,31 +194,52 @@ synthesizeFeatureExpr target d b df = let
         df' = exclude [target] df
         names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
         variables = map col names
-    in case beamSearch df' b (interpret df (Col target)) variables d of
+    in case beamSearch df' (BeamConfig d b (\l r -> (^2) <$> correlation' l r)) (interpret df (Col target)) variables of
             Nothing -> Left "No programs found"
             Just p -> Right p
 
+fitRegression ::
+    -- | Target expression
+    T.Text ->
+    -- | Depth of search (Roughly, how many terms in the final expression)
+    Int ->
+    -- | Beam size - the number of candidate expressions to consider at a time.
+    Int ->
+    DataFrame ->
+    Either String (Expr Double)
+fitRegression target d b df = let
+        df' = exclude [target] df
+        names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
+        variables = map col names
+    in case beamSearch df' (BeamConfig d b meanSquaredError) (interpret df (Col target)) variables of
+            Nothing -> Left "No programs found"
+            Just p -> Right p
+
+data BeamConfig = BeamConfig {
+    searchDepth     :: Int,
+    beamLength      :: Int,
+    rankingFunction :: (VU.Vector Double -> VU.Vector Double -> Maybe Double)
+}
+
 beamSearch ::
     DataFrame ->
-    -- | Beam size
-    Int ->
+    -- | Parameters of the beam search.
+    BeamConfig ->
     -- | Examples
     TypedColumn Double ->
     -- | Programs
     [Expr Double] ->
-    -- | Search depth
-    Int ->
     Maybe (Expr Double)
-beamSearch df b outputs programs d
-    | d Prelude.== 0 = case ps of
+beamSearch df cfg outputs programs
+    | (searchDepth cfg) Prelude.== 0 = case ps of
         []    -> Nothing
         (x:_) -> Just x
     | otherwise =
         case findFirst ps of
             Just p -> Just p
-            Nothing -> beamSearch df b outputs (generatePrograms (map col names) ps) (d - 1)
+            Nothing -> beamSearch df (cfg { searchDepth = (searchDepth cfg) - 1}) outputs (generatePrograms (map col names) ps)
   where
-    ps = pickTopN df outputs b $ deduplicate df programs
+    ps = pickTopN df outputs cfg $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
     findFirst [] = Nothing
     findFirst (p : ps')
@@ -227,14 +248,14 @@ beamSearch df b outputs programs d
 
 pickTopN :: DataFrame
          -> TypedColumn Double
-         -> Int
+         -> BeamConfig
          -> [Expr Double]
          -> [Expr Double]
-pickTopN df (TColumn col) n ps = let
+pickTopN df (TColumn col) cfg ps = let
         l = VU.convert (toVector @Double col)
-        ordered = take n (L.sortBy (\e e' -> let
-                c1 = abs <$> correlation' l (asDoubleVector e')
-                c2 = abs <$> correlation' l (asDoubleVector e)
+        ordered = take (beamLength cfg) (L.sortBy (\e e' -> let
+                c1 = (rankingFunction cfg) l (asDoubleVector e')
+                c2 = (rankingFunction cfg) l (asDoubleVector e)
             in if maybe False isInfinite c1 || maybe False isInfinite c2 then LT else compare c1 c2) ps)
         asDoubleVector e = let
                 (TColumn col') = interpret df e

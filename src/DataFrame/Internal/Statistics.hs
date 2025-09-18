@@ -130,3 +130,8 @@ interQuartileRange' samp =
     let quartiles = quantiles' (VU.fromList [1, 3]) 4 samp
      in quartiles VU.! 1 - quartiles VU.! 0
 {-# INLINE interQuartileRange' #-}
+
+
+meanSquaredError :: VU.Vector Double -> VU.Vector Double -> Maybe Double
+meanSquaredError target prediction = Just $ (VU.sum (VU.zipWith (\l r -> (l - r)^2) target prediction)) / (fromIntegral (max (VU.length target) (VU.length prediction)))
+{-# INLINE meanSquaredError #-}
