@@ -99,6 +99,7 @@ readParquet path = do
 
     pure $ DI.fromNamedColumns orderedColumns
 
+readMetadataFromPath :: FilePath -> IO FileMetadata
 readMetadataFromPath path = do
     contents <- BSO.readFile path
     let (size, magicString) = contents `seq` readMetadataSizeFromFooter contents
