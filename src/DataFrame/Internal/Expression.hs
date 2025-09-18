@@ -527,4 +527,3 @@ eSize (AggNumericVector expr op _) = eSize expr + 1
 eSize (AggVector expr op _) = eSize expr + 1
 eSize (AggReduce expr op _) = eSize expr + 1
 eSize (AggFold expr op _ _ )   = eSize expr + 1
-
