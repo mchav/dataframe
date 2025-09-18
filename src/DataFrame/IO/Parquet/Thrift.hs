@@ -1118,7 +1118,6 @@ readTimestampType isAdjustedToUTC unit buf pos lastFieldId fieldStack = do
                 readTimestampType isAdjustedToUTC unit' buf pos lastFieldId fieldStack
             _ -> error $ "UNKNOWN field ID for TimestampType" ++ show identifier
 
-
 readUnit :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO TimeUnit
 readUnit buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
