@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.3.1.2
+* Update granite version, again, for stackage.
+
 ## 0.3.1.1
 * Aggregation now works on expressions rather than just column references.
 * Export writeCsv
