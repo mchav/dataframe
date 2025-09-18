@@ -211,6 +211,7 @@ import DataFrame.Internal.Column as Column (
     fromVector,
     hasMissing,
     isNumeric,
+    hasElemType,
     toList,
     toVector,
  )

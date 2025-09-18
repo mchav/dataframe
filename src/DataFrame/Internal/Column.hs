@@ -77,6 +77,18 @@ isNumeric (UnboxedColumn (vec :: VU.Vector a)) = case sNumeric @a of
     _ -> False
 isNumeric _ = False
 
+-- | Checks if a column is of a given type values.
+hasElemType :: forall a . Columnable a => Column -> Bool
+hasElemType (BoxedColumn (column :: VB.Vector b)) = fromMaybe False $ do
+    Refl <- testEquality (typeRep @a) (typeRep @b)
+    pure True
+hasElemType (UnboxedColumn (column :: VU.Vector b)) = fromMaybe False $ do
+    Refl <- testEquality (typeRep @a) (typeRep @b)
+    pure True
+hasElemType (OptionalColumn (column :: VB.Vector b)) = fromMaybe False $ do
+    Refl <- testEquality (typeRep @a) (typeRep @b)
+    pure True
+
 -- | An internal/debugging function to get the column type of a column.
 columnVersionString :: Column -> String
 columnVersionString column = case column of
