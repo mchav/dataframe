@@ -101,8 +101,8 @@ readPageHeader hdr xs lastFieldId =
 readPageTypeHeader ::
     PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
 readPageTypeHeader hdr [] _ = (hdr, [])
-readPageTypeHeader INDEX_PAGE_HEADER _ _  = undefined
-readPageTypeHeader PAGE_TYPE_HEADER_UNKNOWN _ _  = undefined
+readPageTypeHeader INDEX_PAGE_HEADER _ _  = error "Index page header not supported"
+readPageTypeHeader PAGE_TYPE_HEADER_UNKNOWN _ _  = error "Unknown page type header"
 readPageTypeHeader hdr@(DictionaryPageHeader{..}) xs lastFieldId =
     let
         fieldContents = readField' xs lastFieldId

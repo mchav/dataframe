@@ -38,12 +38,12 @@ word32ToLittleEndian w = map (\i -> fromIntegral (w `shiftR` i)) [0, 8, 16, 24]
 readUVarInt :: [Word8] -> (Word64, [Word8])
 readUVarInt xs = loop xs 0 0 0
   where
-    loop [] x _ _ = undefined
     loop bs x _ 10 = (x, bs)
     loop (b : bs) x s i
         | b < 0x80 = (x .|. (fromIntegral b) `shiftL` s, bs)
         | otherwise =
             loop bs (x .|. fromIntegral ((b .&. 0x7f) `shiftL` s)) (s + 7) (i + 1)
+    loop [] x _ _ = undefined
 
 readVarIntFromBytes :: (Integral a) => [Word8] -> (a, [Word8])
 readVarIntFromBytes bs = (fromIntegral n, rem)
