@@ -133,7 +133,9 @@ interQuartileRange' samp =
 
 
 meanSquaredError :: VU.Vector Double -> VU.Vector Double -> Maybe Double
-meanSquaredError target prediction = Just $ (VU.sum (VU.zipWith (\l r -> (l - r)^2) target prediction)) / (fromIntegral (max (VU.length target) (VU.length prediction)))
+meanSquaredError target prediction = let
+        squareDiff = VU.ifoldl' (\sq i e -> (e - target VU.! i) ^ 2 + sq) 0 prediction
+    in Just $ squareDiff / fromIntegral (max (VU.length target) (VU.length prediction))
 {-# INLINE meanSquaredError #-}
 
 mutualInformationBinned :: Int -> VU.Vector Double -> VU.Vector Double -> Maybe Double
