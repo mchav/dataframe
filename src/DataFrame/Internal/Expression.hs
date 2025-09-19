@@ -110,6 +110,7 @@ interpret df (UnaryOp _ (f :: c -> d) value) =
      in
         -- TODO: Handle this gracefully.
         TColumn $ fromMaybe (error "mapColumn returned nothing") (mapColumn f value')
+interpret df (BinaryOp _ (f :: c -> d -> e) (Lit left) (Lit right)) = TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) (f left right)
 interpret df (BinaryOp _ (f :: c -> d -> e) (Lit left) right) =
     let
         (TColumn right') = interpret @d df right
