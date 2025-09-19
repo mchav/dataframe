@@ -493,6 +493,28 @@ instance (Show a) => Show (Expr a) where
     show (AggReduce expr op _) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
     show (AggFold expr op _ _ )   = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
 
+instance (Eq a, Show a) => Eq (Expr a) where
+    (==) :: (Eq a, Show a) => Expr a -> Expr a -> Bool
+    (==) l r = show l == show r
+
+replaceExpr :: forall a b c . (Columnable a, Columnable b, Columnable c) => Expr a -> Expr b -> Expr c -> Expr c
+replaceExpr new old expr = case testEquality (typeRep @b) (typeRep @c) of
+    Just Refl -> case testEquality (typeRep @a) (typeRep @c) of
+        Just Refl -> if old == expr then new else replace'
+        Nothing -> expr
+    Nothing -> replace'
+    where
+        replace' = case expr of
+            (Col _) -> expr
+            (Lit _) -> expr
+            (If cond l r) -> If (replaceExpr new old cond) (replaceExpr new old l) (replaceExpr new old r)
+            (UnaryOp name f value) -> UnaryOp name f (replaceExpr new old value)
+            (BinaryOp name f l r) -> BinaryOp name f (replaceExpr new old l) (replaceExpr new old r)
+            (AggNumericVector expr op f) -> AggNumericVector (replaceExpr new old expr) op f
+            (AggVector expr op f) -> AggVector (replaceExpr new old expr) op f
+            (AggReduce expr op f) -> AggReduce (replaceExpr new old expr) op f
+            (AggFold expr op acc f) -> AggFold (replaceExpr new old expr) op acc f
+
 eSize :: Expr a -> Int
 eSize (Col _)  = 1
 eSize (Lit _)  = 1
