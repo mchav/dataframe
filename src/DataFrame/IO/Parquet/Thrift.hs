@@ -496,6 +496,8 @@ readAesGcmCtrV1 v@(AesGcmCtrV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos 
                 supplyAadPrefix <- readAndAdvance pos buf
                 readAesGcmCtrV1 (v{supplyAadPrefix = supplyAadPrefix == compactBooleanTrue}) buf pos lastFieldId fieldStack
             _ -> return ENCRYPTION_ALGORITHM_UNKNOWN
+readAesGcmCtrV1 _ _ _ _ _ =
+    error "readAesGcmCtrV1 called with non AesGcmCtrV1"
 
 readAesGcmV1 :: EncryptionAlgorithm -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
 readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFieldId fieldStack = do
@@ -513,6 +515,8 @@ readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFi
                 supplyAadPrefix <- readAndAdvance pos buf
                 readAesGcmV1 (v{supplyAadPrefix = supplyAadPrefix == compactBooleanTrue}) buf pos lastFieldId fieldStack
             _ -> return ENCRYPTION_ALGORITHM_UNKNOWN
+readAesGcmV1 _ _ _ _ _ =
+    error "readAesGcmV1 called with non AesGcmV1"
 
 readTypeOrder :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnOrder
 readTypeOrder buf pos lastFieldId fieldStack = do
@@ -650,18 +654,18 @@ readLogicalType buf pos lastFieldId fieldStack = do
                     replicateM_ 2 (readField buf pos 0 [])
                     return ENUM_TYPE
                 5 -> do
-                    readDecimalType (DecimalType{decimalTypeScale = 0, decimalTypePrecision = 0}) buf pos 0 []
+                    readDecimalType 0 0 buf pos 0 []
                 6 -> do
                     replicateM_ 2 (readField buf pos 0 [])
                     return DATE_TYPE
                 7 -> do
-                    readTimeType (TimeType{isAdjustedToUTC = False, unit = MILLISECONDS}) buf pos 0 []
+                    readTimeType False MILLISECONDS buf pos 0 []
                 8 -> do
-                    readTimeType (TimestampType{isAdjustedToUTC = False, unit = MILLISECONDS}) buf pos 0 []
+                    readTimestampType False MILLISECONDS buf pos 0 []
                 -- Apparently reserved for interval types
                 9 -> return LOGICAL_TYPE_UNKNOWN
                 10 -> do
-                    intType <- readIntType (IntType{intIsSigned = False, bitWidth = 0}) buf pos 0 []
+                    intType <- readIntType 0 False buf pos 0 []
                     _ <- readField buf pos 0 []
                     pure intType
                 11 -> do
@@ -687,11 +691,11 @@ readLogicalType buf pos lastFieldId fieldStack = do
                     return GeographyType{crs = "", algorithm = SPHERICAL}
                 _ -> return LOGICAL_TYPE_UNKNOWN
 
-readIntType :: LogicalType -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
-readIntType v@(IntType bitWidth intIsSigned) buf pos lastFieldId fieldStack = do
+readIntType :: Int8 -> Bool  -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+readIntType bitWidth intIsSigned buf pos lastFieldId fieldStack = do
     t <- readAndAdvance pos buf
     if t .&. 0x0f == 0
-        then return v
+        then return (IntType bitWidth intIsSigned)
         else do
             let modifier = fromIntegral ((t .&. 0xf0) `shiftR` 4) :: Int16
             identifier <-
@@ -701,53 +705,55 @@ readIntType v@(IntType bitWidth intIsSigned) buf pos lastFieldId fieldStack = do
 
             case identifier of
                 1 -> do
-                    bitWidthValue <- readAndAdvance pos buf
-                    readIntType (v{bitWidth = fromIntegral bitWidthValue}) buf pos identifier fieldStack
+                    bitWidth' <- readAndAdvance pos buf
+                    readIntType (fromIntegral bitWidth') intIsSigned buf pos identifier fieldStack
                 2 -> do
-                    let isSigned = (t .&. 0x0f) == compactBooleanTrue
-                    readIntType (v{intIsSigned = isSigned}) buf pos identifier fieldStack
+                    let intIsSigned' = (t .&. 0x0f) == compactBooleanTrue
+                    readIntType bitWidth intIsSigned' buf pos identifier fieldStack
                 _ -> error $ "UNKNOWN field ID for IntType: " ++ show identifier
 
-readDecimalType :: LogicalType -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
-readDecimalType v@(DecimalType p s) buf pos lastFieldId fieldStack = do
+readDecimalType :: Int32 -> Int32 -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+readDecimalType precision scale buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
-        Nothing -> return v
+        Nothing -> return (DecimalType precision scale)
         Just (elemType, identifier) -> case identifier of
             1 -> do
-                s' <- readInt32FromBuffer buf pos
-                readDecimalType (v{decimalTypeScale = s'}) buf pos lastFieldId fieldStack
+                scale' <- readInt32FromBuffer buf pos
+                readDecimalType precision scale' buf pos lastFieldId fieldStack
             2 -> do
-                p' <- readInt32FromBuffer buf pos
-                readDecimalType (v{decimalTypePrecision = p'}) buf pos lastFieldId fieldStack
+                precision' <- readInt32FromBuffer buf pos
+                readDecimalType precision' scale buf pos lastFieldId fieldStack
             _ -> error $ "UNKNOWN field ID for DecimalType" ++ show identifier
 
-readTimeType :: LogicalType -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
-readTimeType v@(TimeType _ _) buf pos lastFieldId fieldStack = do
+readTimeType :: Bool -> TimeUnit -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+readTimeType isAdjustedToUTC  unit  buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
-        Nothing -> return v
+        Nothing -> return (TimeType isAdjustedToUTC  unit)
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 -- TODO: Check for empty
-                isAdjustedToUTC <- readAndAdvance pos buf
-                readTimeType (v{isAdjustedToUTC = isAdjustedToUTC == compactBooleanTrue}) buf pos lastFieldId fieldStack
+                isAdjustedToUTC' <- (== compactBooleanTrue) <$> readAndAdvance pos buf
+                readTimeType isAdjustedToUTC' unit buf pos lastFieldId fieldStack
             2 -> do
-                u <- readUnit buf pos 0 []
-                readTimeType (v{unit = u}) buf pos lastFieldId fieldStack
+                unit' <- readUnit buf pos 0 []
+                readTimeType isAdjustedToUTC unit' buf pos lastFieldId fieldStack
             _ -> error $ "UNKNOWN field ID for TimeType" ++ show identifier
-readTimeType v@(TimestampType _ _) buf pos lastFieldId fieldStack = do
+
+readTimestampType :: Bool -> TimeUnit -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+readTimestampType isAdjustedToUTC unit buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
-        Nothing -> return v
+        Nothing -> return (TimestampType isAdjustedToUTC unit)
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 -- TODO: Check for empty
-                isAdjustedToUTC <- readAndAdvance pos buf
-                readTimeType (v{isAdjustedToUTC = isAdjustedToUTC == compactBooleanTrue}) buf pos lastFieldId fieldStack
+                isAdjustedToUTC' <- (== compactBooleanTrue) <$> readAndAdvance pos buf
+                readTimestampType isAdjustedToUTC' unit buf pos lastFieldId fieldStack
             2 -> do
-                u <- readUnit buf pos 0 []
-                readTimeType (v{unit = u}) buf pos lastFieldId fieldStack
+                unit' <- readUnit buf pos 0 []
+                readTimestampType isAdjustedToUTC unit' buf pos lastFieldId fieldStack
             _ -> error $ "UNKNOWN field ID for TimestampType" ++ show identifier
 
 readUnit :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO TimeUnit

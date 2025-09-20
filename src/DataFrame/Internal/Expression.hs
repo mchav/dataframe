@@ -201,6 +201,7 @@ interpretAggregation gdf@(Grouped df names indices os) (AggVector expr op (f :: 
                                     )
                             )
         UnboxedColumn (col :: VU.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
+            Nothing -> error "Type mismatch"
             Just Refl -> case testEquality (typeRep @v) (typeRep @VU.Vector) of
                 Nothing -> error "Container mismatch"
                 Just Refl ->
@@ -361,6 +362,7 @@ interpretAggregation gdf@(Grouped df names indices os) (AggFold expr op s (f :: 
 interpretAggregation gdf@(Grouped df names indices os) (AggNumericVector expr op (f :: VU.Vector b -> c)) = case unwrapTypedColumn (interpretAggregation @b gdf expr) of
     UnboxedColumn (col :: VU.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
         Nothing -> case testEquality (typeRep @d) (typeRep @Int) of
+            Nothing -> error "Type mismatch"
             Just Refl -> case sUnbox @c of
                 SFalse ->
                     TColumn $
