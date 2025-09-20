@@ -38,12 +38,20 @@ word32ToLittleEndian w = map (\i -> fromIntegral (w `shiftR` i)) [0, 8, 16, 24]
 readUVarInt :: [Word8] -> (Word64, [Word8])
 readUVarInt xs = loop xs 0 0 0
   where
-    loop bs x _ 10 = (x, bs)
-    loop (b : bs) x s i
-        | b < 0x80 = (x .|. (fromIntegral b) `shiftL` s, bs)
+    {-
+    Each input byte contributes:
+    - lower 7 payload bits
+    - The high bit (0x80) is the continuation flag: 1 = more bytes follow, 0 = last byte
+    Why the magic number 10: For a 64‑bit integer we need at most ceil(64 / 7) = 10 bytes
+    -}
+    loop :: [Word8] -> Word64 -> Int -> Int -> (Word64, [Word8])
+    loop bs result _ 10  = (result, bs)
+    loop (b : bs) result shift i
+        | b < 0x80 = (result .|. (fromIntegral b `shiftL` shift), bs)
         | otherwise =
-            loop bs (x .|. fromIntegral ((b .&. 0x7f) `shiftL` s)) (s + 7) (i + 1)
-    loop [] x _ _ = undefined
+            let payloadBits = fromIntegral (b .&. 0x7f) :: Word64
+             in loop bs (result .|. (payloadBits `shiftL` shift)) (shift + 7) (i + 1)
+    loop [] _ _ _ = error "readUVarInt: not enough input bytes"
 
 readVarIntFromBytes :: (Integral a) => [Word8] -> (a, [Word8])
 readVarIntFromBytes bs = (fromIntegral n, rem)
