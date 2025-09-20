@@ -16,8 +16,9 @@ module DataFrame.Functions where
 
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
-import DataFrame.Internal.Expression (Expr (..), UExpr (..), eSize, interpret)
+import DataFrame.Internal.Expression (Expr (..), UExpr (..), eSize, interpret, replaceExpr)
 import DataFrame.Internal.Statistics
+import qualified DataFrame.Operations.Statistics as Stats
 import DataFrame.Operations.Subset (exclude)
 
 import Control.Monad
@@ -29,12 +30,14 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
-import Debug.Trace ( traceShow )
+import Debug.Trace ( traceShow, trace )
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
 import Type.Reflection (typeRep)
 import Prelude hiding (sum, minimum, maximum)
 import Data.Type.Equality
+import Data.Maybe (fromMaybe)
+import qualified DataFrame.Operations.Transformations as D
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n
@@ -119,6 +122,10 @@ generatePrograms vars existingPrograms =
     | p <- existingPrograms
     , transform <- [zScore, abs, log . (+ Lit 1), exp]
     ] ++
+    [ p ^ i
+    | p <- existingPrograms
+    , i <- [0..6]
+    ] ++
     [ p + q
     | (i, p) <- zip [0..] existingPrograms
     , (j, q) <- zip [0..] existingPrograms
@@ -160,17 +167,16 @@ generatePrograms vars existingPrograms =
 -- | Deduplicate programs pick the least smallest one by size.
 deduplicate :: DataFrame
             -> [Expr Double]
-            -> [Expr Double]
+            -> [(Expr Double, TypedColumn Double)]
 deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
   where
     go _ [] = []
     go seen (x : xs)
         | hasInvalid = go seen xs
         | S.member res seen = go seen xs
-        | otherwise = x : go (S.insert res seen) xs
+        | otherwise = (x, res) : go (S.insert res seen) xs
             where
                 res = interpret df x
-                infinity = read @Double "Infinity"
                 hasInvalid = case res of
                     (TColumn (UnboxedColumn (col :: VU.Vector a))) -> case testEquality (typeRep @Double) (typeRep @a) of
                                     Just Refl -> VU.any (\n -> isNaN n || isInfinite n) col
@@ -211,14 +217,18 @@ fitRegression target d b df = let
         df' = exclude [target] df
         names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
         variables = map col names
-    in case beamSearch df' (BeamConfig d b meanSquaredError) (interpret df (Col target)) variables of
+        targetMean = fromMaybe 0 $ Stats.mean target df
+    in case beamSearch df' (BeamConfig d b (\l r -> mutualInformationBinned (max 10 (ceiling (sqrt (fromIntegral (VU.length l))))) l r)) (interpret df (Col target)) variables of
             Nothing -> Left "No programs found"
-            Just p -> Right p
+            Just p -> trace (show p) $ let
+                in case beamSearch (D.derive "_generated_regression_feature_" p df')  (BeamConfig d 100 (\l r -> fmap negate (meanSquaredError l r))) (interpret df (Col target)) [Col "_generated_regression_feature_", lit targetMean, lit 10] of
+                        Nothing -> Left "Could not find coefficients"
+                        Just p' -> Right (replaceExpr p (Col @Double "_generated_regression_feature_") p')
 
 data BeamConfig = BeamConfig {
     searchDepth     :: Int,
     beamLength      :: Int,
-    rankingFunction :: (VU.Vector Double -> VU.Vector Double -> Maybe Double)
+    rankingFunction :: VU.Vector Double -> VU.Vector Double -> Maybe Double
 }
 
 beamSearch ::
@@ -231,13 +241,13 @@ beamSearch ::
     [Expr Double] ->
     Maybe (Expr Double)
 beamSearch df cfg outputs programs
-    | (searchDepth cfg) Prelude.== 0 = case ps of
+    | searchDepth cfg Prelude.== 0 = case ps of
         []    -> Nothing
-        (x:_) -> Just x
+        (x:_) -> trace ("Candidates: " ++ show (L.intercalate "\n" (map show ps))) Just x
     | otherwise =
         case findFirst ps of
             Just p -> Just p
-            Nothing -> beamSearch df (cfg { searchDepth = (searchDepth cfg) - 1}) outputs (generatePrograms (map col names) ps)
+            Nothing -> beamSearch df (cfg { searchDepth = searchDepth cfg - 1}) outputs (generatePrograms (map col names) ps)
   where
     ps = pickTopN df outputs cfg $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
@@ -249,18 +259,18 @@ beamSearch df cfg outputs programs
 pickTopN :: DataFrame
          -> TypedColumn Double
          -> BeamConfig
-         -> [Expr Double]
+         -> [(Expr Double, TypedColumn a)]
          -> [Expr Double]
 pickTopN df (TColumn col) cfg ps = let
         l = VU.convert (toVector @Double col)
-        ordered = take (beamLength cfg) (L.sortBy (\e e' -> let
-                c1 = (rankingFunction cfg) l (asDoubleVector e')
-                c2 = (rankingFunction cfg) l (asDoubleVector e)
-            in if maybe False isInfinite c1 || maybe False isInfinite c2 then LT else compare c1 c2) ps)
-        asDoubleVector e = let
+        ordered = Prelude.take (beamLength cfg) (map fst $ L.sortBy (\(_, c2) (_, c1) -> if maybe False isInfinite c1 || maybe False isInfinite c2 || maybe False isNaN c1 || maybe False isNaN c2 then LT else compare c1 c2) (map (\(e, res) -> (e, rankingFunction cfg l (asDoubleVector res))) ps))
+        asDoubleVector c = let
+                (TColumn col') = c
+            in VU.convert (toVector @Double col')
+        interpretDoubleVector e = let
                 (TColumn col') = interpret df e
             in VU.convert (toVector @Double col')
-    in ordered
+    in trace ("Best loss: " ++ show (rankingFunction cfg l (interpretDoubleVector (head ordered))) ++ " " ++ show (head ordered)) ordered
 
 satisfiesExamples :: DataFrame -> TypedColumn Double -> Expr Double -> Bool
 satisfiesExamples df col expr = let
