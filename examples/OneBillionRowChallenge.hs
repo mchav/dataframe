@@ -14,7 +14,8 @@ import System.Mem
 main :: IO ()
 main = do
     startRead <- getCurrentTime
-    parsed <- D.readSeparated ';' D.defaultOptions "../../1brc/data/measurements.txt"
+    parsed <-
+        D.readSeparated ';' D.defaultOptions "../../1brc/data/measurements.txt"
     endRead <- getCurrentTime
     let readTime = diffUTCTime endRead startRead
     putStrLn $ "Read Time: " ++ (show readTime)

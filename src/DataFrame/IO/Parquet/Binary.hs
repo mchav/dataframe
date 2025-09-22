@@ -12,11 +12,19 @@ import Data.Word
 
 littleEndianWord32 :: [Word8] -> Word32
 littleEndianWord32 bytes
-    | length bytes >= 4 = foldr (.|.) 0 (zipWith (\b i -> fromIntegral b `shiftL` i) (take 4 bytes) [0, 8, 16, 24])
+    | length bytes >= 4 =
+        foldr
+            (.|.)
+            0
+            (zipWith (\b i -> fromIntegral b `shiftL` i) (take 4 bytes) [0, 8, 16, 24])
     | otherwise = littleEndianWord32 (take 4 $ bytes ++ repeat 0)
 
 littleEndianWord64 :: [Word8] -> Word64
-littleEndianWord64 bytes = foldr (.|.) 0 (zipWith (\b i -> fromIntegral b `shiftL` i) (take 8 bytes) [0, 8 ..])
+littleEndianWord64 bytes =
+    foldr
+        (.|.)
+        0
+        (zipWith (\b i -> fromIntegral b `shiftL` i) (take 8 bytes) [0, 8 ..])
 
 littleEndianInt32 :: [Word8] -> Int32
 littleEndianInt32 = fromIntegral . littleEndianWord32
@@ -33,7 +41,8 @@ readUVarInt xs = loop xs 0 0 0
     loop bs x _ 10 = (x, bs)
     loop (b : bs) x s i
         | b < 0x80 = (x .|. (fromIntegral b) `shiftL` s, bs)
-        | otherwise = loop bs (x .|. fromIntegral ((b .&. 0x7f) `shiftL` s)) (s + 7) (i + 1)
+        | otherwise =
+            loop bs (x .|. fromIntegral ((b .&. 0x7f) `shiftL` s)) (s + 7) (i + 1)
 
 readVarIntFromBytes :: (Integral a) => [Word8] -> (a, [Word8])
 readVarIntFromBytes bs = (fromIntegral n, rem)

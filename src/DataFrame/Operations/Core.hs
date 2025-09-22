@@ -23,7 +23,15 @@ import Data.Function (on, (&))
 import Data.Maybe
 import Data.Type.Equality (TestEquality (..))
 import DataFrame.Errors
-import DataFrame.Internal.Column (Column (..), Columnable, columnLength, columnTypeString, expandColumn, fromList, fromVector)
+import DataFrame.Internal.Column (
+    Column (..),
+    Columnable,
+    columnLength,
+    columnTypeString,
+    expandColumn,
+    fromList,
+    fromVector,
+ )
 import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
 import DataFrame.Internal.Parsing (isNullish)
 import Type.Reflection
@@ -174,8 +182,16 @@ insertColumn name column d =
         n = max (columnLength column) r
      in
         case M.lookup name (columnIndices d) of
-            Just i -> DataFrame (V.map (expandColumn n) (columns d V.// [(i, column)])) (columnIndices d) (n, c)
-            Nothing -> DataFrame (V.map (expandColumn n) (columns d `V.snoc` column)) (M.insert name c (columnIndices d)) (n, c + 1)
+            Just i ->
+                DataFrame
+                    (V.map (expandColumn n) (columns d V.// [(i, column)]))
+                    (columnIndices d)
+                    (n, c)
+            Nothing ->
+                DataFrame
+                    (V.map (expandColumn n) (columns d `V.snoc` column))
+                    (M.insert name c (columnIndices d))
+                    (n, c + 1)
 
 {- | /O(n)/ Clones a column and places it under a new name in the dataframe.
 
@@ -206,9 +222,13 @@ index | numbers | others
 @
 -}
 cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
-cloneColumn original new df = fromMaybe (throw $ ColumnNotFoundException original "cloneColumn" (M.keys $ columnIndices df)) $ do
-    column <- getColumn original df
-    return $ insertColumn new column df
+cloneColumn original new df = fromMaybe
+    ( throw $
+        ColumnNotFoundException original "cloneColumn" (M.keys $ columnIndices df)
+    )
+    $ do
+        column <- getColumn original df
+        return $ insertColumn new column df
 
 {- | /O(n)/ Renames a single column.
 
@@ -290,12 +310,15 @@ index | first_10 | next_10
 renameMany :: [(T.Text, T.Text)] -> DataFrame -> DataFrame
 renameMany replacements df = fold (uncurry rename) replacements df
 
-renameSafe :: T.Text -> T.Text -> DataFrame -> Either DataFrameException DataFrame
-renameSafe orig new df = fromMaybe (Left $ ColumnNotFoundException orig "rename" (M.keys $ columnIndices df)) $ do
-    columnIndex <- M.lookup orig (columnIndices df)
-    let origRemoved = M.delete orig (columnIndices df)
-    let newAdded = M.insert new columnIndex origRemoved
-    return (Right df{columnIndices = newAdded})
+renameSafe ::
+    T.Text -> T.Text -> DataFrame -> Either DataFrameException DataFrame
+renameSafe orig new df = fromMaybe
+    (Left $ ColumnNotFoundException orig "rename" (M.keys $ columnIndices df))
+    $ do
+        columnIndex <- M.lookup orig (columnIndices df)
+        let origRemoved = M.delete orig (columnIndices df)
+        let newAdded = M.insert new columnIndex origRemoved
+        return (Right df{columnIndices = newAdded})
 
 data ColumnInfo = ColumnInfo
     { nameOfColumn :: !T.Text
@@ -336,7 +359,9 @@ describeColumns df =
         & insertColumn "# Unique Values" (fromList (map uniqueValues infos))
         & insertColumn "Type" (fromList (map typeOfColumn infos))
   where
-    infos = L.sortBy (compare `on` nonNullValues) (V.ifoldl' go [] (columns df)) :: [ColumnInfo]
+    infos =
+        L.sortBy (compare `on` nonNullValues) (V.ifoldl' go [] (columns df)) ::
+            [ColumnInfo]
     indexMap = M.fromList (map (\(a, b) -> (b, a)) $ M.toList (columnIndices df))
     columnName i = M.lookup i indexMap
     go acc i col@(OptionalColumn (c :: V.Vector a)) =
@@ -347,7 +372,17 @@ describeColumns df =
             columnType = T.pack $ show $ typeRep @a
             unique = S.size $ VG.foldr S.insert S.empty c
          in
-            if isNothing cname then acc else ColumnInfo (fromMaybe "" cname) (columnLength col - countNulls) countNulls countPartial unique columnType : acc
+            if isNothing cname
+                then acc
+                else
+                    ColumnInfo
+                        (fromMaybe "" cname)
+                        (columnLength col - countNulls)
+                        countNulls
+                        countPartial
+                        unique
+                        columnType
+                        : acc
     go acc i col@(BoxedColumn (c :: V.Vector a)) =
         let
             cname = columnName i
@@ -355,7 +390,17 @@ describeColumns df =
             columnType = T.pack $ show $ typeRep @a
             unique = S.size $ VG.foldr S.insert S.empty c
          in
-            if isNothing cname then acc else ColumnInfo (fromMaybe "" cname) (columnLength col) 0 countPartial unique columnType : acc
+            if isNothing cname
+                then acc
+                else
+                    ColumnInfo
+                        (fromMaybe "" cname)
+                        (columnLength col)
+                        0
+                        countPartial
+                        unique
+                        columnType
+                        : acc
     go acc i col@(UnboxedColumn c) =
         let
             cname = columnName i
@@ -364,7 +409,10 @@ describeColumns df =
          in
             -- Unboxed columns cannot have nulls since Maybe
             -- is not an instance of Unbox a
-            if isNothing cname then acc else ColumnInfo (fromMaybe "" cname) (columnLength col) 0 0 unique columnType : acc
+            if isNothing cname
+                then acc
+                else
+                    ColumnInfo (fromMaybe "" cname) (columnLength col) 0 0 unique columnType : acc
 
 nulls :: Column -> Int
 nulls (OptionalColumn xs) = VG.length $ VG.filter isNothing xs
@@ -462,7 +510,9 @@ ghci> D.valueCounts @Int "0" df
 -}
 valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Int)]
 valueCounts columnName df = case getColumn columnName df of
-    Nothing -> throw $ ColumnNotFoundException columnName "valueCounts" (M.keys $ columnIndices df)
+    Nothing ->
+        throw $
+            ColumnNotFoundException columnName "valueCounts" (M.keys $ columnIndices df)
     Just (BoxedColumn (column' :: V.Vector c)) ->
         let
             column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
@@ -497,7 +547,8 @@ valueCounts columnName df = case getColumn columnName df of
                 Just Refl -> M.toAscList column
     Just (UnboxedColumn (column' :: VU.Vector c)) ->
         let
-            column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty (V.convert column')
+            column =
+                V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty (V.convert column')
          in
             case (typeRep @a) `testEquality` (typeRep @c) of
                 Nothing ->

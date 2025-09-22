@@ -48,26 +48,51 @@ dimensionsTest =
 parseDate :: Test
 parseDate =
     let
-        expected = DI.BoxedColumn (V.fromList [fromGregorian 2020 02 14, fromGregorian 2021 02 14, fromGregorian 2022 02 14])
-        actual = D.parseDefault True (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "2021-02-14", "2022-02-14"]))
+        expected =
+            DI.BoxedColumn
+                ( V.fromList
+                    [fromGregorian 2020 02 14, fromGregorian 2021 02 14, fromGregorian 2022 02 14]
+                )
+        actual =
+            D.parseDefault
+                True
+                (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "2021-02-14", "2022-02-14"]))
      in
         TestCase (assertEqual "Correctly parses gregorian date" expected actual)
 
 incompleteDataParseEither :: Test
 incompleteDataParseEither =
     let
-        expected = DI.BoxedColumn (V.fromList [Right $ fromGregorian 2020 02 14, Left ("2021-02-" :: T.Text), Right $ fromGregorian 2022 02 14])
-        actual = D.parseDefault True (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"]))
+        expected =
+            DI.BoxedColumn
+                ( V.fromList
+                    [ Right $ fromGregorian 2020 02 14
+                    , Left ("2021-02-" :: T.Text)
+                    , Right $ fromGregorian 2022 02 14
+                    ]
+                )
+        actual =
+            D.parseDefault
+                True
+                (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"]))
      in
         TestCase (assertEqual "Parses Either for gregorian date" expected actual)
 
 incompleteDataParseMaybe :: Test
 incompleteDataParseMaybe =
     let
-        expected = DI.BoxedColumn (V.fromList [Just $ fromGregorian 2020 02 14, Nothing, Just $ fromGregorian 2022 02 14])
-        actual = D.parseDefault True (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "", "2022-02-14"]))
+        expected =
+            DI.BoxedColumn
+                ( V.fromList
+                    [Just $ fromGregorian 2020 02 14, Nothing, Just $ fromGregorian 2022 02 14]
+                )
+        actual =
+            D.parseDefault
+                True
+                (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "", "2022-02-14"]))
      in
-        TestCase (assertEqual "Parses Maybe for gregorian date with null/empty" expected actual)
+        TestCase
+            (assertEqual "Parses Maybe for gregorian date with null/empty" expected actual)
 
 parseTests :: [Test]
 parseTests =
@@ -95,4 +120,6 @@ tests =
 main :: IO ()
 main = do
     result <- runTestTT tests
-    if failures result > 0 || errors result > 0 then Exit.exitFailure else Exit.exitSuccess
+    if failures result > 0 || errors result > 0
+        then Exit.exitFailure
+        else Exit.exitSuccess

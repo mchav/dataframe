@@ -32,7 +32,11 @@ main = do
     print $ D.take 10 df
 
     -- Create a total_price column that is quantity * item_price
-    let withTotalPrice = D.derive "total_price" (F.lift fromIntegral (F.col @Int "quantity") * F.col @Double "item_price") df
+    let withTotalPrice =
+            D.derive
+                "total_price"
+                (F.lift fromIntegral (F.col @Int "quantity") * F.col @Double "item_price")
+                df
 
     -- sample a filtered subset of the dataframe
     putStrLn "Sample dataframe"

@@ -92,7 +92,9 @@ applyManyBoxedToBoxed =
     TestCase
         ( assertEqual
             "Applies function to many fields"
-            (D.fromNamedColumns (map (,D.fromList $ replicate 26 (1 :: Integer)) ["test4", "test6", "test8"]))
+            ( D.fromNamedColumns
+                (map (,D.fromList $ replicate 26 (1 :: Integer)) ["test4", "test6", "test8"])
+            )
             ( D.select ["test4", "test6", "test8"] $
                 D.applyMany @Char
                     (const (1 :: Integer))
@@ -106,7 +108,9 @@ applyManyBoxedToUnboxed =
     TestCase
         ( assertEqual
             "Unboxes fields when necessary"
-            (D.fromNamedColumns (map (,D.fromList $ replicate 26 (1 :: Int)) ["test4", "test6", "test8"]))
+            ( D.fromNamedColumns
+                (map (,D.fromList $ replicate 26 (1 :: Int)) ["test4", "test6", "test8"])
+            )
             ( D.select ["test4", "test6", "test8"] $
                 D.applyMany @Char
                     (const (1 :: Int))
@@ -135,7 +139,10 @@ applyManyWrongType =
         ( assertExpectException
             "[Error Case]"
             (DE.typeMismatchError (show $ typeRep @Char) (show $ typeRep @[Char]))
-            (print $ DI.getColumn "test2" $ D.applyMany @Char (const (1 :: Int)) ["test2"] testData)
+            ( print $
+                DI.getColumn "test2" $
+                    D.applyMany @Char (const (1 :: Int)) ["test2"] testData
+            )
         )
 
 applyWhereWrongConditionType :: Test
@@ -144,7 +151,9 @@ applyWhereWrongConditionType =
         ( assertExpectException
             "[Error Case]"
             (DE.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
-            (print $ D.applyWhere (even @Integer) "test1" ((+ 1) :: Int -> Int) "test5" testData)
+            ( print $
+                D.applyWhere (even @Integer) "test1" ((+ 1) :: Int -> Int) "test5" testData
+            )
         )
 
 applyWhereWrongTargetType :: Test
@@ -153,7 +162,9 @@ applyWhereWrongTargetType =
         ( assertExpectException
             "[Error Case]"
             (DE.typeMismatchError (show $ typeRep @Float) (show $ typeRep @Int))
-            (print $ D.applyWhere (even @Int) "test1" ((+ 1) :: Float -> Float) "test5" testData)
+            ( print $
+                D.applyWhere (even @Int) "test1" ((+ 1) :: Float -> Float) "test5" testData
+            )
         )
 
 applyWhereConditionColumnNotFound :: Test
@@ -179,8 +190,13 @@ applyWhereWAI =
     TestCase
         ( assertEqual
             "applyWhere works as intended"
-            (Just $ DI.UnboxedColumn (VU.fromList (zipWith ($) (cycle [id, (+ 1)]) [(1 :: Int) .. 26])))
-            (D.getColumn "test5" $ D.applyWhere (even @Int) "test1" ((+ 1) :: Int -> Int) "test5" testData)
+            ( Just $
+                DI.UnboxedColumn
+                    (VU.fromList (zipWith ($) (cycle [id, (+ 1)]) [(1 :: Int) .. 26]))
+            )
+            ( D.getColumn "test5" $
+                D.applyWhere (even @Int) "test1" ((+ 1) :: Int -> Int) "test5" testData
+            )
         )
 
 tests :: [Test]

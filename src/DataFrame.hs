@@ -202,16 +202,24 @@ where
 
 import DataFrame.Display.Terminal.Plot as Plot
 import DataFrame.Errors as Errors
-import DataFrame.IO.CSV as CSV (ReadOptions (..), defaultOptions, readCsv, readSeparated, readTsv, writeCsv, writeSeparated)
+import DataFrame.IO.CSV as CSV (
+    ReadOptions (..),
+    defaultOptions,
+    readCsv,
+    readSeparated,
+    readTsv,
+    writeCsv,
+    writeSeparated,
+ )
 import DataFrame.IO.Parquet as Parquet (readParquet)
 import DataFrame.Internal.Column as Column (
     Column,
     fromList,
     fromUnboxedVector,
     fromVector,
+    hasElemType,
     hasMissing,
     isNumeric,
-    hasElemType,
     toList,
     toVector,
  )
@@ -224,8 +232,17 @@ import DataFrame.Internal.DataFrame as Dataframe (
     toMatrix,
  )
 import DataFrame.Internal.Expression as Expression (Expr)
-import DataFrame.Operations.Aggregation as Aggregation (aggregate, distinct, groupBy)
-import DataFrame.Operations.Core as Core hiding (ColumnInfo (..), nulls, partiallyParsed, renameSafe)
+import DataFrame.Operations.Aggregation as Aggregation (
+    aggregate,
+    distinct,
+    groupBy,
+ )
+import DataFrame.Operations.Core as Core hiding (
+    ColumnInfo (..),
+    nulls,
+    partiallyParsed,
+    renameSafe,
+ )
 import DataFrame.Operations.Join as Join
 import DataFrame.Operations.Merge as Merge
 import DataFrame.Operations.Sorting as Sorting

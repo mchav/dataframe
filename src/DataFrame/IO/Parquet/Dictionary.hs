@@ -44,14 +44,16 @@ readPageInt32 xs = littleEndianInt32 (take 4 xs) : readPageInt32 (drop 4 xs)
 
 readPageWord64 :: [Word8] -> [Double]
 readPageWord64 [] = []
-readPageWord64 xs = castWord64ToDouble (littleEndianWord64 (take 8 xs)) : readPageWord64 (drop 8 xs)
+readPageWord64 xs =
+    castWord64ToDouble (littleEndianWord64 (take 8 xs)) : readPageWord64 (drop 8 xs)
 
 readPageBytes :: [Word8] -> [T.Text]
 readPageBytes [] = []
 readPageBytes xs =
     let lenBytes = fromIntegral (littleEndianInt32 $ take 4 xs)
         totalBytesRead = lenBytes + 4
-     in T.pack (map (chr . fromIntegral) $ take lenBytes (drop 4 xs)) : readPageBytes (drop totalBytesRead xs)
+     in T.pack (map (chr . fromIntegral) $ take lenBytes (drop 4 xs))
+            : readPageBytes (drop totalBytesRead xs)
 
 readPageBool :: [Word8] -> [Bool]
 readPageBool [] = []
@@ -66,7 +68,8 @@ readPageInt64 xs = fromIntegral (littleEndianWord64 (take 8 xs)) : readPageInt64
 
 readPageFloat :: [Word8] -> [Float]
 readPageFloat [] = []
-readPageFloat xs = castWord32ToFloat (littleEndianWord32 (take 4 xs)) : readPageFloat (drop 4 xs)
+readPageFloat xs =
+    castWord32ToFloat (littleEndianWord32 (take 4 xs)) : readPageFloat (drop 4 xs)
 
 readNInt96Times :: Int -> [Word8] -> ([UTCTime], [Word8])
 readNInt96Times 0 bs = ([], bs)
@@ -99,7 +102,10 @@ decodeDictV1 dictValsM maxDef defLvls nPresent bytes =
              in do
                     when (length idxs /= nPresent) $
                         error $
-                            "dict index count mismatch: got " ++ show (length idxs) ++ ", expected " ++ show nPresent
+                            "dict index count mismatch: got "
+                                ++ show (length idxs)
+                                ++ ", expected "
+                                ++ show nPresent
                     case dictVals of
                         DBool ds -> do
                             let values = [ds !! i | i <- idxs]

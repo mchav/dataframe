@@ -59,7 +59,7 @@ instance (Eq a) => Eq (TypedColumn a) where
     (==) (TColumn a) (TColumn b) = a == b
 
 instance (Ord a) => Ord (TypedColumn a) where
-    (compare) (TColumn a) (TColumn b) = compare a b
+    compare (TColumn a) (TColumn b) = compare a b
 
 -- | Gets the underlying value from a TypedColumn.
 unwrapTypedColumn :: TypedColumn a -> Column
@@ -78,7 +78,7 @@ isNumeric (UnboxedColumn (vec :: VU.Vector a)) = case sNumeric @a of
 isNumeric _ = False
 
 -- | Checks if a column is of a given type values.
-hasElemType :: forall a . Columnable a => Column -> Bool
+hasElemType :: forall a. (Columnable a) => Column -> Bool
 hasElemType (BoxedColumn (column :: VB.Vector b)) = fromMaybe False $ do
     Refl <- testEquality (typeRep @a) (typeRep @b)
     pure True
@@ -106,7 +106,7 @@ columnTypeString column = case column of
     OptionalColumn (column :: VB.Vector a) -> show (typeRep @a)
 
 instance (Show a) => Show (TypedColumn a) where
-    show :: Show a => TypedColumn a -> String
+    show :: (Show a) => TypedColumn a -> String
     show (TColumn col) = show col
 
 instance Show Column where
@@ -177,7 +177,7 @@ instance
     (Columnable a) =>
     ColumnifyRep 'RBoxed a
     where
-    toColumnRep :: Columnable a => VB.Vector a -> Column
+    toColumnRep :: (Columnable a) => VB.Vector a -> Column
     toColumnRep = BoxedColumn
 
 instance
@@ -212,7 +212,8 @@ __Examples:__
 [1,2,3,4]
 @
 -}
-fromUnboxedVector :: forall a. (Columnable a, VU.Unbox a) => VU.Vector a -> Column
+fromUnboxedVector ::
+    forall a. (Columnable a, VU.Unbox a) => VU.Vector a -> Column
 fromUnboxedVector = UnboxedColumn
 
 {- | O(n) Convert a list to a column. Automatically picks the best representation of a vector to store the underlying data in.
@@ -333,17 +334,23 @@ findIndices pred (OptionalColumn (column :: VB.Vector (Maybe b))) = do
 sortedIndexes :: Bool -> Column -> VU.Vector Int
 sortedIndexes asc (BoxedColumn column) = runST $ do
     withIndexes <- VG.thaw $ VG.indexed column
-    VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
+    VA.sortBy
+        (\(a, b) (a', b') -> (if asc then compare else flip compare) b b')
+        withIndexes
     sorted <- VG.unsafeFreeze withIndexes
     return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
 sortedIndexes asc (UnboxedColumn column) = runST $ do
     withIndexes <- VG.thaw $ VG.indexed column
-    VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
+    VA.sortBy
+        (\(a, b) (a', b') -> (if asc then compare else flip compare) b b')
+        withIndexes
     sorted <- VG.unsafeFreeze withIndexes
     return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
 sortedIndexes asc (OptionalColumn column) = runST $ do
     withIndexes <- VG.thaw $ VG.indexed column
-    VA.sortBy (\(a, b) (a', b') -> (if asc then compare else flip compare) b b') withIndexes
+    VA.sortBy
+        (\(a, b) (a', b') -> (if asc then compare else flip compare) b b')
+        withIndexes
     sorted <- VG.unsafeFreeze withIndexes
     return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
 {-# INLINE sortedIndexes #-}
@@ -371,7 +378,8 @@ imapColumn f = \case
         | otherwise -> Nothing
 
 -- | Filter column with index.
-ifilterColumn :: forall a. (Columnable a) => (Int -> a -> Bool) -> Column -> Maybe Column
+ifilterColumn ::
+    forall a. (Columnable a) => (Int -> a -> Bool) -> Column -> Maybe Column
 ifilterColumn f c@(BoxedColumn (column :: VB.Vector b)) = do
     Refl <- testEquality (typeRep @a) (typeRep @b)
     return $ BoxedColumn $ VG.ifilter f column
@@ -381,7 +389,9 @@ ifilterColumn f c@(UnboxedColumn (column :: VU.Vector b)) = do
 ifilterColumn _ _ = Nothing
 
 -- | Fold (right) column with index.
-ifoldrColumn :: forall a b. (Columnable a, Columnable b) => (Int -> a -> b -> b) -> b -> Column -> Maybe b
+ifoldrColumn ::
+    forall a b.
+    (Columnable a, Columnable b) => (Int -> a -> b -> b) -> b -> Column -> Maybe b
 ifoldrColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = do
     Refl <- testEquality (typeRep @a) (typeRep @d)
     return $ VG.ifoldr f acc column
@@ -393,7 +403,9 @@ ifoldrColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = do
     return $ VG.ifoldr f acc column
 
 -- | Fold (left) column with index.
-ifoldlColumn :: forall a b. (Columnable a, Columnable b) => (b -> Int -> a -> b) -> b -> Column -> Maybe b
+ifoldlColumn ::
+    forall a b.
+    (Columnable a, Columnable b) => (b -> Int -> a -> b) -> b -> Column -> Maybe b
 ifoldlColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = do
     Refl <- testEquality (typeRep @a) (typeRep @d)
     return $ VG.ifoldl' f acc column
@@ -435,9 +447,19 @@ reduceColumn f (OptionalColumn (column :: c)) = do
 -- | An internal, column version of zip.
 zipColumns :: Column -> Column -> Column
 zipColumns (BoxedColumn column) (BoxedColumn other) = BoxedColumn (VG.zip column other)
-zipColumns (BoxedColumn column) (UnboxedColumn other) = BoxedColumn (VB.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
+zipColumns (BoxedColumn column) (UnboxedColumn other) =
+    BoxedColumn
+        ( VB.generate
+            (min (VG.length column) (VG.length other))
+            (\i -> (column VG.! i, other VG.! i))
+        )
 zipColumns (BoxedColumn column) (OptionalColumn optcolumn) = BoxedColumn (VG.zip (VB.convert column) optcolumn)
-zipColumns (UnboxedColumn column) (BoxedColumn other) = BoxedColumn (VB.generate (min (VG.length column) (VG.length other)) (\i -> (column VG.! i, other VG.! i)))
+zipColumns (UnboxedColumn column) (BoxedColumn other) =
+    BoxedColumn
+        ( VB.generate
+            (min (VG.length column) (VG.length other))
+            (\i -> (column VG.! i, other VG.! i))
+        )
 zipColumns (UnboxedColumn column) (UnboxedColumn other) = UnboxedColumn (VG.zip column other)
 zipColumns (UnboxedColumn column) (OptionalColumn optcolumn) = BoxedColumn (VG.zip (VB.convert column) optcolumn)
 zipColumns (OptionalColumn optcolumn) (BoxedColumn column) = BoxedColumn (VG.zip optcolumn (VB.convert column))
@@ -446,7 +468,10 @@ zipColumns (OptionalColumn optcolumn) (OptionalColumn optother) = BoxedColumn (V
 {-# INLINE zipColumns #-}
 
 -- | An internal, column version of zipWith.
-zipWithColumns :: forall a b c. (Columnable a, Columnable b, Columnable c) => (a -> b -> c) -> Column -> Column -> Maybe Column
+zipWithColumns ::
+    forall a b c.
+    (Columnable a, Columnable b, Columnable c) =>
+    (a -> b -> c) -> Column -> Column -> Maybe Column
 zipWithColumns f (UnboxedColumn (column :: VU.Vector d)) (UnboxedColumn (other :: VU.Vector e)) = case testEquality (typeRep @a) (typeRep @d) of
     Just Refl -> case testEquality (typeRep @b) (typeRep @e) of
         Just Refl -> pure $ case sUnbox @c of
@@ -488,34 +513,68 @@ writeColumn i value (MUnboxedColumn (col :: VUM.IOVector a)) =
 freezeColumn' :: [(Int, T.Text)] -> MutableColumn -> IO Column
 freezeColumn' nulls (MBoxedColumn col)
     | null nulls = BoxedColumn <$> VB.unsafeFreeze col
-    | all (isNullish . snd) nulls = OptionalColumn . VB.imap (\i v -> if i `elem` map fst nulls then Nothing else Just v) <$> VB.unsafeFreeze col
-    | otherwise = BoxedColumn . VB.imap (\i v -> if i `elem` map fst nulls then Left (fromMaybe (error "") (lookup i nulls)) else Right v) <$> VB.unsafeFreeze col
+    | all (isNullish . snd) nulls =
+        OptionalColumn
+            . VB.imap (\i v -> if i `elem` map fst nulls then Nothing else Just v)
+            <$> VB.unsafeFreeze col
+    | otherwise =
+        BoxedColumn
+            . VB.imap
+                ( \i v ->
+                    if i `elem` map fst nulls
+                        then Left (fromMaybe (error "") (lookup i nulls))
+                        else Right v
+                )
+            <$> VB.unsafeFreeze col
 freezeColumn' nulls (MUnboxedColumn col)
     | null nulls = UnboxedColumn <$> VU.unsafeFreeze col
-    | all (isNullish . snd) nulls = VU.unsafeFreeze col >>= \c -> return $ OptionalColumn $ VB.generate (VU.length c) (\i -> if i `elem` map fst nulls then Nothing else Just (c VU.! i))
-    | otherwise = VU.unsafeFreeze col >>= \c -> return $ BoxedColumn $ VB.generate (VU.length c) (\i -> if i `elem` map fst nulls then Left (fromMaybe (error "") (lookup i nulls)) else Right (c VU.! i))
+    | all (isNullish . snd) nulls =
+        VU.unsafeFreeze col >>= \c ->
+            return $
+                OptionalColumn $
+                    VB.generate
+                        (VU.length c)
+                        (\i -> if i `elem` map fst nulls then Nothing else Just (c VU.! i))
+    | otherwise =
+        VU.unsafeFreeze col >>= \c ->
+            return $
+                BoxedColumn $
+                    VB.generate
+                        (VU.length c)
+                        ( \i ->
+                            if i `elem` map fst nulls
+                                then Left (fromMaybe (error "") (lookup i nulls))
+                                else Right (c VU.! i)
+                        )
 {-# INLINE freezeColumn' #-}
 
 -- | Fills the end of a column, up to n, with Nothing. Does nothing if column has length greater than n.
 expandColumn :: Int -> Column -> Column
 expandColumn n (OptionalColumn col) = OptionalColumn $ col <> VB.replicate (n - VG.length col) Nothing
 expandColumn n column@(BoxedColumn col)
-    | n > VG.length col = OptionalColumn $ VB.map Just col <> VB.replicate (n - VG.length col) Nothing
+    | n > VG.length col =
+        OptionalColumn $ VB.map Just col <> VB.replicate (n - VG.length col) Nothing
     | otherwise = column
 expandColumn n column@(UnboxedColumn col)
-    | n > VG.length col = OptionalColumn $ VB.map Just (VU.convert col) <> VB.replicate (n - VG.length col) Nothing
+    | n > VG.length col =
+        OptionalColumn $
+            VB.map Just (VU.convert col) <> VB.replicate (n - VG.length col) Nothing
     | otherwise = column
 
 -- | Fills the beginning of a column, up to n, with Nothing. Does nothing if column has length greater than n.
 leftExpandColumn :: Int -> Column -> Column
 leftExpandColumn n column@(OptionalColumn col)
-    | n > VG.length col = OptionalColumn $ VG.replicate (n - VG.length col) Nothing <> col
+    | n > VG.length col =
+        OptionalColumn $ VG.replicate (n - VG.length col) Nothing <> col
     | otherwise = column
 leftExpandColumn n column@(BoxedColumn col)
-    | n > VG.length col = OptionalColumn $ VG.replicate (n - VG.length col) Nothing <> VG.map Just col
+    | n > VG.length col =
+        OptionalColumn $ VG.replicate (n - VG.length col) Nothing <> VG.map Just col
     | otherwise = column
 leftExpandColumn n column@(UnboxedColumn col)
-    | n > VG.length col = OptionalColumn $ VG.replicate (n - VG.length col) Nothing <> VG.map Just (VU.convert col)
+    | n > VG.length col =
+        OptionalColumn $
+            VG.replicate (n - VG.length col) Nothing <> VG.map Just (VU.convert col)
     | otherwise = column
 
 -- | Concatenates two columns.
@@ -566,7 +625,9 @@ toList xs = case toVectorSafe @a xs of
     Right val -> VB.toList val
 
 -- | A safe version of toVector that returns an Either type.
-toVectorSafe :: forall a v. (VG.Vector v a, Columnable a) => Column -> Either DataFrameException (v a)
+toVectorSafe ::
+    forall a v.
+    (VG.Vector v a, Columnable a) => Column -> Either DataFrameException (v a)
 toVectorSafe column@(OptionalColumn (col :: VB.Vector b)) =
     case testEquality (typeRep @a) (typeRep @b) of
         Just Refl -> Right $ VG.convert col

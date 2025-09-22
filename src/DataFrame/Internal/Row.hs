@@ -28,7 +28,14 @@ import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame
 import DataFrame.Internal.Types
 import Text.ParserCombinators.ReadPrec (ReadPrec)
-import Text.Read (Lexeme (Ident), lexP, parens, readListPrec, readListPrecDefault, readPrec)
+import Text.Read (
+    Lexeme (Ident),
+    lexP,
+    parens,
+    readListPrec,
+    readListPrecDefault,
+    readPrec,
+ )
 import Type.Reflection (typeOf, typeRep)
 
 data Any where
@@ -89,7 +96,12 @@ mkRowFromArgs :: [T.Text] -> DataFrame -> Int -> Row
 mkRowFromArgs names df i = V.map get (V.fromList names)
   where
     get name = case getColumn name df of
-        Nothing -> throw $ ColumnNotFoundException name "[INTERNAL] mkRowFromArgs" (M.keys $ columnIndices df)
+        Nothing ->
+            throw $
+                ColumnNotFoundException
+                    name
+                    "[INTERNAL] mkRowFromArgs"
+                    (M.keys $ columnIndices df)
         Just (BoxedColumn column) -> toAny (column V.! i)
         Just (UnboxedColumn column) -> toAny (column VU.! i)
         Just (OptionalColumn column) -> toAny (column V.! i)

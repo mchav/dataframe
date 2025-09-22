@@ -41,28 +41,41 @@ take n d = d{columns = V.map (takeColumn n') (columns d), dataframeDimensions = 
 
 -- | O(k * n) Take the last n rows of a DataFrame.
 takeLast :: Int -> DataFrame -> DataFrame
-takeLast n d = d{columns = V.map (takeLastColumn n') (columns d), dataframeDimensions = (n', c)}
+takeLast n d =
+    d
+        { columns = V.map (takeLastColumn n') (columns d)
+        , dataframeDimensions = (n', c)
+        }
   where
     (r, c) = dataframeDimensions d
     n' = clip n 0 r
 
 -- | O(k * n) Drop the first n rows of a DataFrame.
 drop :: Int -> DataFrame -> DataFrame
-drop n d = d{columns = V.map (sliceColumn n' (max (r - n') 0)) (columns d), dataframeDimensions = (max (r - n') 0, c)}
+drop n d =
+    d
+        { columns = V.map (sliceColumn n' (max (r - n') 0)) (columns d)
+        , dataframeDimensions = (max (r - n') 0, c)
+        }
   where
     (r, c) = dataframeDimensions d
     n' = clip n 0 r
 
 -- | O(k * n) Drop the last n rows of a DataFrame.
 dropLast :: Int -> DataFrame -> DataFrame
-dropLast n d = d{columns = V.map (sliceColumn 0 n') (columns d), dataframeDimensions = (n', c)}
+dropLast n d =
+    d{columns = V.map (sliceColumn 0 n') (columns d), dataframeDimensions = (n', c)}
   where
     (r, c) = dataframeDimensions d
     n' = clip (r - n) 0 r
 
 -- | O(k * n) Take a range of rows of a DataFrame.
 range :: (Int, Int) -> DataFrame -> DataFrame
-range (start, end) d = d{columns = V.map (sliceColumn (clip start 0 r) n') (columns d), dataframeDimensions = (n', c)}
+range (start, end) d =
+    d
+        { columns = V.map (sliceColumn (clip start 0 r) n') (columns d)
+        , dataframeDimensions = (n', c)
+        }
   where
     (r, c) = dataframeDimensions d
     n' = clip (end - start) 0 r
@@ -85,12 +98,17 @@ filter ::
     DataFrame ->
     DataFrame
 filter filterColumnName condition df = case getColumn filterColumnName df of
-    Nothing -> throw $ ColumnNotFoundException filterColumnName "filter" (M.keys $ columnIndices df)
+    Nothing ->
+        throw $
+            ColumnNotFoundException filterColumnName "filter" (M.keys $ columnIndices df)
     Just (BoxedColumn (column :: V.Vector b)) -> filterByVector filterColumnName column condition df
     Just (OptionalColumn (column :: V.Vector b)) -> filterByVector filterColumnName column condition df
     Just (UnboxedColumn (column :: VU.Vector b)) -> filterByVector filterColumnName column condition df
 
-filterByVector :: forall a b v. (VG.Vector v b, Columnable a, Columnable b) => T.Text -> v b -> (a -> Bool) -> DataFrame -> DataFrame
+filterByVector ::
+    forall a b v.
+    (VG.Vector v b, Columnable a, Columnable b) =>
+    T.Text -> v b -> (a -> Bool) -> DataFrame -> DataFrame
 filterByVector filterColumnName column condition df = case testEquality (typeRep @a) (typeRep @b) of
     Nothing ->
         throw $
@@ -106,7 +124,10 @@ filterByVector filterColumnName column condition df = case testEquality (typeRep
         let
             ixs = indexes condition column
          in
-            df{columns = V.map (atIndicesStable ixs) (columns df), dataframeDimensions = (VG.length ixs, snd (dataframeDimensions df))}
+            df
+                { columns = V.map (atIndicesStable ixs) (columns df)
+                , dataframeDimensions = (VG.length ixs, snd (dataframeDimensions df))
+                }
 
 indexes :: (VG.Vector v a) => (a -> Bool) -> v a -> VU.Vector Int
 indexes condition cols = runST $ do
@@ -146,7 +167,10 @@ filterWhere expr df =
         (Just indexes) = findIndices (== True) col
         c' = snd $ dataframeDimensions df
      in
-        df{columns = V.map (atIndicesStable indexes) (columns df), dataframeDimensions = (VU.length indexes, c')}
+        df
+            { columns = V.map (atIndicesStable indexes) (columns df)
+            , dataframeDimensions = (VU.length indexes, c')
+            }
 
 {- | O(k) removes all rows with `Nothing` in a given column from the dataframe.
 
@@ -154,7 +178,8 @@ filterWhere expr df =
 -}
 filterJust :: T.Text -> DataFrame -> DataFrame
 filterJust name df = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "filterJust" (M.keys $ columnIndices df)
+    Nothing ->
+        throw $ ColumnNotFoundException name "filterJust" (M.keys $ columnIndices df)
     Just column@(OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isJust df & apply @(Maybe a) fromJust name
     Just column -> df
 
@@ -164,9 +189,10 @@ filterJust name df = case getColumn name df of
 -}
 filterNothing :: T.Text -> DataFrame -> DataFrame
 filterNothing name df = case getColumn name df of
-    Nothing -> throw $ ColumnNotFoundException name "filterNothing" (M.keys $ columnIndices df)
+    Nothing ->
+        throw $ ColumnNotFoundException name "filterNothing" (M.keys $ columnIndices df)
     Just (OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isNothing df
-    _                                                 -> df
+    _ -> df
 
 {- | O(n * k) removes all rows with `Nothing` from the dataframe.
 
@@ -193,7 +219,12 @@ select ::
     DataFrame
 select cs df
     | L.null cs = empty
-    | any (`notElem` columnNames df) cs = throw $ ColumnNotFoundException (T.pack $ show $ cs L.\\ columnNames df) "select" (columnNames df)
+    | any (`notElem` columnNames df) cs =
+        throw $
+            ColumnNotFoundException
+                (T.pack $ show $ cs L.\\ columnNames df)
+                "select"
+                (columnNames df)
     | otherwise = L.foldl' addKeyValue empty cs
   where
     addKeyValue d k = fromMaybe df $ do
@@ -207,37 +238,42 @@ data SelectionCriteria
     | ColumnIndexRange (Int, Int)
     | ColumnName T.Text
 
--- | Criteria for selecting a column by name.
---
--- > selectBy [byName "Age"] df
---
--- equivalent to:
---
--- > select ["Age"] df
+{- | Criteria for selecting a column by name.
+
+> selectBy [byName "Age"] df
+
+equivalent to:
+
+> select ["Age"] df
+-}
 byName :: T.Text -> SelectionCriteria
 byName = ColumnName
 
--- | Criteria for selecting columns whose property satisfies given predicate.
---
--- > selectBy [byProperty isNumeric] df
+{- | Criteria for selecting columns whose property satisfies given predicate.
+
+> selectBy [byProperty isNumeric] df
+-}
 byProperty :: (Column -> Bool) -> SelectionCriteria
 byProperty = ColumnProperty
 
--- | Criteria for selecting columns whose name satisfies given predicate.
---
--- > selectBy [byNameProperty (T.isPrefixOf "weight")] df
+{- | Criteria for selecting columns whose name satisfies given predicate.
+
+> selectBy [byNameProperty (T.isPrefixOf "weight")] df
+-}
 byNameProperty :: (T.Text -> Bool) -> SelectionCriteria
 byNameProperty = ColumnNameProperty
 
--- | Criteria for selecting columns whose names are in the given lexicographic range (inclusive).
---
--- > selectBy [byNameRange ("a", "c")] df
+{- | Criteria for selecting columns whose names are in the given lexicographic range (inclusive).
+
+> selectBy [byNameRange ("a", "c")] df
+-}
 byNameRange :: (T.Text, T.Text) -> SelectionCriteria
 byNameRange = ColumnTextRange
 
--- | Criteria for selecting columns whose indices are in the given (inclusive) range.
---
--- > selectBy [byIndexRange (0, 5)] df
+{- | Criteria for selecting columns whose indices are in the given (inclusive) range.
+
+> selectBy [byIndexRange (0, 5)] df
+-}
 byIndexRange :: (Int, Int) -> SelectionCriteria
 byIndexRange = ColumnIndexRange
 
@@ -248,9 +284,14 @@ selectBy xs df = select columnsWithProperties df
     columnsWithProperties = L.foldl' columnWithProperty [] xs
     columnWithProperty acc (ColumnName name) = acc ++ [name]
     columnWithProperty acc (ColumnNameProperty f) = acc ++ L.filter f (columnNames df)
-    columnWithProperty acc (ColumnTextRange (from, to)) = acc ++ reverse (Prelude.dropWhile (to /=) $ reverse $ dropWhile (from /=) (columnNames df))
+    columnWithProperty acc (ColumnTextRange (from, to)) =
+        acc
+            ++ reverse
+                (Prelude.dropWhile (to /=) $ reverse $ dropWhile (from /=) (columnNames df))
     columnWithProperty acc (ColumnIndexRange (from, to)) = acc ++ Prelude.take (to - from + 1) (Prelude.drop from (columnNames df))
-    columnWithProperty acc (ColumnProperty f) = acc ++ map fst (L.filter (\(k, v) -> v `elem` ixs) (M.toAscList (columnIndices df)))
+    columnWithProperty acc (ColumnProperty f) =
+        acc
+            ++ map fst (L.filter (\(k, v) -> v `elem` ixs) (M.toAscList (columnIndices df)))
       where
         ixs = V.ifoldl' (\acc i c -> if f c then i : acc else acc) [] (columns df)
 

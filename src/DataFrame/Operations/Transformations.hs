@@ -14,7 +14,15 @@ import qualified Data.Vector as V
 import Control.Exception (throw)
 import Data.Maybe
 import DataFrame.Errors (DataFrameException (..), TypeErrorContext (..))
-import DataFrame.Internal.Column (Column (..), Columnable, columnTypeString, ifoldrColumn, imapColumn, mapColumn, unwrapTypedColumn)
+import DataFrame.Internal.Column (
+    Column (..),
+    Columnable,
+    columnTypeString,
+    ifoldrColumn,
+    imapColumn,
+    mapColumn,
+    unwrapTypedColumn,
+ )
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Internal.Expression
 import DataFrame.Operations.Core
@@ -112,15 +120,28 @@ value that matches the given criterion.
 applyWhere ::
     forall a b.
     (Columnable a, Columnable b) =>
-    (a -> Bool) -> -- ^ Filter condition
-    T.Text -> -- ^ Criterion Column
-    (b -> b) -> -- ^ function to apply
-    T.Text -> -- ^ Column name
-    DataFrame -> -- ^ DataFrame to apply operation to
+    -- | Filter condition
+    (a -> Bool) ->
+    -- | Criterion Column
+    T.Text ->
+    -- | function to apply
+    (b -> b) ->
+    -- | Column name
+    T.Text ->
+    -- | DataFrame to apply operation to
+    DataFrame ->
     DataFrame
 applyWhere condition filterColumnName f columnName df = case getColumn filterColumnName df of
-    Nothing -> throw $ ColumnNotFoundException filterColumnName "applyWhere" (M.keys $ columnIndices df)
-    Just column -> case ifoldrColumn (\i val acc -> if condition val then V.cons i acc else acc) V.empty column of
+    Nothing ->
+        throw $
+            ColumnNotFoundException
+                filterColumnName
+                "applyWhere"
+                (M.keys $ columnIndices df)
+    Just column -> case ifoldrColumn
+        (\i val acc -> if condition val then V.cons i acc else acc)
+        V.empty
+        column of
         Nothing ->
             throw $
                 TypeMismatchException
@@ -150,7 +171,9 @@ applyAtIndex ::
     DataFrame ->
     DataFrame
 applyAtIndex i f columnName df = case getColumn columnName df of
-    Nothing -> throw $ ColumnNotFoundException columnName "applyAtIndex" (M.keys $ columnIndices df)
+    Nothing ->
+        throw $
+            ColumnNotFoundException columnName "applyAtIndex" (M.keys $ columnIndices df)
     Just column -> case imapColumn (\index value -> if index == i then f value else value) column of
         Nothing ->
             throw $
@@ -173,7 +196,8 @@ impute ::
     DataFrame ->
     DataFrame
 impute columnName value df = case getColumn columnName df of
-    Nothing -> throw $ ColumnNotFoundException columnName "impute" (M.keys $ columnIndices df)
+    Nothing ->
+        throw $ ColumnNotFoundException columnName "impute" (M.keys $ columnIndices df)
     Just (OptionalColumn _) -> case safeApply (fromMaybe value) columnName df of
         Left (TypeMismatchException context) -> throw $ TypeMismatchException (context{callingFunctionName = Just "impute"})
         Left exception -> throw exception

@@ -56,12 +56,24 @@ frequencies name df =
         counts :: forall a. (Columnable a) => [(a, Int)]
         counts = valueCounts name df
         calculatePercentage cs k = toAny $ toPct2dp (fromIntegral k / fromIntegral (P.sum $ map snd cs))
-        initDf = empty & insertVector "Statistic" (V.fromList ["Count" :: T.Text, "Percentage (%)"])
+        initDf =
+            empty
+                & insertVector "Statistic" (V.fromList ["Count" :: T.Text, "Percentage (%)"])
         freqs :: forall v a. (VG.Vector v a, Columnable a) => v a -> DataFrame
-        freqs col = L.foldl' (\d (col, k) -> insertVector (showValue @a col) (V.fromList [toAny k, calculatePercentage (counts @a) k]) d) initDf counts
+        freqs col =
+            L.foldl'
+                ( \d (col, k) ->
+                    insertVector
+                        (showValue @a col)
+                        (V.fromList [toAny k, calculatePercentage (counts @a) k])
+                        d
+                )
+                initDf
+                counts
      in
         case getColumn name df of
-            Nothing -> throw $ ColumnNotFoundException name "frequencies" (M.keys $ columnIndices df)
+            Nothing ->
+                throw $ ColumnNotFoundException name "frequencies" (M.keys $ columnIndices df)
             Just ((BoxedColumn (column :: V.Vector a))) -> freqs column
             Just ((OptionalColumn (column :: V.Vector a))) -> freqs column
             Just ((UnboxedColumn (column :: VU.Vector a))) -> freqs column
@@ -106,19 +118,23 @@ _getColumnAsDouble name df = case getColumn name df of
             SFalse -> case sFloating @a of
                 STrue -> Just (VU.map realToFrac f)
                 SFalse -> Nothing
-    Nothing -> throw $ ColumnNotFoundException name "applyStatistic" (M.keys $ columnIndices df)
+    Nothing ->
+        throw $
+            ColumnNotFoundException name "applyStatistic" (M.keys $ columnIndices df)
     _ -> Nothing
 {-# INLINE _getColumnAsDouble #-}
 
 -- | Calculates the sum of a given column as a standalone value.
-sum :: forall a. (Columnable a, Num a, VU.Unbox a) => T.Text -> DataFrame -> Maybe a
+sum ::
+    forall a. (Columnable a, Num a, VU.Unbox a) => T.Text -> DataFrame -> Maybe a
 sum name df = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "sum" (M.keys $ columnIndices df)
     Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @a) of
         Just Refl -> Just $ VG.sum column
         Nothing -> Nothing
 
-applyStatistic :: (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
+applyStatistic ::
+    (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
 applyStatistic f name df = apply =<< _getColumnAsDouble name (filterJust name df)
   where
     apply col =
@@ -128,14 +144,46 @@ applyStatistic f name df = apply =<< _getColumnAsDouble name (filterJust name df
             if isNaN res then Nothing else pure res
 {-# INLINE applyStatistic #-}
 
-applyStatistics :: (VU.Vector Double -> VU.Vector Double) -> T.Text -> DataFrame -> Maybe (VU.Vector Double)
+applyStatistics ::
+    (VU.Vector Double -> VU.Vector Double) ->
+    T.Text ->
+    DataFrame ->
+    Maybe (VU.Vector Double)
 applyStatistics f name df = fmap f (_getColumnAsDouble name (filterJust name df))
 
 -- | Descriptive statistics of the numeric columns.
 summarize :: DataFrame -> DataFrame
-summarize df = fold columnStats (columnNames df) (fromNamedColumns [("Statistic", fromList ["Count" :: T.Text, "Mean", "Minimum", "25%", "Median", "75%", "Max", "StdDev", "IQR", "Skewness"])])
+summarize df =
+    fold
+        columnStats
+        (columnNames df)
+        ( fromNamedColumns
+            [
+                ( "Statistic"
+                , fromList
+                    [ "Count" :: T.Text
+                    , "Mean"
+                    , "Minimum"
+                    , "25%"
+                    , "Median"
+                    , "75%"
+                    , "Max"
+                    , "StdDev"
+                    , "IQR"
+                    , "Skewness"
+                    ]
+                )
+            ]
+        )
   where
-    columnStats name d = if all isJust (stats name) then insertUnboxedVector name (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name)) d else d
+    columnStats name d =
+        if all isJust (stats name)
+            then
+                insertUnboxedVector
+                    name
+                    (VU.fromList (map (roundTo 2 . fromMaybe 0) $ stats name))
+                    d
+            else d
     stats name =
         let
             count = fromIntegral . numElements <$> getColumn name df

@@ -13,6 +13,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
+import qualified DataFrame.Internal.Expression as F
 import Torch
 
 import DataFrame ((|>))
@@ -27,13 +28,33 @@ main = do
                 |> D.impute "total_bedrooms" (fromMaybe 0 (D.mean "total_bedrooms" df))
                 |> D.exclude ["median_house_value"]
                 |> D.derive "ocean_proximity" (F.lift oceanProximity (F.col "ocean_proximity"))
-                |> D.derive "rooms_per_household" (F.col @Double "total_rooms" / F.col "households")
+                |> D.derive
+                    "rooms_per_household"
+                    (F.col @Double "total_rooms" / F.col "households")
+                |> D.derive
+                    "generated_feature"
+                    ( F.divide
+                        ( F.ifThenElse
+                            ( (F.>=)
+                                (F.col @Double "ocean_proximity")
+                                (F.percentile 75 (F.col @Double "ocean_proximity"))
+                            )
+                            (F.col @Double "ocean_proximity")
+                            (F.col @Double "households")
+                        )
+                        (F.divide (F.col @Double "population") (F.col @Double "median_income"))
+                    )
                 |> normalizeFeatures
 
         -- Convert to hasktorch tensor
         (r, c) = D.dimensions cleaned
         features = reshape [r, c] $ asTensor (flattenFeatures cleaned)
-        labels = asTensor ((VU.map realToFrac . VU.convert) (D.columnAsVector @Double "median_house_value" df) :: VU.Vector Float)
+        labels =
+            asTensor
+                ( (VU.map realToFrac . VU.convert)
+                    (D.columnAsVector @Double "median_house_value" df) ::
+                    VU.Vector Float
+                )
 
     {- Train the model -}
     putStrLn "Training linear regression model..."
@@ -47,8 +68,14 @@ main = do
         pure state'
 
     {- Show predictions -}
-    let predictions = D.insertUnboxedVector "predicted_house_value" (asValue @(VU.Vector Float) (model trained features)) df
-    print $ D.select ["median_house_value", "predicted_house_value"] predictions |> D.take 10
+    let predictions =
+            D.insertUnboxedVector
+                "predicted_house_value"
+                (asValue @(VU.Vector Float) (model trained features))
+                df
+    print $
+        D.select ["median_house_value", "predicted_house_value"] predictions
+            |> D.take 10
 
 normalizeFeatures :: D.DataFrame -> D.DataFrame
 normalizeFeatures df =
