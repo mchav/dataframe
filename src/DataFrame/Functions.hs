@@ -16,32 +16,40 @@ module DataFrame.Functions where
 
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
-import DataFrame.Internal.Expression (Expr (..), UExpr (..), eSize, interpret, replaceExpr)
+import DataFrame.Internal.Expression (
+    Expr (..),
+    UExpr (..),
+    eSize,
+    interpret,
+    replaceExpr,
+ )
 import DataFrame.Internal.Statistics
 import qualified DataFrame.Operations.Statistics as Stats
-import DataFrame.Operations.Subset (exclude)
+import DataFrame.Operations.Subset (exclude, select)
 
 import Control.Monad
 import qualified Data.Char as Char
 import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
+import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Data.Type.Equality
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
-import Debug.Trace ( traceShow, trace )
+import qualified DataFrame.Operations.Transformations as D
+import Debug.Trace (trace, traceShow)
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
 import Type.Reflection (typeRep)
-import Prelude hiding (sum, minimum, maximum)
-import Data.Type.Equality
-import Data.Maybe (fromMaybe)
-import qualified DataFrame.Operations.Transformations as D
+import Prelude hiding (maximum, minimum, sum)
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n
-name other = error $ "You must call `name` on a column reference. Not the expression: " ++ show other
+name other =
+    error $
+        "You must call `name` on a column reference. Not the expression: " ++ show other
 
 col :: (Columnable a) => T.Text -> Expr a
 col = Col
@@ -58,23 +66,40 @@ lit = Lit
 lift :: (Columnable a, Columnable b) => (a -> b) -> Expr a -> Expr b
 lift = UnaryOp "udf"
 
-lift2 :: (Columnable c, Columnable b, Columnable a) => (c -> b -> a) -> Expr c -> Expr b -> Expr a
+lift2 ::
+    (Columnable c, Columnable b, Columnable a) =>
+    (c -> b -> a) -> Expr c -> Expr b -> Expr a
 lift2 = BinaryOp "udf"
 
 (==) :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
 (==) = BinaryOp "eq" (Prelude.==)
 
+eq :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
+eq = BinaryOp "eq" (Prelude.==)
+
 (<) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
 (<) = BinaryOp "lt" (Prelude.<)
+
+lt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
+lt = BinaryOp "lt" (Prelude.<)
 
 (>) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
 (>) = BinaryOp "gt" (Prelude.>)
 
+gt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
+gt = BinaryOp "gt" (Prelude.>)
+
 (<=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
 (<=) = BinaryOp "leq" (Prelude.<=)
 
+leq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
+leq = BinaryOp "leq" (Prelude.<=)
+
 (>=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
 (>=) = BinaryOp "geq" (Prelude.>=)
+
+geq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
+geq = BinaryOp "geq" (Prelude.>=)
 
 and :: Expr Bool -> Expr Bool -> Expr Bool
 and = BinaryOp "and" (&&)
@@ -104,70 +129,105 @@ median :: Expr Double -> Expr Double
 median expr = AggNumericVector expr "mean" median'
 
 percentile :: Int -> Expr Double -> Expr Double
-percentile n expr = AggNumericVector expr (T.pack $ "percentile " ++ show n) ((VU.! 0) . quantiles' (VU.fromList [n]) 100)
+percentile n expr =
+    AggNumericVector
+        expr
+        (T.pack $ "percentile " ++ show n)
+        ((VU.! 0) . quantiles' (VU.fromList [n]) 100)
 
-standardDeviation :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
-standardDeviation expr = AggNumericVector expr "stddev" (sqrt . variance')
+stddev :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
+stddev expr = AggNumericVector expr "stddev" (sqrt . variance')
 
 zScore :: Expr Double -> Expr Double
-zScore c = (c - mean c) / standardDeviation c
+zScore c = (c - mean c) / stddev c
 
-reduce :: forall a b. (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
+pow :: (Columnable a, Num a) => Int -> Expr a -> Expr a
+pow i c = UnaryOp ("pow " <> T.pack (show i)) (^ i) c
+
+reduce ::
+    forall a b.
+    (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
 reduce expr = AggFold expr "foldUdf"
 
 generatePrograms :: [Expr Double] -> [Expr Double] -> [Expr Double]
-generatePrograms vars existingPrograms =
-    existingPrograms ++
-    [ transform p
-    | p <- existingPrograms
-    , transform <- [zScore, abs, log . (+ Lit 1), exp]
-    ] ++
-    [ p ^ i
-    | p <- existingPrograms
-    , i <- [0..6]
-    ] ++
-    [ p + q
-    | (i, p) <- zip [0..] existingPrograms
-    , (j, q) <- zip [0..] existingPrograms
-    , i Prelude.>= j
-    ] ++
-    [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
-    | p <- existingPrograms
-    , q <- existingPrograms ++ [lit 1, lit 0, lit (-1)]
-    , n <- [1, 25, 50, 75, 99]
-    ] ++
-    [ p - q
-    | p <- existingPrograms
-    , q <- existingPrograms
-    ] ++
-    [ p * q
-    | (i, p) <- zip [0..] existingPrograms
-    , (j, q) <- zip [0..] existingPrograms
-    , i Prelude.>= j
-    ] ++
-    [ p / q
-    | p <- existingPrograms
-    , q <- existingPrograms
-    ] ++
-    [ t p
-    | v <- vars
-    , p <- existingPrograms
-    , t <- transformsWithVar v
-    ]
-  where
-    transformsWithVar v =
-        [ (v +)
-        , (* v)
-        , (/ v)
-        , (v /)
-        , \v' -> v' - v
-        , (v -)
-        ]
+generatePrograms vars [] =
+    vars
+        ++ [ transform p
+           | p <- vars
+           , transform <- [zScore, abs, log . (+ Lit 1), exp]
+           ]
+        ++ [ pow i p
+           | p <- vars
+           , i <- [2 .. 6]
+           ]
+        ++ [ p + q
+           | (i, p) <- zip [0 ..] vars
+           , (j, q) <- zip [0 ..] vars
+           , i Prelude.>= j
+           ]
+        ++ [ p - q
+           | p <- vars
+           , q <- vars
+           ]
+        ++ [ p * q
+           | (i, p) <- zip [0 ..] vars
+           , (j, q) <- zip [0 ..] vars
+           , i Prelude.>= j
+           ]
+        ++ [ p / q
+           | (i, p) <- zip [0 ..] vars
+           , (j, q) <- zip [0 ..] vars
+           , i /= j
+           ]
+generatePrograms vars ps =
+    let
+        existingPrograms = vars ++ ps
+     in
+        existingPrograms
+            ++ [ transform p
+               | p <- existingPrograms
+               , transform <- [zScore, abs, log . (+ Lit 1), exp]
+               ]
+            ++ [ pow i p
+               | p <- existingPrograms
+               , i <- [2 .. 6]
+               ]
+            ++ [ p + q
+               | (i, p) <- zip [0 ..] existingPrograms
+               , (j, q) <- zip [0 ..] existingPrograms
+               , i Prelude.>= j
+               ]
+            ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
+               | (i, p) <- zip [0 ..] existingPrograms
+               , (j, q) <- zip [0 ..] existingPrograms
+               , i Prelude.> j
+               , n <- [1, 25, 50, 75, 99]
+               ]
+            ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
+               | p <- existingPrograms
+               , q <- [lit 1, lit 0, lit (-1)]
+               , n <- [1, 25, 50, 75, 99]
+               ]
+            ++ [ p - q
+               | p <- existingPrograms
+               , q <- existingPrograms
+               ]
+            ++ [ p * q
+               | (i, p) <- zip [0 ..] existingPrograms
+               , (j, q) <- zip [0 ..] existingPrograms
+               , i Prelude.>= j
+               ]
+            ++ [ p / q
+               | (i, p) <- zip [0 ..] existingPrograms
+               , (j, q) <- zip [0 ..] existingPrograms
+               , i /= j
+               ]
 
 -- | Deduplicate programs pick the least smallest one by size.
-deduplicate :: DataFrame
-            -> [Expr Double]
-            -> [(Expr Double, TypedColumn Double)]
+deduplicate ::
+    DataFrame ->
+    [Expr Double] ->
+    [(Expr Double, TypedColumn Double)]
 deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
   where
     go _ [] = []
@@ -175,13 +235,13 @@ deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
         | hasInvalid = go seen xs
         | S.member res seen = go seen xs
         | otherwise = (x, res) : go (S.insert res seen) xs
-            where
-                res = interpret df x
-                hasInvalid = case res of
-                    (TColumn (UnboxedColumn (col :: VU.Vector a))) -> case testEquality (typeRep @Double) (typeRep @a) of
-                                    Just Refl -> VU.any (\n -> isNaN n || isInfinite n) col
-                                    Nothing -> False
-                    _ -> False
+      where
+        res = interpret df x
+        hasInvalid = case res of
+            (TColumn (UnboxedColumn (col :: VU.Vector a))) -> case testEquality (typeRep @Double) (typeRep @a) of
+                Just Refl -> VU.any (\n -> isNaN n || isInfinite n) col
+                Nothing -> False
+            _ -> False
 
 -- | Checks if two programs generate the same outputs given all the same inputs.
 equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
@@ -196,11 +256,16 @@ synthesizeFeatureExpr ::
     Int ->
     DataFrame ->
     Either String (Expr Double)
-synthesizeFeatureExpr target d b df = let
+synthesizeFeatureExpr target d b df =
+    let
         df' = exclude [target] df
         names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
-        variables = map col names
-    in case beamSearch df' (BeamConfig d b (\l r -> (^2) <$> correlation' l r)) (interpret df (Col target)) variables of
+     in
+        case beamSearch
+            df'
+            (BeamConfig d b (\l r -> (^ 2) <$> correlation' l r))
+            (interpret df (Col target))
+            [] of
             Nothing -> Left "No programs found"
             Just p -> Right p
 
@@ -213,23 +278,45 @@ fitRegression ::
     Int ->
     DataFrame ->
     Either String (Expr Double)
-fitRegression target d b df = let
+fitRegression target d b df =
+    let
         df' = exclude [target] df
         names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
-        variables = map col names
         targetMean = fromMaybe 0 $ Stats.mean target df
-    in case beamSearch df' (BeamConfig d b (\l r -> mutualInformationBinned (max 10 (ceiling (sqrt (fromIntegral (VU.length l))))) l r)) (interpret df (Col target)) variables of
+     in
+        case beamSearch
+            df'
+            ( BeamConfig
+                d
+                b
+                ( \l r ->
+                    mutualInformationBinned
+                        (max 10 (ceiling (sqrt (fromIntegral (VU.length l)))))
+                        l
+                        r
+                )
+            )
+            (interpret df (Col target))
+            [] of
             Nothing -> Left "No programs found"
-            Just p -> trace (show p) $ let
-                in case beamSearch (D.derive "_generated_regression_feature_" p df')  (BeamConfig d 100 (\l r -> fmap negate (meanSquaredError l r))) (interpret df (Col target)) [Col "_generated_regression_feature_", lit targetMean, lit 10] of
-                        Nothing -> Left "Could not find coefficients"
-                        Just p' -> Right (replaceExpr p (Col @Double "_generated_regression_feature_") p')
+            Just p ->
+                trace (show p) $
+                    let
+                     in case beamSearch
+                            ( D.derive "_generated_regression_feature_" p df
+                                & select ["_generated_regression_feature_"]
+                            )
+                            (BeamConfig d b (\l r -> fmap negate (meanSquaredError l r)))
+                            (interpret df (Col target))
+                            [Col "_generated_regression_feature_", lit targetMean, lit 10] of
+                            Nothing -> Left "Could not find coefficients"
+                            Just p' -> Right (replaceExpr p (Col @Double "_generated_regression_feature_") p')
 
-data BeamConfig = BeamConfig {
-    searchDepth     :: Int,
-    beamLength      :: Int,
-    rankingFunction :: VU.Vector Double -> VU.Vector Double -> Maybe Double
-}
+data BeamConfig = BeamConfig
+    { searchDepth :: Int
+    , beamLength :: Int
+    , rankingFunction :: VU.Vector Double -> VU.Vector Double -> Maybe Double
+    }
 
 beamSearch ::
     DataFrame ->
@@ -242,12 +329,17 @@ beamSearch ::
     Maybe (Expr Double)
 beamSearch df cfg outputs programs
     | searchDepth cfg Prelude.== 0 = case ps of
-        []    -> Nothing
-        (x:_) -> trace ("Candidates: " ++ show (L.intercalate "\n" (map show ps))) Just x
+        [] -> Nothing
+        (x : _) -> trace ("Candidates: " ++ show (L.intercalate "\n" (map show ps))) Just x
     | otherwise =
         case findFirst ps of
             Just p -> Just p
-            Nothing -> beamSearch df (cfg { searchDepth = searchDepth cfg - 1}) outputs (generatePrograms (map col names) ps)
+            Nothing ->
+                beamSearch
+                    df
+                    (cfg{searchDepth = searchDepth cfg - 1})
+                    outputs
+                    (generatePrograms (map col names) ps)
   where
     ps = pickTopN df outputs cfg $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
@@ -256,26 +348,56 @@ beamSearch df cfg outputs programs
         | satisfiesExamples df outputs p = Just p
         | otherwise = findFirst ps'
 
-pickTopN :: DataFrame
-         -> TypedColumn Double
-         -> BeamConfig
-         -> [(Expr Double, TypedColumn a)]
-         -> [Expr Double]
-pickTopN df (TColumn col) cfg ps = let
+pickTopN ::
+    DataFrame ->
+    TypedColumn Double ->
+    BeamConfig ->
+    [(Expr Double, TypedColumn a)] ->
+    [Expr Double]
+pickTopN _ _ _ [] = []
+pickTopN df (TColumn col) cfg ps =
+    let
         l = VU.convert (toVector @Double col)
-        ordered = Prelude.take (beamLength cfg) (map fst $ L.sortBy (\(_, c2) (_, c1) -> if maybe False isInfinite c1 || maybe False isInfinite c2 || maybe False isNaN c1 || maybe False isNaN c2 then LT else compare c1 c2) (map (\(e, res) -> (e, rankingFunction cfg l (asDoubleVector res))) ps))
-        asDoubleVector c = let
+        ordered =
+            Prelude.take
+                (beamLength cfg)
+                ( map fst $
+                    L.sortBy
+                        ( \(_, c2) (_, c1) ->
+                            if maybe False isInfinite c1
+                                || maybe False isInfinite c2
+                                || maybe False isNaN c1
+                                || maybe False isNaN c2
+                                then LT
+                                else compare c1 c2
+                        )
+                        (map (\(e, res) -> (e, rankingFunction cfg l (asDoubleVector res))) ps)
+                )
+        asDoubleVector c =
+            let
                 (TColumn col') = c
-            in VU.convert (toVector @Double col')
-        interpretDoubleVector e = let
+             in
+                VU.convert (toVector @Double col')
+        interpretDoubleVector e =
+            let
                 (TColumn col') = interpret df e
-            in VU.convert (toVector @Double col')
-    in trace ("Best loss: " ++ show (rankingFunction cfg l (interpretDoubleVector (head ordered))) ++ " " ++ show (head ordered)) ordered
+             in
+                VU.convert (toVector @Double col')
+     in
+        trace
+            ( "Best loss: "
+                ++ show (rankingFunction cfg l (interpretDoubleVector (head ordered)))
+                ++ " "
+                ++ (if null ordered then "empty" else show (head ordered))
+            )
+            ordered
 
 satisfiesExamples :: DataFrame -> TypedColumn Double -> Expr Double -> Bool
-satisfiesExamples df col expr = let
+satisfiesExamples df col expr =
+    let
         result = interpret df expr
-    in result Prelude.== col
+     in
+        result Prelude.== col
 
 -- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
 isReservedId :: T.Text -> Bool
