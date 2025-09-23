@@ -28,11 +28,18 @@ deriveWAI =
     TestCase
         ( assertEqual
             "derive works with column expression"
-            (Just $ DI.BoxedColumn (V.fromList (zipWith (\n c -> show n ++ [c]) [1 .. 26] ['a' .. 'z'])))
+            ( Just $
+                DI.BoxedColumn
+                    (V.fromList (zipWith (\n c -> show n ++ [c]) [1 .. 26] ['a' .. 'z']))
+            )
             ( DI.getColumn "test4" $
                 D.derive
                     "test4"
-                    (F.lift2 (++) (F.lift show (F.col @Int "test1")) (F.lift (: ([] :: [Char])) (F.col @Char "test3")))
+                    ( F.lift2
+                        (++)
+                        (F.lift show (F.col @Int "test1"))
+                        (F.lift (: ([] :: [Char])) (F.col @Char "test3"))
+                    )
                     testData
             )
         )

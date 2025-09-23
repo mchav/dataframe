@@ -52,4 +52,10 @@ dayToJulianDay day =
         a = fromIntegral $ (14 - (fromIntegral month)) `div` 12
         y = fromIntegral $ year + 4800 - a
         m = fromIntegral $ month + 12 * (fromIntegral a) - 3
-     in fromIntegral dayOfMonth + (153 * m + 2) `div` 5 + 365 * y + y `div` 4 - y `div` 100 + y `div` 400 - 32045
+     in fromIntegral dayOfMonth
+            + (153 * m + 2) `div` 5
+            + 365 * y
+            + y `div` 4
+            - y `div` 100
+            + y `div` 400
+            - 32045

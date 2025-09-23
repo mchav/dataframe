@@ -43,8 +43,18 @@ groupBy ::
     DataFrame ->
     GroupedDataFrame
 groupBy names df
-    | any (`notElem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "groupBy" (columnNames df)
-    | otherwise = Grouped df names (VG.map fst valueIndices) (VU.fromList (reverse (changingPoints valueIndices)))
+    | any (`notElem` columnNames df) names =
+        throw $
+            ColumnNotFoundException
+                (T.pack $ show $ names L.\\ columnNames df)
+                "groupBy"
+                (columnNames df)
+    | otherwise =
+        Grouped
+            df
+            names
+            (VG.map fst valueIndices)
+            (VU.fromList (reverse (changingPoints valueIndices)))
   where
     indicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` names) (columnIndices df)
     rowRepresentations = VU.generate (fst (dimensions df)) (mkRowRep indicesToGroup df)
@@ -86,7 +96,8 @@ hash' value = case testEquality (typeOf value) (typeRep @Double) of
             Just Refl -> hash value
             Nothing -> hash (show value)
 
-mkGroupedColumns :: VU.Vector Int -> DataFrame -> DataFrame -> T.Text -> DataFrame
+mkGroupedColumns ::
+    VU.Vector Int -> DataFrame -> DataFrame -> T.Text -> DataFrame
 mkGroupedColumns indices df acc name =
     case (V.!) (columns df) (columnIndices df M.! name) of
         BoxedColumn column ->
@@ -105,7 +116,10 @@ All ungrouped columns will be dropped.
 aggregate :: [(T.Text, UExpr)] -> GroupedDataFrame -> DataFrame
 aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
     let
-        df' = selectIndices (VG.map (valueIndices VG.!) (VG.init offsets)) (select groupingColumns df)
+        df' =
+            selectIndices
+                (VG.map (valueIndices VG.!) (VG.init offsets))
+                (select groupingColumns df)
         groupedColumns = columnNames df L.\\ groupingColumns
         f (name, Wrap (expr :: Expr a)) d =
             let

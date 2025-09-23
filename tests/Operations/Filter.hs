@@ -86,7 +86,12 @@ filterJustWAI =
         ( assertEqual
             "Filters out Nothing and unwraps Maybe"
             (D.fromNamedColumns [("test", D.fromList $ replicate 5 (1 :: Int))])
-            (D.filterJust "test" (D.fromNamedColumns [("test", D.fromList $ take 10 $ cycle [Just (1 :: Int), Nothing])]))
+            ( D.filterJust
+                "test"
+                ( D.fromNamedColumns
+                    [("test", D.fromList $ take 10 $ cycle [Just (1 :: Int), Nothing])]
+                )
+            )
         )
 
 tests :: [Test]

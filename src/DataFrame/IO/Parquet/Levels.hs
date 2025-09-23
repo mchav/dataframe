@@ -36,7 +36,8 @@ readLevelsV1 n maxDef maxRep bs =
                      in (defVals, afterDefData)
      in (map fromIntegral defLvlsU32, map fromIntegral repLvlsU32, afterDef)
 
-readLevelsV2 :: Int -> Int -> Int -> Int32 -> Int32 -> [Word8] -> ([Int], [Int], [Word8])
+readLevelsV2 ::
+    Int -> Int -> Int -> Int32 -> Int32 -> [Word8] -> ([Int], [Int], [Word8])
 readLevelsV2 n maxDef maxRep defLen repLen bs =
     let (repBytes, afterRepBytes) = splitAt (fromIntegral repLen) bs
         (defBytes, afterDefBytes) = splitAt (fromIntegral defLen) afterRepBytes

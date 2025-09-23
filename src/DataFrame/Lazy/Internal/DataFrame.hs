@@ -53,7 +53,16 @@ runDataFrame df = do
     (df', _) <-
         foldM
             ( \(accDf, (pos, unused, r)) (start, end) -> do
-                mapM_ putStr ["Scanning: ", show start, " to ", show end, " rows out of ", show totalRows, "\n"]
+                mapM_
+                    putStr
+                    [ "Scanning: "
+                    , show start
+                    , " to "
+                    , show end
+                    , " rows out of "
+                    , show totalRows
+                    , "\n"
+                    ]
 
                 (sdf, (pos', unconsumed, rowsRead)) <-
                     D.readSeparated
@@ -87,7 +96,8 @@ scanCsv path = LazyDataFrame (T.unpack path) ICSV [] 512_000
 addOperation :: LazyOperation -> LazyDataFrame -> LazyDataFrame
 addOperation op df = df{operations = operations df ++ [op]}
 
-derive :: (C.Columnable a) => T.Text -> E.Expr a -> LazyDataFrame -> LazyDataFrame
+derive ::
+    (C.Columnable a) => T.Text -> E.Expr a -> LazyDataFrame -> LazyDataFrame
 derive name expr = addOperation (Derive name expr)
 
 select :: (C.Columnable a) => [T.Text] -> LazyDataFrame -> LazyDataFrame

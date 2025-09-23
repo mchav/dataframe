@@ -12,11 +12,19 @@ import Data.Word
 
 littleEndianWord32 :: [Word8] -> Word32
 littleEndianWord32 bytes
-    | length bytes >= 4 = foldr (.|.) 0 (zipWith (\b i -> fromIntegral b `shiftL` i) (take 4 bytes) [0, 8, 16, 24])
+    | length bytes >= 4 =
+        foldr
+            (.|.)
+            0
+            (zipWith (\b i -> fromIntegral b `shiftL` i) (take 4 bytes) [0, 8, 16, 24])
     | otherwise = littleEndianWord32 (take 4 $ bytes ++ repeat 0)
 
 littleEndianWord64 :: [Word8] -> Word64
-littleEndianWord64 bytes = foldr (.|.) 0 (zipWith (\b i -> fromIntegral b `shiftL` i) (take 8 bytes) [0, 8 ..])
+littleEndianWord64 bytes =
+    foldr
+        (.|.)
+        0
+        (zipWith (\b i -> fromIntegral b `shiftL` i) (take 8 bytes) [0, 8 ..])
 
 littleEndianInt32 :: [Word8] -> Int32
 littleEndianInt32 = fromIntegral . littleEndianWord32
@@ -30,10 +38,20 @@ word32ToLittleEndian w = map (\i -> fromIntegral (w `shiftR` i)) [0, 8, 16, 24]
 readUVarInt :: [Word8] -> (Word64, [Word8])
 readUVarInt xs = loop xs 0 0 0
   where
-    loop bs x _ 10 = (x, bs)
-    loop (b : bs) x s i
-        | b < 0x80 = (x .|. (fromIntegral b) `shiftL` s, bs)
-        | otherwise = loop bs (x .|. fromIntegral ((b .&. 0x7f) `shiftL` s)) (s + 7) (i + 1)
+    {-
+    Each input byte contributes:
+    - lower 7 payload bits
+    - The high bit (0x80) is the continuation flag: 1 = more bytes follow, 0 = last byte
+    Why the magic number 10: For a 64‑bit integer we need at most ceil(64 / 7) = 10 bytes
+    -}
+    loop :: [Word8] -> Word64 -> Int -> Int -> (Word64, [Word8])
+    loop bs result _ 10 = (result, bs)
+    loop (b : bs) result shift i
+        | b < 0x80 = (result .|. (fromIntegral b `shiftL` shift), bs)
+        | otherwise =
+            let payloadBits = fromIntegral (b .&. 0x7f) :: Word64
+             in loop bs (result .|. (payloadBits `shiftL` shift)) (shift + 7) (i + 1)
+    loop [] _ _ _ = error "readUVarInt: not enough input bytes"
 
 readVarIntFromBytes :: (Integral a) => [Word8] -> (a, [Word8])
 readVarIntFromBytes bs = (fromIntegral n, rem)

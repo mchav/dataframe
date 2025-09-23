@@ -108,7 +108,8 @@ appendGrowingVector (GrowingVector vecRef sizeRef capRef) !val = do
     VM.unsafeWrite vec' size val
     writeIORef sizeRef $! size + 1
 
-appendGrowingUnboxedVector :: (VUM.Unbox a) => GrowingUnboxedVector a -> a -> IO ()
+appendGrowingUnboxedVector ::
+    (VUM.Unbox a) => GrowingUnboxedVector a -> a -> IO ()
 appendGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef capRef) !val = do
     size <- readIORef sizeRef
     cap <- readIORef capRef
@@ -133,7 +134,8 @@ freezeGrowingVector (GrowingVector vecRef sizeRef _) = do
     size <- readIORef sizeRef
     V.freeze (VM.slice 0 size vec)
 
-freezeGrowingUnboxedVector :: (VUM.Unbox a) => GrowingUnboxedVector a -> IO (VU.Vector a)
+freezeGrowingUnboxedVector ::
+    (VUM.Unbox a) => GrowingUnboxedVector a -> IO (VU.Vector a)
 freezeGrowingUnboxedVector (GrowingUnboxedVector vecRef sizeRef _) = do
     vec <- readIORef vecRef
     size <- readIORef sizeRef

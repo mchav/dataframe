@@ -16,7 +16,7 @@ medianOfOddLengthDataSet =
     TestCase
         ( assertEqual
             "Median of an odd length data set"
-            (D.median' (VU.fromList [179.94, 231.94, 839.06, 534.23, 248.94]))
+            (D.median' (VU.fromList @Double [179.94, 231.94, 839.06, 534.23, 248.94]))
             248.94
         )
 
@@ -25,7 +25,7 @@ medianOfEvenLengthDataSet =
     TestCase
         ( assertEqual
             "Median of an even length data set"
-            (D.median' (VU.fromList [179.94, 231.94, 839.06, 534.23, 248.94, 276.37]))
+            (D.median' (VU.fromList @Double [179.94, 231.94, 839.06, 534.23, 248.94, 276.37]))
             262.655
         )
 
@@ -35,7 +35,7 @@ medianOfEmptyDataSet =
         ( assertExpectException
             "[Error Case]"
             (D.emptyDataSetError "median")
-            (print $ D.median' (VU.fromList []))
+            (print $ D.median' (VU.fromList @Double []))
         )
 
 skewnessOfDataSetWithSameElements :: Test
@@ -60,7 +60,9 @@ skewnessOfSimpleDataSet =
     TestCase
         ( assertBool
             "Skewness of a simple data set"
-            (abs (D.skewness' (VU.fromList [25, 28, 26, 30, 40, 50, 40]) - 0.566_731_633_676) < 1e-12)
+            ( abs (D.skewness' (VU.fromList [25, 28, 26, 30, 40, 50, 40]) - 0.566_731_633_676)
+                < 1e-12
+            )
         )
 
 skewnessOfEmptyDataSet :: Test
@@ -77,7 +79,11 @@ twoQuantileOfOddLengthDataSet =
     TestCase
         ( assertEqual
             "2-quantile of an odd length data set"
-            (D.quantiles' (VU.fromList [0, 1, 2]) 2 (VU.fromList [179.94, 231.94, 839.06, 534.23, 248.94]))
+            ( D.quantiles'
+                (VU.fromList [0, 1, 2])
+                2
+                (VU.fromList [179.94, 231.94, 839.06, 534.23, 248.94])
+            )
             (VU.fromList [179.94, 248.94, 839.06])
         )
 
@@ -86,7 +92,11 @@ twoQuantileOfEvenLengthDataSet =
     TestCase
         ( assertEqual
             "2-quantile of an even length data set"
-            (D.quantiles' (VU.fromList [0, 1, 2]) 2 (VU.fromList [179.94, 231.94, 839.06, 534.23, 248.94, 276.37]))
+            ( D.quantiles'
+                (VU.fromList [0, 1, 2])
+                2
+                (VU.fromList [179.94, 231.94, 839.06, 534.23, 248.94, 276.37])
+            )
             (VU.fromList [179.94, 262.655, 839.06])
         )
 
@@ -95,7 +105,11 @@ quartilesOfOddLengthDataSet =
     TestCase
         ( assertEqual
             "Quartiles of an odd length data set"
-            (D.quantiles' (VU.fromList [0, 1, 2, 3, 4]) 4 (VU.fromList [3, 6, 7, 8, 8, 9, 10, 13, 15, 16, 20]))
+            ( D.quantiles'
+                (VU.fromList [0, 1, 2, 3, 4])
+                4
+                (VU.fromList [3, 6, 7, 8, 8, 9, 10, 13, 15, 16, 20])
+            )
             (VU.fromList [3, 7.5, 9, 14, 20])
         )
 
@@ -104,7 +118,11 @@ quartilesOfEvenLengthDataSet =
     TestCase
         ( assertEqual
             "Quartiles of an even length data set"
-            (D.quantiles' (VU.fromList [0, 1, 2, 3, 4]) 4 (VU.fromList [3, 6, 7, 8, 8, 10, 13, 15, 16, 20]))
+            ( D.quantiles'
+                (VU.fromList [0, 1, 2, 3, 4])
+                4
+                (VU.fromList [3, 6, 7, 8, 8, 10, 13, 15, 16, 20])
+            )
             (VU.fromList [3, 7.25, 9, 14.5, 20])
         )
 
@@ -171,8 +189,12 @@ tests =
     , TestLabel "quartilesOfOddLengthDataSet" quartilesOfOddLengthDataSet
     , TestLabel "quartilesOfEvenLengthDataSet" quartilesOfEvenLengthDataSet
     , TestLabel "deciles" deciles
-    , TestLabel "interQuartileRangeOfOddLengthDataSet" interQuartileRangeOfOddLengthDataSet
-    , TestLabel "interQuartileRangeOfEvenLengthDataSet" interQuartileRangeOfEvenLengthDataSet
+    , TestLabel
+        "interQuartileRangeOfOddLengthDataSet"
+        interQuartileRangeOfOddLengthDataSet
+    , TestLabel
+        "interQuartileRangeOfEvenLengthDataSet"
+        interQuartileRangeOfEvenLengthDataSet
     , TestLabel "wrongQuantileNumber" wrongQuantileNumber
     , TestLabel "wrongQuantileIndex" wrongQuantileIndex
     ]

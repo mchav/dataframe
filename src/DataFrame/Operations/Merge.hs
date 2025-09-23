@@ -50,4 +50,8 @@ instance Monoid D.DataFrame where
 
 -- | Add two dataframes side by side/horizontally.
 (|||) :: D.DataFrame -> D.DataFrame -> D.DataFrame
-(|||) a b = D.fold (\name acc -> D.insertColumn name (D.unsafeGetColumn name b) acc) (D.columnNames b) a
+(|||) a b =
+    D.fold
+        (\name acc -> D.insertColumn name (D.unsafeGetColumn name b) acc)
+        (D.columnNames b)
+        a

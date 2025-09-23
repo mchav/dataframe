@@ -7,7 +7,6 @@ import Codec.Compression.Zstd.Streaming
 import Data.Bits
 import qualified Data.ByteString as BSO
 import Data.Int
-import Data.Maybe
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Thrift
@@ -43,7 +42,10 @@ readPage c columnBytes = do
             Right res -> pure res
         UNCOMPRESSED -> pure (BSO.pack compressed)
         other -> error ("Unsupported compression type: " ++ show other)
-    pure $ (Just $ Page hdr (BSO.unpack fullData), drop (fromIntegral $ compressedPageSize hdr) rem)
+    pure
+        ( Just $ Page hdr (BSO.unpack fullData)
+        , drop (fromIntegral $ compressedPageSize hdr) rem
+        )
 
 readPageHeader :: PageHeader -> [Word8] -> Int16 -> (PageHeader, [Word8])
 readPageHeader hdr [] _ = (hdr, [])
@@ -63,7 +65,10 @@ readPageHeader hdr xs lastFieldId =
                     let
                         (uncompressedPageSize, rem') = readInt32FromBytes rem
                      in
-                        readPageHeader (hdr{uncompressedPageSize = uncompressedPageSize}) rem' identifier
+                        readPageHeader
+                            (hdr{uncompressedPageSize = uncompressedPageSize})
+                            rem'
+                            identifier
                 3 ->
                     let
                         (compressedPageSize, rem') = readInt32FromBytes rem
@@ -92,8 +97,11 @@ readPageHeader hdr xs lastFieldId =
                         readPageHeader (hdr{pageTypeHeader = dataPageHeaderV2}) rem' identifier
                 n -> error $ "Unknown page header field" ++ show n
 
-readPageTypeHeader :: PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
+readPageTypeHeader ::
+    PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
 readPageTypeHeader hdr [] _ = (hdr, [])
+readPageTypeHeader INDEX_PAGE_HEADER _ _ = error "readPageTypeHeader: unsupported INDEX_PAGE_HEADER"
+readPageTypeHeader PAGE_TYPE_HEADER_UNKNOWN _ _ = error "readPageTypeHeader: unsupported PAGE_TYPE_HEADER_UNKNOWN"
 readPageTypeHeader hdr@(DictionaryPageHeader{..}) xs lastFieldId =
     let
         fieldContents = readField' xs lastFieldId
@@ -105,17 +113,26 @@ readPageTypeHeader hdr@(DictionaryPageHeader{..}) xs lastFieldId =
                     let
                         (numValues, rem') = readInt32FromBytes rem
                      in
-                        readPageTypeHeader (hdr{dictionaryPageHeaderNumValues = numValues}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{dictionaryPageHeaderNumValues = numValues})
+                            rem'
+                            identifier
                 2 ->
                     let
                         (enc, rem') = readInt32FromBytes rem
                      in
-                        readPageTypeHeader (hdr{dictionaryPageHeaderEncoding = parquetEncodingFromInt enc}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{dictionaryPageHeaderEncoding = parquetEncodingFromInt enc})
+                            rem'
+                            identifier
                 3 ->
                     let
                         (isSorted : rem') = rem
                      in
-                        readPageTypeHeader (hdr{dictionaryPageIsSorted = isSorted == compactBooleanTrue}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{dictionaryPageIsSorted = isSorted == compactBooleanTrue})
+                            rem'
+                            identifier
                 n -> error $ show n
 readPageTypeHeader hdr@(DataPageHeader{..}) xs lastFieldId =
     let
@@ -133,17 +150,26 @@ readPageTypeHeader hdr@(DataPageHeader{..}) xs lastFieldId =
                     let
                         (enc, rem') = readInt32FromBytes rem
                      in
-                        readPageTypeHeader (hdr{dataPageHeaderEncoding = parquetEncodingFromInt enc}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{dataPageHeaderEncoding = parquetEncodingFromInt enc})
+                            rem'
+                            identifier
                 3 ->
                     let
                         (enc, rem') = readInt32FromBytes rem
                      in
-                        readPageTypeHeader (hdr{definitionLevelEncoding = parquetEncodingFromInt enc}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{definitionLevelEncoding = parquetEncodingFromInt enc})
+                            rem'
+                            identifier
                 4 ->
                     let
                         (enc, rem') = readInt32FromBytes rem
                      in
-                        readPageTypeHeader (hdr{repetitionLevelEncoding = parquetEncodingFromInt enc}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{repetitionLevelEncoding = parquetEncodingFromInt enc})
+                            rem'
+                            identifier
                 5 ->
                     let
                         (stats, rem') = readStatisticsFromBytes emptyColumnStatistics rem 0
@@ -176,7 +202,10 @@ readPageTypeHeader hdr@(DataPageHeaderV2{..}) xs lastFieldId =
                     let
                         (enc, rem') = readInt32FromBytes rem
                      in
-                        readPageTypeHeader (hdr{dataPageHeaderV2Encoding = parquetEncodingFromInt enc}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{dataPageHeaderV2Encoding = parquetEncodingFromInt enc})
+                            rem'
+                            identifier
                 5 ->
                     let
                         (n, rem') = readInt32FromBytes rem
@@ -189,19 +218,23 @@ readPageTypeHeader hdr@(DataPageHeaderV2{..}) xs lastFieldId =
                         readPageTypeHeader (hdr{repetitionLevelByteLength = n}) rem' identifier
                 7 ->
                     let
-                        isCompressed = fromMaybe True $ fmap ((== compactBooleanTrue) . (.&. 0x0f)) (safeHead xs)
+                        (isCompressed, rem') = case rem of
+                            b : bytes -> ((b .&. 0x0f) == compactBooleanTrue, bytes)
+                            [] -> (True, [])
                      in
-                        readPageTypeHeader (hdr{dataPageHeaderV2IsCompressed = dataPageHeaderV2IsCompressed}) rem identifier
+                        readPageTypeHeader
+                            (hdr{dataPageHeaderV2IsCompressed = isCompressed})
+                            rem'
+                            identifier
                 8 ->
                     let
                         (stats, rem') = readStatisticsFromBytes emptyColumnStatistics rem 0
                      in
-                        readPageTypeHeader (hdr{dataPageHeaderV2Statistics = stats}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{dataPageHeaderV2Statistics = stats})
+                            rem'
+                            identifier
                 n -> error $ show n
-
-safeHead :: [a] -> Maybe a
-safeHead [] = Nothing
-safeHead (x : _) = Just x
 
 readField' :: [Word8] -> Int16 -> Maybe ([Word8], TType, Int16)
 readField' [] _ = Nothing
@@ -209,7 +242,10 @@ readField' (x : xs) lastFieldId
     | x .&. 0x0f == 0 = Nothing
     | otherwise =
         let modifier = fromIntegral ((x .&. 0xf0) `shiftR` 4) :: Int16
-            (identifier, rem) = if modifier == 0 then readIntFromBytes @Int16 xs else (lastFieldId + modifier, xs)
+            (identifier, rem) =
+                if modifier == 0
+                    then readIntFromBytes @Int16 xs
+                    else (lastFieldId + modifier, xs)
             elemType = toTType (x .&. 0x0f)
          in Just (rem, elemType, identifier)
 
@@ -282,7 +318,8 @@ splitFixed k len bs =
         (xs, rest) = splitFixed (k - 1) len bs'
      in (body : xs, rest)
 
-readStatisticsFromBytes :: ColumnStatistics -> [Word8] -> Int16 -> (ColumnStatistics, [Word8])
+readStatisticsFromBytes ::
+    ColumnStatistics -> [Word8] -> Int16 -> (ColumnStatistics, [Word8])
 readStatisticsFromBytes cs xs lastFieldId =
     let
         fieldContents = readField' xs lastFieldId
@@ -324,10 +361,16 @@ readStatisticsFromBytes cs xs lastFieldId =
                     let
                         (isMaxValueExact : rem') = rem
                      in
-                        readStatisticsFromBytes (cs{isColumnMaxValueExact = isMaxValueExact == compactBooleanTrue}) rem' identifier
+                        readStatisticsFromBytes
+                            (cs{isColumnMaxValueExact = isMaxValueExact == compactBooleanTrue})
+                            rem'
+                            identifier
                 8 ->
                     let
                         (isMinValueExact : rem') = rem
                      in
-                        readStatisticsFromBytes (cs{isColumnMinValueExact = isMinValueExact == compactBooleanTrue}) rem' identifier
+                        readStatisticsFromBytes
+                            (cs{isColumnMinValueExact = isMinValueExact == compactBooleanTrue})
+                            rem'
+                            identifier
                 n -> error $ show n

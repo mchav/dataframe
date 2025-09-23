@@ -32,7 +32,9 @@ addBoxedColumn =
         ( assertEqual
             "Two columns should be equal"
             (Just $ DI.BoxedColumn (V.fromList ["Thuba" :: T.Text, "Zodwa", "Themba"]))
-            (DI.getColumn "new" $ D.insertVector "new" (V.fromList ["Thuba" :: T.Text, "Zodwa", "Themba"]) D.empty)
+            ( DI.getColumn "new" $
+                D.insertVector "new" (V.fromList ["Thuba" :: T.Text, "Zodwa", "Themba"]) D.empty
+            )
         )
 
 addBoxedColumn' :: Test
@@ -41,7 +43,12 @@ addBoxedColumn' =
         ( assertEqual
             "Two columns should be equal"
             (Just $ DI.fromList ["Thuba" :: T.Text, "Zodwa", "Themba"])
-            (DI.getColumn "new" $ D.insertColumn "new" (DI.fromList ["Thuba" :: T.Text, "Zodwa", "Themba"]) D.empty)
+            ( DI.getColumn "new" $
+                D.insertColumn
+                    "new"
+                    (DI.fromList ["Thuba" :: T.Text, "Zodwa", "Themba"])
+                    D.empty
+            )
         )
 
 -- Adding an boxed vector with an unboxable type (Int/Double) to an empty dataframe creates a new column boxed containing the vector elements.
@@ -69,8 +76,14 @@ addSmallerColumnBoxed =
     TestCase
         ( assertEqual
             "Missing values should be replaced with Nothing"
-            (Just $ DI.OptionalColumn (V.fromList [Just "a" :: Maybe T.Text, Just "b", Just "c", Nothing, Nothing]))
-            (DI.getColumn "newer" $ D.insertVector "newer" (V.fromList ["a" :: T.Text, "b", "c"]) $ D.insertVector "new" (V.fromList ["a" :: T.Text, "b", "c", "d", "e"]) D.empty)
+            ( Just $
+                DI.OptionalColumn
+                    (V.fromList [Just "a" :: Maybe T.Text, Just "b", Just "c", Nothing, Nothing])
+            )
+            ( DI.getColumn "newer" $
+                D.insertVector "newer" (V.fromList ["a" :: T.Text, "b", "c"]) $
+                    D.insertVector "new" (V.fromList ["a" :: T.Text, "b", "c", "d", "e"]) D.empty
+            )
         )
 
 addSmallerColumnUnboxed :: Test
@@ -78,8 +91,14 @@ addSmallerColumnUnboxed =
     TestCase
         ( assertEqual
             "Missing values should be replaced with Nothing"
-            (Just $ DI.OptionalColumn (V.fromList [Just 1 :: Maybe Int, Just 2, Just 3, Nothing, Nothing]))
-            (DI.getColumn "newer" $ D.insertVector "newer" (V.fromList [1 :: Int, 2, 3]) $ D.insertVector "new" (V.fromList [1 :: Int, 2, 3, 4, 5]) D.empty)
+            ( Just $
+                DI.OptionalColumn
+                    (V.fromList [Just 1 :: Maybe Int, Just 2, Just 3, Nothing, Nothing])
+            )
+            ( DI.getColumn "newer" $
+                D.insertVector "newer" (V.fromList [1 :: Int, 2, 3]) $
+                    D.insertVector "new" (V.fromList [1 :: Int, 2, 3, 4, 5]) D.empty
+            )
         )
 
 insertColumnWithDefaultFillsWithDefault :: Test
@@ -88,7 +107,10 @@ insertColumnWithDefaultFillsWithDefault =
         ( assertEqual
             "Missing values should be replaced with Nothing"
             (Just $ DI.UnboxedColumn (VU.fromList [1 :: Int, 2, 3, 0, 0]))
-            (DI.getColumn "newer" $ D.insertVectorWithDefault 0 "newer" (V.fromList [1 :: Int, 2, 3]) $ D.insertVector "new" (V.fromList [1 :: Int, 2, 3, 4, 5]) D.empty)
+            ( DI.getColumn "newer" $
+                D.insertVectorWithDefault 0 "newer" (V.fromList [1 :: Int, 2, 3]) $
+                    D.insertVector "new" (V.fromList [1 :: Int, 2, 3, 4, 5]) D.empty
+            )
         )
 
 insertColumnWithDefaultFillsLargerNoop :: Test
@@ -97,7 +119,10 @@ insertColumnWithDefaultFillsLargerNoop =
         ( assertEqual
             "Lists should be the same size"
             (Just $ DI.UnboxedColumn (VU.fromList [(6 :: Int) .. 10]))
-            (DI.getColumn "newer" $ D.insertVectorWithDefault 0 "newer" (V.fromList [(6 :: Int) .. 10]) $ D.insertVector "new" (V.fromList [1 :: Int, 2, 3, 4, 5]) D.empty)
+            ( DI.getColumn "newer" $
+                D.insertVectorWithDefault 0 "newer" (V.fromList [(6 :: Int) .. 10]) $
+                    D.insertVector "new" (V.fromList [1 :: Int, 2, 3, 4, 5]) D.empty
+            )
         )
 
 addLargerColumnBoxed :: Test
@@ -106,7 +131,10 @@ addLargerColumnBoxed =
         ( assertEqual
             "Smaller lists should grow and contain optionals"
             ( D.fromNamedColumns
-                [ ("new", D.fromList [Just "a" :: Maybe T.Text, Just "b", Just "c", Nothing, Nothing])
+                [
+                    ( "new"
+                    , D.fromList [Just "a" :: Maybe T.Text, Just "b", Just "c", Nothing, Nothing]
+                    )
                 , ("newer", D.fromList ["a" :: T.Text, "b", "c", "d", "e"])
                 ]
             )
@@ -156,13 +184,19 @@ dimensionsNotChangedAfterDuplicate =
 tests :: [Test]
 tests =
     [ TestLabel "dimensionsChangeAfterAdd" dimensionsChangeAfterAdd
-    , TestLabel "dimensionsNotChangedAfterDuplicate" dimensionsNotChangedAfterDuplicate
+    , TestLabel
+        "dimensionsNotChangedAfterDuplicate"
+        dimensionsNotChangedAfterDuplicate
     , TestLabel "addBoxedColunmToEmpty" addBoxedColumn
     , TestLabel "addBoxedColumnAutoUnboxes" addBoxedColumn
     , TestLabel "addSmallerColumnBoxed" addSmallerColumnBoxed
     , TestLabel "addSmallerColumnUnboxed" addSmallerColumnUnboxed
     , TestLabel "addLargerColumnBoxed" addLargerColumnBoxed
     , TestLabel "addLargerColumnUnboxed" addLargerColumnUnboxed
-    , TestLabel "insertColumnWithDefaultFillsWithDefault" insertColumnWithDefaultFillsWithDefault
-    , TestLabel "insertColumnWithDefaultFillsLargerNoop" insertColumnWithDefaultFillsLargerNoop
+    , TestLabel
+        "insertColumnWithDefaultFillsWithDefault"
+        insertColumnWithDefaultFillsWithDefault
+    , TestLabel
+        "insertColumnWithDefaultFillsLargerNoop"
+        insertColumnWithDefaultFillsLargerNoop
     ]

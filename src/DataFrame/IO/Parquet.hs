@@ -52,7 +52,8 @@ readParquet path = do
                     && elementType s == STRING
                     && typeLength s > 0 =
                     Just (typeLength s)
-                | otherwise = findTypeLength ss targetPath (if numChildren s > 0 then depth + 1 else depth)
+                | otherwise =
+                    findTypeLength ss targetPath (if numChildren s > 0 then depth + 1 else depth)
 
             pathToElement _ _ _ = []
 
@@ -73,7 +74,8 @@ readParquet path = do
                         else colDataPageOffset
             let colLength = columnTotalCompressedSize metadata
 
-            let columnBytes = map (BSO.index contents . fromIntegral) [colStart .. (colStart + colLength - 1)]
+            let columnBytes =
+                    map (BSO.index contents . fromIntegral) [colStart .. (colStart + colLength - 1)]
 
             pages <- readAllPages (columnCodec metadata) columnBytes
 
@@ -87,7 +89,13 @@ readParquet path = do
             let schemaTail = drop 1 (schema fileMetadata)
             let colPath = columnPathInSchema (columnMetaData colChunk)
             let (maxDef, maxRep) = levelsForPath schemaTail colPath
-            column <- processColumnPages (maxDef, maxRep) pages (columnType metadata) primaryEncoding maybeTypeLength
+            column <-
+                processColumnPages
+                    (maxDef, maxRep)
+                    pages
+                    (columnType metadata)
+                    primaryEncoding
+                    maybeTypeLength
 
             modifyIORef colMap (M.insert colName column)
 
@@ -99,6 +107,7 @@ readParquet path = do
 
     pure $ DI.fromNamedColumns orderedColumns
 
+readMetadataFromPath :: FilePath -> IO FileMetadata
 readMetadataFromPath path = do
     contents <- BSO.readFile path
     let (size, magicString) = contents `seq` readMetadataSizeFromFooter contents
@@ -109,7 +118,10 @@ readMetadataSizeFromFooter :: BSO.ByteString -> (Int, BSO.ByteString)
 readMetadataSizeFromFooter contents =
     let
         footerOffSet = BSO.length contents - 8
-        sizeBytes = map (fromIntegral @Word8 @Int32 . BSO.index contents) [footerOffSet .. footerOffSet + 3]
+        sizeBytes =
+            map
+                (fromIntegral @Word8 @Int32 . BSO.index contents)
+                [footerOffSet .. footerOffSet + 3]
         size = fromIntegral $ L.foldl' (.|.) 0 $ zipWith shift sizeBytes [0, 8, 16, 24]
         magicStringBytes = map (BSO.index contents) [footerOffSet + 4 .. footerOffSet + 7]
         magicString = BSO.pack magicStringBytes
@@ -132,7 +144,13 @@ getColumnPaths schema = extractLeafPaths schema 0 []
                 childResults = extractLeafPaths children idx newPath
              in childResults ++ extractLeafPaths remaining (idx + length childResults) path
 
-processColumnPages :: (Int, Int) -> [Page] -> ParquetType -> ParquetEncoding -> Maybe Int32 -> IO DI.Column
+processColumnPages ::
+    (Int, Int) ->
+    [Page] ->
+    ParquetType ->
+    ParquetEncoding ->
+    Maybe Int32 ->
+    IO DI.Column
 processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
     let dictPages = filter isDictionaryPage pages
     let dataPages = filter isDataPage pages
@@ -198,7 +216,13 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
                 let n = fromIntegral dataPageHeaderV2NumValues
                 let bs0 = pageBytes page
                 let (defLvls, _repLvls, afterLvls) =
-                        readLevelsV2 n maxDef maxRep definitionLevelByteLength repetitionLevelByteLength bs0
+                        readLevelsV2
+                            n
+                            maxDef
+                            maxRep
+                            definitionLevelByteLength
+                            repetitionLevelByteLength
+                            bs0
                 let nPresent =
                         if dataPageHeaderV2NumNulls > 0
                             then fromIntegral (dataPageHeaderV2NumValues - dataPageHeaderV2NumNulls)
@@ -240,7 +264,12 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
                     ERLE_DICTIONARY -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
                     EPLAIN_DICTIONARY -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
                     other -> error ("Unsupported v2 encoding: " ++ show other)
-
+            -- Cannot happen as these are filtered out by isDataPage above
+            DictionaryPageHeader{} -> error "processColumnPages: impossible DictionaryPageHeader"
+            INDEX_PAGE_HEADER -> error "processColumnPages: impossible INDEX_PAGE_HEADER"
+            PAGE_TYPE_HEADER_UNKNOWN -> error "processColumnPages: impossible PAGE_TYPE_HEADER_UNKNOWN"
     case cols of
         [] -> pure $ DI.fromList ([] :: [Maybe Int])
-        (c : cs) -> pure $ L.foldl' (\l r -> fromMaybe (error "concat failed") (DI.concatColumns l r)) c cs
+        (c : cs) ->
+            pure $
+                L.foldl' (\l r -> fromMaybe (error "concat failed") (DI.concatColumns l r)) c cs

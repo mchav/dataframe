@@ -26,7 +26,12 @@ sortBy ::
     DataFrame ->
     DataFrame
 sortBy order names df
-    | any (`notElem` columnNames df) names = throw $ ColumnNotFoundException (T.pack $ show $ names L.\\ columnNames df) "sortBy" (columnNames df)
+    | any (`notElem` columnNames df) names =
+        throw $
+            ColumnNotFoundException
+                (T.pack $ show $ names L.\\ columnNames df)
+                "sortBy"
+                (columnNames df)
     | otherwise =
         let
             indexes = sortedIndexes' (order == Ascending) (toRowVector names df)

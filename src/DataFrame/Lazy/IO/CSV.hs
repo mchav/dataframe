@@ -27,7 +27,13 @@ import Data.Function (on)
 import Data.IORef
 import Data.Maybe
 import Data.Type.Equality (TestEquality (testEquality))
-import DataFrame.Internal.Column (Column (..), MutableColumn (..), columnLength, freezeColumn', writeColumn)
+import DataFrame.Internal.Column (
+    Column (..),
+    MutableColumn (..),
+    columnLength,
+    freezeColumn',
+    writeColumn,
+ )
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
 import System.IO
@@ -50,7 +56,17 @@ data ReadOptions = ReadOptions
 and we convert any rows with nullish objects into Maybe (safeRead).
 -}
 defaultOptions :: ReadOptions
-defaultOptions = ReadOptions{hasHeader = True, inferTypes = True, safeRead = True, rowRange = Nothing, seekPos = Nothing, totalRows = Nothing, leftOver = "", rowsRead = 0}
+defaultOptions =
+    ReadOptions
+        { hasHeader = True
+        , inferTypes = True
+        , safeRead = True
+        , rowRange = Nothing
+        , seekPos = Nothing
+        , totalRows = Nothing
+        , leftOver = ""
+        , rowsRead = 0
+        }
 
 {- | Reads a CSV file from the given path.
 Note this file stores intermediate temporary files
@@ -67,10 +83,12 @@ readTsv :: FilePath -> IO DataFrame
 readTsv path = fst <$> readSeparated '\t' defaultOptions path
 
 -- | Reads a character separated file into a dataframe using mutable vectors.
-readSeparated :: Char -> ReadOptions -> FilePath -> IO (DataFrame, (Integer, T.Text, Int))
+readSeparated ::
+    Char -> ReadOptions -> FilePath -> IO (DataFrame, (Integer, T.Text, Int))
 readSeparated c opts path = do
     totalRows <- case totalRows opts of
-        Nothing -> countRows c path >>= \total -> if hasHeader opts then return (total - 1) else return total
+        Nothing ->
+            countRows c path >>= \total -> if hasHeader opts then return (total - 1) else return total
         Just n -> if hasHeader opts then return (n - 1) else return n
     let (begin, len) = case rowRange opts of
             Nothing -> (0, totalRows)
@@ -85,7 +103,8 @@ readSeparated c opts path = do
         unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
 
         currPos <- hTell handle
-        when (isJust $ seekPos opts) $ hSeek handle AbsoluteSeek (fromMaybe currPos (seekPos opts))
+        when (isJust $ seekPos opts) $
+            hSeek handle AbsoluteSeek (fromMaybe currPos (seekPos opts))
 
         -- Initialize mutable vectors for each column
         let numColumns = length columnNames
@@ -104,7 +123,8 @@ readSeparated c opts path = do
         getInitialDataVectors numRows mutableCols dataRow
 
         -- Read rows into the mutable vectors
-        (unconsumed, r) <- fillColumns numRows c mutableCols nullIndices remainder handle
+        (unconsumed, r) <-
+            fillColumns numRows c mutableCols nullIndices remainder handle
 
         -- Freeze the mutable vectors into immutable ones
         nulls' <- V.unsafeFreeze nullIndices
@@ -125,9 +145,18 @@ getInitialDataVectors :: Int -> VM.IOVector MutableColumn -> [T.Text] -> IO ()
 getInitialDataVectors n mCol xs = do
     forM_ (zip [0 ..] xs) $ \(i, x) -> do
         col <- case inferValueType x of
-            "Int" -> MUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Int)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readInt x) >> return c)
-            "Double" -> MUnboxedColumn <$> ((VUM.unsafeNew n :: IO (VUM.IOVector Double)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readDouble x) >> return c)
-            _ -> MBoxedColumn <$> ((VM.unsafeNew n :: IO (VM.IOVector T.Text)) >>= \c -> VM.unsafeWrite c 0 x >> return c)
+            "Int" ->
+                MUnboxedColumn
+                    <$> ( (VUM.unsafeNew n :: IO (VUM.IOVector Int)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readInt x) >> return c
+                        )
+            "Double" ->
+                MUnboxedColumn
+                    <$> ( (VUM.unsafeNew n :: IO (VUM.IOVector Double)) >>= \c -> VUM.unsafeWrite c 0 (fromMaybe 0 $ readDouble x) >> return c
+                        )
+            _ ->
+                MBoxedColumn
+                    <$> ( (VM.unsafeNew n :: IO (VM.IOVector T.Text)) >>= \c -> VM.unsafeWrite c 0 x >> return c
+                        )
         VM.unsafeWrite mCol i col
 {-# INLINE getInitialDataVectors #-}
 
@@ -161,7 +190,14 @@ readSingleLine c unused handle =
             return (row, unconsumed)
 
 -- | Reads rows from the handle and stores values in mutable vectors.
-fillColumns :: Int -> Char -> VM.IOVector MutableColumn -> VM.IOVector [(Int, T.Text)] -> T.Text -> Handle -> IO (T.Text, Int)
+fillColumns ::
+    Int ->
+    Char ->
+    VM.IOVector MutableColumn ->
+    VM.IOVector [(Int, T.Text)] ->
+    T.Text ->
+    Handle ->
+    IO (T.Text, Int)
 fillColumns n c mutableCols nullIndices unused handle = do
     input <- newIORef unused
     rowsRead <- newIORef (0 :: Int)
@@ -191,7 +227,13 @@ fillColumns n c mutableCols nullIndices unused handle = do
 {-# INLINE fillColumns #-}
 
 -- | Writes a value into the appropriate column, resizing the vector if necessary.
-writeValue :: VM.IOVector MutableColumn -> VM.IOVector [(Int, T.Text)] -> Int -> Int -> T.Text -> IO ()
+writeValue ::
+    VM.IOVector MutableColumn ->
+    VM.IOVector [(Int, T.Text)] ->
+    Int ->
+    Int ->
+    T.Text ->
+    IO ()
 writeValue mutableCols nullIndices count colIndex value = do
     col <- VM.unsafeRead mutableCols colIndex
     res <- writeColumn count value col
@@ -200,7 +242,12 @@ writeValue mutableCols nullIndices count colIndex value = do
 {-# INLINE writeValue #-}
 
 -- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
-freezeColumn :: VM.IOVector MutableColumn -> V.Vector [(Int, T.Text)] -> ReadOptions -> Int -> IO Column
+freezeColumn ::
+    VM.IOVector MutableColumn ->
+    V.Vector [(Int, T.Text)] ->
+    ReadOptions ->
+    Int ->
+    IO Column
 freezeColumn mutableCols nulls opts colIndex = do
     col <- VM.unsafeRead mutableCols colIndex
     freezeColumn' (nulls V.! colIndex) col

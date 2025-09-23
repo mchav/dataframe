@@ -38,9 +38,15 @@ instance Show DataFrameException where
     show :: DataFrameException -> String
     show (TypeMismatchException context) =
         let
-            errorString = typeMismatchError (either id show (userType context)) (either id show (expectedType context))
+            errorString =
+                typeMismatchError
+                    (either id show (userType context))
+                    (either id show (expectedType context))
          in
-            addCallPointInfo (errorColumnName context) (callingFunctionName context) errorString
+            addCallPointInfo
+                (errorColumnName context)
+                (callingFunctionName context)
+                errorString
     show (ColumnNotFoundException columnName callPoint availableColumns) = columnNotFound columnName callPoint availableColumns
     show (EmptyDataSetException callPoint) = emptyDataSetError callPoint
     show (WrongQuantileNumberException q) = wrongQuantileNumberError q
