@@ -45,7 +45,7 @@ readUVarInt xs = loop xs 0 0 0
     Why the magic number 10: For a 64‑bit integer we need at most ceil(64 / 7) = 10 bytes
     -}
     loop :: [Word8] -> Word64 -> Int -> Int -> (Word64, [Word8])
-    loop bs result _ 10  = (result, bs)
+    loop bs result _ 10 = (result, bs)
     loop (b : bs) result shift i
         | b < 0x80 = (result .|. (fromIntegral b `shiftL` shift), bs)
         | otherwise =

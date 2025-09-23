@@ -100,8 +100,8 @@ readPageHeader hdr xs lastFieldId =
 readPageTypeHeader ::
     PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
 readPageTypeHeader hdr [] _ = (hdr, [])
-readPageTypeHeader INDEX_PAGE_HEADER _ _  = error "readPageTypeHeader: unsupported INDEX_PAGE_HEADER"
-readPageTypeHeader PAGE_TYPE_HEADER_UNKNOWN _ _  = error "readPageTypeHeader: unsupported PAGE_TYPE_HEADER_UNKNOWN"
+readPageTypeHeader INDEX_PAGE_HEADER _ _ = error "readPageTypeHeader: unsupported INDEX_PAGE_HEADER"
+readPageTypeHeader PAGE_TYPE_HEADER_UNKNOWN _ _ = error "readPageTypeHeader: unsupported PAGE_TYPE_HEADER_UNKNOWN"
 readPageTypeHeader hdr@(DictionaryPageHeader{..}) xs lastFieldId =
     let
         fieldContents = readField' xs lastFieldId
@@ -219,10 +219,13 @@ readPageTypeHeader hdr@(DataPageHeaderV2{..}) xs lastFieldId =
                 7 ->
                     let
                         (isCompressed, rem') = case rem of
-                            b:bytes -> ((b .&. 0x0f) == compactBooleanTrue, bytes)
+                            b : bytes -> ((b .&. 0x0f) == compactBooleanTrue, bytes)
                             [] -> (True, [])
                      in
-                        readPageTypeHeader (hdr{dataPageHeaderV2IsCompressed = isCompressed}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{dataPageHeaderV2IsCompressed = isCompressed})
+                            rem'
+                            identifier
                 8 ->
                     let
                         (stats, rem') = readStatisticsFromBytes emptyColumnStatistics rem 0

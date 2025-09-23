@@ -1050,7 +1050,13 @@ readLogicalType buf pos lastFieldId fieldStack = do
                 _ -> return LOGICAL_TYPE_UNKNOWN
 
 readIntType ::
-    Int8 -> Bool  -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+    Int8 ->
+    Bool ->
+    BS.ByteString ->
+    IORef Int ->
+    Int16 ->
+    [Int16] ->
+    IO LogicalType
 readIntType bitWidth intIsSigned buf pos lastFieldId fieldStack = do
     t <- readAndAdvance pos buf
     if t .&. 0x0f == 0
@@ -1072,7 +1078,13 @@ readIntType bitWidth intIsSigned buf pos lastFieldId fieldStack = do
                 _ -> error $ "UNKNOWN field ID for IntType: " ++ show identifier
 
 readDecimalType ::
-    Int32 -> Int32 -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+    Int32 ->
+    Int32 ->
+    BS.ByteString ->
+    IORef Int ->
+    Int16 ->
+    [Int16] ->
+    IO LogicalType
 readDecimalType precision scale buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
@@ -1087,11 +1099,17 @@ readDecimalType precision scale buf pos lastFieldId fieldStack = do
             _ -> error $ "UNKNOWN field ID for DecimalType" ++ show identifier
 
 readTimeType ::
-    Bool -> TimeUnit -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
-readTimeType isAdjustedToUTC  unit  buf pos lastFieldId fieldStack = do
+    Bool ->
+    TimeUnit ->
+    BS.ByteString ->
+    IORef Int ->
+    Int16 ->
+    [Int16] ->
+    IO LogicalType
+readTimeType isAdjustedToUTC unit buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
-        Nothing -> return (TimeType isAdjustedToUTC  unit)
+        Nothing -> return (TimeType isAdjustedToUTC unit)
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 -- TODO: Check for empty
@@ -1103,7 +1121,13 @@ readTimeType isAdjustedToUTC  unit  buf pos lastFieldId fieldStack = do
             _ -> error $ "UNKNOWN field ID for TimeType" ++ show identifier
 
 readTimestampType ::
-    Bool -> TimeUnit -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
+    Bool ->
+    TimeUnit ->
+    BS.ByteString ->
+    IORef Int ->
+    Int16 ->
+    [Int16] ->
+    IO LogicalType
 readTimestampType isAdjustedToUTC unit buf pos lastFieldId fieldStack = do
     fieldContents <- readField buf pos lastFieldId fieldStack
     case fieldContents of
