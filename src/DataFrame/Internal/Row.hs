@@ -128,6 +128,8 @@ mkRowRep df names i = V.generate (S.size names) (\index -> get (names' V.! index
         Just (UnboxedColumn c) -> case c VU.!? i of
             Just e -> toAny e
             Nothing -> throwError name
+        Nothing ->
+            throw $ ColumnNotFoundException name "mkRowRep" (M.keys $ columnIndices df)
 
 sortedIndexes' :: Bool -> V.Vector Row -> VU.Vector Int
 sortedIndexes' asc rows = runST $ do
