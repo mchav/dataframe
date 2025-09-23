@@ -3,9 +3,10 @@
 -- Allow string literal to be interpreted as any other string type.
 {-# LANGUAGE OverloadedStrings #-}
 
-import qualified DataFrame as D -- import for general functionality.
+-- import for general functionality.
 import Data.Time
 import qualified Data.Vector.Unboxed as VU
+import qualified DataFrame as D
 import System.Random.Stateful
 
 main :: IO ()
