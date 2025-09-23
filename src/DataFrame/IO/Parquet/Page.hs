@@ -7,7 +7,6 @@ import Codec.Compression.Zstd.Streaming
 import Data.Bits
 import qualified Data.ByteString as BSO
 import Data.Int
-import Data.Maybe
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Thrift
@@ -43,7 +42,7 @@ readPage c columnBytes = do
             Right res -> pure res
         UNCOMPRESSED -> pure (BSO.pack compressed)
         other -> error ("Unsupported compression type: " ++ show other)
-    pure $
+    pure
         ( Just $ Page hdr (BSO.unpack fullData)
         , drop (fromIntegral $ compressedPageSize hdr) rem
         )
@@ -101,6 +100,8 @@ readPageHeader hdr xs lastFieldId =
 readPageTypeHeader ::
     PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
 readPageTypeHeader hdr [] _ = (hdr, [])
+readPageTypeHeader INDEX_PAGE_HEADER _ _ = error "readPageTypeHeader: unsupported INDEX_PAGE_HEADER"
+readPageTypeHeader PAGE_TYPE_HEADER_UNKNOWN _ _ = error "readPageTypeHeader: unsupported PAGE_TYPE_HEADER_UNKNOWN"
 readPageTypeHeader hdr@(DictionaryPageHeader{..}) xs lastFieldId =
     let
         fieldContents = readField' xs lastFieldId
@@ -217,22 +218,23 @@ readPageTypeHeader hdr@(DataPageHeaderV2{..}) xs lastFieldId =
                         readPageTypeHeader (hdr{repetitionLevelByteLength = n}) rem' identifier
                 7 ->
                     let
-                        isCompressed = fromMaybe True $ fmap ((== compactBooleanTrue) . (.&. 0x0f)) (safeHead xs)
+                        (isCompressed, rem') = case rem of
+                            b : bytes -> ((b .&. 0x0f) == compactBooleanTrue, bytes)
+                            [] -> (True, [])
                      in
                         readPageTypeHeader
-                            (hdr{dataPageHeaderV2IsCompressed = dataPageHeaderV2IsCompressed})
-                            rem
+                            (hdr{dataPageHeaderV2IsCompressed = isCompressed})
+                            rem'
                             identifier
                 8 ->
                     let
                         (stats, rem') = readStatisticsFromBytes emptyColumnStatistics rem 0
                      in
-                        readPageTypeHeader (hdr{dataPageHeaderV2Statistics = stats}) rem' identifier
+                        readPageTypeHeader
+                            (hdr{dataPageHeaderV2Statistics = stats})
+                            rem'
+                            identifier
                 n -> error $ show n
-
-safeHead :: [a] -> Maybe a
-safeHead [] = Nothing
-safeHead (x : _) = Just x
 
 readField' :: [Word8] -> Int16 -> Maybe ([Word8], TType, Int16)
 readField' [] _ = Nothing

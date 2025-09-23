@@ -107,6 +107,7 @@ readParquet path = do
 
     pure $ DI.fromNamedColumns orderedColumns
 
+readMetadataFromPath :: FilePath -> IO FileMetadata
 readMetadataFromPath path = do
     contents <- BSO.readFile path
     let (size, magicString) = contents `seq` readMetadataSizeFromFooter contents
@@ -263,7 +264,10 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
                     ERLE_DICTIONARY -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
                     EPLAIN_DICTIONARY -> decodeDictV1 dictValsM maxDef defLvls nPresent afterLvls
                     other -> error ("Unsupported v2 encoding: " ++ show other)
-
+            -- Cannot happen as these are filtered out by isDataPage above
+            DictionaryPageHeader{} -> error "processColumnPages: impossible DictionaryPageHeader"
+            INDEX_PAGE_HEADER -> error "processColumnPages: impossible INDEX_PAGE_HEADER"
+            PAGE_TYPE_HEADER_UNKNOWN -> error "processColumnPages: impossible PAGE_TYPE_HEADER_UNKNOWN"
     case cols of
         [] -> pure $ DI.fromList ([] :: [Maybe Int])
         (c : cs) ->

@@ -132,6 +132,12 @@ sum name df = case getColumn name df of
     Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @a) of
         Just Refl -> Just $ VG.sum column
         Nothing -> Nothing
+    Just ((BoxedColumn (column :: V.Vector a'))) -> case testEquality (typeRep @a') (typeRep @a) of
+        Just Refl -> Just $ VG.sum column
+        Nothing -> Nothing
+    Just ((OptionalColumn (column :: V.Vector (Maybe a')))) -> case testEquality (typeRep @a') (typeRep @a) of
+        Just Refl -> Just $ VG.sum (VG.map (fromMaybe 0) column)
+        Nothing -> Nothing
 
 applyStatistic ::
     (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
