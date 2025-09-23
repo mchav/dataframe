@@ -35,12 +35,7 @@ pandas = do
 
 explorer :: IO ()
 explorer = do
-    _ <- readProcess "./benchmark/dataframe_benchmark/bin/mix" ["deps.get"] ""
-    output <-
-        readProcess
-            "./benchmark/dataframe_benchmark/bin/mix"
-            ["run", "./benchmark/explorer/explorer_benchmark.exs"]
-            ""
+    output <- readProcess "mix" ["run", "./benchmark/explorer/explorer_benchmark.exs"] ""
     putStrLn output
 
 groupByHaskell :: IO ()
