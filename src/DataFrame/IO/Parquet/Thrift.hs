@@ -232,10 +232,10 @@ skipToStructEnd buf pos = do
 skipFieldData :: TType -> BS.ByteString -> IORef Int -> IO ()
 skipFieldData fieldType buf pos = case fieldType of
     BOOL -> return ()
-    I32 -> readIntFromBuffer @Int32 buf pos >> pure ()
-    I64 -> readIntFromBuffer @Int64 buf pos >> pure ()
-    DOUBLE -> readIntFromBuffer @Int64 buf pos >> pure ()
-    STRING -> readByteString buf pos >> pure ()
+    I32 -> void (readIntFromBuffer @Int32 buf pos)
+    I64 -> void (readIntFromBuffer @Int64 buf pos)
+    DOUBLE -> void (readIntFromBuffer @Int64 buf pos)
+    STRING -> void (readByteString buf pos)
     LIST -> skipList buf pos
     STRUCT -> skipToStructEnd buf pos
     _ -> return ()
@@ -748,7 +748,7 @@ readColumnOrder buf pos lastFieldId fieldStack = do
         Nothing -> return COLUMN_ORDER_UNKNOWN
         Just (elemType, identifier) -> case identifier of
             1 -> do
-                _ <- replicateM_ 2 (readTypeOrder buf pos 0 [])
+                replicateM_ 2 (readTypeOrder buf pos 0 [])
                 return TYPE_ORDER
             _ -> return COLUMN_ORDER_UNKNOWN
 

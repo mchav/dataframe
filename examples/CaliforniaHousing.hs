@@ -86,7 +86,7 @@ normalizeFeatures df =
                     -- Convenience reference to the column.
                     col = F.col @Double name
                  in
-                    D.derive name ((col - (F.minimum col)) / (F.maximum col - F.minimum col)) d
+                    D.derive name ((col - F.minimum col) / (F.maximum col - F.minimum col)) d
             )
             (D.columnNames df)
 
@@ -100,7 +100,7 @@ oceanProximity op = case op of
     "NEAR BAY" -> 2
     "<1H OCEAN" -> 3
     "INLAND" -> 4
-    _ -> error ("Unknown ocean proximity value: " ++ (T.unpack op))
+    _ -> error ("Unknown ocean proximity value: " ++ T.unpack op)
 
 flattenFeatures :: D.DataFrame -> VU.Vector Float
 flattenFeatures df = V.foldl' (\acc v -> acc VU.++ v) VU.empty (D.toMatrix df)

@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module DataFrame.IO.Parquet.Types where
 
 import Data.Int

@@ -25,9 +25,9 @@ julianDayAndNanosToUTCTime julianDay nanosSinceMidnight =
 
 julianDayToDay :: Integer -> Day
 julianDayToDay julianDay =
-    let a = julianDay + 32044
-        b = (4 * a + 3) `div` 146097
-        c = a - (146097 * b) `div` 4
+    let a = julianDay + 32_044
+        b = (4 * a + 3) `div` 146_097
+        c = a - (146_097 * b) `div` 4
         d = (4 * c + 3) `div` 1461
         e = c - (1461 * d) `div` 4
         m = (5 * e + 2) `div` 153
@@ -49,13 +49,13 @@ utcTimeToInt96 (UTCTime day diffTime) =
 dayToJulianDay :: Day -> Integer
 dayToJulianDay day =
     let (year, month, dayOfMonth) = toGregorian day
-        a = fromIntegral $ (14 - (fromIntegral month)) `div` 12
+        a = fromIntegral $ (14 - fromIntegral month) `div` 12
         y = fromIntegral $ year + 4800 - a
-        m = fromIntegral $ month + 12 * (fromIntegral a) - 3
+        m = fromIntegral $ month + 12 * fromIntegral a - 3
      in fromIntegral dayOfMonth
             + (153 * m + 2) `div` 5
             + 365 * y
             + y `div` 4
             - y `div` 100
             + y `div` 400
-            - 32045
+            - 32_045

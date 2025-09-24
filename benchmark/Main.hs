@@ -1,4 +1,3 @@
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -35,7 +34,8 @@ pandas = do
 
 explorer :: IO ()
 explorer = do
-    output <- readProcess "mix" ["run", "./benchmark/explorer/explorer_benchmark.exs"] ""
+    output <-
+        readProcess "mix" ["run", "./benchmark/explorer/explorer_benchmark.exs"] ""
     putStrLn output
 
 groupByHaskell :: IO ()

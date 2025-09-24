@@ -12,7 +12,6 @@ import Control.Monad
 import Data.Char
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
@@ -80,7 +79,7 @@ generateChartId = do
             filter
                 (\c -> c `elem` ([49 .. 57] ++ [65 .. 90] ++ [97 .. 122]))
                 (take 64 (randomRs (49, 126) gen :: [Int]))
-    return $ "chart_" <> (T.pack $ (map chr randomWords))
+    return $ "chart_" <> T.pack (map chr randomWords)
 
 wrapInHTML :: T.Text -> T.Text -> Int -> Int -> T.Text
 wrapInHTML chartId content width height =
@@ -855,7 +854,7 @@ extractStringColumn colName df =
                     UnboxedColumn vec -> V.toList $ VG.map (T.pack . show) (VG.convert vec)
                     OptionalColumn (vec :: V.Vector (Maybe a)) -> case testEquality (typeRep @a) (typeRep @T.Text) of
                         Nothing -> V.toList $ V.map (T.pack . show) vec
-                        Just Refl -> V.toList $ V.map (fromMaybe "Nothing" . fmap ("Just " <>)) vec
+                        Just Refl -> V.toList $ V.map (maybe "Nothing" ("Just " <>)) vec
 
 extractNumericColumn :: (HasCallStack) => T.Text -> DataFrame -> [Double]
 extractNumericColumn colName df =
@@ -913,7 +912,7 @@ getCategoricalCounts colName df =
                                 Nothing -> Just [((T.pack . show) k, fromIntegral v) | (k, v) <- counts]
                                 Just Refl ->
                                     Just
-                                        [(fromMaybe "Nothing" (fmap ("Just " <>) k), fromIntegral v) | (k, v) <- counts]
+                                        [(maybe "Nothing" ("Just " <>) k, fromIntegral v) | (k, v) <- counts]
   where
     countValues :: (Ord a, Show a) => V.Vector a -> [(a, Int)]
     countValues vec = M.toList $ V.foldr' (\x acc -> M.insertWith (+) x 1 acc) M.empty vec
@@ -981,8 +980,7 @@ plotAllHistograms df = do
         plotHistogram col df
     let allPlots =
             L.foldl'
-                ( \acc (HtmlPlot contents) -> acc <> "\n" <> (T.replace minifiedChartJs "" contents)
-                )
+                (\acc (HtmlPlot contents) -> acc <> "\n" <> T.replace minifiedChartJs "" contents)
                 ""
                 xs
     return
@@ -995,7 +993,7 @@ plotCategoricalSummary df = do
         let counts = getCategoricalCounts col df
         case counts of
             Just c -> do
-                if (length c > 1)
+                if length c > 1
                     then
                         ( do
                             let numUnique = length c
@@ -1033,7 +1031,7 @@ showInDefaultBrowser (HtmlPlot p) = do
     plotId <- generateChartId
     home <- getHomeDirectory
     let operatingSystem = os
-    let path = "plot-" <> (T.unpack plotId) <> ".html"
+    let path = "plot-" <> T.unpack plotId <> ".html"
 
     let fullPath =
             if operatingSystem == "mingw32"

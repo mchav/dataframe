@@ -29,7 +29,7 @@ instance Eq SchemaType where
 schemaType :: forall a. (Columnable a) => SchemaType
 schemaType = SType (P.Proxy @a)
 
-data Schema = Schema
+newtype Schema = Schema
     { elements :: M.Map T.Text SchemaType
     }
     deriving (Show, Eq)

@@ -84,7 +84,7 @@ readParquet path = do
                         then getTypeLength colPath
                         else Nothing
 
-            let primaryEncoding = fromMaybe EPLAIN (fmap fst (L.uncons (columnEncodings metadata)))
+            let primaryEncoding = maybe EPLAIN fst (L.uncons (columnEncodings metadata))
 
             let schemaTail = drop 1 (schema fileMetadata)
             let colPath = columnPathInSchema (columnMetaData colChunk)

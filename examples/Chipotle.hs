@@ -58,9 +58,9 @@ main = do
             |> D.filter "item_name" (searchTerm ==)
             |> D.groupBy ["item_name"]
             |> D.aggregate
-                [ (F.sum (F.col @Int "quantity")) `F.as` "sum"
-                , (F.maximum (F.col @Int "quantity")) `F.as` "max"
-                , (F.mean (F.col @Int "quantity")) `F.as` "mean"
+                [ F.sum (F.col @Int "quantity") `F.as` "sum"
+                , F.maximum (F.col @Int "quantity") `F.as` "max"
+                , F.mean (F.col @Int "quantity") `F.as` "mean"
                 ]
             |> D.sortBy D.Descending ["sum"]
 
@@ -70,9 +70,9 @@ main = do
             |> D.select ["item_name", "quantity"]
             |> D.groupBy ["item_name"]
             |> D.aggregate
-                [ (F.sum (F.col @Int "quantity")) `F.as` "sum"
-                , (F.maximum (F.col @Int "quantity")) `F.as` "maximum"
-                , (F.mean (F.col @Int "quantity")) `F.as` "mean"
+                [ F.sum (F.col @Int "quantity") `F.as` "sum"
+                , F.maximum (F.col @Int "quantity") `F.as` "maximum"
+                , F.mean (F.col @Int "quantity") `F.as` "mean"
                 ]
             |> D.take 10
 
