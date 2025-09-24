@@ -18,19 +18,19 @@ main = do
         D.readSeparated ';' D.defaultOptions "../../1brc/data/measurements.txt"
     endRead <- getCurrentTime
     let readTime = diffUTCTime endRead startRead
-    putStrLn $ "Read Time: " ++ (show readTime)
+    putStrLn $ "Read Time: " ++ show readTime
     performGC
-    let measurement = (F.col @Double "measurement")
+    let measurement = F.col @Double "measurement"
     startCalculation <- getCurrentTime
     print $
         parsed
             |> D.groupBy ["city"]
             |> D.aggregate
-                [ (F.minimum measurement) `F.as` "minimum"
-                , (F.mean measurement) `F.as` "mean"
-                , (F.maximum measurement) `F.as` "maximum"
+                [ F.minimum measurement `F.as` "minimum"
+                , F.mean measurement `F.as` "mean"
+                , F.maximum measurement `F.as` "maximum"
                 ]
             |> D.sortBy D.Ascending ["city"]
     endCalculation <- getCurrentTime
     let calculationTime = diffUTCTime endCalculation startCalculation
-    putStrLn $ "Calculation Time: " ++ (show calculationTime)
+    putStrLn $ "Calculation Time: " ++ show calculationTime

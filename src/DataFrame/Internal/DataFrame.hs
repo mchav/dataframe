@@ -50,7 +50,7 @@ instance Show GroupedDataFrame where
         printf
             "{ keyColumns: %s groupedColumns: %s }"
             (show cols)
-            (show ((M.keys (columnIndices df)) \\ cols))
+            (show (M.keys (columnIndices df) \\ cols))
 
 instance Eq GroupedDataFrame where
     (==) (Grouped df cols indices os) (Grouped df' cols' indices' os') = (df == df') && (cols == cols')
@@ -137,7 +137,7 @@ toMatrix df =
             (fst (dataframeDimensions df))
             ( \i ->
                 foldl
-                    (\acc j -> acc `VU.snoc` (realToFrac ((m V.! j) V.! i)))
+                    (\acc j -> acc `VU.snoc` realToFrac ((m V.! j) V.! i))
                     VU.empty
                     [0 .. (V.length m - 1)]
             )
