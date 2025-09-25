@@ -163,7 +163,20 @@ generatePrograms vars [] =
     vars
         ++ [ transform p
            | p <- vars
-           , transform <- [zScore, abs, sqrt, log . (+ Lit 1), exp, mean, median, stddev, sin, cos, relu, signum]
+           , transform <-
+                [ zScore
+                , abs
+                , sqrt
+                , log . (+ Lit 1)
+                , exp
+                , mean
+                , median
+                , stddev
+                , sin
+                , cos
+                , relu
+                , signum
+                ]
            ]
         ++ [ pow i p
            | p <- vars
@@ -206,7 +219,20 @@ generatePrograms vars ps =
         existingPrograms
             ++ [ transform p
                | p <- existingPrograms
-               , transform <- [zScore, sqrt, abs, log . (+ Lit 1), exp, mean, median, stddev, sin, cos, relu, signum]
+               , transform <-
+                    [ zScore
+                    , sqrt
+                    , abs
+                    , log . (+ Lit 1)
+                    , exp
+                    , mean
+                    , median
+                    , stddev
+                    , sin
+                    , cos
+                    , relu
+                    , signum
+                    ]
                ]
             ++ [ pow i p
                | p <- existingPrograms
@@ -218,15 +244,15 @@ generatePrograms vars ps =
                , i Prelude.>= j
                ]
             ++ [ DataFrame.Functions.min p q
-                | (i, p) <- zip [0 ..] vars
-                , (j, q) <- zip [0 ..] vars
-                , i Prelude.>= j
-                ]
+               | (i, p) <- zip [0 ..] vars
+               , (j, q) <- zip [0 ..] vars
+               , i Prelude.>= j
+               ]
             ++ [ DataFrame.Functions.max p q
-                | (i, p) <- zip [0 ..] vars
-                , (j, q) <- zip [0 ..] vars
-                , i Prelude.>= j
-                ]
+               | (i, p) <- zip [0 ..] vars
+               , (j, q) <- zip [0 ..] vars
+               , i Prelude.>= j
+               ]
             ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
@@ -362,11 +388,12 @@ beamSearch df cfg outputs programs
     | searchDepth cfg Prelude.== 0 = case ps of
         [] -> Nothing
         (x : _) -> trace ("Candidates: " ++ show (L.intercalate "\n" (map show ps))) Just x
-    | otherwise = beamSearch
-                    df
-                    (cfg{searchDepth = searchDepth cfg - 1})
-                    outputs
-                    (generatePrograms (map col names) ps)
+    | otherwise =
+        beamSearch
+            df
+            (cfg{searchDepth = searchDepth cfg - 1})
+            outputs
+            (generatePrograms (map col names) ps)
   where
     ps = pickTopN df outputs cfg $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
