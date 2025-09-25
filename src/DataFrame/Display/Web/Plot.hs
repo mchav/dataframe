@@ -91,9 +91,7 @@ wrapInHTML chartId content width height =
         , "px;height:"
         , T.pack (show height)
         , "px\"></canvas>\n"
-        , "<script>"
-        , minifiedChartJs
-        , "</script>\n"
+        , "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js\"></script>\n"
         , "<script>\n"
         , content
         , "\n</script>\n"
