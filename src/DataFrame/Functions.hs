@@ -151,7 +151,7 @@ min :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr a
 min = BinaryOp "min" Prelude.min
 
 max :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr a
-max = BinaryOp "min" Prelude.max
+max = BinaryOp "max" Prelude.max
 
 reduce ::
     forall a b.
@@ -185,12 +185,12 @@ generatePrograms vars [] =
         ++ [ p + q
            | (i, p) <- zip [0 ..] vars
            , (j, q) <- zip [0 ..] vars
-           , i Prelude.>= j
+           , i Prelude.> j
            ]
         ++ [ DataFrame.Functions.min p q
            | (i, p) <- zip [0 ..] vars
            , (j, q) <- zip [0 ..] vars
-           , i Prelude.>= j
+           , i Prelude.> j
            ]
         ++ [ DataFrame.Functions.max p q
            | (i, p) <- zip [0 ..] vars
@@ -244,14 +244,14 @@ generatePrograms vars ps =
                , i Prelude.>= j
                ]
             ++ [ DataFrame.Functions.min p q
-               | (i, p) <- zip [0 ..] vars
-               , (j, q) <- zip [0 ..] vars
-               , i Prelude.>= j
+               | (i, p) <- zip [0 ..] existingPrograms
+               , (j, q) <- zip [0 ..] existingPrograms
+               , i Prelude.> j
                ]
             ++ [ DataFrame.Functions.max p q
-               | (i, p) <- zip [0 ..] vars
-               , (j, q) <- zip [0 ..] vars
-               , i Prelude.>= j
+               | (i, p) <- zip [0 ..] existingPrograms
+               , (j, q) <- zip [0 ..] existingPrograms
+               , i Prelude.> j
                ]
             ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
                | (i, p) <- zip [0 ..] existingPrograms
