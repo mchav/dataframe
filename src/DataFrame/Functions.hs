@@ -114,10 +114,10 @@ count :: (Columnable a) => Expr a -> Expr Int
 count expr = AggFold expr "foldUdf" 0 (\acc _ -> acc + 1)
 
 minimum :: (Columnable a, Ord a) => Expr a -> Expr a
-minimum expr = AggReduce expr "minimum" min
+minimum expr = AggReduce expr "minimum" Prelude.min
 
 maximum :: (Columnable a, Ord a) => Expr a -> Expr a
-maximum expr = AggReduce expr "maximum" max
+maximum expr = AggReduce expr "maximum" Prelude.max
 
 sum :: forall a. (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
 sum expr = AggNumericVector expr "sum" VG.sum
@@ -142,7 +142,16 @@ zScore :: Expr Double -> Expr Double
 zScore c = (c - mean c) / stddev c
 
 pow :: (Columnable a, Num a) => Int -> Expr a -> Expr a
-pow i c = UnaryOp ("pow " <> T.pack (show i)) (^ i) c
+pow i = UnaryOp ("pow " <> T.pack (show i)) (^ i)
+
+relu :: (Columnable a, Num a) => Expr a -> Expr a
+relu = UnaryOp "relu" (Prelude.max 0)
+
+min :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr a
+min = BinaryOp "min" Prelude.min
+
+max :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr a
+max = BinaryOp "min" Prelude.max
 
 reduce ::
     forall a b.
@@ -154,7 +163,7 @@ generatePrograms vars [] =
     vars
         ++ [ transform p
            | p <- vars
-           , transform <- [zScore, abs, log . (+ Lit 1), exp]
+           , transform <- [zScore, abs, sqrt, log . (+ Lit 1), exp, mean, median, stddev, sin, cos, relu, signum]
            ]
         ++ [ pow i p
            | p <- vars
@@ -165,9 +174,20 @@ generatePrograms vars [] =
            , (j, q) <- zip [0 ..] vars
            , i Prelude.>= j
            ]
+        ++ [ DataFrame.Functions.min p q
+           | (i, p) <- zip [0 ..] vars
+           , (j, q) <- zip [0 ..] vars
+           , i Prelude.>= j
+           ]
+        ++ [ DataFrame.Functions.max p q
+           | (i, p) <- zip [0 ..] vars
+           , (j, q) <- zip [0 ..] vars
+           , i Prelude.>= j
+           ]
         ++ [ p - q
-           | p <- vars
-           , q <- vars
+           | (i, p) <- zip [0 ..] vars
+           , (j, q) <- zip [0 ..] vars
+           , i /= j
            ]
         ++ [ p * q
            | (i, p) <- zip [0 ..] vars
@@ -186,7 +206,7 @@ generatePrograms vars ps =
         existingPrograms
             ++ [ transform p
                | p <- existingPrograms
-               , transform <- [zScore, abs, log . (+ Lit 1), exp]
+               , transform <- [zScore, sqrt, abs, log . (+ Lit 1), exp, mean, median, stddev, sin, cos, relu, signum]
                ]
             ++ [ pow i p
                | p <- existingPrograms
@@ -197,10 +217,20 @@ generatePrograms vars ps =
                , (j, q) <- zip [0 ..] existingPrograms
                , i Prelude.>= j
                ]
+            ++ [ DataFrame.Functions.min p q
+                | (i, p) <- zip [0 ..] vars
+                , (j, q) <- zip [0 ..] vars
+                , i Prelude.>= j
+                ]
+            ++ [ DataFrame.Functions.max p q
+                | (i, p) <- zip [0 ..] vars
+                , (j, q) <- zip [0 ..] vars
+                , i Prelude.>= j
+                ]
             ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
-               , i Prelude.> j
+               , i /= j
                , n <- [1, 25, 50, 75, 99]
                ]
             ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
@@ -209,8 +239,9 @@ generatePrograms vars ps =
                , n <- [1, 25, 50, 75, 99]
                ]
             ++ [ p - q
-               | p <- existingPrograms
-               , q <- existingPrograms
+               | (i, p) <- zip [0 ..] existingPrograms
+               , (j, q) <- zip [0 ..] existingPrograms
+               , i /= j
                ]
             ++ [ p * q
                | (i, p) <- zip [0 ..] existingPrograms
@@ -291,7 +322,7 @@ fitRegression target d b df =
                 b
                 ( \l r ->
                     mutualInformationBinned
-                        (max 10 (ceiling (sqrt (fromIntegral (VU.length l)))))
+                        (Prelude.max 10 (ceiling (sqrt (fromIntegral (VU.length l)))))
                         l
                         r
                 )
@@ -331,11 +362,7 @@ beamSearch df cfg outputs programs
     | searchDepth cfg Prelude.== 0 = case ps of
         [] -> Nothing
         (x : _) -> trace ("Candidates: " ++ show (L.intercalate "\n" (map show ps))) Just x
-    | otherwise =
-        case findFirst ps of
-            Just p -> Just p
-            Nothing ->
-                beamSearch
+    | otherwise = beamSearch
                     df
                     (cfg{searchDepth = searchDepth cfg - 1})
                     outputs
@@ -343,10 +370,6 @@ beamSearch df cfg outputs programs
   where
     ps = pickTopN df outputs cfg $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
-    findFirst [] = Nothing
-    findFirst (p : ps')
-        | satisfiesExamples df outputs p = Just p
-        | otherwise = findFirst ps'
 
 pickTopN ::
     DataFrame ->
