@@ -171,6 +171,7 @@ module DataFrame (
     -- * Core data structures
     module Dataframe,
     module Column,
+    module Row,
     module Expression,
 
     -- * Core dataframe operations
@@ -232,6 +233,7 @@ import DataFrame.Internal.DataFrame as Dataframe (
     toMatrix,
  )
 import DataFrame.Internal.Expression as Expression (Expr)
+import DataFrame.Internal.Row as Row (Row, fromAny, toAny, toRowList)
 import DataFrame.Operations.Aggregation as Aggregation (
     aggregate,
     distinct,

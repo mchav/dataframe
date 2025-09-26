@@ -15,6 +15,7 @@ import Test.HUnit
 
 import qualified Functions
 import qualified Operations.Apply
+import qualified Operations.Core
 import qualified Operations.Derive
 import qualified Operations.Filter
 import qualified Operations.GroupBy
@@ -106,6 +107,7 @@ tests =
     TestList $
         dimensionsTest
             ++ Operations.Apply.tests
+            ++ Operations.Core.tests
             ++ Operations.Derive.tests
             ++ Operations.Filter.tests
             ++ Operations.GroupBy.tests

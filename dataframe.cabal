@@ -128,6 +128,7 @@ test-suite tests
     other-modules: Assertions,
                    Functions,
                    Operations.Apply,
+                   Operations.Core,
                    Operations.Derive,
                    Operations.Filter,
                    Operations.GroupBy,

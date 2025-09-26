@@ -34,6 +34,7 @@ import DataFrame.Internal.Column (
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
 import DataFrame.Internal.Parsing (isNullish)
+import DataFrame.Internal.Row (Any, mkColumnFromRow)
 import Type.Reflection
 import Prelude hiding (null)
 
@@ -308,7 +309,7 @@ index | first_10 | next_10
 @
 -}
 renameMany :: [(T.Text, T.Text)] -> DataFrame -> DataFrame
-renameMany replacements df = fold (uncurry rename) replacements df
+renameMany = fold (uncurry rename)
 
 renameSafe ::
     T.Text -> T.Text -> DataFrame -> Either DataFrameException DataFrame
@@ -466,7 +467,7 @@ fromNamedColumns :: [(T.Text, Column)] -> DataFrame
 fromNamedColumns = L.foldl' (\df (name, column) -> insertColumn name column df) empty
 
 {- | Create a dataframe from a list of columns. The column names are "0", "1"... etc.
-Useful for quick exploration but you should probably alwyas rename the columns after
+Useful for quick exploration but you should probably always rename the columns after
 or drop the ones you don't want.
 
 ==== __Example__
@@ -495,6 +496,32 @@ index |  0  |  1
 -}
 fromUnnamedColumns :: [Column] -> DataFrame
 fromUnnamedColumns = fromNamedColumns . zip (map (T.pack . show) [0 ..])
+
+{- | Create a dataframe from a list of column names and rows.
+
+==== __Example__
+@
+ghci> df = D.fromRows ["A", "B"] [[D.toAny 1, D.toAny 11], [D.toAny 2, D.toAny 12], [D.toAny 3, D.toAny 13]]
+
+ghci> df
+
+-----------------
+index |  A  |  B
+------|-----|----
+ Int  | Int | Int
+------|-----|----
+0     | 1   | 11
+1     | 2   | 12
+2     | 3   | 13
+
+@
+-}
+fromRows :: [T.Text] -> [[Any]] -> DataFrame
+fromRows names rows =
+    L.foldl'
+        (\df i -> insertColumn (names !! i) (mkColumnFromRow i rows) df)
+        empty
+        [0 .. length names - 1]
 
 {- | O (k * n) Counts the occurences of each value in a given column.
 

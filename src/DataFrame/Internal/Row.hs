@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -26,7 +27,6 @@ import Data.Typeable (type (:~:) (..))
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame
-import DataFrame.Internal.Types
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 import Text.Read (
     Lexeme (Ident),
@@ -39,7 +39,7 @@ import Text.Read (
 import Type.Reflection (typeOf, typeRep)
 
 data Any where
-    Value :: (Columnable' a) => a -> Any
+    Value :: (Columnable a) => a -> Any
 
 instance Eq Any where
     (==) :: Any -> Any -> Bool
@@ -57,7 +57,7 @@ instance Show Any where
     show :: Any -> String
     show (Value a) = T.unpack (showValue a)
 
-showValue :: forall a. (Columnable' a) => a -> T.Text
+showValue :: forall a. (Columnable a) => a -> T.Text
 showValue v = case testEquality (typeRep @a) (typeRep @T.Text) of
     Just Refl -> v
     Nothing -> case testEquality (typeRep @a) (typeRep @String) of
@@ -73,15 +73,41 @@ instance Read Any where
         Ident "Value" <- lexP
         readPrec
 
-toAny :: forall a. (Columnable' a) => a -> Any
+-- | Wraps a value into an \Any\ type. This helps up represent rows as heterogenous lists.
+toAny :: forall a. (Columnable a) => a -> Any
 toAny = Value
+
+-- | Unwraps a value from an \Any\ type.
+fromAny :: forall a. (Columnable a) => Any -> Maybe a
+fromAny (Value (v :: b)) = do
+    Refl <- testEquality (typeRep @a) (typeRep @b)
+    pure v
 
 type Row = V.Vector Any
 
-toRowList :: [T.Text] -> DataFrame -> [Row]
-toRowList names df =
+(!?) :: [a] -> Int -> Maybe a
+(!?) [] _ = Nothing
+(!?) (x : _) 0 = Just x
+(!?) (x : xs) n = (!?) xs (n - 1)
+
+mkColumnFromRow :: Int -> [[Any]] -> Column
+mkColumnFromRow i rows = case rows of
+    [] -> fromList ([] :: [T.Text])
+    (row : _) -> case row !? i of
+        Nothing -> fromList ([] :: [T.Text])
+        Just (Value (v :: a)) -> fromList $ reverse $ L.foldl' addToList [v] (tail rows)
+          where
+            addToList acc r = case r !? i of
+                Nothing -> acc
+                Just (Value (v' :: b)) -> case testEquality (typeRep @a) (typeRep @b) of
+                    Nothing -> acc
+                    Just Refl -> v' : acc
+
+toRowList :: DataFrame -> [Row]
+toRowList df =
     let
-        nameSet = S.fromList names
+        nameSet =
+            S.fromList (map fst (L.sortBy (compare `on` snd) $ M.toList (columnIndices df)))
      in
         map (mkRowRep df nameSet) [0 .. (fst (dataframeDimensions df) - 1)]
 
