@@ -75,6 +75,9 @@ isNumeric :: Column -> Bool
 isNumeric (UnboxedColumn (vec :: VU.Vector a)) = case sNumeric @a of
     STrue -> True
     _ -> False
+isNumeric (BoxedColumn (vec :: VB.Vector a)) = case testEquality (typeRep @a) (typeRep @Integer) of
+    Nothing   -> False
+    Just Refl -> True
 isNumeric _ = False
 
 -- | Checks if a column is of a given type values.
