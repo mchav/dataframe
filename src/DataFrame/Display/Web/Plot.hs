@@ -736,10 +736,10 @@ plotGroupedBarsWithN n groupCol valCol config df = do
         then do
             let groups = extractStringColumn groupCol df
                 values = extractNumericColumn valCol df
-                grouped = M.toList $ M.fromListWith (+) (zip groups values)
-                finalGroups = groupWithOther n grouped
-                labels = T.intercalate "," ["\"" <> label <> "\"" | (label, _) <- finalGroups]
-                dataPoints = T.intercalate "," [T.pack (show val) | (_, val) <- finalGroups]
+                m = M.fromListWith (+) (zip groups values)
+                grouped = map (\v -> (v, m M.! v)) groups
+                labels = T.intercalate "," ["\"" <> label <> "\"" | (label, _) <- grouped]
+                dataPoints = T.intercalate "," [T.pack (show val) | (_, val) <- grouped]
                 chartTitle =
                     if T.null (plotTitle config)
                         then groupCol <> " by " <> valCol

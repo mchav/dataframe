@@ -239,9 +239,9 @@ plotGroupedBarsWithN n groupCol valCol config df = do
         then do
             let groups = extractStringColumn groupCol df
                 values = extractNumericColumn valCol df
-                grouped = M.toList $ M.fromListWith (+) (zip groups values)
-                finalGroups = groupWithOther n grouped
-            T.putStrLn $ bars finalGroups (plotSettings config)
+                m = M.fromListWith (+) (zip groups values)
+                grouped = map (\v -> (v, m M.! v)) groups
+            T.putStrLn $ bars grouped (plotSettings config)
         else do
             let groups = extractStringColumn groupCol df
                 vals = extractStringColumn valCol df
