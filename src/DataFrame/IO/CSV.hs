@@ -37,6 +37,7 @@ import Data.Type.Equality (TestEquality (testEquality))
 import DataFrame.Internal.Column (Column (..), columnLength)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
+import DataFrame.Operations.Typing
 import System.IO
 import Type.Reflection
 import Prelude hiding (concat, takeWhile)
@@ -195,13 +196,13 @@ readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
     frozenCols <- V.fromList <$> mapM freezeGrowingColumn growingCols
 
     let numRows = maybe 0 columnLength (frozenCols V.!? 0)
-
-    return $
-        DataFrame
-            { columns = frozenCols
-            , columnIndices = M.fromList (zip columnNames [0 ..])
-            , dataframeDimensions = (numRows, V.length frozenCols)
-            }
+        df =
+            DataFrame
+                { columns = frozenCols
+                , columnIndices = M.fromList (zip columnNames [0 ..])
+                , dataframeDimensions = (numRows, V.length frozenCols)
+                }
+    return $ if (inferTypes opts) then parseDefaults (safeRead opts) df else df
 
 initializeColumns :: [BS.ByteString] -> ReadOptions -> IO [GrowingColumn]
 initializeColumns row opts = mapM initColumn row
