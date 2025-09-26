@@ -95,7 +95,7 @@ mkColumnFromRow i rows = case rows of
     [] -> fromList ([] :: [T.Text])
     (row : _) -> case row !? i of
         Nothing -> fromList ([] :: [T.Text])
-        Just (Value (v :: a)) -> fromList $ reverse $ L.foldl' addToList [v] (tail rows)
+        Just (Value (v :: a)) -> fromList $ reverse $ L.foldl' addToList [v] (drop 1 rows)
           where
             addToList acc r = case r !? i of
                 Nothing -> acc
