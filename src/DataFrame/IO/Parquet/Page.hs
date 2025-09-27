@@ -7,6 +7,7 @@ import Codec.Compression.Zstd.Streaming
 import Data.Bits
 import qualified Data.ByteString as BSO
 import Data.Int
+import Data.Maybe (listToMaybe)
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Thrift
@@ -127,13 +128,11 @@ readPageTypeHeader hdr@(DictionaryPageHeader{..}) xs lastFieldId =
                             identifier
                 3 ->
                     let
-                        (isSorted, rem') = case rem of
-                            (isSorted : rem') -> (isSorted, rem')
-                            [] -> error "readPageTypeHeader: not enough bytes"
+                        isSorted = fromMaybe (error "readPageTypeHeader: not enough bytes") (listToMaybe rem)
                      in
                         readPageTypeHeader
                             (hdr{dictionaryPageIsSorted = isSorted == compactBooleanTrue})
-                            rem'
+                            (drop 1 rem)
                             identifier
                 n ->
                     error $ "readPageTypeHeader: unsupported identifier " ++ show n
