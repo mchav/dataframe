@@ -361,20 +361,20 @@ readStatisticsFromBytes cs xs lastFieldId =
                         readStatisticsFromBytes (cs{columnMinValue = minInBytes}) rem' identifier
                 7 ->
                     case rem of
+                        [] ->
+                            error "readStatisticsFromBytes: not enough bytes"
                         (isMaxValueExact : rem') ->
                             readStatisticsFromBytes
                                 (cs{isColumnMaxValueExact = isMaxValueExact == compactBooleanTrue})
                                 rem'
                                 identifier
-                        [] ->
-                            error "readStatisticsFromBytes: not enough bytes"
                 8 ->
                     case rem of
+                        [] ->
+                            error "readStatisticsFromBytes: not enough bytes"
                         (isMinValueExact : rem') ->
                             readStatisticsFromBytes
                                 (cs{isColumnMinValueExact = isMinValueExact == compactBooleanTrue})
                                 rem'
                                 identifier
-                        [] ->
-                            error "readStatisticsFromBytes: not enough bytes"
                 n -> error $ show n
