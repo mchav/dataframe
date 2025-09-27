@@ -387,7 +387,7 @@ beamSearch ::
 beamSearch df cfg outputs programs
     | searchDepth cfg Prelude.== 0 = case ps of
         [] -> Nothing
-        (x : _) -> trace ("Candidates: " ++ show (L.intercalate "\n" (map show ps))) Just x
+        (x : _) -> Just x
     | otherwise =
         beamSearch
             df
