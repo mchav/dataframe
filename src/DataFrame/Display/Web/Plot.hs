@@ -23,7 +23,6 @@ import GHC.Stack (HasCallStack)
 import System.Random (newStdGen, randomRs)
 import Type.Reflection (typeRep)
 
-import DataFrame.Display.Web.ChartJs
 import DataFrame.Internal.Column (Column (..), isNumeric)
 import qualified DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
@@ -71,6 +70,9 @@ defaultPlotConfig ptype =
         , plotHeight = 400
         , plotFile = Nothing
         }
+
+chartJsScript :: T.Text
+chartJsScript = "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js\"></script>\n"
 
 generateChartId :: IO T.Text
 generateChartId = do
@@ -974,15 +976,9 @@ plotAllHistograms :: (HasCallStack) => DataFrame -> IO HtmlPlot
 plotAllHistograms df = do
     let numericCols = filter (isNumericColumn df) (columnNames df)
     xs <- forM numericCols $ \col -> do
-        T.putStrLn $ "<!-- Histogram for " <> col <> " -->"
         plotHistogram col df
-    let allPlots =
-            L.foldl'
-                (\acc (HtmlPlot contents) -> acc <> "\n" <> T.replace minifiedChartJs "" contents)
-                ""
-                xs
-    return
-        (HtmlPlot (T.concat ["\n<script>\n", minifiedChartJs, "\n</script>\n", allPlots]))
+    let allPlots = L.foldl' (\acc (HtmlPlot contents) -> acc <> "\n" <> contents) "" xs
+    return (HtmlPlot allPlots)
 
 plotCategoricalSummary :: (HasCallStack) => DataFrame -> IO HtmlPlot
 plotCategoricalSummary df = do
