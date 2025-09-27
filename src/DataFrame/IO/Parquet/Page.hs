@@ -7,6 +7,7 @@ import Codec.Compression.Zstd.Streaming
 import Data.Bits
 import qualified Data.ByteString as BSO
 import Data.Int
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Thrift
@@ -127,13 +128,14 @@ readPageTypeHeader hdr@(DictionaryPageHeader{..}) xs lastFieldId =
                             identifier
                 3 ->
                     let
-                        (isSorted : rem') = rem
+                        isSorted = fromMaybe (error "readPageTypeHeader: not enough bytes") (listToMaybe rem)
                      in
                         readPageTypeHeader
                             (hdr{dictionaryPageIsSorted = isSorted == compactBooleanTrue})
-                            rem'
+                            (drop 1 rem)
                             identifier
-                n -> error $ show n
+                n ->
+                    error $ "readPageTypeHeader: unsupported identifier " ++ show n
 readPageTypeHeader hdr@(DataPageHeader{..}) xs lastFieldId =
     let
         fieldContents = readField' xs lastFieldId
@@ -358,19 +360,21 @@ readStatisticsFromBytes cs xs lastFieldId =
                      in
                         readStatisticsFromBytes (cs{columnMinValue = minInBytes}) rem' identifier
                 7 ->
-                    let
-                        (isMaxValueExact : rem') = rem
-                     in
-                        readStatisticsFromBytes
-                            (cs{isColumnMaxValueExact = isMaxValueExact == compactBooleanTrue})
-                            rem'
-                            identifier
+                    case rem of
+                        [] ->
+                            error "readStatisticsFromBytes: not enough bytes"
+                        (isMaxValueExact : rem') ->
+                            readStatisticsFromBytes
+                                (cs{isColumnMaxValueExact = isMaxValueExact == compactBooleanTrue})
+                                rem'
+                                identifier
                 8 ->
-                    let
-                        (isMinValueExact : rem') = rem
-                     in
-                        readStatisticsFromBytes
-                            (cs{isColumnMinValueExact = isMinValueExact == compactBooleanTrue})
-                            rem'
-                            identifier
+                    case rem of
+                        [] ->
+                            error "readStatisticsFromBytes: not enough bytes"
+                        (isMinValueExact : rem') ->
+                            readStatisticsFromBytes
+                                (cs{isColumnMinValueExact = isMinValueExact == compactBooleanTrue})
+                                rem'
+                                identifier
                 n -> error $ show n
