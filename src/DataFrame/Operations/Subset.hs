@@ -164,7 +164,11 @@ filterWhere :: Expr Bool -> DataFrame -> DataFrame
 filterWhere expr df =
     let
         (TColumn col) = interpret @Bool df expr
-        (Just indexes) = findIndices (== True) col
+        indexes = case findIndices (== True) col of
+            Just ixs -> ixs
+            Nothing ->
+                -- Shouldn't happen as we are filtering by Bool column
+                error "filterWhere: type mismatch"
         c' = snd $ dataframeDimensions df
      in
         df

@@ -25,6 +25,7 @@ common warnings
     -- TODO add more warnings, eventually -Wall
     ghc-options:
         -Wincomplete-patterns
+        -Wincomplete-uni-patterns
         -Wunused-imports
         -Wunused-packages
 
