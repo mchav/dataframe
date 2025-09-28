@@ -124,6 +124,5 @@ Familiar with another dataframe library? Get started:
 
 ## Future work
 * Apache arrow compatability
-* Integration with common data formats (currently only supports CSV)
-* Support windowed plotting (currently only supports ASCII plots)
+* Integration with more data formats (SQLite, Postgres, json lines, xlsx).
 * Host the whole library + Jupyter lab on Azure with auth and isolation.
