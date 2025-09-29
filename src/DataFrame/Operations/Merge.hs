@@ -25,8 +25,8 @@ instance Semigroup D.DataFrame where
                     pure $ D.insertColumn name col df
                 | otherwise =
                     let
-                        numColumnsA = snd $ D.dimensions a'
-                        numColumnsB = snd $ D.dimensions b'
+                        numRowsA = fst $ D.dimensions a'
+                        numRowsB = fst $ D.dimensions b'
 
                         optA = D.getColumn name a'
                         optB = D.getColumn name b'
@@ -34,9 +34,9 @@ instance Semigroup D.DataFrame where
                         case optB of
                             Nothing -> case optA of
                                 Nothing -> D.insertColumn name (D.fromList ([] :: [T.Text])) df
-                                Just a'' -> D.insertColumn name (D.expandColumn numColumnsB a'') df
+                                Just a'' -> D.insertColumn name (D.expandColumn numRowsB a'') df
                             Just b'' -> case optA of
-                                Nothing -> D.insertColumn name (D.leftExpandColumn numColumnsA b'') df
+                                Nothing -> D.insertColumn name (D.leftExpandColumn numRowsA b'') df
                                 Just a'' -> fromMaybe df $ do
                                     concatedColumns <- D.concatColumns a'' b''
                                     pure $ D.insertColumn name concatedColumns df
