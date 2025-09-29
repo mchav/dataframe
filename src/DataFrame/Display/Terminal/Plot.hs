@@ -313,11 +313,7 @@ smartPlotBars colName df = do
                             T.putStrLn $ bars grouped (plotSettings config)
                         else do
                             let grouped = groupWithOther 10 c
-                                otherCount = numUnique - 10
-                            T.putStrLn $
-                                bars
-                                    grouped
-                                    (plotSettings config)
+                            T.putStrLn $ bars grouped (plotSettings config)
         Nothing -> plotBars colName df
 
 plotCategoricalSummary :: (HasCallStack) => DataFrame -> IO ()
@@ -512,8 +508,7 @@ smartPlotPie colName df = do
     let counts = getCategoricalCounts colName df
     case counts of
         Just c -> do
-            let numUnique = length c
-                total = sum (map snd c)
+            let total = sum (map snd c)
                 significant = filter (\(_, v) -> v / total >= 0.01) c
                 config =
                     (defaultPlotConfig Pie)

@@ -316,7 +316,6 @@ synthesizeFeatureExpr ::
 synthesizeFeatureExpr target d b df =
     let
         df' = exclude [target] df
-        names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
      in
         case beamSearch
             df'
@@ -338,7 +337,6 @@ fitRegression ::
 fitRegression target d b df =
     let
         df' = exclude [target] df
-        names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df'
         targetMean = fromMaybe 0 $ Stats.mean target df
      in
         case beamSearch
