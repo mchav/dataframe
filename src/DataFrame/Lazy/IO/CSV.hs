@@ -90,7 +90,7 @@ readSeparated c opts path = do
         Nothing ->
             countRows c path >>= \total -> if hasHeader opts then return (total - 1) else return total
         Just n -> if hasHeader opts then return (n - 1) else return n
-    let (_begin, len) = case rowRange opts of
+    let (_, len) = case rowRange opts of
             Nothing -> (0, totalRows)
             Just (start, len) -> (start, min len (totalRows - rowsRead opts))
     withFile path ReadMode $ \handle -> do
@@ -338,7 +338,7 @@ writeSeparated ::
     DataFrame ->
     IO ()
 writeSeparated c filepath df = withFile filepath WriteMode $ \handle -> do
-    let (rows, _columns) = dataframeDimensions df
+    let (rows, _) = dataframeDimensions df
     let headers = map fst (L.sortBy (compare `on` snd) (M.toList (columnIndices df)))
     TIO.hPutStrLn handle (T.intercalate ", " headers)
     forM_ [0 .. (rows - 1)] $ \i -> do

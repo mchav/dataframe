@@ -81,7 +81,7 @@ readNInt96Times k bs =
 readPageInt96Times :: [Word8] -> [UTCTime]
 readPageInt96Times [] = []
 readPageInt96Times bs =
-    let (times, _rest) = readNInt96Times (length bs `div` 12) bs
+    let (times, _) = readNInt96Times (length bs `div` 12) bs
      in times
 
 readPageFixedBytes :: [Word8] -> Int -> [T.Text]

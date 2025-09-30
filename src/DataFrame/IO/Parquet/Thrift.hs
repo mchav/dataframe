@@ -286,7 +286,7 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                     if (sizeAndType `shiftR` 4) .&. 0x0f == 15
                         then readVarIntFromBuffer @Int metaDataBuf bufferPos
                         else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
-
+                let elemType = toTType sizeAndType
                 schemaElements <-
                     replicateM
                         listSize
@@ -312,6 +312,8 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                         then readVarIntFromBuffer @Int metaDataBuf bufferPos
                         else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
 
+                -- TODO actually check elemType agrees (also for all the other underscored _elemType in this module)
+                let _elemType = toTType sizeAndType
                 rowGroups <-
                     replicateM listSize (readRowGroup emptyRowGroup metaDataBuf bufferPos 0 [])
                 readFileMetaData
@@ -327,6 +329,7 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                         then readVarIntFromBuffer @Int metaDataBuf bufferPos
                         else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
 
+                let _elemType = toTType sizeAndType
                 keyValueMetadata <-
                     replicateM listSize (readKeyValue emptyKeyValue metaDataBuf bufferPos 0 [])
                 readFileMetaData
@@ -350,6 +353,7 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                         then readVarIntFromBuffer @Int metaDataBuf bufferPos
                         else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
 
+                let _elemType = toTType sizeAndType
                 columnOrders <- replicateM listSize (readColumnOrder metaDataBuf bufferPos 0 [])
                 readFileMetaData
                     (metadata{columnOrders = columnOrders})
@@ -481,6 +485,7 @@ readRowGroup r buf pos lastFieldId fieldStack = do
             1 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+                let _elemType = toTType sizeAndType
                 columnChunks <-
                     replicateM sizeOnly (readColumnChunk emptyColumnChunk buf pos 0 [])
                 readRowGroup (r{rowGroupColumns = columnChunks}) buf pos identifier fieldStack
@@ -592,6 +597,7 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
             2 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+                let _elemType = toTType sizeAndType
                 encodings <- replicateM sizeOnly (readParquetEncoding buf pos 0 [])
                 readColumnMetadata
                     (cm{columnEncodings = encodings})
@@ -602,6 +608,7 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
             3 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+                let _elemType = toTType sizeAndType
                 paths <- replicateM sizeOnly (readString buf pos)
                 readColumnMetadata
                     (cm{columnPathInSchema = paths})
@@ -634,6 +641,7 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
             8 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+                let _elemType = toTType sizeAndType
                 columnKeyValueMetadata <-
                     replicateM sizeOnly (readKeyValue emptyKeyValue buf pos 0 [])
                 readColumnMetadata
@@ -672,6 +680,7 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
             13 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+                let _elemType = toTType sizeAndType
                 pageEncodingStats <-
                     replicateM sizeOnly (readPageEncodingStats emptyPageEncodingStats buf pos 0 [])
                 readColumnMetadata
@@ -941,6 +950,7 @@ readSizeStatistics ss buf pos lastFieldId fieldStack = do
             2 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+                let _elemType = toTType sizeAndType
                 repetitionLevelHistogram <-
                     replicateM sizeOnly (readIntFromBuffer @Int64 buf pos)
                 readSizeStatistics
@@ -952,6 +962,7 @@ readSizeStatistics ss buf pos lastFieldId fieldStack = do
             3 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+                let _elemType = toTType sizeAndType
                 definitionLevelHistogram <-
                     replicateM sizeOnly (readIntFromBuffer @Int64 buf pos)
                 readSizeStatistics
@@ -985,6 +996,7 @@ readLogicalType buf pos lastFieldId fieldStack = do
                 if modifier == 0
                     then readIntFromBuffer @Int16 buf pos
                     else return (lastFieldId + modifier)
+            let _elemType = toTType (t .&. 0x0f)
             case identifier of
                 1 -> do
                     replicateM_ 2 (readField buf pos 0 [])
