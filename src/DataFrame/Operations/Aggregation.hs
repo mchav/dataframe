@@ -121,7 +121,7 @@ aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
             selectIndices
                 (VG.map (valueIndices VG.!) (VG.init offsets))
                 (select groupingColumns df)
-        groupedColumns = columnNames df L.\\ groupingColumns
+
         f (name, Wrap (expr :: Expr a)) d =
             let
                 value = fromRight (error "Not fully aggregated") (interpretAggregation @a gdf expr)

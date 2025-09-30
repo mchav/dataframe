@@ -202,7 +202,7 @@ readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
                 , columnIndices = M.fromList (zip columnNames [0 ..])
                 , dataframeDimensions = (numRows, V.length frozenCols)
                 }
-    return $ if (inferTypes opts) then parseDefaults (safeRead opts) df else df
+    return $ if inferTypes opts then parseDefaults (safeRead opts) df else df
 
 initializeColumns :: [BS.ByteString] -> ReadOptions -> IO [GrowingColumn]
 initializeColumns row opts = mapM initColumn row
@@ -363,7 +363,7 @@ writeSeparated ::
     DataFrame ->
     IO ()
 writeSeparated c filepath df = withFile filepath WriteMode $ \handle -> do
-    let (rows, columns) = dataframeDimensions df
+    let (rows, _) = dataframeDimensions df
     let headers = map fst (L.sortBy (compare `on` snd) (M.toList (columnIndices df)))
     TIO.hPutStrLn handle (T.intercalate ", " headers)
     forM_ [0 .. (rows - 1)] $ \i -> do

@@ -32,6 +32,7 @@ data DataFrame = DataFrame
     , columnIndices :: M.Map T.Text Int
     -- ^ Keeps the column names in the order they were inserted in.
     , dataframeDimensions :: (Int, Int)
+    -- ^ (rows, columns)
     }
 
 {- | A record that contains information about how and what

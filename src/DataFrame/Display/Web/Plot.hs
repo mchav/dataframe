@@ -685,8 +685,6 @@ plotBoxPlotsWith colNames config df = do
 
     let labels = T.intercalate "," ["\"" <> col <> "\"" | (col, _, _, _, _, _) <- boxData]
         medians = T.intercalate "," [T.pack (show med) | (_, _, _, med, _, _) <- boxData]
-        mins = T.intercalate "," [T.pack (show minV) | (_, minV, _, _, _, _) <- boxData]
-        maxs = T.intercalate "," [T.pack (show maxV) | (_, _, _, _, _, maxV) <- boxData]
         chartTitle = if T.null (plotTitle config) then "Box Plot" else plotTitle config
 
         jsCode =

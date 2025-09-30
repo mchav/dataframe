@@ -28,6 +28,7 @@ common warnings
         -Wincomplete-uni-patterns
         -Wunused-imports
         -Wunused-packages
+        -Wunused-local-binds
 
 library
     import: warnings

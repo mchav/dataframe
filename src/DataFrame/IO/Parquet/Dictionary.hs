@@ -58,9 +58,7 @@ readPageBytes xs =
 readPageBool :: [Word8] -> [Bool]
 readPageBool [] = []
 readPageBool bs =
-    let totalBits = length bs * 8
-        bits = concatMap (\b -> map (\i -> (b `shiftR` i) .&. 1 == 1) [0 .. 7]) bs
-     in bits
+    concatMap (\b -> map (\i -> (b `shiftR` i) .&. 1 == 1) [0 .. 7]) bs
 
 readPageInt64 :: [Word8] -> [Int64]
 readPageInt64 [] = []
@@ -83,7 +81,7 @@ readNInt96Times k bs =
 readPageInt96Times :: [Word8] -> [UTCTime]
 readPageInt96Times [] = []
 readPageInt96Times bs =
-    let (times, rest) = readNInt96Times (length bs `div` 12) bs
+    let (times, _) = readNInt96Times (length bs `div` 12) bs
      in times
 
 readPageFixedBytes :: [Word8] -> Int -> [T.Text]

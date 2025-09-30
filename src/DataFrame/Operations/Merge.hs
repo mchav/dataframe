@@ -15,8 +15,6 @@ instance Semigroup D.DataFrame where
     (<>) :: D.DataFrame -> D.DataFrame -> D.DataFrame
     (<>) a b =
         let
-            columnsInBOnly = filter (\c -> c `notElem` D.columnNames b) (D.columnNames b)
-            columnsInA = D.columnNames a
             addColumns a' b' df name
                 | fst (D.dimensions a') == 0 && fst (D.dimensions b') == 0 = df
                 | fst (D.dimensions a') == 0 = fromMaybe df $ do
@@ -27,18 +25,18 @@ instance Semigroup D.DataFrame where
                     pure $ D.insertColumn name col df
                 | otherwise =
                     let
-                        numColumnsA = (fst $ D.dimensions a')
-                        numColumnsB = (fst $ D.dimensions b')
-                        numColumns = max numColumnsA numColumnsB
+                        numRowsA = fst $ D.dimensions a'
+                        numRowsB = fst $ D.dimensions b'
+
                         optA = D.getColumn name a'
                         optB = D.getColumn name b'
                      in
                         case optB of
                             Nothing -> case optA of
                                 Nothing -> D.insertColumn name (D.fromList ([] :: [T.Text])) df
-                                Just a'' -> D.insertColumn name (D.expandColumn numColumnsB a'') df
+                                Just a'' -> D.insertColumn name (D.expandColumn numRowsB a'') df
                             Just b'' -> case optA of
-                                Nothing -> D.insertColumn name (D.leftExpandColumn numColumnsA b'') df
+                                Nothing -> D.insertColumn name (D.leftExpandColumn numRowsA b'') df
                                 Just a'' -> fromMaybe df $ do
                                     concatedColumns <- D.concatColumns a'' b''
                                     pure $ D.insertColumn name concatedColumns df
