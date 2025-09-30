@@ -286,7 +286,7 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                     if (sizeAndType `shiftR` 4) .&. 0x0f == 15
                         then readVarIntFromBuffer @Int metaDataBuf bufferPos
                         else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
-                let elemType = toTType sizeAndType
+                let _elemType = toTType sizeAndType
                 schemaElements <-
                     replicateM
                         listSize
