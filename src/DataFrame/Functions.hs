@@ -32,7 +32,7 @@ import qualified Data.Char as Char
 import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Type.Equality
@@ -436,9 +436,10 @@ pickTopN df (TColumn col) cfg ps =
      in
         trace
             ( "Best loss: "
-                ++ show (rankingFunction cfg l (interpretDoubleVector (head ordered)))
+                ++ show
+                    (rankingFunction cfg l <$> (interpretDoubleVector <$> (listToMaybe ordered)))
                 ++ " "
-                ++ (if null ordered then "empty" else show (head ordered))
+                ++ (if null ordered then "empty" else show (listToMaybe ordered))
             )
             ordered
 
