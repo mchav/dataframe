@@ -14,6 +14,7 @@ import Data.Time
 import Test.HUnit
 
 import qualified Functions
+import qualified Operations.Aggregations
 import qualified Operations.Apply
 import qualified Operations.Core
 import qualified Operations.Derive
@@ -106,6 +107,7 @@ tests :: Test
 tests =
     TestList $
         dimensionsTest
+            ++ Operations.Aggregations.tests
             ++ Operations.Apply.tests
             ++ Operations.Core.tests
             ++ Operations.Derive.tests

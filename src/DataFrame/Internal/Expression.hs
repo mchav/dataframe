@@ -24,7 +24,8 @@ import qualified Data.Vector.Unboxed as VU
 import DataFrame.Errors (DataFrameException (ColumnNotFoundException))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame
-import Type.Reflection (Typeable, typeRep)
+import DataFrame.Internal.Types
+import Type.Reflection (Typeable, typeOf, typeRep)
 
 data Expr a where
     Col :: (Columnable a) => T.Text -> Expr a
@@ -137,6 +138,20 @@ interpret df (BinaryOp _ (f :: c -> d -> e) left right) =
      in
         TColumn $
             fromMaybe (error "mapColumn returned nothing") (zipWithColumns f left' right')
+interpret df (AggVector expr op (f :: v b -> c)) =
+    let
+        (TColumn column) = interpret @b df expr
+     in
+        case column of
+            (BoxedColumn col) -> case testEquality (typeRep @(v b)) (typeOf col) of
+                Just Refl -> interpret @c df (Lit (f col))
+                Nothing -> error "Type mismatch"
+            (OptionalColumn col) -> case testEquality (typeRep @(v b)) (typeOf col) of
+                Just Refl -> interpret @c df (Lit (f col))
+                Nothing -> error "Type mismatch"
+            (UnboxedColumn col) -> case testEquality (typeRep @(v b)) (typeOf col) of
+                Just Refl -> interpret @c df (Lit (f col))
+                Nothing -> error "Type mismatch"
 interpret df (AggReduce expr op (f :: forall a. (Columnable a) => a -> a -> a)) =
     let
         (TColumn column) = interpret @a df expr
@@ -154,17 +169,22 @@ interpret df (AggNumericVector expr op (f :: VU.Vector b -> c)) =
             (UnboxedColumn (v :: VU.Vector d)) -> case testEquality (typeRep @d) (typeRep @b) of
                 Just Refl -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) (f v)
                 Nothing -> error "Invalid operation"
+            (BoxedColumn (v :: V.Vector d)) -> case testEquality (typeRep @d) (typeRep @Integer) of
+                Just Refl ->
+                    TColumn $
+                        fromVector $
+                            V.replicate
+                                (fst $ dataframeDimensions df)
+                                (f (VU.convert $ V.map fromInteger v))
+                Nothing -> error "Invalid operation"
             _ -> error "Invalid operation"
 interpret df (AggFold expr op start (f :: (a -> b -> a))) =
     let
         (TColumn column) = interpret @b df expr
      in
-        case headColumn @a column of
+        case ifoldlColumn (\acc _ v -> f acc v) start column of
             Nothing -> error "Invalid operation"
-            Just h -> case ifoldlColumn (\acc _ v -> f acc v) h column of
-                Nothing -> error "Invalid operation"
-                Just value -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
-interpret _ expr = error ("Invalid operation for dataframe: " ++ show expr)
+            Just value -> TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
 
 interpretAggregation ::
     forall a.
@@ -214,10 +234,37 @@ interpretAggregation gdf@(Grouped df names indices os) (Col name) = case getColu
                     )
 interpretAggregation gdf (UnaryOp _ (f :: c -> d) expr) =
     case interpretAggregation @c gdf expr of
-        Left unaggregated -> error "Cannot apply to unaggregated column"
+        Left unaggregated -> case unaggregated of
+            BoxedColumn (col :: V.Vector b) -> case testEquality (typeRep @b) (typeRep @(V.Vector c)) of
+                Just Refl -> Left $ fromVector $ V.map (V.map f) col
+                Nothing -> case testEquality (typeRep @b) (typeRep @(VU.Vector c)) of
+                    Nothing -> error "Type mismatch"
+                    Just Refl -> case (sUnbox @c, sUnbox @a) of
+                        (STrue, STrue) -> Left $ fromVector $ V.map (VU.map f) col
+                        (_, _) -> error ""
+            _ -> error "Very unlikely: unaggregated column is boxed"
         Right (TColumn aggregated) -> case mapColumn f aggregated of
             Nothing -> error "Type error in interpretation"
             Just col -> Right $ TColumn col
+interpretAggregation gdf (BinaryOp _ (f :: c -> d -> e) left right) =
+    case (interpretAggregation @c gdf left, interpretAggregation @d gdf right) of
+        (Right (TColumn left'), Right (TColumn right')) -> case zipWithColumns f left' right' of
+            Nothing -> error "Type error in binary operation"
+            Just col -> Right $ TColumn col
+        (Left left', Left right') -> case (left', right') of
+            (BoxedColumn (l :: V.Vector m), BoxedColumn (r :: V.Vector n)) -> case testEquality (typeRep @m) (typeRep @(VU.Vector c)) of
+                Just Refl -> case testEquality (typeRep @n) (typeRep @(VU.Vector d)) of
+                    Just Refl -> case (sUnbox @c, sUnbox @d, sUnbox @e) of
+                        (STrue, STrue, STrue) -> Left $ fromVector $ V.zipWith (\l' r' -> VU.zipWith f l' r') l r
+                        (_, _, _) -> error "Weird error"
+                    Nothing -> case testEquality (typeRep @n) (typeRep @(V.Vector d)) of
+                        Just Refl -> case sUnbox @c of
+                            STrue -> Left $ fromVector $ V.zipWith (\l' r' -> V.zipWith f (V.convert l') r') l r
+                            SFalse -> error "Very unlikely: boxed value in unboxed column."
+                        Nothing -> error "Not a vector of any type???"
+                Nothing -> error "Not a vector of any type???"
+            _ -> error "Very unlikely: aggregation shouldn't be in a boxed column"
+        (_, _) -> error "Cannot apply binary operation to unaggregated and aggregated column"
 interpretAggregation gdf (If cond l r) =
     case ( interpretAggregation @Bool gdf cond
          , interpretAggregation @a gdf l
@@ -231,13 +278,35 @@ interpretAggregation gdf (If cond l r) =
                             (\(c :: Bool) (l' :: a, r' :: a) -> if c then l' else r')
                             conditions
                             (zipColumns left right)
-        (_, _, _) -> error "Cannot apply binary operation to unaggregated column"
-interpretAggregation gdf (BinaryOp _ (f :: c -> d -> e) left right) =
-    case (interpretAggregation @c gdf left, interpretAggregation @d gdf right) of
-        (Right (TColumn left'), Right (TColumn right')) -> case zipWithColumns f left' right' of
-            Nothing -> error "Type error in binary operation"
-            Just col -> Right $ TColumn col
-        (_, _) -> error "Cannot apply binary operation to unaggregated column"
+        ( Left conditions
+            , Left left@(BoxedColumn left')
+            , Left right@(BoxedColumn right')
+            ) ->
+                Left $
+                    fromMaybe (error "zipWithColumns returned nothing") $
+                        zipWithColumns
+                            ( \(c :: VU.Vector Bool) (l' :: V.Vector a, r' :: V.Vector a) ->
+                                V.zipWith
+                                    (\c' (l'', r'') -> if c' then l'' else r'')
+                                    (V.convert c)
+                                    (V.zip l' r')
+                            )
+                            conditions
+                            (zipColumns left right)
+        ( Left conditions
+            , Left left@(UnboxedColumn left')
+            , Left right@(UnboxedColumn right')
+            ) -> case sUnbox @a of
+                STrue ->
+                    Left $
+                        fromMaybe (error "zipWithColumns returned nothing") $
+                            zipWithColumns
+                                ( \(c :: VU.Vector Bool) (l' :: VU.Vector a, r' :: VU.Vector a) -> VU.zipWith (\c' (l'', r'') -> if c' then l'' else r'') c (VU.zip l' r')
+                                )
+                                conditions
+                                (zipColumns left right)
+                SFalse -> error "Very unlikely: Unboxed type in boxed column"
+        (_, _, _) -> error "Some columns in the conditional are unaggregated"
 interpretAggregation gdf@(Grouped df names indices os) (AggVector expr op (f :: v b -> c)) =
     case interpretAggregation @b gdf expr of
         Left (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @(v b)) (typeRep @d) of
@@ -245,26 +314,52 @@ interpretAggregation gdf@(Grouped df names indices os) (AggVector expr op (f :: 
             Just Refl -> case testEquality (typeRep @v) (typeRep @V.Vector) of
                 Nothing -> error "Container mismatch"
                 Just Refl -> Right $ TColumn $ fromVector $ V.map f col
-        Left _ -> error "Impossible to aggregate into unaggregated column"
-        Right _ -> error "Cannot aggregate ungrouped expression"
+        Left _ -> error "Very unlikely: aggregated into unboxed column???"
+        Right (TColumn (BoxedColumn col)) -> case testEquality (typeRep @(v b)) (typeOf col) of
+            Just Refl -> interpretAggregation @c gdf (Lit (f col))
+            Nothing -> error "Type mismatch"
+        Right (TColumn (OptionalColumn col)) -> case testEquality (typeRep @(v b)) (typeOf col) of
+            Just Refl -> interpretAggregation @c gdf (Lit (f col))
+            Nothing -> error "Type mismatch"
+        Right (TColumn (UnboxedColumn col)) -> case testEquality (typeRep @(v b)) (typeOf col) of
+            Just Refl -> interpretAggregation @c gdf (Lit (f col))
+            Nothing -> error "Type mismatch"
 interpretAggregation gdf@(Grouped df names indices os) (AggReduce expr op (f :: forall a. (Columnable a) => a -> a -> a)) =
     case interpretAggregation @a gdf expr of
         Left (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @(V.Vector a)) (typeRep @d) of
-            Nothing -> error "Type mismatch"
+            Nothing -> case testEquality (typeRep @(VU.Vector a)) (typeRep @d) of
+                Nothing -> error "Type mismatch"
+                Just Refl -> case sUnbox @a of
+                    STrue ->
+                        Right $
+                            TColumn $
+                                fromVector $
+                                    V.map (\v -> VU.foldl' f (VG.head v) (VG.drop 1 v)) col
+                    SFalse -> error "Very unlikely case: unboxed vector contains a boxed type"
             Just Refl ->
                 Right $
                     TColumn $
                         fromVector $
                             V.map (\v -> VG.foldl' f (VG.head v) (VG.drop 1 v)) col
         Left _ -> error "Impossible to aggregate into unaggregated column"
-        Right _ -> error "Cannot aggregate ungrouped expression"
+        Right (TColumn column) -> case headColumn @a column of
+            Nothing -> error "Invalid operation"
+            Just h -> case ifoldlColumn (\acc _ v -> f acc v) h column of
+                Nothing -> error "Invalid operation"
+                Just value -> interpretAggregation @a gdf (Lit value)
 interpretAggregation gdf@(Grouped df names indices os) (AggFold expr op s (f :: (a -> b -> a))) =
     case interpretAggregation @b gdf expr of
         Left (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @(V.Vector b)) (typeRep @d) of
-            Nothing -> error "Type mismatch"
-            Just Refl -> Right $ TColumn $ fromVector $ V.map (\v -> VG.foldl' f s (VG.drop 1 v)) col
+            Just Refl -> Right $ TColumn $ fromVector $ V.map (\v -> V.foldl' f s v) col
+            Nothing -> case testEquality (typeRep @(VU.Vector b)) (typeRep @d) of
+                Just Refl -> case sUnbox @b of
+                    STrue -> Right $ TColumn $ fromVector $ V.map (\v -> VU.foldl' f s v) col
+                    SFalse -> error "Very unlikely: boxed type in unboxed column"
+                Nothing -> undefined
         Left _ -> error "Impossible to aggregate into unaggregated column"
-        Right _ -> error "Cannot aggregate ungrouped expression"
+        Right (TColumn column) -> case ifoldlColumn (\acc _ v -> f acc v) s column of
+            Nothing -> error "Invalid operation"
+            Just value -> interpretAggregation @a gdf (Lit value)
 interpretAggregation gdf@(Grouped df names indices os) (AggNumericVector expr op (f :: VU.Vector b -> c)) =
     case interpretAggregation @b gdf expr of
         Left (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @(VU.Vector b)) (typeRep @d) of
@@ -273,7 +368,13 @@ interpretAggregation gdf@(Grouped df names indices os) (AggNumericVector expr op
                 Just Refl -> Right $ TColumn $ fromVector $ V.map f (VG.map (VG.map fromIntegral) col)
             Just Refl -> Right $ TColumn $ fromVector $ V.map f col
         Left _ -> error "Impossible to aggregate into unaggregated column"
-        Right _ -> error "Cannot aggregate ungrouped expression"
+        Right (TColumn (UnboxedColumn col)) -> case testEquality (typeRep @(VU.Vector b)) (typeOf col) of
+            Just Refl -> interpretAggregation @c gdf (Lit (f col))
+            Nothing -> error "Type mismatch"
+        Right (TColumn (BoxedColumn col)) -> case testEquality (typeRep @(V.Vector Integer)) (typeOf col) of
+            Just Refl -> interpretAggregation @c gdf (Lit (f (VU.convert $ V.map fromInteger col)))
+            Nothing -> error "Type mismatch"
+        Right _ -> error "Cannot apply numeric aggregation to non-numeric column."
 
 instance (Num a, Columnable a) => Num (Expr a) where
     (+) :: Expr a -> Expr a -> Expr a
