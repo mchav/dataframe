@@ -24,7 +24,6 @@ import qualified Data.Vector.Unboxed as VU
 import DataFrame.Errors (DataFrameException (ColumnNotFoundException))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame
-import DataFrame.Internal.Types
 import Type.Reflection (Typeable, typeRep)
 
 data Expr a where
@@ -168,293 +167,113 @@ interpret df (AggFold expr op start (f :: (a -> b -> a))) =
 interpret _ expr = error ("Invalid operation for dataframe: " ++ show expr)
 
 interpretAggregation ::
-    forall a. (Columnable a) => GroupedDataFrame -> Expr a -> TypedColumn a
-interpretAggregation gdf (Lit value) = TColumn $ fromVector $ V.replicate (VG.length (offsets gdf) - 1) value
+    forall a.
+    (Columnable a) => GroupedDataFrame -> Expr a -> Either Column (TypedColumn a)
+interpretAggregation gdf (Lit value) =
+    Right $ TColumn $ fromVector $ V.replicate (VG.length (offsets gdf) - 1) value
 interpretAggregation gdf@(Grouped df names indices os) (Col name) = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
-    Just col ->
-        TColumn $ atIndicesStable (VG.map (indices `VG.unsafeIndex`) (VG.init os)) col
+    Just (BoxedColumn col) ->
+        Left $
+            fromVector $
+                V.generate
+                    (VU.length os - 1)
+                    ( \i ->
+                        ( V.generate
+                            (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
+                            ( \j ->
+                                col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
+                            )
+                        )
+                    )
+    Just (OptionalColumn col) ->
+        Left $
+            fromVector $
+                V.generate
+                    (VU.length os - 1)
+                    ( \i ->
+                        ( V.generate
+                            (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
+                            ( \j ->
+                                col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
+                            )
+                        )
+                    )
+    Just (UnboxedColumn col) ->
+        Left $
+            fromVector $
+                V.generate
+                    (VU.length os - 1)
+                    ( \i ->
+                        ( VU.generate
+                            (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
+                            ( \j ->
+                                col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
+                            )
+                        )
+                    )
 interpretAggregation gdf (UnaryOp _ (f :: c -> d) expr) =
-    let
-        (TColumn value) = interpretAggregation @c gdf expr
-     in
-        case mapColumn f value of
+    case interpretAggregation @c gdf expr of
+        Left unaggregated -> error "Cannot apply to unaggregated column"
+        Right (TColumn aggregated) -> case mapColumn f aggregated of
             Nothing -> error "Type error in interpretation"
-            Just col -> TColumn col
+            Just col -> Right $ TColumn col
 interpretAggregation gdf (If cond l r) =
-    let
-        (TColumn conditions) = interpretAggregation @Bool gdf cond
-        (TColumn left) = interpretAggregation @a gdf l
-        (TColumn right) = interpretAggregation @a gdf r
-     in
-        TColumn $
-            fromMaybe (error "zipWithColumns returned nothing") $
-                zipWithColumns
-                    (\(c :: Bool) (l' :: a, r' :: a) -> if c then l' else r')
-                    conditions
-                    (zipColumns left right)
+    case ( interpretAggregation @Bool gdf cond
+         , interpretAggregation @a gdf l
+         , interpretAggregation @a gdf r
+         ) of
+        (Right (TColumn conditions), Right (TColumn left), Right (TColumn right)) ->
+            Right $
+                TColumn $
+                    fromMaybe (error "zipWithColumns returned nothing") $
+                        zipWithColumns
+                            (\(c :: Bool) (l' :: a, r' :: a) -> if c then l' else r')
+                            conditions
+                            (zipColumns left right)
+        (_, _, _) -> error "Cannot apply binary operation to unaggregated column"
 interpretAggregation gdf (BinaryOp _ (f :: c -> d -> e) left right) =
-    let
-        (TColumn left') = interpretAggregation @c gdf left
-        (TColumn right') = interpretAggregation @d gdf right
-     in
-        case zipWithColumns f left' right' of
+    case (interpretAggregation @c gdf left, interpretAggregation @d gdf right) of
+        (Right (TColumn left'), Right (TColumn right')) -> case zipWithColumns f left' right' of
             Nothing -> error "Type error in binary operation"
-            Just col -> TColumn col
+            Just col -> Right $ TColumn col
+        (_, _) -> error "Cannot apply binary operation to unaggregated column"
 interpretAggregation gdf@(Grouped df names indices os) (AggVector expr op (f :: v b -> c)) =
-    case unwrapTypedColumn (interpretAggregation @b gdf expr) of
-        BoxedColumn (col :: V.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
+    case interpretAggregation @b gdf expr of
+        Left (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @(v b)) (typeRep @d) of
             Nothing -> error "Type mismatch"
             Just Refl -> case testEquality (typeRep @v) (typeRep @V.Vector) of
                 Nothing -> error "Container mismatch"
-                Just Refl ->
-                    TColumn $
-                        fromVector $
-                            V.generate
-                                (VG.length os - 1)
-                                ( \i ->
-                                    f
-                                        ( V.generate
-                                            (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                            ( \j ->
-                                                col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
-                                            )
-                                        )
-                                )
-        UnboxedColumn (col :: VU.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
+                Just Refl -> Right $ TColumn $ fromVector $ V.map f col
+        Left _ -> error "Impossible to aggregate into unaggregated column"
+        Right _ -> error "Cannot aggregate ungrouped expression"
+interpretAggregation gdf@(Grouped df names indices os) (AggReduce expr op (f :: forall a. (Columnable a) => a -> a -> a)) =
+    case interpretAggregation @a gdf expr of
+        Left (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @(V.Vector a)) (typeRep @d) of
             Nothing -> error "Type mismatch"
-            Just Refl -> case testEquality (typeRep @v) (typeRep @VU.Vector) of
-                Nothing -> error "Container mismatch"
-                Just Refl ->
-                    case sUnbox @c of
-                        SFalse ->
-                            TColumn $
-                                fromVector $
-                                    V.generate
-                                        (VG.length os - 1)
-                                        ( \i ->
-                                            f
-                                                ( VU.generate
-                                                    (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                                    ( \j ->
-                                                        col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
-                                                    )
-                                                )
-                                        )
-                        STrue ->
-                            TColumn $
-                                fromUnboxedVector $
-                                    VU.generate
-                                        (VG.length os - 1)
-                                        ( \i ->
-                                            f
-                                                ( VU.generate
-                                                    (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                                    ( \j ->
-                                                        col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
-                                                    )
-                                                )
-                                        )
-        OptionalColumn (col :: V.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
+            Just Refl ->
+                Right $
+                    TColumn $
+                        fromVector $
+                            V.map (\v -> VG.foldl' f (VG.head v) (VG.drop 1 v)) col
+        Left _ -> error "Impossible to aggregate into unaggregated column"
+        Right _ -> error "Cannot aggregate ungrouped expression"
+interpretAggregation gdf@(Grouped df names indices os) (AggFold expr op s (f :: (a -> b -> a))) =
+    case interpretAggregation @b gdf expr of
+        Left (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @(V.Vector b)) (typeRep @d) of
             Nothing -> error "Type mismatch"
-            Just Refl -> case testEquality (typeRep @v) (typeRep @V.Vector) of
-                Nothing -> error "Container mismatch"
-                Just Refl ->
-                    TColumn $
-                        fromVector $
-                            V.generate
-                                (VG.length os - 1)
-                                ( \i ->
-                                    f
-                                        ( V.generate
-                                            (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                            ( \j ->
-                                                col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
-                                            )
-                                        )
-                                )
-interpretAggregation gdf@(Grouped df names indices os) (AggReduce expr op (f :: forall a. (Columnable a) => a -> a -> a)) = case unwrapTypedColumn (interpretAggregation @a gdf expr) of
-    BoxedColumn col -> TColumn $
-        fromVector $
-            VG.generate (VG.length os - 1) $ \g ->
-                let !start = os `VG.unsafeIndex` g
-                    !end = os `VG.unsafeIndex` (g + 1)
-                 in go (col `VG.unsafeIndex` (indices `VG.unsafeIndex` start)) (start + 1) end
-      where
-        {-# INLINE go #-}
-        go !acc j e
-            | j == e = acc
-            | otherwise =
-                let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
-                 in go (f acc x) (j + 1) e
-    UnboxedColumn col -> case sUnbox @a of
-        SFalse -> TColumn $
-            fromVector $
-                VG.generate (VG.length os - 1) $ \g ->
-                    let !start = os `VG.unsafeIndex` g
-                        !end = os `VG.unsafeIndex` (g + 1)
-                     in go (col `VG.unsafeIndex` (indices `VG.unsafeIndex` start)) (start + 1) end
-          where
-            {-# INLINE go #-}
-            go !acc j e
-                | j == e = acc
-                | otherwise =
-                    let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
-                     in go (f acc x) (j + 1) e
-        STrue -> TColumn $
-            fromUnboxedVector $
-                VG.generate (VG.length os - 1) $ \g ->
-                    let !start = os `VG.unsafeIndex` g
-                        !end = os `VG.unsafeIndex` (g + 1)
-                     in go (col `VG.unsafeIndex` (indices `VG.unsafeIndex` start)) (start + 1) end
-          where
-            {-# INLINE go #-}
-            go !acc j e
-                | j == e = acc
-                | otherwise =
-                    let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
-                     in go (f acc x) (j + 1) e
-    OptionalColumn col -> TColumn $
-        fromVector $
-            VG.generate (VG.length os - 1) $ \g ->
-                let !start = os `VG.unsafeIndex` g
-                    !end = os `VG.unsafeIndex` (g + 1)
-                 in go (col `VG.unsafeIndex` (indices `VG.unsafeIndex` start)) (start + 1) end
-      where
-        {-# INLINE go #-}
-        go !acc j e
-            | j == e = acc
-            | otherwise =
-                let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
-                 in go (f acc x) (j + 1) e
-interpretAggregation gdf@(Grouped df names indices os) (AggFold expr op s (f :: (a -> b -> a))) = case unwrapTypedColumn (interpretAggregation @b gdf expr) of
-    BoxedColumn (col :: V.Vector c) -> case testEquality (typeRep @b) (typeRep @c) of
-        Nothing -> error "Type mismatch"
-        Just Refl -> TColumn $
-            fromVector $
-                VG.generate (VG.length os - 1) $ \g ->
-                    let !start = os `VG.unsafeIndex` g
-                        !end = os `VG.unsafeIndex` (g + 1)
-                     in go s start end
-          where
-            {-# INLINE go #-}
-            go !acc j e
-                | j == e = acc
-                | otherwise =
-                    let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
-                     in go (f acc x) (j + 1) e
-    UnboxedColumn (col :: VU.Vector c) -> case testEquality (typeRep @b) (typeRep @c) of
-        Nothing -> error "Type mismatch"
-        Just Refl -> case sUnbox @a of
-            SFalse -> TColumn $
-                fromVector $
-                    VG.generate (VG.length os - 1) $ \g ->
-                        let !start = os `VG.unsafeIndex` g
-                            !end = os `VG.unsafeIndex` (g + 1)
-                         in go s start end
-              where
-                {-# INLINE go #-}
-                go !acc j e
-                    | j == e = acc
-                    | otherwise =
-                        let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
-                         in go (f acc x) (j + 1) e
-            STrue -> TColumn $
-                fromUnboxedVector $
-                    VG.generate (VG.length os - 1) $ \g ->
-                        let !start = os `VG.unsafeIndex` g
-                            !end = os `VG.unsafeIndex` (g + 1)
-                         in go s start end
-          where
-            {-# INLINE go #-}
-            go !acc j e
-                | j == e = acc
-                | otherwise =
-                    let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
-                     in go (f acc x) (j + 1) e
-    OptionalColumn (col :: V.Vector c) -> case testEquality (typeRep @b) (typeRep @c) of
-        Nothing -> error "Type mismatch"
-        Just Refl -> TColumn $
-            fromVector $
-                VG.generate (VG.length os - 1) $ \g ->
-                    let !start = os `VG.unsafeIndex` g
-                        !end = os `VG.unsafeIndex` (g + 1)
-                     in go s start end
-          where
-            {-# INLINE go #-}
-            go !acc j e
-                | j == e = acc
-                | otherwise =
-                    let !x = col `VG.unsafeIndex` (indices `VG.unsafeIndex` j)
-                     in go (f acc x) (j + 1) e
-interpretAggregation gdf@(Grouped df names indices os) (AggNumericVector expr op (f :: VU.Vector b -> c)) = case unwrapTypedColumn (interpretAggregation @b gdf expr) of
-    UnboxedColumn (col :: VU.Vector d) -> case testEquality (typeRep @b) (typeRep @d) of
-        Nothing -> case testEquality (typeRep @d) (typeRep @Int) of
-            Nothing -> error "Type mismatch"
-            Just Refl -> case sUnbox @c of
-                SFalse ->
-                    TColumn $
-                        fromVector $
-                            V.generate
-                                (VG.length os - 1)
-                                ( \i ->
-                                    f
-                                        ( VU.generate
-                                            (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                            ( \j ->
-                                                fromIntegral
-                                                    (col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
-                                            )
-                                        )
-                                )
-                STrue ->
-                    TColumn $
-                        fromUnboxedVector $
-                            VU.generate
-                                (VG.length os - 1)
-                                ( \i ->
-                                    f
-                                        ( VU.generate
-                                            (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                            ( \j ->
-                                                fromIntegral
-                                                    (col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i))))
-                                            )
-                                        )
-                                )
-        Just Refl -> case sNumeric @d of
-            SFalse ->
-                error $ "Cannot apply numeric aggregation to non-numeric column: " ++ show expr
-            STrue -> case sUnbox @c of
-                SFalse ->
-                    TColumn $
-                        fromVector $
-                            V.generate
-                                (VG.length os - 1)
-                                ( \i ->
-                                    f
-                                        ( VU.generate
-                                            (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                            ( \j ->
-                                                col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
-                                            )
-                                        )
-                                )
-                STrue ->
-                    TColumn $
-                        fromUnboxedVector $
-                            VU.generate
-                                (VG.length os - 1)
-                                ( \i ->
-                                    f
-                                        ( VU.generate
-                                            (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                                            ( \j ->
-                                                col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
-                                            )
-                                        )
-                                )
-    _ -> error $ "Cannot apply numeric aggregation to non-numeric: " ++ show expr
+            Just Refl -> Right $ TColumn $ fromVector $ V.map (\v -> VG.foldl' f s (VG.drop 1 v)) col
+        Left _ -> error "Impossible to aggregate into unaggregated column"
+        Right _ -> error "Cannot aggregate ungrouped expression"
+interpretAggregation gdf@(Grouped df names indices os) (AggNumericVector expr op (f :: VU.Vector b -> c)) =
+    case interpretAggregation @b gdf expr of
+        Left (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @(VU.Vector b)) (typeRep @d) of
+            Nothing -> case testEquality (typeRep @(VU.Vector Int)) (typeRep @d) of
+                Nothing -> error $ "Type mismatch - non numeric " ++ (show (typeRep @d))
+                Just Refl -> Right $ TColumn $ fromVector $ V.map f (VG.map (VG.map fromIntegral) col)
+            Just Refl -> Right $ TColumn $ fromVector $ V.map f col
+        Left _ -> error "Impossible to aggregate into unaggregated column"
+        Right _ -> error "Cannot aggregate ungrouped expression"
 
 instance (Num a, Columnable a) => Num (Expr a) where
     (+) :: Expr a -> Expr a -> Expr a

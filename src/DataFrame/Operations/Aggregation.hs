@@ -18,6 +18,7 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
+import Data.Either (fromRight)
 import Data.Hashable
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import DataFrame.Errors
@@ -65,7 +66,7 @@ groupBy names df
         VG.unsafeFreeze withIndexes
 
 changingPoints :: (Eq a, VU.Unbox a) => VU.Vector (Int, a) -> [Int]
-changingPoints vs = VG.length vs : fst (VU.ifoldl findChangePoints initialState vs)
+changingPoints vs = VG.length vs : (fst (VU.ifoldl findChangePoints initialState vs))
   where
     initialState = ([0], snd (VG.head vs))
     findChangePoints (offsets, currentVal) index (_, newVal)
@@ -74,10 +75,10 @@ changingPoints vs = VG.length vs : fst (VU.ifoldl findChangePoints initialState 
 
 mkRowRep :: [Int] -> DataFrame -> Int -> Int
 mkRowRep groupColumnIndices df i = case h of
-    [x] -> x
+    (x : []) -> x
     xs -> hash h
   where
-    h = map mkHash groupColumnIndices
+    h = (map mkHash groupColumnIndices)
     getHashedElem :: Column -> Int -> Int
     getHashedElem (BoxedColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
     getHashedElem (UnboxedColumn (c :: VU.Vector a)) j = hash' @a (c VU.! j)
@@ -123,7 +124,7 @@ aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
         groupedColumns = columnNames df L.\\ groupingColumns
         f (name, Wrap (expr :: Expr a)) d =
             let
-                value = interpretAggregation @a gdf expr
+                value = fromRight (error "Not fully aggregated") (interpretAggregation @a gdf expr)
              in
                 insertColumn name (unwrapTypedColumn value) d
      in
