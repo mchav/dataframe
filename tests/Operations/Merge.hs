@@ -128,6 +128,20 @@ mergeHorizontalWithEmptyLeft =
             (D.empty ||| dfSide2)
         )
 
+mergeVerticalDifferentTypesSameColumnName :: Test
+mergeVerticalDifferentTypesSameColumnName =
+    let
+        dfIntA = D.fromNamedColumns [("A", DI.fromList [1 :: Int, 2])]
+
+        dfTextA = D.fromNamedColumns [("A", DI.fromList ["x" :: String, "y"])]
+     in
+        TestCase
+            ( assertEqual
+                "Merging columns with same name but different types drops the column (current behavior)"
+                D.empty
+                (dfIntA <> dfTextA)
+            )
+
 tests :: [Test]
 tests =
     [ TestLabel "mergeVerticalWAI" mergeVerticalWAI
@@ -137,4 +151,7 @@ tests =
     , TestLabel "mergeHorizontalWAI" mergeHorizontalWAI
     , TestLabel "mergeHorizontalWithEmptyRight" mergeHorizontalWithEmptyRight
     , TestLabel "mergeHorizontalWithEmptyLeft" mergeHorizontalWithEmptyLeft
+    , TestLabel
+        "mergeVerticalDifferentTypesSameColumnName"
+        mergeVerticalDifferentTypesSameColumnName
     ]
