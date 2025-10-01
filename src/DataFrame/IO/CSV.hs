@@ -69,15 +69,28 @@ data ReadOptions = ReadOptions
     -- ^ Whether to partially parse values into `Maybe`/`Either`. (default: True)
     , chunkSize :: Int
     -- ^ Default chunk size (in bytes) for csv reader. (default: 512'000)
+    , dateFormat :: String
+    {- ^ Format of date fields as recognized by the Data.Time.Format module.
+
+    __Examples:__
+
+    @
+    > parseTimeM True defaultTimeLocale "%Y/%-m/%-d" "2010/3/04" :: Maybe Day
+    Just 2010-03-04
+    > parseTimeM True defaultTimeLocale "%d/%-m/%-Y" "04/3/2010" :: Maybe Day
+    Just 2010-03-04
+    @
+    -}
     }
 
-defaultOptions :: ReadOptions
-defaultOptions =
+defaultReadOptions :: ReadOptions
+defaultReadOptions =
     ReadOptions
         { hasHeader = True
         , inferTypes = True
         , safeRead = True
         , chunkSize = 512_000
+        , dateFormat = "%Y-%m-%d"
         }
 
 newGrowingVector :: Int -> IO (GrowingVector a)
@@ -151,7 +164,18 @@ ghci> D.readCsv ".\/data\/taxi.csv"
 @
 -}
 readCsv :: FilePath -> IO DataFrame
-readCsv = readSeparated ',' defaultOptions
+readCsv = readSeparated ',' defaultReadOptions
+
+{- | Read CSV file from path and load it into a dataframe.
+
+==== __Example__
+@
+ghci> D.readCsvWithOpts ".\/data\/taxi.csv" (D.defaultReadOptions { dateFormat = "%d/%-m/%-Y" })
+
+@
+-}
+readCsvWithOpts :: ReadOptions -> FilePath -> IO DataFrame
+readCsvWithOpts opts = readSeparated ',' opts
 
 {- | Read TSV (tab separated) file from path and load it into a dataframe.
 
@@ -162,13 +186,13 @@ ghci> D.readTsv ".\/data\/taxi.tsv"
 @
 -}
 readTsv :: FilePath -> IO DataFrame
-readTsv = readSeparated '\t' defaultOptions
+readTsv = readSeparated '\t' defaultReadOptions
 
 {- | Read text file with specified delimiter into a dataframe.
 
 ==== __Example__
 @
-ghci> D.readSeparated ';' D.defaultOptions ".\/data\/taxi.txt"
+ghci> D.readSeparated ';' D.defaultReadOptions ".\/data\/taxi.txt"
 
 @
 -}
@@ -202,7 +226,10 @@ readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
                 , columnIndices = M.fromList (zip columnNames [0 ..])
                 , dataframeDimensions = (numRows, V.length frozenCols)
                 }
-    return $ if inferTypes opts then parseDefaults (safeRead opts) df else df
+    return $
+        if inferTypes opts
+            then parseDefaults (safeRead opts) (dateFormat opts) df
+            else df
 
 initializeColumns :: [BS.ByteString] -> ReadOptions -> IO [GrowingColumn]
 initializeColumns row opts = mapM initColumn row

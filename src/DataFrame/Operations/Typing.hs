@@ -19,24 +19,24 @@ import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
 import Type.Reflection (typeRep)
 
-parseDefaults :: Bool -> DataFrame -> DataFrame
-parseDefaults safeRead df = df{columns = V.map (parseDefault safeRead) (columns df)}
+parseDefaults :: Bool -> String -> DataFrame -> DataFrame
+parseDefaults safeRead dateFormat df = df{columns = V.map (parseDefault safeRead dateFormat) (columns df)}
 
-parseDefault :: Bool -> Column -> Column
-parseDefault safeRead (BoxedColumn (c :: V.Vector a)) =
+parseDefault :: Bool -> String -> Column -> Column
+parseDefault safeRead dateFormat (BoxedColumn (c :: V.Vector a)) =
     let
         parseTimeOpt s =
             parseTimeM {- Accept leading/trailing whitespace -}
                 True
                 defaultTimeLocale
-                "%Y-%m-%d"
+                dateFormat
                 (T.unpack s) ::
                 Maybe Day
         unsafeParseTime s =
             parseTimeOrError {- Accept leading/trailing whitespace -}
                 True
                 defaultTimeLocale
-                "%Y-%m-%d"
+                dateFormat
                 (T.unpack s) ::
                 Day
      in
@@ -97,4 +97,4 @@ parseDefault safeRead (BoxedColumn (c :: V.Vector a)) =
                                         hasNulls = V.any isNullish c
                                      in
                                         if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
-parseDefault safeRead column = column
+parseDefault _ _ column = column

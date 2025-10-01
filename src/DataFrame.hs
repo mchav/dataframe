@@ -205,8 +205,9 @@ import DataFrame.Display.Terminal.Plot as Plot
 import DataFrame.Errors as Errors
 import DataFrame.IO.CSV as CSV (
     ReadOptions (..),
-    defaultOptions,
+    defaultReadOptions,
     readCsv,
+    readCsvWithOpts,
     readSeparated,
     readTsv,
     writeCsv,
