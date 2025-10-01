@@ -59,6 +59,7 @@ parseDate =
         actual =
             D.parseDefault
                 True
+                "%Y-%m-%d"
                 (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "2021-02-14", "2022-02-14"]))
      in
         TestCase (assertEqual "Correctly parses gregorian date" expected actual)
@@ -77,6 +78,7 @@ incompleteDataParseEither =
         actual =
             D.parseDefault
                 True
+                "%Y-%m-%d"
                 (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"]))
      in
         TestCase (assertEqual "Parses Either for gregorian date" expected actual)
@@ -92,6 +94,7 @@ incompleteDataParseMaybe =
         actual =
             D.parseDefault
                 True
+                "%Y-%m-%d"
                 (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "", "2022-02-14"]))
      in
         TestCase
