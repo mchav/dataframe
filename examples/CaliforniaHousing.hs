@@ -31,19 +31,6 @@ main = do
                 |> D.derive
                     "rooms_per_household"
                     (F.col @Double "total_rooms" / F.col "households")
-                |> D.derive
-                    "generated_feature"
-                    ( F.divide
-                        ( F.ifThenElse
-                            ( (F.>=)
-                                (F.col @Double "ocean_proximity")
-                                (F.percentile 75 (F.col @Double "ocean_proximity"))
-                            )
-                            (F.col @Double "ocean_proximity")
-                            (F.col @Double "households")
-                        )
-                        (F.divide (F.col @Double "population") (F.col @Double "median_income"))
-                    )
                 |> normalizeFeatures
 
         -- Convert to hasktorch tensor
