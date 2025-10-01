@@ -36,13 +36,19 @@ instance Semigroup D.DataFrame where
                      in
                         case optB of
                             Nothing -> case optA of
-                                Nothing -> D.insertColumn name (D.fromList ([] :: [T.Text])) df
-                                Just a'' -> D.insertColumn name (D.expandColumn sumRows a'') df
+                                Nothing ->
+                                    -- N.B. this case should never happen, because we're dealing with columns coming from
+                                    -- union of column names of both dataframes. Nothing + Nothing would mean column
+                                    -- wasn't in either dataframe, which shouldn't happen
+                                    D.insertColumn name (D.fromList ([] :: [T.Text])) df
+                                Just a'' ->
+                                    D.insertColumn name (D.expandColumn sumRows a'') df
                             Just b'' -> case optA of
-                                Nothing -> D.insertColumn name (D.leftExpandColumn sumRows b'') df
-                                Just a'' -> fromMaybe df $ do
-                                    concatedColumns <- D.concatColumns a'' b''
-                                    pure $ D.insertColumn name concatedColumns df
+                                Nothing ->
+                                    D.insertColumn name (D.leftExpandColumn sumRows b'') df
+                                Just a'' ->
+                                    let concatedColumns = D.concatColumnsEither a'' b''
+                                     in D.insertColumn name concatedColumns df
          in
             L.foldl' (addColumns a b) D.empty (D.columnNames a `L.union` D.columnNames b)
 
