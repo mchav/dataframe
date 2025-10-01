@@ -3,9 +3,11 @@
 ## California housing
 
 Preparation:
-This has a hasktorch integration that requires some setup. Copy the [`get-deps.sh`](https://github.com/hasktorch/hasktorch/blob/master/deps/get-deps.sh) file into the dataframe home directory. This will download and link some pytorch files required to run the examples.
+This has a hasktorch integration that requires dynamic linking to be enabled.
 
-After this is done you'll need to run `./set_hasktorch_env` to put the hasktorch libraries in your `LD_LIBRARY_PATH`.
+`./setup_torch` does just that. It creates a cabal.project.local file that has dunamic linking enabled.
+
+This example also requires GHC <= 9.8.
 
 Running:
 `cabal run california_housing`.
@@ -40,3 +42,13 @@ index | median_house_value | predicted_house_value
 8     | 226700.0           | 201753.69            
 9     | 261100.0           | 268698.7
 ```
+
+## Chipotle
+
+Running:
+`cabal run chipotle`.
+
+## One billion row challenge
+
+Running:
+`cabal run one_billion_row_challenge`.
