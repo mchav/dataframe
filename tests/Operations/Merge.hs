@@ -137,7 +137,7 @@ mergeVerticalDifferentTypesSameColumnName =
      in
         TestCase
             ( assertEqual
-                "Merging columns with same name but different types drops the column (current behavior)"
+                "Merging columns with same name but different types wraps the values in Either"
                 ( D.fromNamedColumns
                     [ ("A", DI.fromList [Left (1 :: Int), Left 2, Right ("x" :: String), Right "y"])
                     ]
