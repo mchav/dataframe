@@ -135,6 +135,7 @@ test-suite tests
                    Operations.Filter,
                    Operations.GroupBy,
                    Operations.InsertColumn,
+                   Operations.Merge,
                    Operations.Sort,
                    Operations.Statistics,
                    Operations.Take,

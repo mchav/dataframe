@@ -10,8 +10,10 @@ import qualified DataFrame.Operations.Core as D
 
 import Data.Maybe
 
+{- | Vertically merge two dataframes using shared columns.
+Columns that exist in only one dataframe are padded with Nothing.
+-}
 instance Semigroup D.DataFrame where
-    -- \| Vertically merge two dataframes using shared columns.
     (<>) :: D.DataFrame -> D.DataFrame -> D.DataFrame
     (<>) a b =
         let
@@ -27,19 +29,26 @@ instance Semigroup D.DataFrame where
                     let
                         numRowsA = fst $ D.dimensions a'
                         numRowsB = fst $ D.dimensions b'
+                        sumRows = numRowsA + numRowsB
 
                         optA = D.getColumn name a'
                         optB = D.getColumn name b'
                      in
                         case optB of
                             Nothing -> case optA of
-                                Nothing -> D.insertColumn name (D.fromList ([] :: [T.Text])) df
-                                Just a'' -> D.insertColumn name (D.expandColumn numRowsB a'') df
+                                Nothing ->
+                                    -- N.B. this case should never happen, because we're dealing with columns coming from
+                                    -- union of column names of both dataframes. Nothing + Nothing would mean column
+                                    -- wasn't in either dataframe, which shouldn't happen
+                                    D.insertColumn name (D.fromList ([] :: [T.Text])) df
+                                Just a'' ->
+                                    D.insertColumn name (D.expandColumn sumRows a'') df
                             Just b'' -> case optA of
-                                Nothing -> D.insertColumn name (D.leftExpandColumn numRowsA b'') df
-                                Just a'' -> fromMaybe df $ do
-                                    concatedColumns <- D.concatColumns a'' b''
-                                    pure $ D.insertColumn name concatedColumns df
+                                Nothing ->
+                                    D.insertColumn name (D.leftExpandColumn sumRows b'') df
+                                Just a'' ->
+                                    let concatedColumns = D.concatColumnsEither a'' b''
+                                     in D.insertColumn name concatedColumns df
          in
             L.foldl' (addColumns a b) D.empty (D.columnNames a `L.union` D.columnNames b)
 

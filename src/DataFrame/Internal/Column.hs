@@ -580,7 +580,9 @@ leftExpandColumn n column@(UnboxedColumn col)
             VG.replicate (n - VG.length col) Nothing <> VG.map Just (VU.convert col)
     | otherwise = column
 
--- | Concatenates two columns.
+{- | Concatenates two columns.
+Returns Nothing if the columns are of different types.
+-}
 concatColumns :: Column -> Column -> Maybe Column
 concatColumns (OptionalColumn left) (OptionalColumn right) = case testEquality (typeOf left) (typeOf right) of
     Nothing -> Nothing
@@ -592,6 +594,47 @@ concatColumns (UnboxedColumn left) (UnboxedColumn right) = case testEquality (ty
     Nothing -> Nothing
     Just Refl -> Just (UnboxedColumn $ left <> right)
 concatColumns _ _ = Nothing
+
+{- | Concatenates two columns.
+
+Works similar to 'concatColumns', but unlike that function, it will also combine columns of different types
+by wrapping the values in an Either.
+
+E.g. combining Column containing [1,2] with Column containing ["a","b"]
+will result in a Column containing [Left 1, Left 2, Right "a", Right "b"].
+-}
+concatColumnsEither :: Column -> Column -> Column
+concatColumnsEither (OptionalColumn left) (OptionalColumn right) = case testEquality (typeOf left) (typeOf right) of
+    Nothing ->
+        OptionalColumn $ fmap (fmap Left) left <> fmap (fmap Right) right
+    Just Refl ->
+        OptionalColumn $ left <> right
+concatColumnsEither (BoxedColumn left) (BoxedColumn right) = case testEquality (typeOf left) (typeOf right) of
+    Nothing ->
+        BoxedColumn $ fmap Left left <> fmap Right right
+    Just Refl ->
+        BoxedColumn $ left <> right
+concatColumnsEither (UnboxedColumn left) (UnboxedColumn right) = case testEquality (typeOf left) (typeOf right) of
+    Nothing ->
+        BoxedColumn $ fmap Left (VG.convert left) <> fmap Right (VG.convert right)
+    Just Refl ->
+        UnboxedColumn $ left <> right
+concatColumnsEither (BoxedColumn left) (UnboxedColumn right) =
+    BoxedColumn $ fmap Left left <> fmap Right (VG.convert right)
+concatColumnsEither (UnboxedColumn left) (BoxedColumn right) =
+    BoxedColumn $ fmap Left (VG.convert left) <> fmap Right right
+concatColumnsEither (OptionalColumn left) (BoxedColumn right) =
+    OptionalColumn $
+        fmap (fmap Left) left <> fmap (Just . Right) (VG.convert right)
+concatColumnsEither (BoxedColumn left) (OptionalColumn right) =
+    OptionalColumn $
+        fmap (Just . Left) (VG.convert left) <> fmap (fmap Right) right
+concatColumnsEither (OptionalColumn left) (UnboxedColumn right) =
+    OptionalColumn $
+        fmap (fmap Left) left <> fmap (Just . Right) (VG.convert right)
+concatColumnsEither (UnboxedColumn left) (OptionalColumn right) =
+    OptionalColumn $
+        fmap (Just . Left) (VG.convert left) <> fmap (fmap Right) right
 
 {- | O(n) Converts a column to a boxed vector. Throws an exception if the wrong type is specified.
 
