@@ -1,5 +1,19 @@
 # Revision history for dataframe
 
+## 0.3.2.0
+* Fix dataframe semigroup instance. Appending two rows of the same name but different types now gives a row of `Either a b` (work by @jhrcek).
+* Fix left expansion of semigroup instance (work by @jhrcek). 
+* Added `hasElemType` function that can be used with `selectBy` to filter columns by type. E.g. `selectBy [byProperty (hasElemType @Int)] df.`
+* Added basic support for program synthesis for feature generation (`synthesizeFeatureExpr`) and symbolic regression (`fitRegression`).
+* Web plotting doesn't embed entire script anymore.
+* Added `relu`, `min`, and `max` functions for expressions.
+* Add `fromRows` function to build a dataframe from rows. Also add `toAny` function that converts a value to a dynamic-like Columnable value.
+* `isNumeric` function now recognises `Integer` types.
+* Added `readCsvWithOpts` function that allows read specification.
+* Expose option to specify data formats when parsing CSV.
+* Added setup script for Hasktorch example.
+
+
 ## 0.3.1.2
 * Update granite version, again, for stackage.
 
