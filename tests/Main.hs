@@ -26,6 +26,7 @@ import qualified Operations.Sort
 import qualified Operations.Statistics
 import qualified Operations.Take
 import qualified Parquet
+import qualified Persistent
 
 testData :: D.DataFrame
 testData =
@@ -124,6 +125,7 @@ tests =
             ++ Operations.Take.tests
             ++ Functions.tests
             ++ Parquet.tests
+            ++ [Persistent.persistentTests]
             ++ parseTests
 
 main :: IO ()

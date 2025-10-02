@@ -180,6 +180,7 @@ module DataFrame (
     -- * I/O
     module CSV,
     module Parquet,
+    module Persistent,
 
     -- * Operations
     module Subset,
@@ -214,6 +215,13 @@ import DataFrame.IO.CSV as CSV (
     writeSeparated,
  )
 import DataFrame.IO.Parquet as Parquet (readParquet)
+import DataFrame.IO.Persistent as Persistent (
+    PersistentConfig (..),
+    defaultPersistentConfig,
+    fromPersistent,
+    fromPersistentWith,
+    toPersistent,
+ )
 import DataFrame.Internal.Column as Column (
     Column,
     fromList,
