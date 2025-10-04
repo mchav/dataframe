@@ -49,7 +49,7 @@ parseDefault safeRead dateFormat (BoxedColumn (c :: V.Vector a)) =
                         hasNulls =
                             V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
                      in
-                        if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+                        if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn (V.map T.pack c)
                 Nothing -> BoxedColumn c
             Just Refl ->
                 let example = T.strip (V.head c)
