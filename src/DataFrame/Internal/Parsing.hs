@@ -41,10 +41,14 @@ readByteStringInt s = case C.readInt (C.strip s) of
 {-# INLINE readByteStringInt #-}
 
 readByteStringDouble :: (HasCallStack) => C.ByteString -> Maybe Double
-readByteStringDouble s = case readSigned readDecimal (C.strip s) of
-    Nothing -> Nothing
-    Just (value, "") -> Just value
-    Just (value, _) -> Nothing
+readByteStringDouble s =
+    let
+        readFunc = if C.any (\c -> c == 'e' || c == 'E') s then readExponential else readDecimal
+     in
+        case readSigned readFunc (C.strip s) of
+            Nothing -> Nothing
+            Just (value, "") -> Just value
+            Just (value, _) -> Nothing
 {-# INLINE readByteStringDouble #-}
 
 readDouble :: (HasCallStack) => T.Text -> Maybe Double
