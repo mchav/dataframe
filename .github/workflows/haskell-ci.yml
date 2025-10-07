@@ -220,6 +220,11 @@ jobs:
         run: |
           rm -f cabal.project.local
           $CABAL v2-build $ARG_COMPILER --disable-tests --disable-benchmarks all
+      - name: build examples
+        run: |
+          cd examples
+          ./setup_torch.sh
+          $CABAL v2-build $ARG_COMPILER --disable-tests --disable-benchmarks all
       - name: save cache
         if: always()
         uses: actions/cache/save@v4
