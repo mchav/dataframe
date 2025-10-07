@@ -55,7 +55,16 @@ applyWrongType =
     TestCase
         ( assertExpectException
             "[Error Case]"
-            (DE.typeMismatchError (show $ typeRep @Char) (show $ typeRep @[Char]))
+            ( show $
+                DE.TypeMismatchException
+                    ( DE.MkTypeErrorContext
+                        { DE.userType = Right (typeRep @Char)
+                        , DE.expectedType = Right (typeRep @String)
+                        , DE.callingFunctionName = Just "apply"
+                        , DE.errorColumnName = Nothing
+                        }
+                    )
+            )
             (print $ DI.getColumn "test2" $ D.apply @Char (const (1 :: Int)) "test2" testData)
         )
 

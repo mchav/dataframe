@@ -163,12 +163,12 @@ filterBy = flip filter
 filterWhere :: Expr Bool -> DataFrame -> DataFrame
 filterWhere expr df =
     let
-        (TColumn col) = interpret @Bool df expr
+        (TColumn col) = case interpret @Bool df expr of
+            Left e -> throw e
+            Right c -> c
         indexes = case findIndices (== True) col of
-            Just ixs -> ixs
-            Nothing ->
-                -- Shouldn't happen as we are filtering by Bool column
-                error "filterWhere: type mismatch"
+            Right ixs -> ixs
+            Left e -> throw e
         c' = snd $ dataframeDimensions df
      in
         df

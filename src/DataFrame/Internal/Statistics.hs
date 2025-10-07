@@ -12,7 +12,9 @@ import Control.Monad.ST (runST)
 import DataFrame.Errors (DataFrameException (..))
 
 mean' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
-mean' samp = VU.sum (VU.map realToFrac samp) / fromIntegral (VU.length samp)
+mean' samp
+    | VU.null samp = throw $ EmptyDataSetException "mean"
+    | otherwise = VU.sum (VU.map realToFrac samp) / fromIntegral (VU.length samp)
 {-# INLINE mean' #-}
 
 median' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
