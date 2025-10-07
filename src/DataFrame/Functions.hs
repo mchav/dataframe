@@ -27,6 +27,7 @@ import DataFrame.Internal.Statistics
 import qualified DataFrame.Operations.Statistics as Stats
 import DataFrame.Operations.Subset (exclude, select)
 
+import Control.Exception (throw)
 import Control.Monad
 import qualified Data.Char as Char
 import Data.Function
@@ -293,7 +294,9 @@ deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
         | S.member res seen = go seen xs
         | otherwise = (x, res) : go (S.insert res seen) xs
       where
-        res = interpret df x
+        res = case interpret df x of
+            Left e -> throw e
+            Right v -> v
         hasInvalid = case res of
             (TColumn (UnboxedColumn (col :: VU.Vector a))) -> case testEquality (typeRep @Double) (typeRep @a) of
                 Just Refl -> VU.any (\n -> isNaN n || isInfinite n) col
@@ -302,7 +305,9 @@ deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
 
 -- | Checks if two programs generate the same outputs given all the same inputs.
 equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
-equivalent df p1 p2 = interpret df p1 Prelude.== interpret df p2
+equivalent df p1 p2 = case (Prelude.==) <$> interpret df p1 <*> interpret df p2 of
+    Left e -> throw e
+    Right v -> v
 
 synthesizeFeatureExpr ::
     -- | Target expression
@@ -316,11 +321,14 @@ synthesizeFeatureExpr ::
 synthesizeFeatureExpr target d b df =
     let
         df' = exclude [target] df
+        t = case interpret df (Col target) of
+            Left e -> throw e
+            Right v -> v
      in
         case beamSearch
             df'
             (BeamConfig d b (\l r -> (^ 2) <$> correlation' l r))
-            (interpret df (Col target))
+            t
             [] of
             Nothing -> Left "No programs found"
             Just p -> Right p
@@ -338,6 +346,9 @@ fitRegression target d b df =
     let
         df' = exclude [target] df
         targetMean = fromMaybe 0 $ Stats.mean target df
+        t = case interpret df (Col target) of
+            Left e -> throw e
+            Right v -> v
      in
         case beamSearch
             df'
@@ -351,7 +362,7 @@ fitRegression target d b df =
                         r
                 )
             )
-            (interpret df (Col target))
+            t
             [] of
             Nothing -> Left "No programs found"
             Just p ->
@@ -362,7 +373,7 @@ fitRegression target d b df =
                                 & select ["_generated_regression_feature_"]
                             )
                             (BeamConfig d b (\l r -> fmap negate (meanSquaredError l r)))
-                            (interpret df (Col target))
+                            t
                             [Col "_generated_regression_feature_", lit targetMean, lit 10] of
                             Nothing -> Left "Could not find coefficients"
                             Just p' -> Right (replaceExpr p (Col @Double "_generated_regression_feature_") p')
@@ -405,7 +416,9 @@ pickTopN ::
 pickTopN _ _ _ [] = []
 pickTopN df (TColumn col) cfg ps =
     let
-        l = VU.convert (toVector @Double col)
+        l = case toVector @Double @VU.Vector col of
+            Left e -> throw e
+            Right v -> v
         ordered =
             Prelude.take
                 (beamLength cfg)
@@ -425,12 +438,18 @@ pickTopN df (TColumn col) cfg ps =
             let
                 (TColumn col') = c
              in
-                VU.convert (toVector @Double col')
+                case toVector @Double @VU.Vector col' of
+                    Left e -> throw e
+                    Right v -> VU.convert v
         interpretDoubleVector e =
             let
-                (TColumn col') = interpret df e
+                (TColumn col') = case interpret df e of
+                    Left e -> throw e
+                    Right v -> v
              in
-                VU.convert (toVector @Double col')
+                case toVector @Double @VU.Vector col' of
+                    Left e -> throw e
+                    Right v -> VU.convert v
      in
         trace
             ( "Best loss: "
@@ -444,7 +463,9 @@ pickTopN df (TColumn col) cfg ps =
 satisfiesExamples :: DataFrame -> TypedColumn Double -> Expr Double -> Bool
 satisfiesExamples df col expr =
     let
-        result = interpret df expr
+        result = case interpret df expr of
+            Left e -> throw e
+            Right v -> v
      in
         result Prelude.== col
 

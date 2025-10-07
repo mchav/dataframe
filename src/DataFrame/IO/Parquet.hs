@@ -8,11 +8,11 @@ import Control.Monad
 import Data.Bits
 import qualified Data.ByteString as BSO
 import Data.Char
+import Data.Either
 import Data.IORef
 import Data.Int
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe
 import qualified Data.Text as T
 import Data.Word
 import qualified DataFrame.Internal.Column as DI
@@ -272,4 +272,4 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
         [] -> pure $ DI.fromList ([] :: [Maybe Int])
         (c : cs) ->
             pure $
-                L.foldl' (\l r -> fromMaybe (error "concat failed") (DI.concatColumns l r)) c cs
+                L.foldl' (\l r -> fromRight (error "concat failed") (DI.concatColumns l r)) c cs

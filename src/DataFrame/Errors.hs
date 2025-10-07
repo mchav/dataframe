@@ -28,8 +28,12 @@ data DataFrameException where
         (Typeable a, Typeable b) =>
         TypeErrorContext a b ->
         DataFrameException
+    AggregatedAndNonAggregatedException :: T.Text -> T.Text -> DataFrameException
     ColumnNotFoundException :: T.Text -> T.Text -> [T.Text] -> DataFrameException
     EmptyDataSetException :: T.Text -> DataFrameException
+    InternalException :: T.Text -> DataFrameException
+    NonColumnReferenceException :: T.Text -> DataFrameException
+    UnaggregatedException :: T.Text -> DataFrameException
     WrongQuantileNumberException :: Int -> DataFrameException
     WrongQuantileIndexException :: VU.Vector Int -> Int -> DataFrameException
     deriving (Exception)
@@ -51,6 +55,14 @@ instance Show DataFrameException where
     show (EmptyDataSetException callPoint) = emptyDataSetError callPoint
     show (WrongQuantileNumberException q) = wrongQuantileNumberError q
     show (WrongQuantileIndexException qs q) = wrongQuantileIndexError qs q
+    show (InternalException msg) = "Internal error: " ++ T.unpack msg
+    show (NonColumnReferenceException msg) = "Expression must be a column reference in: " ++ T.unpack msg
+    show (UnaggregatedException expr) = "Expression is not fully aggregated: " ++ T.unpack expr
+    show (AggregatedAndNonAggregatedException expr1 expr2) =
+        "Cannot combine aggregated and non-aggregated expressions: \n"
+            ++ T.unpack expr1
+            ++ "\n"
+            ++ T.unpack expr2
 
 columnNotFound :: T.Text -> T.Text -> [T.Text] -> String
 columnNotFound name callPoint columns =
@@ -102,10 +114,8 @@ addCallPointInfo (Just name) (Just cp) err =
     err
         ++ ( "\n\tThis happened when calling function "
                 ++ brightGreen cp
-                ++ " on the column "
+                ++ " on "
                 ++ brightGreen name
-                ++ "\n\n"
-                ++ typeAnnotationSuggestion cp
            )
 addCallPointInfo Nothing (Just cp) err = err ++ "\n" ++ typeAnnotationSuggestion cp
 addCallPointInfo (Just name) Nothing err =

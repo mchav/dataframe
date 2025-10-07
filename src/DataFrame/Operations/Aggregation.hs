@@ -18,17 +18,16 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
-import Data.Either (fromRight)
 import Data.Hashable
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import DataFrame.Errors
 import DataFrame.Internal.Column (
     Column (..),
     Columnable,
+    TypedColumn (..),
     atIndicesStable,
     getIndices,
     getIndicesUnboxed,
-    unwrapTypedColumn,
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), GroupedDataFrame (..))
 import DataFrame.Internal.Expression
@@ -124,9 +123,12 @@ aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
 
         f (name, Wrap (expr :: Expr a)) d =
             let
-                value = fromRight (error "Not fully aggregated") (interpretAggregation @a gdf expr)
+                value = case interpretAggregation @a gdf expr of
+                    Left e -> throw e
+                    Right (UnAggregated _) -> throw $ UnaggregatedException (T.pack $ show expr)
+                    Right (Aggregated (TColumn col)) -> col
              in
-                insertColumn name (unwrapTypedColumn value) d
+                insertColumn name value d
      in
         fold f aggs df'
 

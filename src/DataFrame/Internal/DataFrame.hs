@@ -19,7 +19,7 @@ import Data.Function (on)
 import Data.List (sortBy, transpose, (\\))
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import DataFrame.Display.Terminal.PrettyPrint
-import DataFrame.Errors (DataFrameException (..))
+import DataFrame.Errors
 import DataFrame.Internal.Column
 import Text.Printf
 import Type.Reflection (typeRep)
@@ -129,19 +129,22 @@ null df = V.null (columns df)
 All entries in the dataframe must be doubles.
 This is useful for handing data over into ML systems.
 -}
-toMatrix :: DataFrame -> V.Vector (VU.Vector Float)
-toMatrix df =
-    let
-        m = V.map (toVector @Double) (columns df)
-     in
-        V.generate
-            (fst (dataframeDimensions df))
-            ( \i ->
-                foldl
-                    (\acc j -> acc `VU.snoc` realToFrac ((m V.! j) V.! i))
-                    VU.empty
-                    [0 .. (V.length m - 1)]
-            )
+toMatrix :: DataFrame -> Either DataFrameException (V.Vector (VU.Vector Float))
+toMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> (toVector @Double c))
+    (Right V.empty :: Either DataFrameException (V.Vector (V.Vector Double)))
+    (columns df) of
+    Left e -> Left e
+    Right m ->
+        pure $
+            V.generate
+                (fst (dataframeDimensions df))
+                ( \i ->
+                    foldl
+                        (\acc j -> acc `VU.snoc` realToFrac ((m V.! j) V.! i))
+                        VU.empty
+                        [0 .. (V.length m - 1)]
+                )
 
 {- | Get a specific column as a vector.
 
