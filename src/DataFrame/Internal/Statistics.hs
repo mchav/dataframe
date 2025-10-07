@@ -13,7 +13,7 @@ import DataFrame.Errors (DataFrameException (..))
 
 mean' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
 mean' samp
-    | VU.null samp = throw $ EmptyDataSetException "median"
+    | VU.null samp = throw $ EmptyDataSetException "mean"
     | otherwise = VU.sum (VU.map realToFrac samp) / fromIntegral (VU.length samp)
 {-# INLINE mean' #-}
 
