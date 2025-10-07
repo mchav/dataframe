@@ -252,8 +252,8 @@ mapColumn f = \case
             Left $
                 TypeMismatchException
                     ( MkTypeErrorContext
-                        { userType = Right (typeRep @a)
-                        , expectedType = Right (typeRep @b)
+                        { userType = Right (typeRep @b)
+                        , expectedType = Right (typeRep @a)
                         , callingFunctionName = Just "mapColumn"
                         , errorColumnName = Nothing
                         }
@@ -265,8 +265,8 @@ mapColumn f = \case
             Left $
                 TypeMismatchException
                     ( MkTypeErrorContext
-                        { userType = Right (typeRep @a)
-                        , expectedType = Right (typeRep @b)
+                        { userType = Right (typeRep @b)
+                        , expectedType = Right (typeRep @a)
                         , callingFunctionName = Just "mapColumn"
                         , errorColumnName = Nothing
                         }
@@ -280,8 +280,8 @@ mapColumn f = \case
             Left $
                 TypeMismatchException
                     ( MkTypeErrorContext
-                        { userType = Right (typeRep @a)
-                        , expectedType = Right (typeRep @b)
+                        { userType = Right (typeRep @b)
+                        , expectedType = Right (typeRep @a)
                         , callingFunctionName = Just "mapColumn"
                         , errorColumnName = Nothing
                         }
@@ -425,8 +425,8 @@ imapColumn f = \case
             Left $
                 TypeMismatchException
                     ( MkTypeErrorContext
-                        { userType = Right (typeRep @a)
-                        , expectedType = Right (typeRep @b)
+                        { userType = Right (typeRep @b)
+                        , expectedType = Right (typeRep @a)
                         , callingFunctionName = Just "imapColumn"
                         , errorColumnName = Nothing
                         }
@@ -441,8 +441,8 @@ imapColumn f = \case
             Left $
                 TypeMismatchException
                     ( MkTypeErrorContext
-                        { userType = Right (typeRep @a)
-                        , expectedType = Right (typeRep @b)
+                        { userType = Right (typeRep @b)
+                        , expectedType = Right (typeRep @a)
                         , callingFunctionName = Just "imapColumn"
                         , errorColumnName = Nothing
                         }
@@ -454,8 +454,8 @@ imapColumn f = \case
             Left $
                 TypeMismatchException
                     ( MkTypeErrorContext
-                        { userType = Right (typeRep @a)
-                        , expectedType = Right (typeRep @b)
+                        { userType = Right (typeRep @b)
+                        , expectedType = Right (typeRep @a)
                         , callingFunctionName = Just "imapColumn"
                         , errorColumnName = Nothing
                         }
@@ -515,7 +515,7 @@ ifoldrColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = case testEquality (
             TypeMismatchException
                 ( MkTypeErrorContext
                     { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
+                    , expectedType = Right (typeRep @d)
                     , callingFunctionName = Just "ifoldrColumn"
                     , errorColumnName = Nothing
                     }
@@ -527,7 +527,7 @@ ifoldrColumn f acc c@(OptionalColumn (column :: VB.Vector d)) = case testEqualit
             TypeMismatchException
                 ( MkTypeErrorContext
                     { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
+                    , expectedType = Right (typeRep @d)
                     , callingFunctionName = Just "ifoldrColumn"
                     , errorColumnName = Nothing
                     }
@@ -539,7 +539,7 @@ ifoldrColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality
             TypeMismatchException
                 ( MkTypeErrorContext
                     { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
+                    , expectedType = Right (typeRep @d)
                     , callingFunctionName = Just "ifoldrColumn"
                     , errorColumnName = Nothing
                     }
@@ -557,7 +557,7 @@ ifoldlColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = case testEquality (
             TypeMismatchException
                 ( MkTypeErrorContext
                     { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
+                    , expectedType = Right (typeRep @d)
                     , callingFunctionName = Just "ifoldlColumn"
                     , errorColumnName = Nothing
                     }
@@ -569,7 +569,7 @@ ifoldlColumn f acc c@(OptionalColumn (column :: VB.Vector d)) = case testEqualit
             TypeMismatchException
                 ( MkTypeErrorContext
                     { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
+                    , expectedType = Right (typeRep @d)
                     , callingFunctionName = Just "ifoldlColumn"
                     , errorColumnName = Nothing
                     }
@@ -581,7 +581,7 @@ ifoldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality
             TypeMismatchException
                 ( MkTypeErrorContext
                     { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
+                    , expectedType = Right (typeRep @d)
                     , callingFunctionName = Just "ifoldlColumn"
                     , errorColumnName = Nothing
                     }

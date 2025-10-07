@@ -417,11 +417,15 @@ data AggregationResult a
     = UnAggregated Column
     | Aggregated (TypedColumn a)
 
+mkUnaggregatedColumn ::
+    forall v a.
+    (VG.Vector v a, Columnable a) =>
+    v a -> VU.Vector Int -> VU.Vector Int -> V.Vector (v a)
 mkUnaggregatedColumn col os indices =
     V.generate
         (VU.length os - 1)
         ( \i ->
-            ( V.generate
+            ( VG.generate
                 (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
                 ( \j ->
                     col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
@@ -432,12 +436,12 @@ mkUnaggregatedColumn col os indices =
 nestedTypeException ::
     forall a b. (Typeable a, Typeable b) => String -> DataFrameException
 nestedTypeException expression = case typeRep @a of
-    App _ t2 ->
+    App t1 t2 ->
         TypeMismatchException
             ( MkTypeErrorContext
-                { userType = Left (show $ typeRep @b) :: Either String (TypeRep ())
-                , expectedType = Left (show t2) :: Either String (TypeRep ())
-                , callingFunctionName = Just "interpret"
+                { userType = Left (show (typeRep @b)) :: Either String (TypeRep ())
+                , expectedType = Left (show (typeRep @a)) :: Either String (TypeRep ())
+                , callingFunctionName = Just "interpretAggregation"
                 , errorColumnName = Just expression
                 }
             )
@@ -446,7 +450,7 @@ nestedTypeException expression = case typeRep @a of
             ( MkTypeErrorContext
                 { userType = Right (typeRep @(VU.Vector b))
                 , expectedType = Right (typeRep @b)
-                , callingFunctionName = Just "interpret"
+                , callingFunctionName = Just "interpretAggregation"
                 , errorColumnName = Just expression
                 }
             )
@@ -472,7 +476,7 @@ interpretAggregation gdf expression@(UnaryOp _ (f :: c -> d) expr) =
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show expr)
                         }
                     )
@@ -557,7 +561,7 @@ interpretAggregation gdf expression@(BinaryOp _ (f :: c -> d -> e) left right) =
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show left)
                         }
                     )
@@ -566,7 +570,7 @@ interpretAggregation gdf expression@(BinaryOp _ (f :: c -> d -> e) left right) =
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show right)
                         }
                     )
@@ -595,7 +599,7 @@ interpretAggregation gdf expression@(If cond l r) =
                             ( MkTypeErrorContext
                                 { userType = Right (typeRep @b)
                                 , expectedType = Right (typeRep @c)
-                                , callingFunctionName = Just "interpret"
+                                , callingFunctionName = Just "interpretAggregation"
                                 , errorColumnName = Just (show expression)
                                 }
                             )
@@ -613,7 +617,7 @@ interpretAggregation gdf expression@(If cond l r) =
                             Left $
                                 TypeMismatchException
                                     ( context
-                                        { callingFunctionName = Just "interpret"
+                                        { callingFunctionName = Just "interpretAggregation"
                                         , errorColumnName = Just (show expression)
                                         }
                                     )
@@ -636,7 +640,7 @@ interpretAggregation gdf expression@(If cond l r) =
                                     Left $
                                         TypeMismatchException
                                             ( context
-                                                { callingFunctionName = Just "interpret"
+                                                { callingFunctionName = Just "interpretAggregation"
                                                 , errorColumnName = Just (show expression)
                                                 }
                                             )
@@ -649,7 +653,7 @@ interpretAggregation gdf expression@(If cond l r) =
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show cond)
                         }
                     )
@@ -658,7 +662,7 @@ interpretAggregation gdf expression@(If cond l r) =
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show l)
                         }
                     )
@@ -667,7 +671,7 @@ interpretAggregation gdf expression@(If cond l r) =
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show r)
                         }
                     )
@@ -690,7 +694,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggVector exp
                         ( MkTypeErrorContext
                             { userType = Right (typeRep @b)
                             , expectedType = Right (typeRep @d)
-                            , callingFunctionName = Just "interpret"
+                            , callingFunctionName = Just "interpretAggregation"
                             , errorColumnName = Just (show expr)
                             }
                         )
@@ -704,7 +708,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggVector exp
                         ( MkTypeErrorContext
                             { userType = Right (typeRep @b)
                             , expectedType = Right (typeRep @d)
-                            , callingFunctionName = Just "interpret"
+                            , callingFunctionName = Just "interpretAggregation"
                             , errorColumnName = Just (show expr)
                             }
                         )
@@ -718,7 +722,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggVector exp
                         ( MkTypeErrorContext
                             { userType = Right (typeRep @b)
                             , expectedType = Right (typeRep @d)
-                            , callingFunctionName = Just "interpret"
+                            , callingFunctionName = Just "interpretAggregation"
                             , errorColumnName = Just (show expr)
                             }
                         )
@@ -726,7 +730,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggVector exp
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show expression)
                         }
                     )
@@ -737,7 +741,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVec
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show expression)
                         }
                     )
@@ -768,7 +772,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVec
                         ( MkTypeErrorContext
                             { userType = Right (typeRep @b)
                             , expectedType = Right (typeRep @d)
-                            , callingFunctionName = Just "interpret"
+                            , callingFunctionName = Just "interpretAggregation"
                             , errorColumnName = Just (show expr)
                             }
                         )
@@ -780,7 +784,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVec
                         ( MkTypeErrorContext
                             { userType = Right (typeRep @b)
                             , expectedType = Right (typeRep @d)
-                            , callingFunctionName = Just "interpret"
+                            , callingFunctionName = Just "interpretAggregation"
                             , errorColumnName = Just (show expr)
                             }
                         )
@@ -795,7 +799,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVec
                         ( MkTypeErrorContext
                             { userType = Right (typeRep @b)
                             , expectedType = Right (typeRep @d)
-                            , callingFunctionName = Just "interpret"
+                            , callingFunctionName = Just "interpretAggregation"
                             , errorColumnName = Just (show expr)
                             }
                         )
@@ -805,7 +809,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce exp
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show expression)
                         }
                     )
@@ -839,7 +843,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggFold expr 
             Left $
                 TypeMismatchException
                     ( context
-                        { callingFunctionName = Just "interpret"
+                        { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show expression)
                         }
                     )

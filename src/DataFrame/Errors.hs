@@ -117,26 +117,18 @@ addCallPointInfo (Just name) (Just cp) err =
                 ++ " on "
                 ++ brightGreen name
            )
-addCallPointInfo Nothing (Just cp) err = err ++ "\n" ++ typeAnnotationSuggestion cp
+addCallPointInfo Nothing (Just cp) err =
+    err
+        ++ ( "\n\tThis happened when calling function "
+                ++ brightGreen cp
+           )
 addCallPointInfo (Just name) Nothing err =
     err
-        ++ ( "\n\tOn the column "
+        ++ ( "\n\tOn "
                 ++ name
                 ++ "\n\n"
            )
 addCallPointInfo Nothing Nothing err = err
-
-typeAnnotationSuggestion :: String -> String
-typeAnnotationSuggestion cp =
-    "\n\n\tTry adding a type at the end of the function e.g "
-        ++ "change\n\t\t"
-        ++ red (cp ++ " ...")
-        ++ " to \n\t\t"
-        ++ green ("(" ++ cp ++ " ... :: <Type>)")
-        ++ "\n\tor add "
-        ++ "{-# LANGUAGE TypeApplications #-} to the top of your "
-        ++ "file then change the call to \n\t\t"
-        ++ brightGreen (cp ++ " @<Type> ....")
 
 guessColumnName :: T.Text -> [T.Text] -> T.Text
 guessColumnName userInput columns = case map (\k -> (editDistance userInput k, k)) columns of

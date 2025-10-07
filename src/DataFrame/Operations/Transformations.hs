@@ -38,6 +38,8 @@ apply ::
     DataFrame ->
     DataFrame
 apply f columnName d = case safeApply f columnName d of
+    Left (TypeMismatchException context) ->
+        throw $ TypeMismatchException (context{callingFunctionName = Just "apply"})
     Left exception -> throw exception
     Right df -> df
 
