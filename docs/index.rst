@@ -22,8 +22,8 @@ Jupyter notebook
 ****************
 
 * We have a `hosted version of the Jupyter notebook <https://ulwazi-exh9dbh2exbzgbc9.westus-01.azurewebsites.net/lab>`_ on azure sites. This is hosted on Azure's free tier so it can only support 3 or 4 kernels at a time.
-* To get started quickly, use the Dockerfile in the `ihaskell-dataframe <https://github.com/mchav/ihaskell-dataframe>`_` to build and run an image with dataframe integration.
-* For a preview check out the `California Housing <https://github.com/mchav/dataframe/blob/main/docs/California%20Housing.ipynb>`_` notebook.
+* To get started quickly, use the Dockerfile in the `ihaskell-dataframe <https://github.com/mchav/ihaskell-dataframe>`_ to build and run an image with dataframe integration.
+* For a preview check out the `California Housing <https://github.com/mchav/dataframe/blob/main/docs/California%20Housing.ipynb>`_ notebook.
 
 ***
 CLI
