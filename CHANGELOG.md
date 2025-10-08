@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.3.3.1
+* Fix bug in `randomSplit` causing two splits to overlap.
+
 ## 0.3.3.0
 * Better error messaging for expression failures.
 * Fix bug where exponentials were not being properly during CSV parsing.

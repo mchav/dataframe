@@ -348,10 +348,10 @@ randomSplit pureGen p df =
         withRand = df & insertUnboxedVector "__rand__" rand
      in
         ( withRand
-            & filterWhere (BinaryOp "geq" (>=) (Col @Double "__rand__") (Lit (1 - p)))
+            & filterWhere (BinaryOp "leq" (<=) (Col @Double "__rand__") (Lit p))
             & exclude ["__rand__"]
         , withRand
-            & filterWhere (BinaryOp "geq" (<) (Col @Double "__rand__") (Lit p))
+            & filterWhere (BinaryOp "gt" (>) (Col @Double "__rand__") (Lit p))
             & exclude ["__rand__"]
         )
 
