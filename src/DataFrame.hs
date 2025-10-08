@@ -18,10 +18,32 @@ __Naming convention__
 
 Example session:
 
+We provide a script that imports the core functionality and defines helpful
+macros for writing safe code.
+
 @
--- GHCi quality-of-life:
-ghci> :set -XOverloadedStrings -XTypeApplications
-ghci> :module + DataFrame as D, DataFrame.Functions as F, Data.Text (Text)
+$ curl --output dataframe \"https:\/\/raw.githubusercontent.com\/mchav\/dataframe\/refs\/heads\/main\/scripts\/dataframe.sh\"
+$ chmod +x dataframe
+$ export PATH=$PATH:$PWD/dataframe
+$ dataframe
+Configuring library for fake-package-0...
+Warning: No exposed modules
+GHCi, version 9.6.7: https:\/\/www.haskell.org\/ghc\/  :? for help
+Loaded GHCi configuration from \/tmp\/cabal-repl.-242816\/setcwd.ghci
+========================================
+              📦Dataframe
+========================================
+
+✨  Modules were automatically imported.
+
+💡  Use prefix 'D' for core functionality.
+        ● E.g. D.readCsv \"\/path\/to\/file\"
+💡  Use prefix 'F' for expression functions.
+        ● E.g. F.sum (F.col \@Int \"value\")
+
+✅ Ready.
+Loaded GHCi configuration from ./dataframe.ghci
+ghci> 
 @
 
 = Quick start
@@ -48,17 +70,18 @@ index |    Column Name     | # Non-null Values | # Null Values | # Partially par
 9     | longitude          | 20640             | 0             | 0                  | 844             | Double
 
 -- 2) Project & filter
-ghci> df1 = D.filterWhere (F.col \@Text "ocean_proximity" F.== F.lit \"ISLAND\") df0 D.|> D.select ["median_house_value", "median_income", "ocean_proximity"]
+ghci> :exposeColumn df
+ghci> df1 = D.filterWhere (ocean_proximity F.== F.lit \"ISLAND\") df0 D.|> D.select [F.name median_house_value, F.name median_income, F.name ocean_proximity]
 
 -- 3) Add a derived column using the expression DSL
 --    (col types are explicit via TypeApplications)
-ghci> df2 = D.derive "rooms_per_household" (F.col \@Double "total_rooms" / F.col \@Double "households") df0
+ghci> df2 = D.derive "rooms_per_household" (total_rooms / households) df0
 
 -- 4) Group + aggregate
 ghci> let grouped   = D.groupBy ["ocean_proximity"] df0
 ghci> let summary   =
          D.aggregate
-             [ F.maximum (F.col \@Double "median_house_value") \`F.as\` "max_house_value"]
+             [ F.maximum median_house_value \`F.as\` "max_house_value"]
              grouped
 ghci> D.take 5 summary
 -----------------------------------------
