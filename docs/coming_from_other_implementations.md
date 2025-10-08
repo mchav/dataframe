@@ -1,14 +1,16 @@
-# Coming from pandas
+# Coming from other implementations
+
+## Coming from pandas
 
 We'll be porting over concepts from [10 minutes to Pandas](https://pandas.pydata.org/docs/user_guide/10min.html).
 
-## Basic Data Structures
+### Basic Data Structures
 
 A pandas `Series` maps to a `Column`. `Series` are indexable (labelled) arrays. We currently don't support indexing so `Column`s aren't meant to be manipulated directly so we don't focus on them too much.
 
 A `DataFrame` maps to a `DataFrame` as expected. Our dataframes are essentially a list of `Vector`s with some metadata for managing state.
 
-## Creating our structures
+### Creating our structures
 
 Creaing a series.
 
@@ -96,13 +98,13 @@ df2 = pd.DataFrame(
     }
 )
 
-# Result
-# df2
-#      A          B    C  D      E    F
-# 0  1.0 2013-01-02  1.0  3   test  foo
-# 1  1.0 2013-01-02  1.0  3  train  foo
-# 2  1.0 2013-01-02  1.0  3   test  foo
-# 3  1.0 2013-01-02  1.0  3  train  foo
+## Result
+## df2
+##      A          B    C  D      E    F
+## 0  1.0 2013-01-02  1.0  3   test  foo
+## 1  1.0 2013-01-02  1.0  3  train  foo
+## 2  1.0 2013-01-02  1.0  3   test  foo
+## 3  1.0 2013-01-02  1.0  3  train  foo
 
 ```
 
@@ -132,7 +134,7 @@ index |   A    |     B      |   C   |  D  |     E     |   F
 
 Rather than label a string value as categorial we create a type that encapsulates the value.
 
-## Viewing data
+### Viewing data
 
 By default we print the whole dataframe. To see the first `n` rows we instead provide a `take` function that takes in as arguments `n` and the dataframe.
 
@@ -167,7 +169,7 @@ index | Statistic |     D     |     C     |     A
 8     | Skewness  | -Infinity | -Infinity | -Infinity
 ```
 
-#### Sorting
+##### Sorting
 
 Since we don't have indexes we only have one sort function that sorts by a column.
 
@@ -184,11 +186,11 @@ index |   A    |     B      |   C   |  D  |     E     |   F
 3     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo
 ```
 
-## Selection
+### Selection
 Panda's `[]` operator is a jack-knife that does a number of kinds of aggregation.
 As such it doesn't map to one construct and doesn't always have an equivalent in Haskell.
 
-### Selecting columns
+#### Selecting columns
 
 ```python
 python> df.loc[:, ["A", "B"]]
@@ -244,11 +246,11 @@ index |   A    |     B
 2     | 1.0    | 2013-01-02
 ```
 
-## Missing values
+### Missing values
 
 Rows with missing values are represented by a `Maybe a` type. Dealing with missing values means applying the usual `Maybe` functions to the data.
 
-### Filling
+#### Filling
 
 ```haskell
 ghci> df' = D.addColumn "G" (V.fromList [Just 1, Just 2, Nothing, Just 4]) df
@@ -283,13 +285,13 @@ index |   A    |     B      |   C   |  D  |     E     |   F    |       G
 2     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | Just 4
 ```
 
-# Coming from Polars
+## Coming from Polars
 
 This tutorial will walk through the examples in Polars' [getting started guide](https://docs.pola.rs/user-guide/getting-started/) showing how concepts in Polars map to dataframe.
 
-## Reading and writing CSV
+### Reading and writing CSV
 
-### Round trip test
+#### Round trip test
 
 To test our CSV IO we'll create a dataframe programmatically, write it to a CSV file, then read the CSV file back again.
 
@@ -308,8 +310,8 @@ df = pl.DataFrame(
             dt.date(1983, 3, 22),
             dt.date(1981, 4, 30),
         ],
-        "weight": [57.9, 72.5, 53.6, 83.1],  # (kg)
-        "height": [1.56, 1.77, 1.65, 1.75],  # (m)
+        "weight": [57.9, 72.5, 53.6, 83.1],  ## (kg)
+        "height": [1.56, 1.77, 1.65, 1.75],  ## (m)
     }
 )
 df.write_csv("docs/assets/data/output.csv")
@@ -371,7 +373,7 @@ index |      name      | birthdate  | weight | height
 Notice that the type of the string column changes from `[Char]` (Haskell's default) to `Text` (dataframe's default).
 
 
-## Expressions
+### Expressions
 
 We support expressions similar to Polars and PySpark. These expressions help us write row-level computations.
 
@@ -389,8 +391,8 @@ print(result)
 Would be written as:
 
 ```haskell
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
+{-## LANGUAGE ScopedTypeVariables #-}
+{-## LANGUAGE TypeApplications #-}
 import qualified DataFrame as D
 import qualified Data.Text as T
 
@@ -643,17 +645,17 @@ index | decade  |           name           | Count |    Mean_height     |    Mea
 1     | 1980    | ["Ben","Daniel","Chloe"] | 3     | 1.7233333333333334 | 69.73333333333333
 ```
 
-# Coming from dplyr
+## Coming from dplyr
 
 This tutorial will walk through the examples in dplyr's [mini tutorial](https://dplyr.tidyverse.org/) showing how concepts in dplyr map to dataframe.
 
-## Filtering
+### Filtering
 Filtering looks similar in both libraries.
 
 ```r
 starwars %>% 
   filter(species == "Droid")
-#> # A tibble: 6 × 14
+#> ## A tibble: 6 × 14
 #>   name   height  mass hair_color skin_color  eye_color birth_year sex   gender  
 #>   <chr>   <int> <dbl> <chr>      <chr>       <chr>          <dbl> <chr> <chr>   
 #> 1 C-3PO     167    75 <NA>       gold        yellow           112 none  masculi…
@@ -661,9 +663,9 @@ starwars %>%
 #> 3 R5-D4      97    32 <NA>       white, red  red               NA none  masculi…
 #> 4 IG-88     200   140 none       metal       red               15 none  masculi…
 #> 5 R4-P17     96    NA none       silver, red red, blue         NA none  feminine
-#> # ℹ 1 more row
-#> # ℹ 5 more variables: homeworld <chr>, species <chr>, films <list>,
-#> #   vehicles <list>, starships <list>
+#> ## ℹ 1 more row
+#> ## ℹ 5 more variables: homeworld <chr>, species <chr>, films <list>,
+#> ##   vehicles <list>, starships <list>
 ```
 
 ```haskell
@@ -685,13 +687,13 @@ index |  name  |  height   |   mass    | hair_color | skin_color  | eye_color | 
 5     | BB8    | Nothing   | Nothing   | none       | none        | black     | Nothing    | none | masculine | NA        | Droid   | The Force Awakens                                                                                                                         | Nothing    | Nothing
 ```
 
-## Selecting columns
+### Selecting columns
 Select looks similar except in Haskell we take as argument a list of strings instead of a mix of predicates and strings.
 
 ```r
 starwars %>% 
   select(name, ends_with("color"))
-#> # A tibble: 87 × 4
+#> ## A tibble: 87 × 4
 #>   name           hair_color skin_color  eye_color
 #>   <chr>          <chr>      <chr>       <chr>    
 #> 1 Luke Skywalker blond      fair        blue     
@@ -699,7 +701,7 @@ starwars %>%
 #> 3 R2-D2          <NA>       white, blue red      
 #> 4 Darth Vader    none       white       yellow   
 #> 5 Leia Organa    brown      light       brown    
-#> # ℹ 82 more rows
+#> ## ℹ 82 more rows
 ```
 
 To get the same predicate-like functionality we use `selectBy`.
@@ -728,7 +730,7 @@ index |        name        |  hair_color   | skin_color  | eye_color
 9     | Obi-Wan Kenobi     | auburn, white | fair        | blue-gray
 ```
 
-## Transforming columns
+### Transforming columns
 
 R has a general mutate function that takes in a mix of expressions and column names.
 
@@ -736,7 +738,7 @@ R has a general mutate function that takes in a mix of expressions and column na
 starwars %>% 
   mutate(name, bmi = mass / ((height / 100)  ^ 2)) %>%
   select(name:mass, bmi)
-#> # A tibble: 87 × 4
+#> ## A tibble: 87 × 4
 #>   name           height  mass   bmi
 #>   <chr>           <int> <dbl> <dbl>
 #> 1 Luke Skywalker    172    77  26.0
@@ -744,7 +746,7 @@ starwars %>%
 #> 3 R2-D2              96    32  34.7
 #> 4 Darth Vader       202   136  33.3
 #> 5 Leia Organa       150    49  21.8
-#> # ℹ 82 more rows
+#> ## ℹ 82 more rows
 ```
 
 Our logic is more explicit about what's going on. Because both our fields are nullable/optional we have to specify the type.
@@ -801,12 +803,12 @@ Just 4
 You'll find a wealth of functions for dealing with optionals in the package
 `Data.Maybe`.
 
-## Sorting
+### Sorting
 
 ```r
 starwars %>% 
   arrange(desc(mass))
-#> # A tibble: 87 × 14
+#> ## A tibble: 87 × 14
 #>   name      height  mass hair_color skin_color eye_color birth_year sex   gender
 #>   <chr>      <int> <dbl> <chr>      <chr>      <chr>          <dbl> <chr> <chr> 
 #> 1 Jabba De…    175  1358 <NA>       green-tan… orange         600   herm… mascu…
@@ -814,9 +816,9 @@ starwars %>%
 #> 3 IG-88        200   140 none       metal      red             15   none  mascu…
 #> 4 Darth Va…    202   136 none       white      yellow          41.9 male  mascu…
 #> 5 Tarfful      234   136 brown      brown      blue            NA   male  mascu…
-#> # ℹ 82 more rows
-#> # ℹ 5 more variables: homeworld <chr>, species <chr>, films <list>,
-#> #   vehicles <list>, starships <list>
+#> ## ℹ 82 more rows
+#> ## ℹ 5 more variables: homeworld <chr>, species <chr>, films <list>,
+#> ##   vehicles <list>, starships <list>
 ```
 
 ```haskell
@@ -836,7 +838,7 @@ index |         name          |  height   |   mass    | hair_color |    skin_col
 4     | Darth Vader           | Just 202  | Just 136  | none       | white            | yellow        | Nothing    | male           | masculine | Tatooine  | Human   | A New Hope, The Empire Strikes Back, Return of the Jedi, Revenge of the Sith | Nothing                            | Just "TIE Advanced x1"
 ```
 
-## Grouping and aggregating
+### Grouping and aggregating
 
 ```r
 starwars %>%
@@ -849,7 +851,7 @@ starwars %>%
     n > 1,
     mass > 50
   )
-#> # A tibble: 9 × 3
+#> ## A tibble: 9 × 3
 #>   species      n  mass
 #>   <chr>    <int> <dbl>
 #> 1 Droid        6  69.8
@@ -857,7 +859,7 @@ starwars %>%
 #> 3 Human       35  81.3
 #> 4 Kaminoan     2  88  
 #> 5 Mirialan     2  53.1
-#> # ℹ 4 more rows
+#> ## ℹ 4 more rows
 ```
 
 ```haskell
