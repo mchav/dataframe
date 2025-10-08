@@ -40,7 +40,6 @@ main = do
         -- Convert to hasktorch tensor
         features = either throw id (toTensor cleaned)
         labels = either throw id (toTensor (df |> D.select ["median_house_value"]))
-    print $ shape labels
 
     {- Train the model -}
     putStrLn "Training linear regression model..."
