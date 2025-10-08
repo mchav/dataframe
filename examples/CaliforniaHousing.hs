@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -5,12 +6,15 @@
 
 module Main where
 
+import Control.Exception (throw)
 import Control.Monad (when)
+import Data.Either
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Expression as F
@@ -34,18 +38,13 @@ main = do
                 |> normalizeFeatures
 
         -- Convert to hasktorch tensor
-        (r, c) = D.dimensions cleaned
-        features = reshape [r, c] $ asTensor (flattenFeatures cleaned)
-        labels =
-            asTensor
-                ( (VU.map realToFrac . VU.convert)
-                    (D.columnAsVector @Double "median_house_value" df) ::
-                    VU.Vector Float
-                )
+        features = either throw id (toTensor cleaned)
+        labels = either throw id (toTensor (df |> D.select ["median_house_value"]))
 
     {- Train the model -}
     putStrLn "Training linear regression model..."
-    init <- sample $ LinearSpec{in_features = c, out_features = 1}
+    init <-
+        sample $ LinearSpec{in_features = snd (D.dimensions cleaned), out_features = 1}
     trained <- foldLoop init 100_000 $ \state i -> do
         let labels' = model state features
             loss = mseLoss labels labels'
@@ -89,5 +88,29 @@ oceanProximity op = case op of
     "INLAND" -> 4
     _ -> error ("Unknown ocean proximity value: " ++ T.unpack op)
 
-flattenFeatures :: D.DataFrame -> VU.Vector Float
-flattenFeatures df = V.foldl' (\acc v -> acc VU.++ v) VU.empty (D.toMatrix df)
+toTensor :: D.DataFrame -> Either D.DataFrameException Tensor
+toTensor df = case D.toMatrix df of
+    Left e -> Left e
+    Right m ->
+        let
+            (r, c) = D.dimensions df
+            dims' = if c == 1 then [r] else [r, c]
+         in
+            Right (reshape dims' (asTensor (flattenFeatures m)))
+
+flattenFeatures :: V.Vector (VU.Vector Float) -> VU.Vector Float
+flattenFeatures rows =
+    let
+        total = V.foldl' (\s v -> s + VU.length v) 0 rows
+     in
+        VU.create $ do
+            mv <- VUM.unsafeNew total
+            let go !i !off
+                    | i == V.length rows = pure ()
+                    | otherwise = do
+                        let v = rows V.! i
+                            len = VU.length v
+                        VU.unsafeCopy (VUM.unsafeSlice off len mv) v
+                        go (i + 1) (off + len)
+            go 0 0
+            pure mv

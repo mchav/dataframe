@@ -29,6 +29,7 @@ import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
 import DataFrame.Internal.Expression
 import DataFrame.Operations.Core
 import DataFrame.Operations.Transformations (apply)
+import System.Random
 import Type.Reflection
 import Prelude hiding (filter, take)
 
@@ -310,3 +311,98 @@ exclude ::
 exclude cs df =
     let keysToKeep = columnNames df L.\\ cs
      in select keysToKeep df
+
+{- | Sample a dataframe. The double parameter must be between 0 and 1 (inclusive).
+
+==== __Example__
+@
+ghci> import System.Random
+ghci> D.sample (mkStdGen 137) 0.1 df
+
+@
+-}
+sample :: (RandomGen g) => g -> Double -> DataFrame -> DataFrame
+sample pureGen p df =
+    let
+        rand = generateRandomVector pureGen (fst (dataframeDimensions df))
+     in
+        df
+            & insertUnboxedVector "__rand__" rand
+            & filterWhere (BinaryOp "geq" (>=) (Col @Double "__rand__") (Lit (1 - p)))
+            & exclude ["__rand__"]
+
+{- | Split a dataset into two. The first in the tuple gets a sample of p (0 <= p <= 1) and the second gets (1 - p). This is useful for creating test and train splits.
+
+==== __Example__
+@
+ghci> import System.Random
+ghci> D.randomSplit (mkStdGen 137) 0.9 df
+
+@
+-}
+randomSplit ::
+    (RandomGen g) => g -> Double -> DataFrame -> (DataFrame, DataFrame)
+randomSplit pureGen p df =
+    let
+        rand = generateRandomVector pureGen (fst (dataframeDimensions df))
+        withRand = df & insertUnboxedVector "__rand__" rand
+     in
+        ( withRand
+            & filterWhere (BinaryOp "geq" (>=) (Col @Double "__rand__") (Lit (1 - p)))
+            & exclude ["__rand__"]
+        , withRand
+            & filterWhere (BinaryOp "geq" (<) (Col @Double "__rand__") (Lit p))
+            & exclude ["__rand__"]
+        )
+
+{- | Creates n folds of a dataframe.
+
+==== __Example__
+@
+ghci> import System.Random
+ghci> D.kFolds (mkStdGen 137) 5 df
+
+@
+-}
+kFolds :: (RandomGen g) => g -> Int -> DataFrame -> [DataFrame]
+kFolds pureGen folds df =
+    let
+        rand = generateRandomVector pureGen (fst (dataframeDimensions df))
+        withRand = df & insertUnboxedVector "__rand__" rand
+        partitionSize = 1 / (fromIntegral folds)
+        singleFold n d =
+            d
+                & filterWhere
+                    ( BinaryOp
+                        "geq"
+                        (>=)
+                        (Col @Double "__rand__")
+                        (Lit (fromIntegral n * partitionSize))
+                    )
+        go (-1) _ = []
+        go n d =
+            let
+                d' = singleFold n d
+                d'' =
+                    d
+                        & filterWhere
+                            ( BinaryOp
+                                "lt"
+                                (<)
+                                (Col @Double "__rand__")
+                                (Lit (fromIntegral n * partitionSize))
+                            )
+             in
+                d' : go (n - 1) d''
+     in
+        map (exclude ["__rand__"]) (go (folds - 1) withRand)
+
+generateRandomVector :: (RandomGen g) => g -> Int -> VU.Vector Double
+generateRandomVector pureGen k = VU.fromList $ go pureGen k
+  where
+    go g 0 = []
+    go g n =
+        let
+            (v, g') = uniformR (0 :: Double, 1 :: Double) g
+         in
+            v : go g' (n - 1)

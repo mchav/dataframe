@@ -1,5 +1,11 @@
 # Revision history for dataframe
 
+## 0.3.3.0
+* Better error messaging for expression failures.
+* Fix bug where exponentials were not being properly during CSV parsing.
+* `toMatrix` now returns either an exception or the a vector of vector doubles.
+* Add `sample`, `kFolds`, and `randomSplit` to sample dataframes.
+
 ## 0.3.2.0
 * Fix dataframe semigroup instance. Appending two rows of the same name but different types now gives a row of `Either a b` (work by @jhrcek).
 * Fix left expansion of semigroup instance (work by @jhrcek). 
