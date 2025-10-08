@@ -221,5 +221,3 @@ index |   city
 3     | Aguanga
 4     | Odin
 ```
-
-

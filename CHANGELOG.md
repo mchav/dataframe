@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.3.3.2
+* Update documentation on both readthedocs and hackage.
+
 ## 0.3.3.1
 * Fix bug in `randomSplit` causing two splits to overlap.
 
