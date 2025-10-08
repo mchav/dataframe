@@ -48,7 +48,7 @@ index |    Column Name     | # Non-null Values | # Null Values | # Partially par
 9     | longitude          | 20640             | 0             | 0                  | 844             | Double
 
 -- 2) Project & filter
-ghci> df1 = D.filter \@Text "ocean_proximity" (== \"ISLAND\") df0 D.|> D.select ["median_house_value", "median_income", "ocean_proximity"]
+ghci> df1 = D.filterWhere (F.col \@Text "ocean_proximity" F.== F.lit \"ISLAND\") df0 D.|> D.select ["median_house_value", "median_income", "ocean_proximity"]
 
 -- 3) Add a derived column using the expression DSL
 --    (col types are explicit via TypeApplications)
@@ -92,7 +92,7 @@ __Exploration__
 
 __Row ops__
 
-  * @D.filter :: Columnable a => Text -> (a -> Bool) -> DataFrame -> DataFrame@
+  * @D.filterWhere :: Expr Bool -> DataFrame -> DataFrame@
   * @D.sortBy :: SortOrder -> [Text] -> DataFrame -> DataFrame@
 
 __Column ops__
