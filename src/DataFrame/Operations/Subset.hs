@@ -156,10 +156,9 @@ indexes condition cols = runST $ do
 filterBy :: (Columnable a) => (a -> Bool) -> T.Text -> DataFrame -> DataFrame
 filterBy = flip filter
 
-{- | O(k) filters the dataframe with a row predicate. The arguments in the function
-  must appear in the same order as they do in the list.
+{- | O(k) filters the dataframe with a boolean expression.
 
-> filterWhere (["x", "y"], func (\x y -> x + y > 5)) df
+> filterWhere (F.col @Int x + F.col y F.> 5) df
 -}
 filterWhere :: Expr Bool -> DataFrame -> DataFrame
 filterWhere expr df =
