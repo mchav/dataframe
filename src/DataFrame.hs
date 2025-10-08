@@ -22,10 +22,10 @@ We provide a script that imports the core functionality and defines helpful
 macros for writing safe code.
 
 @
-$ curl --output dataframe \"https:\/\/raw.githubusercontent.com\/mchav\/dataframe\/refs\/heads\/main\/scripts\/dataframe.sh\"
-$ chmod +x dataframe
-$ export PATH=$PATH:$PWD/dataframe
-$ dataframe
+\$ curl --output dataframe \"https:\/\/raw.githubusercontent.com\/mchav\/dataframe\/refs\/heads\/main\/scripts\/dataframe.sh\"
+\$ chmod +x dataframe
+\$ export PATH=$PATH:$PWD/dataframe
+\$ dataframe
 Configuring library for fake-package-0...
 Warning: No exposed modules
 GHCi, version 9.6.7: https:\/\/www.haskell.org\/ghc\/  :? for help
@@ -43,7 +43,7 @@ Loaded GHCi configuration from \/tmp\/cabal-repl.-242816\/setcwd.ghci
 
 ✅ Ready.
 Loaded GHCi configuration from ./dataframe.ghci
-ghci> 
+ghci>
 @
 
 = Quick start
