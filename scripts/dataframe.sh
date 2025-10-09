@@ -6,5 +6,5 @@ fi
 
 cabal update
 
-cabal repl -O2 --build-depends dataframe --repl-options="-ghci-script ./dataframe.ghci"
+cabal repl -O2 --build-depends dataframe --repl-option=-ghci-script=dataframe.ghci
 
