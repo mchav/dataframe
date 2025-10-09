@@ -1,10 +1,12 @@
-# Notebooks
+# Quick Start
+
+## Notebooks
 
 A downloaded notebook is available [here](https://github.com/mchav/ihaskell-dataframe/blob/main/app/California%20Housing.ipynb).
 
-# Command-line
+## Command-line
 
-## Example usage
+### Example usage
 
 Looking through the structure of the columns.
 
@@ -14,7 +16,7 @@ ghci> import DataFrame ((|>))
 ghci> df <- D.readCsv "./data/housing.csv"
 ghci> D.describeColumns df
 --------------------------------------------------------------------------------------------------------------------
-index |    Column Name     | # Non-null Values | # Null Values | # Partially parsed | # Unique Values |     Type    
+index |    Column Name     | ## Non-null Values | ## Null Values | ## Partially parsed | ## Unique Values |     Type    
 ------|--------------------|-------------------|---------------|--------------------|-----------------|-------------
     Int  |        Text        |        Int        |      Int      |        Int         |       Int       |     Text    
 ------|--------------------|-------------------|---------------|--------------------|-----------------|-------------
