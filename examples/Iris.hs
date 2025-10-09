@@ -8,7 +8,9 @@ module Main where
 
 import GHC.Generics (Generic)
 
+import Control.Exception (throw)
 import Control.Monad (when, zipWithM_)
+import Data.Either
 import Data.Function (on)
 import Data.List (maximumBy)
 
@@ -70,8 +72,8 @@ main = do
                 |> D.select ["sepal.length", "sepal.width", "petal.length", "petal.width"]
                 |> DHT.toTensor
 
-    let trainLabels = D.columnAsIntVector "variety" trainDf
-    let testLabels = D.columnAsIntVector "variety" testDf
+    let trainLabels = either throw id (D.columnAsIntVector "variety" trainDf)
+    let testLabels = either throw id (D.columnAsIntVector "variety" testDf)
 
     -- We have to one-hot encode our training data. Each item in our training data is
     -- mapped to one of
@@ -119,7 +121,7 @@ main = do
     putStrLn "Test Set Summary is as follows: "
     let predTest = reverseOneHot $ mlp trainedModel testFeaturesTr
     putStrLn "====== Confusion Matrix ========"
-    let confusionTest = confusionMatrix 3 (V.toList testLabels) predTest
+    let confusionTest = confusionMatrix 3 (VU.toList testLabels) predTest
     putStrLn $ pprintMatrix confusionTest
     putStrLn "===== Classwise Precision ======"
     zipWithM_
