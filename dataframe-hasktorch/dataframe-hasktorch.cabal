@@ -6,14 +6,14 @@ synopsis:           Converts between dataframes and hasktorch tensors
 description:        
     This package provides seamless conversion between dataframes and hasktorch tensors,
     bridging the gap between data manipulation and machine learning workflows.
-    .
+
     Key features:
-    .
+
     * Convert dataframes to floating-point or integer tensors for ML training
     * Automatic handling of multi-column and single-column dataframes
     * Smart dimensional handling (1D tensors for single columns, 2D for multiple)
     * Type-safe conversions with comprehensive error handling
-    .
+
     Typical workflow: load and transform data using dataframes, then convert to
     tensors for training neural networks with hasktorch.
 
