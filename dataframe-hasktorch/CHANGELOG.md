@@ -1,5 +1,9 @@
 # Revision history for dataframe-hasktorch
 
+## 0.1.0.2
+
+* Add unbox constraint to `flattenFeatures`.
+
 ## 0.1.0.1
 
 * Export `toIntTensor` function that converts a dataframe to an Int tensor.

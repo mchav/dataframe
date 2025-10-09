@@ -105,7 +105,7 @@ toIntTensor df = case D.toIntMatrix df of
          in
             reshape dims' (asTensor (flattenFeatures m))
 
-flattenFeatures :: V.Vector (VU.Vector a) -> VU.Vector a
+flattenFeatures :: (VU.Unbox a) => V.Vector (VU.Vector a) -> VU.Vector a
 flattenFeatures rows =
     let
         total = V.foldl' (\s v -> s + VU.length v) 0 rows

@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               dataframe-hasktorch
-version:            0.1.0.1
+version:            0.1.0.2
 synopsis:           Converts between dataframes and hasktorch tensors
 
 description:        
