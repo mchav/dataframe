@@ -52,3 +52,53 @@ Running:
 
 Running:
 `cabal run one_billion_row_challenge`.
+
+## Iris classification using Torch
+
+Preparation:
+This has a hasktorch integration that requires dynamic linking to be enabled.
+
+`./setup_torch` does just that. It creates a cabal.project.local file that has dunamic linking enabled.
+
+This example also requires GHC <= 9.8.
+
+Running:
+`cabal run iris`.
+
+Expected output:
+
+```
+.....................................
+Training Set Summary is as follows: 
+====== Confusion Matrix ========
+          0     1     2
+    0 36.00  0.00  0.00
+    1  0.00 30.00  0.00
+    2  0.00  2.00 36.00
+
+===== Classwise Precision ======
+0| 1.0
+1| 1.0
+2| 0.94736844
+======= Classwise Recall =======
+0| 1.0
+1| 0.9375
+2| 1.0
+.....................................
+.....................................
+Test Set Summary is as follows: 
+====== Confusion Matrix ========
+          0     1     2
+    0 14.00  0.00  0.00
+    1  0.00 16.00  0.00
+    2  0.00  2.00 14.00
+
+===== Classwise Precision ======
+0| 1.0
+1| 1.0
+2| 0.875
+======= Classwise Recall =======
+0| 1.0
+1| 0.8888889
+2| 1.0
+```
