@@ -68,53 +68,37 @@ Running:
 Expected output:
 
 ```
-Iteration :100 | Training Set Loss: 0.49717537 | Test Set Loss: 0.5145686
-Iteration :200 | Training Set Loss: 0.40175727 | Test Set Loss: 0.4315569
-Iteration :300 | Training Set Loss: 0.33975253 | Test Set Loss: 0.373216
-Iteration :400 | Training Set Loss: 0.3006259 | Test Set Loss: 0.33355427
-Iteration :500 | Training Set Loss: 0.27235344 | Test Set Loss: 0.30395
-Iteration :600 | Training Set Loss: 0.2493768 | Test Set Loss: 0.2796418
-Iteration :700 | Training Set Loss: 0.22940455 | Test Set Loss: 0.2585228
-Iteration :800 | Training Set Loss: 0.21151513 | Test Set Loss: 0.23950206
-Iteration :900 | Training Set Loss: 0.19527085 | Test Set Loss: 0.22228393
-Iteration :1000 | Training Set Loss: 0.18052626 | Test Set Loss: 0.20675912
-Iteration :1100 | Training Set Loss: 0.16718781 | Test Set Loss: 0.1927444
-Iteration :1200 | Training Set Loss: 0.15518206 | Test Set Loss: 0.1801689
-Iteration :1300 | Training Set Loss: 0.14442518 | Test Set Loss: 0.16895148
-Iteration :1400 | Training Set Loss: 0.13482077 | Test Set Loss: 0.15899345
-Iteration :1500 | Training Set Loss: 0.12626256 | Test Set Loss: 0.1501799
-Iteration :1600 | Training Set Loss: 0.118641265 | Test Set Loss: 0.14239211
-Iteration :1700 | Training Set Loss: 0.11185091 | Test Set Loss: 0.13551587
-Iteration :1800 | Training Set Loss: 0.10579081 | Test Set Loss: 0.12944478
-Iteration :1900 | Training Set Loss: 0.10037044 | Test Set Loss: 0.12407951
-Iteration :2000 | Training Set Loss: 9.5508784e-2 | Test Set Loss: 0.11933816
-Iteration :2100 | Training Set Loss: 9.113287e-2 | Test Set Loss: 0.11514034
-Iteration :2200 | Training Set Loss: 8.7180905e-2 | Test Set Loss: 0.11141248
-Iteration :2300 | Training Set Loss: 8.3601296e-2 | Test Set Loss: 0.1080656
-Iteration :2400 | Training Set Loss: 8.034743e-2 | Test Set Loss: 0.10508868
-...
-Test Set Predictions are are as follows: 
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Setosa, Predicted label: Setosa
-Actual label: Versicolor, Predicted label: Versicolor
-Actual label: Versicolor, Predicted label: Versicolor
-Actual label: Versicolor, Predicted label: Versicolor
-Actual label: Versicolor, Predicted label: Versicolor
-Actual label: Versicolor, Predicted label: Versicolor
-Actual label: Versicolor, Predicted label: Versicolor
-Actual label: Versicolor, Predicted label: Virginica
-Actual label: Versicolor, Predicted label: Versicolor
-Actual label: Versicolor, Predicted label: Versicolor
+.....................................
+Training Set Summary is as follows: 
+====== Confusion Matrix ========
+          0     1     2
+    0 36.00  0.00  0.00
+    1  0.00 30.00  0.00
+    2  0.00  2.00 36.00
+
+===== Classwise Precision ======
+0| 1.0
+1| 1.0
+2| 0.94736844
+======= Classwise Recall =======
+0| 1.0
+1| 0.9375
+2| 1.0
+.....................................
+.....................................
+Test Set Summary is as follows: 
+====== Confusion Matrix ========
+          0     1     2
+    0 14.00  0.00  0.00
+    1  0.00 16.00  0.00
+    2  0.00  2.00 14.00
+
+===== Classwise Precision ======
+0| 1.0
+1| 1.0
+2| 0.875
+======= Classwise Recall =======
+0| 1.0
+1| 0.8888889
+2| 1.0
 ```
