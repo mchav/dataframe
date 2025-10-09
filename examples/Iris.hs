@@ -70,16 +70,16 @@ main = do
                 |> D.select ["sepal.length", "sepal.width", "petal.length", "petal.width"]
                 |> DHT.toTensor
 
-    let trainLabels = D.columnAsVector @Int "variety" trainDf
-    let testLabels = D.columnAsVector @Int "variety" testDf
+    let trainLabels = D.columnAsIntVector "variety" trainDf
+    let testLabels = D.columnAsIntVector "variety" testDf
 
     -- We have to one-hot encode our training data. Each item in our training data is
     -- mapped to one of
     -- [1.0, 0.0, 0.0] -> Setosa
     -- [0.0, 1.0, 0.0] -> Versicolor
     -- [0.0, 0.0, 1.0] -> Virginica
-    let trainLabelsTr = HT.toType HT.Float $ HT.oneHot 3 $ HT.asTensor $ V.toList trainLabels
-    let testLabelsTr = HT.toType HT.Float $ HT.oneHot 3 $ HT.asTensor $ V.toList testLabels
+    let trainLabelsTr = HT.toType HT.Float $ HT.oneHot 3 $ HT.asTensor $ trainLabels
+    let testLabelsTr = HT.toType HT.Float $ HT.oneHot 3 $ HT.asTensor $ testLabels
 
     -- We have made MLP an instance of Randomizable, so we can simply use HT.sample to
     -- get an initial neural network with randomly assigned weights and biases.
@@ -101,7 +101,7 @@ main = do
     putStrLn "Training Set Summary is as follows: "
     let predTrain = reverseOneHot $ mlp trainedModel trainFeaturesTr
     putStrLn "====== Confusion Matrix ========"
-    let confusionTrain = confusionMatrix 3 (V.toList trainLabels) predTrain
+    let confusionTrain = confusionMatrix 3 (VU.toList trainLabels) predTrain
     putStrLn $ pprintMatrix confusionTrain
     putStrLn "===== Classwise Precision ======"
     zipWithM_

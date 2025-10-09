@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.3.3.3
+* Split `toMatrix` into more specific `to<Type>Matrix` functions.
+
 ## 0.3.3.2
 * Update documentation on both readthedocs and hackage.
 

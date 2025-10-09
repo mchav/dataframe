@@ -111,28 +111,59 @@ empty =
         , dataframeDimensions = (0, 0)
         }
 
+{- | Safely retrieves a column by name from the dataframe.
+
+Returns 'Nothing' if the column does not exist.
+
+==== __Examples__
+
+>>> getColumn "age" df
+Just (UnboxedColumn ...)
+
+>>> getColumn "nonexistent" df
+Nothing
+-}
 getColumn :: T.Text -> DataFrame -> Maybe Column
 getColumn name df = do
     i <- columnIndices df M.!? name
     columns df V.!? i
 
+{- | Retrieves a column by name from the dataframe, throwing an exception if not found.
+
+This is an unsafe version of 'getColumn' that throws 'ColumnNotFoundException'
+if the column does not exist. Use this when you are certain the column exists.
+
+==== __Throws__
+
+* 'ColumnNotFoundException' - if the column with the given name does not exist
+-}
 unsafeGetColumn :: T.Text -> DataFrame -> Column
 unsafeGetColumn name df = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just col -> col
 
+{- | Checks if the dataframe is empty (has no columns).
+
+Returns 'True' if the dataframe has no columns, 'False' otherwise.
+Note that a dataframe with columns but no rows is not considered null.
+-}
 null :: DataFrame -> Bool
 null df = V.null (columns df)
 
-{- | Returns a dataframe as a two dimentions vector of floats.
+{- | Returns a dataframe as a two dimensional vector of floats.
 
-All entries in the dataframe must be doubles.
+Converts all columns in the dataframe to float vectors and transposes them
+into a row-major matrix representation.
+
 This is useful for handing data over into ML systems.
+
+Returns 'Left' with an error if any column cannot be converted to floats.
 -}
-toMatrix :: DataFrame -> Either DataFrameException (V.Vector (VU.Vector Float))
-toMatrix df = case V.foldl'
-    (\acc c -> V.snoc <$> acc <*> (toVector @Double c))
-    (Right V.empty :: Either DataFrameException (V.Vector (V.Vector Double)))
+toFloatMatrix ::
+    DataFrame -> Either DataFrameException (V.Vector (VU.Vector Float))
+toFloatMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> (toFloatVector c))
+    (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Float)))
     (columns df) of
     Left e -> Left e
     Right m ->
@@ -141,7 +172,60 @@ toMatrix df = case V.foldl'
                 (fst (dataframeDimensions df))
                 ( \i ->
                     foldl
-                        (\acc j -> acc `VU.snoc` realToFrac ((m V.! j) V.! i))
+                        (\acc j -> acc `VU.snoc` ((m VG.! j) VG.! i))
+                        VU.empty
+                        [0 .. (V.length m - 1)]
+                )
+
+{- | Returns a dataframe as a two dimensional vector of doubles.
+
+Converts all columns in the dataframe to double vectors and transposes them
+into a row-major matrix representation.
+
+This is useful for handing data over into ML systems.
+
+Returns 'Left' with an error if any column cannot be converted to doubles.
+-}
+toDoubleMatrix ::
+    DataFrame -> Either DataFrameException (V.Vector (VU.Vector Double))
+toDoubleMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> (toDoubleVector c))
+    (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Double)))
+    (columns df) of
+    Left e -> Left e
+    Right m ->
+        pure $
+            V.generate
+                (fst (dataframeDimensions df))
+                ( \i ->
+                    foldl
+                        (\acc j -> acc `VU.snoc` ((m VG.! j) VG.! i))
+                        VU.empty
+                        [0 .. (V.length m - 1)]
+                )
+
+{- | Returns a dataframe as a two dimensional vector of ints.
+
+Converts all columns in the dataframe to int vectors and transposes them
+into a row-major matrix representation.
+
+This is useful for handing data over into ML systems.
+
+Returns 'Left' with an error if any column cannot be converted to ints.
+-}
+toIntMatrix :: DataFrame -> Either DataFrameException (V.Vector (VU.Vector Int))
+toIntMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> (toIntVector c))
+    (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Int)))
+    (columns df) of
+    Left e -> Left e
+    Right m ->
+        pure $
+            V.generate
+                (fst (dataframeDimensions df))
+                ( \i ->
+                    foldl
+                        (\acc j -> acc `VU.snoc` ((m VG.! j) VG.! i))
                         VU.empty
                         [0 .. (V.length m - 1)]
                 )
@@ -149,6 +233,18 @@ toMatrix df = case V.foldl'
 {- | Get a specific column as a vector.
 
 You must specify the type via type applications.
+
+==== __Examples__
+
+>>> columnAsVector @Int "age" df
+[25, 30, 35, ...]
+
+>>> columnAsVector @Text "name" df
+["Alice", "Bob", "Charlie", ...]
+
+==== __Throws__
+
+* 'error' - if the column type doesn't match the requested type
 -}
 columnAsVector :: forall a. (Columnable a) => T.Text -> DataFrame -> V.Vector a
 columnAsVector name df = case unsafeGetColumn name df of
@@ -161,3 +257,30 @@ columnAsVector name df = case unsafeGetColumn name df of
     (UnboxedColumn (col :: VU.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
         Nothing -> error "Type error"
         Just Refl -> VG.convert col
+
+{- | Retrieves a column as an unboxed vector of 'Int' values.
+
+Returns 'Left' with a 'DataFrameException' if the column cannot be converted to ints.
+This may occur if the column contains non-numeric data or values outside the 'Int' range.
+-}
+columnAsIntVector ::
+    T.Text -> DataFrame -> Either DataFrameException (VU.Vector Int)
+columnAsIntVector name df = toIntVector (unsafeGetColumn name df)
+
+{- | Retrieves a column as an unboxed vector of 'Double' values.
+
+Returns 'Left' with a 'DataFrameException' if the column cannot be converted to doubles.
+This may occur if the column contains non-numeric data.
+-}
+columnAsDoubleVector ::
+    T.Text -> DataFrame -> Either DataFrameException (VU.Vector Double)
+columnAsDoubleVector name df = toDoubleVector (unsafeGetColumn name df)
+
+{- | Retrieves a column as an unboxed vector of 'Float' values.
+
+Returns 'Left' with a 'DataFrameException' if the column cannot be converted to floats.
+This may occur if the column contains non-numeric data.
+-}
+columnAsFloatVector ::
+    T.Text -> DataFrame -> Either DataFrameException (VU.Vector Float)
+columnAsFloatVector name df = toFloatVector (unsafeGetColumn name df)

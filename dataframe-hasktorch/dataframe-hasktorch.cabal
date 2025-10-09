@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               dataframe-hasktorch
-version:            0.1.0.0
+version:            0.1.0.1
 synopsis:           Converts between dataframes and hasktorch tensors
 
 description:
@@ -25,7 +25,7 @@ library
 
     build-depends:    base >= 4.11 && < 5,
                       vector ^>= 0.13,
-                      dataframe >= 0.3.3.1 && < 0.6,
+                      dataframe >= 0.3.3.3 && < 0.6,
                       hasktorch >= 0.2.1.6 && < 0.3
 
     hs-source-dirs:   src

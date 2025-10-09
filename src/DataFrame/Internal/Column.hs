@@ -195,7 +195,7 @@ __Examples:__
 
 @
 > import qualified Data.Vector as V
-> fromVector (V.fromList [(1 :: Int), 2, 3, 4])
+> fromVector (VB.fromList [(1 :: Int), 2, 3, 4])
 [1,2,3,4]
 @
 -}
@@ -211,7 +211,7 @@ __Examples:__
 
 @
 > import qualified Data.Vector.Unboxed as V
-> fromUnboxedVector (V.fromList [(1 :: Int), 2, 3, 4])
+> fromUnboxedVector (VB.fromList [(1 :: Int), 2, 3, 4])
 [1,2,3,4]
 @
 -}
@@ -948,7 +948,35 @@ toList xs = case toVector @a xs of
     Left err -> throw err
     Right val -> VB.toList val
 
--- | A safe version of toVector that returns an Either type.
+{- | Converts a column to a vector of a specific type.
+
+This is a type-safe conversion that requires the column's element type
+to exactly match the requested type. You must specify the desired type
+via type applications.
+
+==== __Type Parameters__
+
+[@a@] The element type to convert to
+[@v@] The vector type (e.g., 'VU.Vector', 'VB.Vector')
+
+==== __Examples__
+
+>>> toVector @Int @VU.Vector column
+Right (unboxed vector of Ints)
+
+>>> toVector @Text @VB.Vector column
+Right (boxed vector of Text)
+
+==== __Returns__
+
+* 'Right' - The converted vector if types match
+* 'Left' 'TypeMismatchException' - If the column's type doesn't match the requested type
+
+==== __See also__
+
+For numeric conversions with automatic type coercion, see 'toDoubleVector',
+'toFloatVector', and 'toIntVector'.
+-}
 toVector ::
     forall a v.
     (VG.Vector v a, Columnable a) => Column -> Either DataFrameException (v a)
@@ -988,6 +1016,219 @@ toVector (UnboxedColumn (col :: VU.Vector b)) =
                         { userType = Right (typeRep @a)
                         , expectedType = Right (typeRep @b)
                         , callingFunctionName = Just "toVector"
+                        , errorColumnName = Nothing
+                        }
+                    )
+
+-- Some common types we will use for numerical computing.
+
+{- | Converts a column to an unboxed vector of 'Double' values.
+
+This function performs intelligent type coercion for numeric types:
+
+* If the column is already 'Double', returns it directly
+* If the column contains other floating-point types, converts via 'realToFrac'
+* If the column contains integral types, converts via 'fromIntegral' (beware of overflow if the type is `Integer`).
+
+==== __Optional column handling__
+
+For 'OptionalColumn' types, 'Nothing' values are converted to @NaN@ (Not a Number).
+This allows optional numeric data to be represented in the resulting vector.
+
+==== __Returns__
+
+* 'Right' - The converted 'Double' vector
+* 'Left' 'TypeMismatchException' - If the column is not numeric
+-}
+toDoubleVector :: Column -> Either DataFrameException (VU.Vector Double)
+toDoubleVector column =
+    case column of
+        UnboxedColumn (f :: VU.Vector a) -> case testEquality (typeRep @a) (typeRep @Double) of
+            Just Refl -> Right f
+            Nothing -> case sFloating @a of
+                STrue -> Right (VU.map realToFrac f)
+                SFalse -> case sIntegral @a of
+                    STrue -> Right (VU.map fromIntegral f)
+                    SFalse ->
+                        Left $
+                            TypeMismatchException
+                                ( MkTypeErrorContext
+                                    { userType = Right (typeRep @Double)
+                                    , expectedType = Right (typeRep @a)
+                                    , callingFunctionName = Just "toDoubleVector"
+                                    , errorColumnName = Nothing
+                                    }
+                                )
+        OptionalColumn (f :: VB.Vector (Maybe a)) -> case testEquality (typeRep @a) (typeRep @Double) of
+            Just Refl -> Right (VB.convert $ VB.map (fromMaybe (read @Double "NaN")) f)
+            Nothing -> case sFloating @a of
+                STrue ->
+                    Right
+                        (VB.convert $ VB.map (fromMaybe (read @Double "NaN") . (fmap realToFrac)) f)
+                SFalse -> case sIntegral @a of
+                    STrue ->
+                        Right
+                            (VB.convert $ VB.map (fromMaybe (read @Double "NaN") . (fmap fromIntegral)) f)
+                    SFalse ->
+                        Left $
+                            TypeMismatchException
+                                ( MkTypeErrorContext
+                                    { userType = Right (typeRep @Double)
+                                    , expectedType = Right (typeRep @a)
+                                    , callingFunctionName = Just "toDoubleVector"
+                                    , errorColumnName = Nothing
+                                    }
+                                )
+        BoxedColumn (f :: VB.Vector a) -> case testEquality (typeRep @a) (typeRep @Integer) of
+            Just Refl -> Right (VB.convert $ VB.map fromIntegral f)
+            Nothing ->
+                Left $
+                    TypeMismatchException
+                        ( MkTypeErrorContext
+                            { userType = Right (typeRep @Double)
+                            , expectedType = Left (columnTypeString column) :: Either String (TypeRep ())
+                            , callingFunctionName = Just "toDoubleVector"
+                            , errorColumnName = Nothing
+                            }
+                        )
+
+{- | Converts a column to an unboxed vector of 'Float' values.
+
+This function performs intelligent type coercion for numeric types:
+
+* If the column is already 'Float', returns it directly
+* If the column contains other floating-point types, converts via 'realToFrac'
+* If the column contains integral types, converts via 'fromIntegral'
+* If the column is boxed 'Integer', converts via 'fromIntegral' (beware of overflow for 64-bit integers and `Integer`)
+
+==== __Optional column handling__
+
+For 'OptionalColumn' types, 'Nothing' values are converted to @NaN@ (Not a Number).
+This allows optional numeric data to be represented in the resulting vector.
+
+==== __Returns__
+
+* 'Right' - The converted 'Float' vector
+* 'Left' 'TypeMismatchException' - If the column is not numeric
+
+==== __Precision warning__
+
+Converting from 'Double' to 'Float' may result in loss of precision.
+-}
+toFloatVector :: Column -> Either DataFrameException (VU.Vector Float)
+toFloatVector column =
+    case column of
+        UnboxedColumn (f :: VU.Vector a) -> case testEquality (typeRep @a) (typeRep @Float) of
+            Just Refl -> Right f
+            Nothing -> case sFloating @a of
+                STrue -> Right (VU.map realToFrac f)
+                SFalse -> case sIntegral @a of
+                    STrue -> Right (VU.map fromIntegral f)
+                    SFalse ->
+                        Left $
+                            TypeMismatchException
+                                ( MkTypeErrorContext
+                                    { userType = Right (typeRep @Float)
+                                    , expectedType = Right (typeRep @a)
+                                    , callingFunctionName = Just "toFloatVector"
+                                    , errorColumnName = Nothing
+                                    }
+                                )
+        OptionalColumn (f :: VB.Vector (Maybe a)) -> case testEquality (typeRep @a) (typeRep @Float) of
+            Just Refl -> Right (VB.convert $ VB.map (fromMaybe (read @Float "NaN")) f)
+            Nothing -> case sFloating @a of
+                STrue ->
+                    Right
+                        (VB.convert $ VB.map (fromMaybe (read @Float "NaN") . (fmap realToFrac)) f)
+                SFalse -> case sIntegral @a of
+                    STrue ->
+                        Right
+                            (VB.convert $ VB.map (fromMaybe (read @Float "NaN") . (fmap fromIntegral)) f)
+                    SFalse ->
+                        Left $
+                            TypeMismatchException
+                                ( MkTypeErrorContext
+                                    { userType = Right (typeRep @Float)
+                                    , expectedType = Right (typeRep @a)
+                                    , callingFunctionName = Just "toFloatVector"
+                                    , errorColumnName = Nothing
+                                    }
+                                )
+        BoxedColumn (f :: VB.Vector a) -> case testEquality (typeRep @a) (typeRep @Integer) of
+            Just Refl -> Right (VB.convert $ VB.map fromIntegral f)
+            Nothing ->
+                Left $
+                    TypeMismatchException
+                        ( MkTypeErrorContext
+                            { userType = Right (typeRep @Float)
+                            , expectedType = Left (columnTypeString column) :: Either String (TypeRep ())
+                            , callingFunctionName = Just "toFloatVector"
+                            , errorColumnName = Nothing
+                            }
+                        )
+
+{- | Converts a column to an unboxed vector of 'Int' values.
+
+This function performs intelligent type coercion for numeric types:
+
+* If the column is already 'Int', returns it directly
+* If the column contains floating-point types, rounds via 'round' and converts
+* If the column contains other integral types, converts via 'fromIntegral'
+* If the column is boxed 'Integer', converts via 'fromIntegral'
+
+==== __Returns__
+
+* 'Right' - The converted 'Int' vector
+* 'Left' 'TypeMismatchException' - If the column is not numeric
+
+==== __Note__
+
+Unlike 'toDoubleVector' and 'toFloatVector', this function does NOT support
+'OptionalColumn'. Optional columns must be handled separately.
+
+==== __Rounding behavior__
+
+Floating-point values are rounded to the nearest integer using 'round'.
+For example: 2.5 rounds to 2, 3.5 rounds to 4 (banker's rounding).
+-}
+toIntVector :: Column -> Either DataFrameException (VU.Vector Int)
+toIntVector column =
+    case column of
+        UnboxedColumn (f :: VU.Vector a) -> case testEquality (typeRep @a) (typeRep @Int) of
+            Just Refl -> Right f
+            Nothing -> case sFloating @a of
+                STrue -> Right (VU.map (round . realToFrac) f)
+                SFalse -> case sIntegral @a of
+                    STrue -> Right (VU.map fromIntegral f)
+                    SFalse ->
+                        Left $
+                            TypeMismatchException
+                                ( MkTypeErrorContext
+                                    { userType = Right (typeRep @Int)
+                                    , expectedType = Right (typeRep @a)
+                                    , callingFunctionName = Just "toIntVector"
+                                    , errorColumnName = Nothing
+                                    }
+                                )
+        BoxedColumn (f :: VB.Vector a) -> case testEquality (typeRep @a) (typeRep @Integer) of
+            Just Refl -> Right (VB.convert $ VB.map fromIntegral f)
+            Nothing ->
+                Left $
+                    TypeMismatchException
+                        ( MkTypeErrorContext
+                            { userType = Right (typeRep @Int)
+                            , expectedType = Left (columnTypeString column) :: Either String (TypeRep ())
+                            , callingFunctionName = Just "toIntVector"
+                            , errorColumnName = Nothing
+                            }
+                        )
+        _ ->
+            Left $
+                TypeMismatchException
+                    ( MkTypeErrorContext
+                        { userType = Right (typeRep @Int)
+                        , expectedType = Left (columnTypeString column) :: Either String (TypeRep ())
+                        , callingFunctionName = Just "toIntVector"
                         , errorColumnName = Nothing
                         }
                     )

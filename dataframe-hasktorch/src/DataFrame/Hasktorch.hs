@@ -14,7 +14,7 @@ import DataFrame (DataFrame)
 import Torch
 
 toTensor :: DataFrame -> Tensor
-toTensor df = case D.toMatrix df of
+toTensor df = case D.toFloatMatrix df of
     Left e -> throw e
     Right m ->
         let
@@ -23,7 +23,17 @@ toTensor df = case D.toMatrix df of
          in
             reshape dims' (asTensor (flattenFeatures m))
 
-flattenFeatures :: V.Vector (VU.Vector Float) -> VU.Vector Float
+toIntTensor :: DataFrame -> Tensor
+toIntTensor df = case D.toIntMatrix df of
+    Left e -> throw e
+    Right m ->
+        let
+            (r, c) = D.dimensions df
+            dims' = if c == 1 then [r] else [r, c]
+         in
+            reshape dims' (asTensor (flattenFeatures m))
+
+flattenFeatures :: V.Vector (VU.Vector a) -> VU.Vector a
 flattenFeatures rows =
     let
         total = V.foldl' (\s v -> s + VU.length v) 0 rows

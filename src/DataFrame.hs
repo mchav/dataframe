@@ -251,13 +251,25 @@ import DataFrame.Internal.Column as Column (
 import DataFrame.Internal.DataFrame as Dataframe (
     DataFrame,
     GroupedDataFrame,
+    columnAsDoubleVector,
+    columnAsFloatVector,
+    columnAsIntVector,
     columnAsVector,
     empty,
+    null,
+    toDoubleMatrix,
+    toFloatMatrix,
+    toIntMatrix,
     toMarkdownTable,
-    toMatrix,
  )
 import DataFrame.Internal.Expression as Expression (Expr)
-import DataFrame.Internal.Row as Row (Row, fromAny, toAny, toRowList)
+import DataFrame.Internal.Row as Row (
+    Row,
+    fromAny,
+    toAny,
+    toRowList,
+    toRowVector,
+ )
 import DataFrame.Operations.Aggregation as Aggregation (
     aggregate,
     distinct,

@@ -103,6 +103,22 @@ mkColumnFromRow i rows = case rows of
                     Nothing -> acc
                     Just Refl -> v' : acc
 
+{- | Converts the entire dataframe to a list of rows.
+
+Each row contains all columns in the dataframe, ordered by their column indices.
+The rows are returned in their natural order (from index 0 to n-1).
+
+==== __Examples__
+
+>>> toRowList df
+[Row {name = "Alice", age = 25, ...}, Row {name = "Bob", age = 30, ...}, ...]
+
+==== __Performance note__
+
+This function materializes all rows into a list, which may be memory-intensive
+for large dataframes. Consider using 'toRowVector' if you need random access
+or streaming operations.
+-}
 toRowList :: DataFrame -> [Row]
 toRowList df =
     let
@@ -111,6 +127,27 @@ toRowList df =
      in
         map (mkRowRep df nameSet) [0 .. (fst (dataframeDimensions df) - 1)]
 
+{- | Converts the dataframe to a vector of rows with only the specified columns.
+
+Each row will contain only the columns named in the @names@ parameter.
+This is useful when you only need a subset of columns or want to control
+the column order in the resulting rows.
+
+==== __Parameters__
+
+[@names@] List of column names to include in each row. The order of names
+          determines the order of fields in the resulting rows.
+
+[@df@] The dataframe to convert.
+
+==== __Examples__
+
+>>> toRowVector ["name", "age"] df
+Vector of rows with only name and age fields
+
+>>> toRowVector [] df  -- Empty column list
+Vector of empty rows (one per dataframe row)
+-}
 toRowVector :: [T.Text] -> DataFrame -> V.Vector Row
 toRowVector names df =
     let
