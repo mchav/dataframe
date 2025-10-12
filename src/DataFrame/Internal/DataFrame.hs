@@ -68,7 +68,18 @@ instance Eq DataFrame where
 
 instance Show DataFrame where
     show :: DataFrame -> String
-    show d = T.unpack (asText d False)
+    show d =
+        let
+            d' =
+                d
+                    { columns = V.map (takeColumn 10) (columns d)
+                    , dataframeDimensions = (10, snd (dataframeDimensions d))
+                    }
+         in
+            T.unpack (asText d' False)
+                ++ "\n"
+                ++ "Showing 10 rows out of "
+                ++ show (fst (dataframeDimensions d))
 
 -- | For showing the dataframe as markdown in notebooks.
 toMarkdownTable :: DataFrame -> T.Text
@@ -76,7 +87,7 @@ toMarkdownTable df = asText df True
 
 asText :: DataFrame -> Bool -> T.Text
 asText d properMarkdown =
-    let header = "index" : map fst (sortBy (compare `on` snd) $ M.toList (columnIndices d))
+    let header = map fst (sortBy (compare `on` snd) $ M.toList (columnIndices d))
         types = V.toList $ V.filter (/= "") $ V.map getType (columns d)
         getType :: Column -> T.Text
         getType (BoxedColumn (column :: V.Vector a)) = T.pack $ show (typeRep @a)
@@ -93,14 +104,11 @@ asText d properMarkdown =
         get (Just (UnboxedColumn column)) = V.map (T.pack . show) (V.convert column)
         get (Just (OptionalColumn column)) = V.map (T.pack . show) column
         get Nothing = V.empty
-        getTextColumnFromFrame df (i, name) =
-            if i == 0
-                then V.fromList (map (T.pack . show) [0 .. (fst (dataframeDimensions df) - 1)])
-                else get $ (V.!?) (columns d) ((M.!) (columnIndices d) name)
+        getTextColumnFromFrame df (i, name) = get $ (V.!?) (columns d) ((M.!) (columnIndices d) name)
         rows =
             transpose $
                 zipWith (curry (V.toList . getTextColumnFromFrame d)) [0 ..] header
-     in showTable properMarkdown header ("Int" : types) rows
+     in showTable properMarkdown header types rows
 
 -- | O(1) Creates an empty dataframe
 empty :: DataFrame

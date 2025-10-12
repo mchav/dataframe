@@ -59,7 +59,7 @@ index | ocean_proximity |  avg_house_value
 Create a new column based on other columns.
 
 ```haskell
-ghci> df |> D.derive "rooms_per_household" (total_rooms / households) |> D.take 10
+ghci> df |> D.derive "rooms_per_household" (total_rooms / households)
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 index | longitude | latitude | housing_median_age | total_rooms | total_bedrooms | population | households |   median_income    | median_house_value | ocean_proximity | rooms_per_household
 ------|-----------|----------|--------------------|-------------|----------------|------------|------------|--------------------|--------------------|-----------------|--------------------

@@ -308,7 +308,7 @@ division, you can ask R to make comparisons like greater than, `F.>`, less than,
 year with the expression
 
 ```haskell
-ghci> withTotal |> D.derive "more_boys" (boys F.> girls) |> D.take 10
+ghci> withTotal |> D.derive "more_boys" (boys F.> girls)
 -----------------------------------------------
 index | year | boys | girls | total | more_boys
 ------|------|------|-------|-------|----------

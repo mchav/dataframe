@@ -57,6 +57,7 @@ library
                     DataFrame.Operations.Transformations,
                     DataFrame.Operations.Typing,
                     DataFrame.Operations.Aggregation,
+                    DataFrame.Display,
                     DataFrame.Display.Terminal.Plot,
                     DataFrame.IO.CSV,
                     DataFrame.IO.Parquet,

@@ -60,7 +60,6 @@ main = do
                 df
     print $
         D.select ["median_house_value", "predicted_house_value"] predictions
-            |> D.take 10
 
 normalizeFeatures :: D.DataFrame -> D.DataFrame
 normalizeFeatures df =

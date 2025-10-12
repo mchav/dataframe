@@ -197,6 +197,9 @@ module DataFrame (
     module Row,
     module Expression,
 
+    -- * Display operations
+    module Display,
+
     -- * Core dataframe operations
     module Core,
 
@@ -224,6 +227,11 @@ module DataFrame (
 )
 where
 
+import DataFrame.Display as Display (
+    DisplayOptions (..),
+    defaultDisplayOptions,
+    display,
+ )
 import DataFrame.Display.Terminal.Plot as Plot
 import DataFrame.Errors as Errors
 import DataFrame.IO.CSV as CSV (
