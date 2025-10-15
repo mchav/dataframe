@@ -19,84 +19,78 @@ import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
 import Type.Reflection (typeRep)
 
-parseDefaults :: Bool -> String -> DataFrame -> DataFrame
-parseDefaults safeRead dateFormat df = df{columns = V.map (parseDefault safeRead dateFormat) (columns df)}
+parseDefaults :: Int -> Bool -> String -> DataFrame -> DataFrame
+parseDefaults n safeRead dateFormat df = df{columns = V.map (parseDefault n safeRead dateFormat) (columns df)}
 
-parseDefault :: Bool -> String -> Column -> Column
-parseDefault safeRead dateFormat (BoxedColumn (c :: V.Vector a)) =
-    let
-        parseTimeOpt s =
-            parseTimeM {- Accept leading/trailing whitespace -}
-                True
-                defaultTimeLocale
-                dateFormat
-                (T.unpack s) ::
-                Maybe Day
-        unsafeParseTime s =
-            parseTimeOrError {- Accept leading/trailing whitespace -}
-                True
-                defaultTimeLocale
-                dateFormat
-                (T.unpack s) ::
-                Day
-     in
-        case (typeRep @a) `testEquality` (typeRep @T.Text) of
-            Nothing -> case (typeRep @a) `testEquality` (typeRep @String) of
-                Just Refl ->
-                    let
-                        emptyToNothing v = if isNullish (T.pack v) then Nothing else Just v
-                        safeVector = V.map emptyToNothing c
-                        hasNulls =
-                            V.foldl' (\acc v -> if isNothing v then acc || True else acc) False safeVector
-                     in
-                        if safeRead && hasNulls
-                            then BoxedColumn safeVector
-                            else BoxedColumn (V.map T.pack c)
-                Nothing -> BoxedColumn c
-            Just Refl ->
-                let example = T.strip (V.head c)
-                    emptyToNothing v = if isNullish v then Nothing else Just v
-                 in case readInt example of
-                        Just _ ->
-                            let safeVector = V.map ((=<<) readInt . emptyToNothing) c
-                                hasNulls = V.elem Nothing safeVector
-                             in if safeRead && hasNulls
-                                    then BoxedColumn safeVector
-                                    else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
-                        Nothing -> case readDouble example of
-                            Just _ ->
-                                let safeVector = V.map ((=<<) readDouble . emptyToNothing) c
-                                    hasNulls = V.elem Nothing safeVector
-                                 in if safeRead && hasNulls
-                                        then BoxedColumn safeVector
-                                        else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
-                            Nothing -> case parseTimeOpt example of
-                                Just d ->
-                                    let
-                                        -- failed parse should be Either, nullish should be Maybe
-                                        emptyToNothing' v = if isNullish v then Left v else Right v
-                                        parseTimeEither v = case parseTimeOpt v of
-                                            Just v' -> Right v'
-                                            Nothing -> Left v
-                                        safeVector = V.map ((=<<) parseTimeEither . emptyToNothing') c
-                                        toMaybe (Left _) = Nothing
-                                        toMaybe (Right value) = Just value
-                                        lefts = V.filter isLeft safeVector
-                                        onlyNulls = (not (V.null lefts) && V.all (isNullish . fromLeft "non-null") lefts)
-                                     in
-                                        if safeRead
-                                            then
-                                                if onlyNulls
-                                                    then BoxedColumn (V.map toMaybe safeVector)
-                                                    else
-                                                        if V.any isLeft safeVector
-                                                            then BoxedColumn safeVector
-                                                            else BoxedColumn (V.map unsafeParseTime c)
-                                            else BoxedColumn (V.map unsafeParseTime c)
-                                Nothing ->
-                                    let
-                                        safeVector = V.map emptyToNothing c
-                                        hasNulls = V.any isNullish c
-                                     in
-                                        if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
-parseDefault _ _ column = column
+parseDefault :: Int -> Bool -> String -> Column -> Column
+parseDefault n safeRead dateFormat (BoxedColumn (c :: V.Vector a)) =
+    case (typeRep @a) `testEquality` (typeRep @T.Text) of
+        Nothing -> case (typeRep @a) `testEquality` (typeRep @String) of
+            Just Refl -> parseFromExamples n dateFormat safeRead (V.map T.pack c)
+            Nothing -> BoxedColumn c
+        Just Refl -> parseFromExamples n dateFormat safeRead c
+parseDefault _ _ _ column = column
+
+emptyToNothing :: T.Text -> Maybe T.Text
+emptyToNothing v = if isNullish v then Nothing else Just v
+
+parseTimeOpt :: String -> T.Text -> Maybe Day
+parseTimeOpt dateFormat s =
+    parseTimeM {- Accept leading/trailing whitespace -}
+        True
+        defaultTimeLocale
+        dateFormat
+        (T.unpack s)
+
+unsafeParseTime :: String -> T.Text -> Day
+unsafeParseTime dateFormat s =
+    parseTimeOrError {- Accept leading/trailing whitespace -}
+        True
+        defaultTimeLocale
+        dateFormat
+        (T.unpack s)
+
+parseFromExamples :: Int -> String -> Bool -> V.Vector T.Text -> Column
+parseFromExamples n dateFormat safeRead c
+    | V.all isJust (V.map readInt examples) =
+        let safeVector = V.map ((=<<) readInt . emptyToNothing) c
+            hasNulls = V.elem Nothing safeVector
+         in if safeRead && hasNulls
+                then BoxedColumn safeVector
+                else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
+    | V.all isJust (V.map readDouble examples) =
+        let safeVector = V.map ((=<<) readDouble . emptyToNothing) c
+            hasNulls = V.elem Nothing safeVector
+         in if safeRead && hasNulls
+                then BoxedColumn safeVector
+                else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
+    | V.any isJust (V.map (parseTimeOpt dateFormat) examples) =
+        let
+            -- failed parse should be Either, nullish should be Maybe
+            emptyToNothing' v = if isNullish v then Left v else Right v
+            parseTimeEither v = case parseTimeOpt dateFormat v of
+                Just v' -> Right v'
+                Nothing -> Left v
+            safeVector = V.map ((=<<) parseTimeEither . emptyToNothing') c
+            toMaybe (Left _) = Nothing
+            toMaybe (Right value) = Just value
+            lefts = V.filter isLeft safeVector
+            onlyNulls = (not (V.null lefts) && V.all (isNullish . fromLeft "non-null") lefts)
+         in
+            if safeRead
+                then
+                    if onlyNulls
+                        then BoxedColumn (V.map toMaybe safeVector)
+                        else
+                            if V.any isLeft safeVector
+                                then BoxedColumn safeVector
+                                else BoxedColumn (V.map (unsafeParseTime dateFormat) c)
+                else BoxedColumn (V.map (unsafeParseTime dateFormat) c)
+    | otherwise =
+        let
+            safeVector = V.map emptyToNothing c
+            hasNulls = V.any isNullish c
+         in
+            if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+  where
+    examples = V.take n c

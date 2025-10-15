@@ -203,6 +203,9 @@ module DataFrame (
     -- * Core dataframe operations
     module Core,
 
+    -- * Types
+    module Schema,
+
     -- * I/O
     module CSV,
     module Parquet,
@@ -235,7 +238,9 @@ import DataFrame.Display as Display (
 import DataFrame.Display.Terminal.Plot as Plot
 import DataFrame.Errors as Errors
 import DataFrame.IO.CSV as CSV (
+    HeaderSpec (..),
     ReadOptions (..),
+    TypeSpec (..),
     defaultReadOptions,
     readCsv,
     readCsvWithOpts,
@@ -277,6 +282,9 @@ import DataFrame.Internal.Row as Row (
     toAny,
     toRowList,
     toRowVector,
+ )
+import DataFrame.Internal.Schema as Schema (
+    schemaType,
  )
 import DataFrame.Operations.Aggregation as Aggregation (
     aggregate,

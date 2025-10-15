@@ -58,6 +58,7 @@ parseDate =
                 )
         actual =
             D.parseDefault
+                10
                 True
                 "%Y-%m-%d"
                 (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "2021-02-14", "2022-02-14"]))
@@ -77,6 +78,7 @@ incompleteDataParseEither =
                 )
         actual =
             D.parseDefault
+                10
                 True
                 "%Y-%m-%d"
                 (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"]))
@@ -93,6 +95,7 @@ incompleteDataParseMaybe =
                 )
         actual =
             D.parseDefault
+                10
                 True
                 "%Y-%m-%d"
                 (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "", "2022-02-14"]))

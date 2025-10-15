@@ -15,6 +15,7 @@ import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
+import qualified Data.Proxy as P
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
@@ -24,7 +25,7 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Applicative (many, (<|>))
-import Control.Monad (forM_, unless, zipWithM_)
+import Control.Monad (forM_, unless, zipWithM, zipWithM_)
 import Data.Attoparsec.ByteString.Char8 hiding (endOfLine)
 import Data.Bits (shiftL)
 import Data.Char
@@ -37,6 +38,7 @@ import Data.Type.Equality (TestEquality (testEquality))
 import DataFrame.Internal.Column (Column (..), columnLength)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
+import DataFrame.Internal.Schema
 import DataFrame.Operations.Typing
 import System.IO
 import Type.Reflection
@@ -59,12 +61,34 @@ data GrowingColumn
     | GrowingDouble !(GrowingUnboxedVector Double) !(IORef [Int])
     | GrowingText !(GrowingVector T.Text) !(IORef [Int])
 
+data HeaderSpec
+    = -- | File has no header row
+      NoHeader
+    | -- | Use first row as column names
+      UseFirstRow
+    | -- | Supply names for a no-header file
+      ProvideNames [T.Text]
+    deriving (Eq, Show)
+
+data TypeSpec
+    = InferFromSample Int
+    | SpecifyTypes [SchemaType]
+    | NoInference
+
+shouldInferFromSample :: TypeSpec -> Bool
+shouldInferFromSample (InferFromSample _) = True
+shouldInferFromSample _ = False
+
+typeInferenceSampleSize :: TypeSpec -> Int
+typeInferenceSampleSize (InferFromSample n) = n
+typeInferenceSampleSize _ = 0
+
 -- | CSV read parameters.
 data ReadOptions = ReadOptions
-    { hasHeader :: Bool
-    -- ^ Whether or not the CSV file has a header. (default: True)
-    , inferTypes :: Bool
-    -- ^ Whether to try and infer types. (default: True)
+    { headerSpec :: HeaderSpec
+    -- ^ Where to get the headers from. (default: UseFirstRow)
+    , typeSpec :: TypeSpec
+    -- ^ Whether/how to infer types. (default: InferFromSample 100)
     , safeRead :: Bool
     -- ^ Whether to partially parse values into `Maybe`/`Either`. (default: True)
     , chunkSize :: Int
@@ -86,8 +110,8 @@ data ReadOptions = ReadOptions
 defaultReadOptions :: ReadOptions
 defaultReadOptions =
     ReadOptions
-        { hasHeader = True
-        , inferTypes = True
+        { headerSpec = UseFirstRow
+        , typeSpec = InferFromSample 100
         , safeRead = True
         , chunkSize = 512_000
         , dateFormat = "%Y-%m-%d"
@@ -175,7 +199,7 @@ ghci> D.readCsvWithOpts ".\/data\/taxi.csv" (D.defaultReadOptions { dateFormat =
 @
 -}
 readCsvWithOpts :: ReadOptions -> FilePath -> IO DataFrame
-readCsvWithOpts opts = readSeparated ',' opts
+readCsvWithOpts = readSeparated ','
 
 {- | Read TSV (tab separated) file from path and load it into a dataframe.
 
@@ -202,12 +226,12 @@ readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
 
     firstLine <- C8.hGetLine handle
     let firstRow = parseLine sep firstLine
-        columnNames =
-            if hasHeader opts
-                then map (T.filter (/= '\"') . TE.decodeUtf8Lenient) firstRow
-                else map (T.singleton . intToDigit) [0 .. length firstRow - 1]
+        columnNames = case headerSpec opts of
+            NoHeader -> map (T.pack . show) [0 .. length firstRow - 1]
+            UseFirstRow -> map (T.filter (/= '\"') . TE.decodeUtf8Lenient) firstRow
+            ProvideNames ns -> ns
 
-    unless (hasHeader opts) $ hSeek handle AbsoluteSeek 0
+    unless (headerSpec opts == UseFirstRow) $ hSeek handle AbsoluteSeek 0
 
     dataLine <- C8.hGetLine handle
     let dataRow = parseLine sep dataLine
@@ -227,23 +251,31 @@ readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
                 , dataframeDimensions = (numRows, V.length frozenCols)
                 }
     return $
-        if inferTypes opts
-            then parseDefaults (safeRead opts) (dateFormat opts) df
+        if shouldInferFromSample (typeSpec opts)
+            then
+                parseDefaults
+                    (typeInferenceSampleSize (typeSpec opts))
+                    (safeRead opts)
+                    (dateFormat opts)
+                    df
             else df
 
 initializeColumns :: [BS.ByteString] -> ReadOptions -> IO [GrowingColumn]
-initializeColumns row opts = mapM initColumn row
+initializeColumns row opts = case typeSpec opts of
+    NoInference -> zipWithM initColumn row (expandTypes [])
+    InferFromSample _ -> zipWithM initColumn row (expandTypes [])
+    SpecifyTypes ts -> zipWithM initColumn row (expandTypes ts)
   where
-    initColumn :: BS.ByteString -> IO GrowingColumn
-    initColumn bs = do
+    expandTypes xs = xs ++ replicate (length row - length xs) (schemaType @T.Text)
+    initColumn :: BS.ByteString -> SchemaType -> IO GrowingColumn
+    initColumn bs t = do
         nullsRef <- newIORef []
-        let val = TE.decodeUtf8Lenient bs
-        if inferTypes opts
-            then case inferType val of
-                IntType -> GrowingInt <$> newGrowingUnboxedVector 1_024 <*> pure nullsRef
-                DoubleType -> GrowingDouble <$> newGrowingUnboxedVector 1_024 <*> pure nullsRef
-                TextType -> GrowingText <$> newGrowingVector 1_024 <*> pure nullsRef
-            else GrowingText <$> newGrowingVector 1_024 <*> pure nullsRef
+        case t of
+            SType (_ :: P.Proxy a) -> case testEquality (typeRep @a) (typeRep @Int) of
+                Just Refl -> GrowingInt <$> newGrowingUnboxedVector 1_024 <*> pure nullsRef
+                Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
+                    Just Refl -> GrowingDouble <$> newGrowingUnboxedVector 1_024 <*> pure nullsRef
+                    Nothing -> GrowingText <$> newGrowingVector 1_024 <*> pure nullsRef
 
 data InferredType = IntType | DoubleType | TextType
 
