@@ -17,6 +17,7 @@ module DataFrame.Internal.Expression where
 
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
+import Data.String
 import qualified Data.Text as T
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import qualified Data.Vector as V
@@ -898,6 +899,10 @@ instance (Fractional a, Columnable a) => Fractional (Expr a) where
 
 divide :: (Fractional a, Columnable a) => Expr a -> Expr a -> Expr a
 divide = (/)
+
+instance (IsString a, Columnable a) => IsString (Expr a) where
+    fromString :: String -> Expr a
+    fromString s = Lit (fromString s)
 
 instance (Floating a, Columnable a) => Floating (Expr a) where
     pi :: (Floating a, Columnable a) => Expr a
