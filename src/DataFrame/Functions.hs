@@ -72,6 +72,15 @@ lift2 ::
     (c -> b -> a) -> Expr c -> Expr b -> Expr a
 lift2 = BinaryOp "udf"
 
+toDouble :: (Columnable a, Real a) => Expr a -> Expr Double
+toDouble = UnaryOp "toDouble" realToFrac
+
+div :: (Integral a, Columnable a) => Expr a -> Expr a -> Expr a
+div = BinaryOp "div" Prelude.div
+
+mod :: (Integral a, Columnable a) => Expr a -> Expr a -> Expr a
+mod = BinaryOp "mod" Prelude.mod
+
 (==) :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
 (==) = BinaryOp "eq" (Prelude.==)
 
@@ -126,8 +135,8 @@ sum expr = AggNumericVector expr "sum" VG.sum
 mean :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 mean expr = AggNumericVector expr "mean" mean'
 
-median :: Expr Double -> Expr Double
-median expr = AggNumericVector expr "mean" median'
+median :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
+median expr = AggNumericVector expr "median" median'
 
 percentile :: Int -> Expr Double -> Expr Double
 percentile n expr =
@@ -328,6 +337,55 @@ synthesizeFeatureExpr target d b df =
         case beamSearch
             df'
             (BeamConfig d b (\l r -> (^ 2) <$> correlation' l r))
+            t
+            [] of
+            Nothing -> Left "No programs found"
+            Just p -> Right p
+
+f1FromBinary :: VU.Vector Double -> VU.Vector Double -> Maybe Double
+f1FromBinary trues preds =
+    let (!tp, !fp, !fn) =
+            VU.foldl' step (0 :: Int, 0 :: Int, 0 :: Int) $
+                VU.zip (VU.map (Prelude.> 0) preds) (VU.map (Prelude.> 0) trues)
+     in f1FromCounts tp fp fn
+  where
+    step (!tp, !fp, !fn) (!p, !t) =
+        case (p, t) of
+            (True, True) -> (tp + 1, fp, fn)
+            (True, False) -> (tp, fp + 1, fn)
+            (False, True) -> (tp, fp, fn + 1)
+            (False, False) -> (tp, fp, fn)
+
+f1FromCounts :: Int -> Int -> Int -> Maybe Double
+f1FromCounts tp fp fn =
+    let tp' = fromIntegral tp
+        fp' = fromIntegral fp
+        fn' = fromIntegral fn
+        precision = if tp' + fp' Prelude.== 0 then 0 else tp' / (tp' + fp')
+        recall = if tp' + fn' Prelude.== 0 then 0 else tp' / (tp' + fn')
+     in if precision + recall Prelude.== 0
+            then Nothing
+            else Just (2 * precision * recall / (precision + recall))
+
+fitClassifier ::
+    -- | Target expression
+    T.Text ->
+    -- | Depth of search (Roughly, how many terms in the final expression)
+    Int ->
+    -- | Beam size - the number of candidate expressions to consider at a time.
+    Int ->
+    DataFrame ->
+    Either String (Expr Double)
+fitClassifier target d b df =
+    let
+        df' = exclude [target] df
+        t = case interpret df (Col target) of
+            Left e -> throw e
+            Right v -> v
+     in
+        case beamSearch
+            df'
+            (BeamConfig d b (\l r -> f1FromBinary l r))
             t
             [] of
             Nothing -> Left "No programs found"
