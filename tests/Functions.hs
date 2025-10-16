@@ -11,6 +11,7 @@ import DataFrame.Functions (
     lit,
     max,
     mean,
+    median,
     min,
     percentile,
     pow,
@@ -87,7 +88,7 @@ generateProgramsCalledWithNoExistingPrograms =
             , log (add (col @Double "x") (lit 1.0))
             , exp (col @Double "x")
             , mean (col @Double "x")
-            , mean (col @Double "x")
+            , median (col @Double "x")
             , stddev (col @Double "x")
             , sin (col @Double "x")
             , cos (col @Double "x")
@@ -119,7 +120,7 @@ generateProgramsCalledWithSingleExistingPrograms =
             , log (add (col @Double "x") (lit 1.0))
             , exp (col @Double "x")
             , mean (col @Double "x")
-            , mean (col @Double "x")
+            , median (col @Double "x")
             , stddev (col @Double "x")
             , sin (col @Double "x")
             , cos (col @Double "x")
@@ -133,7 +134,7 @@ generateProgramsCalledWithSingleExistingPrograms =
             , log (add (col @Double "y") (lit 1.0))
             , exp (col @Double "y")
             , mean (col @Double "y")
-            , mean (col @Double "y")
+            , median (col @Double "y")
             , stddev (col @Double "y")
             , sin (col @Double "y")
             , cos (col @Double "y")
@@ -341,7 +342,7 @@ generateProgramsCalledWithCompoundExistingPrograms =
             , log (add (col @Double "x") (lit 1.0))
             , exp (col @Double "x")
             , mean (col @Double "x")
-            , mean (col @Double "x")
+            , median (col @Double "x")
             , stddev (col @Double "x")
             , sin (col @Double "x")
             , cos (col @Double "x")
@@ -355,7 +356,7 @@ generateProgramsCalledWithCompoundExistingPrograms =
             , log (add (col @Double "y") (lit 1.0))
             , exp (col @Double "y")
             , mean (col @Double "y")
-            , mean (col @Double "y")
+            , median (col @Double "y")
             , stddev (col @Double "y")
             , sin (col @Double "y")
             , cos (col @Double "y")
@@ -372,7 +373,7 @@ generateProgramsCalledWithCompoundExistingPrograms =
             , log (add (add (lit 1.0) (col @Double "z")) (lit 1.0))
             , exp (add (lit 1.0) (col @Double "z"))
             , mean (add (lit 1.0) (col @Double "z"))
-            , mean (add (lit 1.0) (col @Double "z"))
+            , median (add (lit 1.0) (col @Double "z"))
             , stddev (add (lit 1.0) (col @Double "z"))
             , sin (add (lit 1.0) (col @Double "z"))
             , cos (add (lit 1.0) (col @Double "z"))
