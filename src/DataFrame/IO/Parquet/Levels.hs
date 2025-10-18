@@ -54,7 +54,7 @@ readLevelsV2 n maxDef maxRep defLen repLen bs =
      in (map fromIntegral defLvlsU32, map fromIntegral repLvlsU32, afterDefBytes)
 
 stitchNullable :: Int -> [Int] -> [a] -> [Maybe a]
-stitchNullable maxDef defLvls vals = go defLvls vals
+stitchNullable maxDef = go
   where
     go [] _ = []
     go (d : ds) vs
@@ -95,7 +95,7 @@ parseAll [] = []
 parseAll xs = let (n, xs') = parseOne xs in n : parseAll xs'
 
 levelsForPath :: [SchemaElement] -> [String] -> (Int, Int)
-levelsForPath schemaTail path = go 0 0 (parseAll schemaTail) path
+levelsForPath schemaTail = go 0 0 (parseAll schemaTail)
   where
     go defC repC _ [] = (defC, repC)
     go defC repC nodes (p : ps) =

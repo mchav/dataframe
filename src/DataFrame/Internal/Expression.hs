@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -426,12 +425,11 @@ mkUnaggregatedColumn col os indices =
     V.generate
         (VU.length os - 1)
         ( \i ->
-            ( VG.generate
+            VG.generate
                 (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
                 ( \j ->
                     col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
                 )
-            )
         )
 
 nestedTypeException ::
@@ -505,7 +503,7 @@ interpretAggregation gdf expression@(BinaryOp _ (f :: c -> d -> e) left right) =
                 Just Refl -> case testEquality (typeRep @n) (typeRep @(VU.Vector d)) of
                     Just Refl -> case (sUnbox @c, sUnbox @d, sUnbox @e) of
                         (STrue, STrue, STrue) ->
-                            Right $ UnAggregated $ fromVector $ V.zipWith (\l' r' -> VU.zipWith f l' r') l r
+                            Right $ UnAggregated $ fromVector $ V.zipWith (VU.zipWith f) l r
                         (STrue, STrue, SFalse) ->
                             Right $
                                 UnAggregated $
@@ -518,7 +516,7 @@ interpretAggregation gdf expression@(BinaryOp _ (f :: c -> d -> e) left right) =
                                 Right $
                                     UnAggregated $
                                         fromVector $
-                                            V.zipWith (\l' r' -> V.zipWith f (V.convert l') r') l r
+                                            V.zipWith (V.zipWith f . V.convert) l r
                             SFalse -> Left $ InternalException "Unboxed vectors contain boxed types"
                         Nothing -> Left $ nestedTypeException @n @d (show right)
                 Nothing -> case testEquality (typeRep @m) (typeRep @(V.Vector c)) of
@@ -546,7 +544,7 @@ interpretAggregation gdf expression@(BinaryOp _ (f :: c -> d -> e) left right) =
                                         Right $
                                             UnAggregated $
                                                 fromVector $
-                                                    V.zipWith (\l' r' -> V.zipWith f (V.convert l') r') l r
+                                                    V.zipWith (V.zipWith f . V.convert) l r
                                     STrue ->
                                         Right $
                                             UnAggregated $
@@ -850,11 +848,11 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggFold expr 
                     )
         (Left e) -> Left e
         Right (UnAggregated (BoxedColumn (col :: V.Vector d))) -> case testEquality (typeRep @(V.Vector b)) (typeRep @d) of
-            Just Refl -> Right $ Aggregated $ TColumn $ fromVector $ V.map (\v -> V.foldl' f s v) col
+            Just Refl -> Right $ Aggregated $ TColumn $ fromVector $ V.map (V.foldl' f s) col
             Nothing -> case testEquality (typeRep @(VU.Vector b)) (typeRep @d) of
                 Just Refl -> case sUnbox @b of
                     STrue ->
-                        Right $ Aggregated $ TColumn $ fromVector $ V.map (\v -> VU.foldl' f s v) col
+                        Right $ Aggregated $ TColumn $ fromVector $ V.map (VU.foldl' f s) col
                     SFalse -> Left $ InternalException "Boxed type inside an unboxed column"
                 Nothing -> Left $ nestedTypeException @d @b (show expr)
         Right (UnAggregated _) -> Left $ InternalException "Aggregated into non-boxed column"

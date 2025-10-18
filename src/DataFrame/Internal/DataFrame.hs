@@ -170,7 +170,7 @@ Returns 'Left' with an error if any column cannot be converted to floats.
 toFloatMatrix ::
     DataFrame -> Either DataFrameException (V.Vector (VU.Vector Float))
 toFloatMatrix df = case V.foldl'
-    (\acc c -> V.snoc <$> acc <*> (toFloatVector c))
+    (\acc c -> V.snoc <$> acc <*> toFloatVector c)
     (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Float)))
     (columns df) of
     Left e -> Left e
@@ -197,7 +197,7 @@ Returns 'Left' with an error if any column cannot be converted to doubles.
 toDoubleMatrix ::
     DataFrame -> Either DataFrameException (V.Vector (VU.Vector Double))
 toDoubleMatrix df = case V.foldl'
-    (\acc c -> V.snoc <$> acc <*> (toDoubleVector c))
+    (\acc c -> V.snoc <$> acc <*> toDoubleVector c)
     (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Double)))
     (columns df) of
     Left e -> Left e
@@ -223,7 +223,7 @@ Returns 'Left' with an error if any column cannot be converted to ints.
 -}
 toIntMatrix :: DataFrame -> Either DataFrameException (V.Vector (VU.Vector Int))
 toIntMatrix df = case V.foldl'
-    (\acc c -> V.snoc <$> acc <*> (toIntVector c))
+    (\acc c -> V.snoc <$> acc <*> toIntVector c)
     (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Int)))
     (columns df) of
     Left e -> Left e

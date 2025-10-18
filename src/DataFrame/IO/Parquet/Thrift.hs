@@ -256,9 +256,7 @@ readMetadata contents size = do
     let lastFieldId = 0
     let fieldStack = []
     bufferPos <- newIORef (0 :: Int)
-    metadata <-
-        readFileMetaData defaultMetadata metadataBytes bufferPos lastFieldId fieldStack
-    return metadata
+    readFileMetaData defaultMetadata metadataBytes bufferPos lastFieldId fieldStack
 
 readFileMetaData ::
     FileMetadata ->

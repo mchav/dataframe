@@ -1064,11 +1064,11 @@ toDoubleVector column =
             Nothing -> case sFloating @a of
                 STrue ->
                     Right
-                        (VB.convert $ VB.map (fromMaybe (read @Double "NaN") . (fmap realToFrac)) f)
+                        (VB.convert $ VB.map (maybe (read @Double "NaN") realToFrac) f)
                 SFalse -> case sIntegral @a of
                     STrue ->
                         Right
-                            (VB.convert $ VB.map (fromMaybe (read @Double "NaN") . (fmap fromIntegral)) f)
+                            (VB.convert $ VB.map (maybe (read @Double "NaN") fromIntegral) f)
                     SFalse ->
                         Left $
                             TypeMismatchException
@@ -1139,11 +1139,11 @@ toFloatVector column =
             Nothing -> case sFloating @a of
                 STrue ->
                     Right
-                        (VB.convert $ VB.map (fromMaybe (read @Float "NaN") . (fmap realToFrac)) f)
+                        (VB.convert $ VB.map (maybe (read @Float "NaN") realToFrac) f)
                 SFalse -> case sIntegral @a of
                     STrue ->
                         Right
-                            (VB.convert $ VB.map (fromMaybe (read @Float "NaN") . (fmap fromIntegral)) f)
+                            (VB.convert $ VB.map (maybe (read @Float "NaN") fromIntegral) f)
                     SFalse ->
                         Left $
                             TypeMismatchException
