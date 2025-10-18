@@ -1,5 +1,14 @@
 # Revision history for dataframe
 
+## 0.3.3.4
+* Add linting CI step + fix existing lint errors.
+* Show now only prints 10 row. To print more you should use the new `display` function that takes the number of rows as a parameter in its configuration.
+* Add `toDouble`, `div`, and, `mod` functions.
+* Define an `IsString` instance for columns so you can use string literals without `F.lit`.
+* Include variance expression.
+* Improved filter performance.
+* Make beam search loss function configurable for synthesizing features.
+
 ## 0.3.3.3
 * Split `toMatrix` into more specific `to<Type>Matrix` functions.
 
