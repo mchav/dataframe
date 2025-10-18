@@ -12,6 +12,7 @@ df = pd.DataFrame({"normal": np.random.normal(size=SIZE),
                    "exponential": np.random.exponential(size=SIZE),
                    })
 second = datetime.datetime.now()
+print(df.head())
 print(f"Data generation/load time: "
       f"{(second - first).seconds}.{(second - first).microseconds}")
 

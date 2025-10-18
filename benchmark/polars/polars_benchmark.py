@@ -11,6 +11,7 @@ df = pl.DataFrame({"normal": np.random.normal(size=SIZE),
                    "log_normal": np.random.lognormal(size=SIZE),
                    "exponential": np.random.exponential(size=SIZE),
                    })
+print(df)
 second = datetime.datetime.now()
 print(f"Data generation/load time: "
       f"{(second - first).seconds}.{(second - first).microseconds} secs")

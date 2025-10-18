@@ -12,12 +12,13 @@ main :: IO ()
 main = do
     let n = 100_000_000
     g <- newIOGenM =<< newStdGen
-    let range = (-20.0 :: Double, 20.0 :: Double)
+    let range = (0 :: Double, 1 :: Double)
     startGeneration <- getCurrentTime
     ns <- VU.replicateM n (uniformRM range g)
     xs <- VU.replicateM n (uniformRM range g)
     ys <- VU.replicateM n (uniformRM range g)
     let df = D.fromUnnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
+    print df
     endGeneration <- getCurrentTime
     let generationTime = diffUTCTime endGeneration startGeneration
     putStrLn $ "Data generation Time: " ++ show generationTime
@@ -29,7 +30,7 @@ main = do
     let calculationTime = diffUTCTime endCalculation startCalculation
     putStrLn $ "Calculation Time: " ++ show calculationTime
     startFilter <- getCurrentTime
-    print $ D.filter "0" (>= (19.9 :: Double)) df D.|> D.take 10
+    print $ D.filter "0" (> (0.971 :: Double)) df D.|> D.take 10
     endFilter <- getCurrentTime
     let filterTime = diffUTCTime endFilter startFilter
     putStrLn $ "Filter Time: " ++ show filterTime
