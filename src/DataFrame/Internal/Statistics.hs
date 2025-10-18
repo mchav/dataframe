@@ -79,7 +79,9 @@ skewness' :: VU.Vector Double -> Double
 skewness' = computeSkewness . VU.foldl' skewnessStep (SkewAcc 0 0 0 0)
 {-# INLINE skewness' #-}
 
-correlation' :: VU.Vector Double -> VU.Vector Double -> Maybe Double
+correlation' ::
+    (Real a, VU.Unbox a, Real b, VU.Unbox b) =>
+    VU.Vector a -> VU.Vector b -> Maybe Double
 correlation' xs ys
     | VU.length xs /= VU.length ys = Nothing
     | nI < 2 = Nothing
@@ -93,8 +95,8 @@ correlation' xs ys
     !nI = VU.length xs
     go !i !sumX !sumY !sumSquaredX !sumSquaredY !sumXY
         | i < nI =
-            let !x = VU.unsafeIndex xs i
-                !y = VU.unsafeIndex ys i
+            let !x = realToFrac (VU.unsafeIndex xs i)
+                !y = realToFrac (VU.unsafeIndex ys i)
                 !sumX' = sumX + x
                 !sumY' = sumY + y
                 !sumSquaredX' = sumSquaredX + x * x
