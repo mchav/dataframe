@@ -105,7 +105,7 @@ filter filterColumnName condition df = case getColumn filterColumnName df of
 
 filterByVector ::
     forall a b v.
-    (VG.Vector v b, Columnable a, Columnable b) =>
+    (VG.Vector v b, VG.Vector v Int, Columnable a, Columnable b) =>
     T.Text -> v b -> (a -> Bool) -> DataFrame -> DataFrame
 filterByVector filterColumnName column condition df = case testEquality (typeRep @a) (typeRep @b) of
     Nothing ->
@@ -120,27 +120,12 @@ filterByVector filterColumnName column condition df = case testEquality (typeRep
                 )
     Just Refl ->
         let
-            ixs = indexes condition column
+            ixs = VG.convert (VG.findIndices condition column)
          in
             df
                 { columns = V.map (atIndicesStable ixs) (columns df)
                 , dataframeDimensions = (VG.length ixs, snd (dataframeDimensions df))
                 }
-
-indexes :: (VG.Vector v a) => (a -> Bool) -> v a -> VU.Vector Int
-indexes condition cols =
-    let
-        (ixs, n) =
-            VG.ifoldl'
-                ( \(acc, sz) i v -> do
-                    if not (condition v)
-                        then (acc, sz)
-                        else (i : acc, sz + 1)
-                )
-                ([], 0)
-                cols
-     in
-        VU.fromListN n (reverse ixs)
 
 {- | O(k) a version of filter where the predicate comes first.
 
