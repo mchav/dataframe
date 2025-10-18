@@ -385,7 +385,7 @@ fitClassifier target d b df =
      in
         case beamSearch
             df'
-            (BeamConfig d b (\l r -> f1FromBinary l r))
+            (BeamConfig d b f1FromBinary)
             t
             [] of
             Nothing -> Left "No programs found"
@@ -512,7 +512,7 @@ pickTopN df (TColumn col) cfg ps =
         trace
             ( "Best loss: "
                 ++ show
-                    (rankingFunction cfg l <$> (interpretDoubleVector <$> (listToMaybe ordered)))
+                    (rankingFunction cfg l . interpretDoubleVector <$> listToMaybe ordered)
                 ++ " "
                 ++ (if null ordered then "empty" else show (listToMaybe ordered))
             )

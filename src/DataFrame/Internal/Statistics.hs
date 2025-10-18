@@ -187,7 +187,10 @@ bincount :: Int -> VU.Vector Int -> VU.Vector Int
 bincount k bs = VU.create $ do
     mv <- VU.thaw (VU.replicate k 0)
     VU.forM_ bs $ \b -> do
-        let i = if b < 0 then 0 else if b >= k then k - 1 else b
+        let i
+                | b < 0 = 0
+                | b >= k = k - 1
+                | otherwise = b
         x <- VUM.read mv i
         VUM.write mv i (x + 1)
     pure mv

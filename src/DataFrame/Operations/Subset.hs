@@ -166,7 +166,7 @@ filterWhere expr df =
         (TColumn col) = case interpret @Bool df expr of
             Left e -> throw e
             Right c -> c
-        indexes = case findIndices (== True) col of
+        indexes = case findIndices id col of
             Right ixs -> ixs
             Left e -> throw e
         c' = snd $ dataframeDimensions df
@@ -368,7 +368,7 @@ kFolds pureGen folds df =
     let
         rand = generateRandomVector pureGen (fst (dataframeDimensions df))
         withRand = df & insertUnboxedVector "__rand__" rand
-        partitionSize = 1 / (fromIntegral folds)
+        partitionSize = 1 / fromIntegral folds
         singleFold n d =
             d
                 & filterWhere
