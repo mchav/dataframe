@@ -321,13 +321,10 @@ equivalent df p1 p2 = case (Prelude.==) <$> interpret df p1 <*> interpret df p2 
 synthesizeFeatureExpr ::
     -- | Target expression
     T.Text ->
-    -- | Depth of search (Roughly, how many terms in the final expression)
-    Int ->
-    -- | Beam size - the number of candidate expressions to consider at a time.
-    Int ->
+    BeamConfig ->
     DataFrame ->
     Either String (Expr Double)
-synthesizeFeatureExpr target d b df =
+synthesizeFeatureExpr target cfg df =
     let
         df' = exclude [target] df
         t = case interpret df (Col target) of
@@ -336,7 +333,7 @@ synthesizeFeatureExpr target d b df =
      in
         case beamSearch
             df'
-            (BeamConfig d b (\l r -> (^ 2) <$> correlation' l r))
+            cfg
             t
             [] of
             Nothing -> Left "No programs found"
@@ -375,7 +372,7 @@ fitClassifier ::
     -- | Beam size - the number of candidate expressions to consider at a time.
     Int ->
     DataFrame ->
-    Either String (Expr Double)
+    Either String (Expr Int)
 fitClassifier target d b df =
     let
         df' = exclude [target] df
@@ -385,11 +382,11 @@ fitClassifier target d b df =
      in
         case beamSearch
             df'
-            (BeamConfig d b f1FromBinary)
+            (BeamConfig d b F1)
             t
             [] of
             Nothing -> Left "No programs found"
-            Just p -> Right p
+            Just p -> Right (ifThenElse (p DataFrame.Functions.> 0) 1 0)
 
 fitRegression ::
     -- | Target expression
@@ -413,12 +410,7 @@ fitRegression target d b df =
             ( BeamConfig
                 d
                 b
-                ( \l r ->
-                    mutualInformationBinned
-                        (Prelude.max 10 (ceiling (sqrt (fromIntegral (VU.length l)))))
-                        l
-                        r
-                )
+                MutualInformation
             )
             t
             [] of
@@ -430,17 +422,40 @@ fitRegression target d b df =
                             ( D.derive "_generated_regression_feature_" p df
                                 & select ["_generated_regression_feature_"]
                             )
-                            (BeamConfig d b (\l r -> fmap negate (meanSquaredError l r)))
+                            (BeamConfig d b MeanSquaredError)
                             t
                             [Col "_generated_regression_feature_", lit targetMean, lit 10] of
                             Nothing -> Left "Could not find coefficients"
                             Just p' -> Right (replaceExpr p (Col @Double "_generated_regression_feature_") p')
 
+data LossFunction
+    = PearsonCorrelation
+    | MutualInformation
+    | MeanSquaredError
+    | F1
+
+getLossFunction ::
+    LossFunction -> (VU.Vector Double -> VU.Vector Double -> Maybe Double)
+getLossFunction f = case f of
+    MutualInformation ->
+        ( \l r ->
+            mutualInformationBinned
+                (Prelude.max 10 (ceiling (sqrt (fromIntegral (VU.length l)))))
+                l
+                r
+        )
+    PearsonCorrelation -> (\l r -> (^ 2) <$> correlation' l r)
+    MeanSquaredError -> (\l r -> fmap negate (meanSquaredError l r))
+    F1 -> f1FromBinary
+
 data BeamConfig = BeamConfig
     { searchDepth :: Int
     , beamLength :: Int
-    , rankingFunction :: VU.Vector Double -> VU.Vector Double -> Maybe Double
+    , lossFunction :: LossFunction
     }
+
+defaultBeamConfig :: BeamConfig
+defaultBeamConfig = BeamConfig 2 100 PearsonCorrelation
 
 beamSearch ::
     DataFrame ->
@@ -490,7 +505,10 @@ pickTopN df (TColumn col) cfg ps =
                                 then LT
                                 else compare c1 c2
                         )
-                        (map (\(e, res) -> (e, rankingFunction cfg l (asDoubleVector res))) ps)
+                        ( map
+                            (\(e, res) -> (e, getLossFunction (lossFunction cfg) l (asDoubleVector res)))
+                            ps
+                        )
                 )
         asDoubleVector c =
             let
@@ -512,7 +530,9 @@ pickTopN df (TColumn col) cfg ps =
         trace
             ( "Best loss: "
                 ++ show
-                    (rankingFunction cfg l . interpretDoubleVector <$> listToMaybe ordered)
+                    ( getLossFunction (lossFunction cfg) l . interpretDoubleVector
+                        <$> listToMaybe ordered
+                    )
                 ++ " "
                 ++ (if null ordered then "empty" else show (listToMaybe ordered))
             )
