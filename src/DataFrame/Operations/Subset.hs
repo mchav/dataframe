@@ -140,7 +140,7 @@ indexes condition cols =
                 ([], 0)
                 cols
      in
-        VU.fromListN n ixs
+        VU.fromListN n (reverse ixs)
 
 {- | O(k) a version of filter where the predicate comes first.
 
