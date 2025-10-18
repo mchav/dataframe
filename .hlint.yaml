@@ -1,0 +1,19 @@
+# HLint configuration for dataframe
+# https://github.com/ndmitchell/hlint
+
+# Ignore certain hints that don't fit the project style
+- ignore: {name: "Use camelCase"}
+- ignore: {name: "Redundant do"}
+- ignore: {name: "Use newtype instead of data"}
+
+# Ignore specific hints in certain modules
+- ignore: {name: "Use explicit module export lists", within: DataFrame.IO.Parquet.Thrift}
+
+# Warn about partial functions
+- warn: {name: "Use head"}
+- warn: {name: "Use tail"}
+- warn: {name: "Use fromJust"}
+- warn: {name: "Use !!"}
+
+# Enable additional hint groups
+- group: {name: extra, enabled: true}
