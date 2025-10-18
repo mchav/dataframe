@@ -6,5 +6,5 @@ fi
 
 cabal update
 
-cabal repl --ghc-options="-O2 -fobject-code" --repl-option=-ghci-script=dataframe.ghci
+cabal repl --ghc-options="-O2 -fobject-code" --build-depends dataframe --repl-option=-ghci-script=dataframe.ghci
 
