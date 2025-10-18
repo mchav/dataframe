@@ -135,6 +135,9 @@ sum expr = AggNumericVector expr "sum" VG.sum
 mean :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 mean expr = AggNumericVector expr "mean" mean'
 
+variance :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
+variance expr = AggNumericVector expr "variance" variance'
+
 median :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 median expr = AggNumericVector expr "median" median'
 
