@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -15,11 +14,9 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
-import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified Prelude
 
 import Control.Exception (throw)
-import Control.Monad.ST
 import Data.Function ((&))
 import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
 import Data.Type.Equality (TestEquality (..))
@@ -131,23 +128,19 @@ filterByVector filterColumnName column condition df = case testEquality (typeRep
                 }
 
 indexes :: (VG.Vector v a) => (a -> Bool) -> v a -> VU.Vector Int
-indexes condition cols = runST $ do
-    ixs <- VUM.new 8192
-    (!icount, _, _, !ixs') <-
-        VG.foldM
-            ( \(!icount, !vcount, !cap, mv) v -> do
-                if not (condition v)
-                    then
-                        pure (icount, vcount + 1, cap, mv)
-                    else do
-                        let shouldGrow = icount == cap
-                        mv' <- if shouldGrow then VUM.grow mv cap else pure mv
-                        VUM.write mv' icount vcount
-                        pure (icount + 1, vcount + 1, cap + (cap * fromEnum shouldGrow), mv')
-            )
-            (0, 0, 8192, ixs)
-            cols
-    VU.freeze (VUM.slice 0 icount ixs')
+indexes condition cols =
+    let
+        (ixs, n) =
+            VG.ifoldl'
+                ( \(acc, sz) i v -> do
+                    if not (condition v)
+                        then (acc, sz)
+                        else (i : acc, sz + 1)
+                )
+                ([], 0)
+                cols
+     in
+        VU.fromListN n ixs
 
 {- | O(k) a version of filter where the predicate comes first.
 
