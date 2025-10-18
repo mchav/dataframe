@@ -30,8 +30,8 @@ foldAggregation =
         ( assertEqual
             "Counting elements after grouping gives correct numbers"
             ( D.fromNamedColumns
-                [ ("test1", DI.fromList [(1 :: Int), 2, 3])
-                , ("test2", DI.fromList [(6 :: Int), 3, 3])
+                [ ("test1", DI.fromList [1 :: Int, 2, 3])
+                , ("test2", DI.fromList [6 :: Int, 3, 3])
                 ]
             )
             ( testData
@@ -46,8 +46,8 @@ numericAggregation =
         ( assertEqual
             "Mean works for ints"
             ( D.fromNamedColumns
-                [ ("test1", DI.fromList [(1 :: Int), 2, 3])
-                , ("test2", DI.fromList [(6.5 :: Double), 8.0, 5.0])
+                [ ("test1", DI.fromList [1 :: Int, 2, 3])
+                , ("test2", DI.fromList [6.5 :: Double, 8.0, 5.0])
                 ]
             )
             ( testData
@@ -62,8 +62,8 @@ numericAggregationOfUnaggregatedUnaryOp =
         ( assertEqual
             "Mean works for ints"
             ( D.fromNamedColumns
-                [ ("test1", DI.fromList [(1 :: Int), 2, 3])
-                , ("test2", DI.fromList [(6.5 :: Double), 8.0, 5.0])
+                [ ("test1", DI.fromList [1 :: Int, 2, 3])
+                , ("test2", DI.fromList [6.5 :: Double, 8.0, 5.0])
                 ]
             )
             ( testData
@@ -80,13 +80,13 @@ numericAggregationOfUnaggregatedBinaryOp =
         ( assertEqual
             "Mean works for ints"
             ( D.fromNamedColumns
-                [ ("test1", DI.fromList [(1 :: Int), 2, 3])
-                , ("test2", DI.fromList [(13 :: Double), 16, 10])
+                [ ("test1", DI.fromList [1 :: Int, 2, 3])
+                , ("test2", DI.fromList [13 :: Double, 16, 10])
                 ]
             )
             ( testData
                 & D.groupBy ["test1"]
-                & D.aggregate [F.mean (F.col @Int "test2" + (F.col @Int "test2")) `F.as` "test2"]
+                & D.aggregate [F.mean (F.col @Int "test2" + F.col @Int "test2") `F.as` "test2"]
             )
         )
 
@@ -96,8 +96,8 @@ reduceAggregationOfUnaggregatedUnaryOp =
         ( assertEqual
             "Mean works for ints"
             ( D.fromNamedColumns
-                [ ("test1", DI.fromList [(1 :: Int), 2, 3])
-                , ("test2", DI.fromList [(12 :: Double), 9, 6])
+                [ ("test1", DI.fromList [1 :: Int, 2, 3])
+                , ("test2", DI.fromList [12 :: Double, 9, 6])
                 ]
             )
             ( testData
@@ -115,14 +115,14 @@ reduceAggregationOfUnaggregatedBinaryOp =
         ( assertEqual
             "Mean works for ints"
             ( D.fromNamedColumns
-                [ ("test1", DI.fromList [(1 :: Int), 2, 3])
-                , ("test2", DI.fromList [(24 :: Int), 18, 12])
+                [ ("test1", DI.fromList [1 :: Int, 2, 3])
+                , ("test2", DI.fromList [24 :: Int, 18, 12])
                 ]
             )
             ( testData
                 & D.groupBy ["test1"]
                 & D.aggregate
-                    [F.maximum (F.col @Int "test2" + (F.col @Int "test2")) `F.as` "test2"]
+                    [F.maximum (F.col @Int "test2" + F.col @Int "test2") `F.as` "test2"]
             )
         )
 
