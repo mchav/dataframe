@@ -275,10 +275,19 @@ generatePrograms vars constants ps =
                , (j, q) <- zip [0 ..] existingPrograms
                , i Prelude.> j
                ]
-            ++ [ ifThenElse (p DataFrame.Functions.>= q) p q
+            ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
                , i /= j
+               , n <- [1, 25, 50, 75, 99]
+               ]
+            ++ [ ifThenElse (p DataFrame.Functions.>= q) r s
+               | (i, p) <- zip [0 ..] existingPrograms
+               , (j, q) <- zip [0 ..] existingPrograms
+               , i /= j
+               , (k, r) <- zip [0 ..] existingPrograms
+               , (l, s) <- zip [0 ..] existingPrograms
+               , k /= l
                ]
             ++ [ p - q
                | (i, p) <- zip [0 ..] existingPrograms
@@ -402,6 +411,8 @@ percentiles df =
         doubleColumns = map (either throw id . (`columnAsDoubleVector` df)) (D.columnNames df)
      in
         concatMap (\c -> map (lit . (`percentile'` c)) [1, 23, 75, 99]) doubleColumns
+            ++ map (lit . variance') doubleColumns
+            ++ map (lit . sqrt . variance') doubleColumns
 
 fitRegression ::
     -- | Target expression
