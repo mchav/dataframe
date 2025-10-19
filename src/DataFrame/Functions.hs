@@ -15,7 +15,11 @@
 module DataFrame.Functions where
 
 import DataFrame.Internal.Column
-import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
+import DataFrame.Internal.DataFrame (
+    DataFrame (..),
+    columnAsDoubleVector,
+    unsafeGetColumn,
+ )
 import DataFrame.Internal.Expression (
     Expr (..),
     UExpr (..),
@@ -39,6 +43,7 @@ import qualified Data.Text as T
 import Data.Type.Equality
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
+import qualified DataFrame.Operations.Core as D
 import qualified DataFrame.Operations.Transformations as D
 import Debug.Trace (trace, traceShow)
 import Language.Haskell.TH
@@ -146,7 +151,7 @@ percentile n expr =
     AggNumericVector
         expr
         (T.pack $ "percentile " ++ show n)
-        ((VU.! 0) . quantiles' (VU.fromList [n]) 100)
+        (percentile' n)
 
 stddev :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 stddev expr = AggNumericVector expr "stddev" (sqrt . variance')
@@ -171,63 +176,67 @@ reduce ::
     (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
 reduce expr = AggFold expr "foldUdf"
 
-generatePrograms :: [Expr Double] -> [Expr Double] -> [Expr Double]
-generatePrograms vars [] =
-    vars
-        ++ [ transform p
-           | p <- vars
-           , transform <-
-                [ zScore
-                , abs
-                , sqrt
-                , log . (+ Lit 1)
-                , exp
-                , mean
-                , median
-                , stddev
-                , sin
-                , cos
-                , relu
-                , signum
-                ]
-           ]
-        ++ [ pow i p
-           | p <- vars
-           , i <- [2 .. 6]
-           ]
-        ++ [ p + q
-           | (i, p) <- zip [0 ..] vars
-           , (j, q) <- zip [0 ..] vars
-           , i Prelude.> j
-           ]
-        ++ [ DataFrame.Functions.min p q
-           | (i, p) <- zip [0 ..] vars
-           , (j, q) <- zip [0 ..] vars
-           , i Prelude.> j
-           ]
-        ++ [ DataFrame.Functions.max p q
-           | (i, p) <- zip [0 ..] vars
-           , (j, q) <- zip [0 ..] vars
-           , i Prelude.>= j
-           ]
-        ++ [ p - q
-           | (i, p) <- zip [0 ..] vars
-           , (j, q) <- zip [0 ..] vars
-           , i /= j
-           ]
-        ++ [ p * q
-           | (i, p) <- zip [0 ..] vars
-           , (j, q) <- zip [0 ..] vars
-           , i Prelude.>= j
-           ]
-        ++ [ p / q
-           | (i, p) <- zip [0 ..] vars
-           , (j, q) <- zip [0 ..] vars
-           , i /= j
-           ]
-generatePrograms vars ps =
+generatePrograms ::
+    [Expr Double] -> [Expr Double] -> [Expr Double] -> [Expr Double]
+generatePrograms vars' constants [] =
     let
-        existingPrograms = vars ++ ps
+        vars = vars' ++ constants
+     in
+        vars
+            ++ [ transform p
+               | p <- vars
+               , transform <-
+                    [ zScore
+                    , abs
+                    , sqrt
+                    , log . (+ Lit 1)
+                    , exp
+                    , mean
+                    , median
+                    , stddev
+                    , sin
+                    , cos
+                    , relu
+                    , signum
+                    ]
+               ]
+            ++ [ pow i p
+               | p <- vars
+               , i <- [2 .. 6]
+               ]
+            ++ [ p + q
+               | (i, p) <- zip [0 ..] vars
+               , (j, q) <- zip [0 ..] vars
+               , i Prelude.> j
+               ]
+            ++ [ DataFrame.Functions.min p q
+               | (i, p) <- zip [0 ..] vars
+               , (j, q) <- zip [0 ..] vars
+               , i Prelude.> j
+               ]
+            ++ [ DataFrame.Functions.max p q
+               | (i, p) <- zip [0 ..] vars
+               , (j, q) <- zip [0 ..] vars
+               , i Prelude.>= j
+               ]
+            ++ [ p - q
+               | (i, p) <- zip [0 ..] vars
+               , (j, q) <- zip [0 ..] vars
+               , i /= j
+               ]
+            ++ [ p * q
+               | (i, p) <- zip [0 ..] vars
+               , (j, q) <- zip [0 ..] vars
+               , i Prelude.>= j
+               ]
+            ++ [ p / q
+               | (i, p) <- zip [0 ..] vars
+               , (j, q) <- zip [0 ..] vars
+               , i /= j
+               ]
+generatePrograms vars constants ps =
+    let
+        existingPrograms = vars ++ ps ++ constants
      in
         existingPrograms
             ++ [ transform p
@@ -266,16 +275,10 @@ generatePrograms vars ps =
                , (j, q) <- zip [0 ..] existingPrograms
                , i Prelude.> j
                ]
-            ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
+            ++ [ ifThenElse (p DataFrame.Functions.>= q) p q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
                , i /= j
-               , n <- [1, 25, 50, 75, 99]
-               ]
-            ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
-               | p <- existingPrograms
-               , q <- [lit 1, lit 0, lit (-1)]
-               , n <- [1, 25, 50, 75, 99]
                ]
             ++ [ p - q
                | (i, p) <- zip [0 ..] existingPrograms
@@ -338,6 +341,7 @@ synthesizeFeatureExpr target cfg df =
             df'
             cfg
             t
+            (percentiles df')
             [] of
             Nothing -> Left "No programs found"
             Just p -> Right p
@@ -387,9 +391,17 @@ fitClassifier target d b df =
             df'
             (BeamConfig d b F1)
             t
+            (percentiles df' ++ [lit 1, lit 0, lit (-1)])
             [] of
             Nothing -> Left "No programs found"
             Just p -> Right (ifThenElse (p DataFrame.Functions.> 0) 1 0)
+
+percentiles :: DataFrame -> [Expr Double]
+percentiles df =
+    let
+        doubleColumns = map (either throw id . (`columnAsDoubleVector` df)) (D.columnNames df)
+     in
+        concatMap (\c -> map (lit . (`percentile'` c)) [1, 23, 75, 99]) doubleColumns
 
 fitRegression ::
     -- | Target expression
@@ -416,6 +428,7 @@ fitRegression target d b df =
                 MutualInformation
             )
             t
+            (percentiles df')
             [] of
             Nothing -> Left "No programs found"
             Just p ->
@@ -427,7 +440,8 @@ fitRegression target d b df =
                             )
                             (BeamConfig d b MeanSquaredError)
                             t
-                            [Col "_generated_regression_feature_", lit targetMean, lit 10] of
+                            (percentiles df' ++ [lit targetMean, lit 10])
+                            [Col "_generated_regression_feature_"] of
                             Nothing -> Left "Could not find coefficients"
                             Just p' -> Right (replaceExpr p (Col @Double "_generated_regression_feature_") p')
 
@@ -466,10 +480,12 @@ beamSearch ::
     BeamConfig ->
     -- | Examples
     TypedColumn Double ->
+    -- | Constants
+    [Expr Double] ->
     -- | Programs
     [Expr Double] ->
     Maybe (Expr Double)
-beamSearch df cfg outputs programs
+beamSearch df cfg outputs constants programs
     | searchDepth cfg Prelude.== 0 = case ps of
         [] -> Nothing
         (x : _) -> Just x
@@ -478,7 +494,8 @@ beamSearch df cfg outputs programs
             df
             (cfg{searchDepth = searchDepth cfg - 1})
             outputs
-            (generatePrograms (map col names) ps)
+            constants
+            (generatePrograms (map col names) constants ps)
   where
     ps = pickTopN df outputs cfg $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df

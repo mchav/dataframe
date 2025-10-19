@@ -131,6 +131,9 @@ quantiles' qs q samp
             qs
 {-# INLINE quantiles' #-}
 
+percentile' :: Int -> VU.Vector Double -> Double
+percentile' n = VU.head . quantiles' (VU.fromList [n]) 100
+
 interQuartileRange' :: VU.Vector Double -> Double
 interQuartileRange' samp =
     let quartiles = quantiles' (VU.fromList [1, 3]) 4 samp
