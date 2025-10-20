@@ -99,7 +99,6 @@ parseChipotleTSV = void $ D.readTsv "./data/chipotle.tsv"
 parseMeasurementsTXT :: IO ()
 parseMeasurementsTXT = parseFile "./data/measurements.txt"
 
-
 main :: IO ()
 main = do
     output <- readProcess "cabal" ["build", "-O2"] ""
@@ -123,16 +122,25 @@ main = do
             ]
         , bgroup
             "effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv (9.1 MB)"
-            [ bench "Attoparsec" $ nfIO $ parseFile "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
-            , bench "Native Haskell" $ nfIO $ parseFileUnstable "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
-            , bench "SIMD" $ nfIO $ parseFileUnstableSIMD "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
+            [ bench "Attoparsec" $
+                nfIO $
+                    parseFile
+                        "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
+            , bench "Native Haskell" $
+                nfIO $
+                    parseFileUnstable
+                        "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
+            , bench "SIMD" $
+                nfIO $
+                    parseFileUnstableSIMD
+                        "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
             ]
-        -- this file was removed as it's too large you may substitute
-        -- with your own if you wish to run it locally on a large file
-        -- , bgroup
-        --     "customers.csv (334 MB)"
-        --     [ bench "Attoparsec" $ nfIO $ parseFile "./data/customers.csv"
-        --     , bench "Native Haskell" $ nfIO $ parseFileUnstable "./data/customers.csv"
-        --     , bench "SIMD" $ nfIO $ parseFileUnstableSIMD "./data/customers.csv"
-        --     ]
+            -- this file was removed as it's too large you may substitute
+            -- with your own if you wish to run it locally on a large file
+            -- , bgroup
+            --     "customers.csv (334 MB)"
+            --     [ bench "Attoparsec" $ nfIO $ parseFile "./data/customers.csv"
+            --     , bench "Native Haskell" $ nfIO $ parseFileUnstable "./data/customers.csv"
+            --     , bench "SIMD" $ nfIO $ parseFileUnstableSIMD "./data/customers.csv"
+            --     ]
         ]
