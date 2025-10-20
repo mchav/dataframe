@@ -102,21 +102,20 @@ parseMeasurementsTXT = parseFile "./data/measurements.txt"
 
 main :: IO ()
 main = do
-    -- output <- readProcess "cabal" ["build", "-O2"] ""
-    -- putStrLn output
+    output <- readProcess "cabal" ["build", "-O2"] ""
+    putStrLn output
     defaultMain
-        [ -- bgroup
-          --   "stats"
-          --   [ bench "simpleStatsHaskell" $ nfIO haskell
-          --   , bench "simpleStatsPandas" $ nfIO pandas
-          --   , bench "simpleStatsPolars" $ nfIO polars
-          --   , bench "groupByHaskell" $ nfIO groupByHaskell
-          --   , bench "groupByPolars" $ nfIO groupByPolars
-          --   , bench "groupByPandas" $ nfIO groupByPandas
-          --   , bench "groupByExplorer" $ nfIO groupByExplorer
-          --   ]
-          --
-          bgroup
+        [ bgroup
+            "stats"
+            [ bench "simpleStatsHaskell" $ nfIO haskell
+            , bench "simpleStatsPandas" $ nfIO pandas
+            , bench "simpleStatsPolars" $ nfIO polars
+            , bench "groupByHaskell" $ nfIO groupByHaskell
+            , bench "groupByPolars" $ nfIO groupByPolars
+            , bench "groupByPandas" $ nfIO groupByPandas
+            , bench "groupByExplorer" $ nfIO groupByExplorer
+            ]
+        , bgroup
             "housing.csv (1.4 MB)"
             [ bench "Attoparsec" $ nfIO $ parseFile "./data/housing.csv"
             , bench "Native Haskell" $ nfIO $ parseFileUnstable "./data/housing.csv"
