@@ -21,28 +21,28 @@ testReadCsvFunctions csvPath = TestCase $ do
         df3
 
 testArbuthnot :: Test
-testArbuthnot = testReadCsvFunctions "data/arbuthnot.csv"
+testArbuthnot = testReadCsvFunctions "./tests/data/arbuthnot.csv"
 
 testCity :: Test
-testCity = testReadCsvFunctions "data/city.csv"
+testCity = testReadCsvFunctions "./tests/data/city.csv"
 
 testHousing :: Test
-testHousing = testReadCsvFunctions "data/housing.csv"
+testHousing = testReadCsvFunctions "./tests/data/housing.csv"
 
 testPresent :: Test
-testPresent = testReadCsvFunctions "data/present.csv"
+testPresent = testReadCsvFunctions "./tests/data/present.csv"
 
 testStarwars :: Test
-testStarwars = testReadCsvFunctions "data/starwars.csv"
+testStarwars = testReadCsvFunctions "./tests/data/starwars.csv"
 
 testStation :: Test
-testStation = testReadCsvFunctions "data/station.csv"
+testStation = testReadCsvFunctions "./tests/data/station.csv"
 
 testNoNewline :: Test
-testNoNewline = testReadCsvFunctions "data/test_no_newline.csv"
+testNoNewline = testReadCsvFunctions "./tests/data/test_no_newline.csv"
 
 testWithNewline :: Test
-testWithNewline = testReadCsvFunctions "data/test_with_newline.csv"
+testWithNewline = testReadCsvFunctions "./tests/data/test_with_newline.csv"
 
 -- Two tests are commented out because
 -- there are slight differences in type
