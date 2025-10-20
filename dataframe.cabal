@@ -75,7 +75,7 @@ library
                     DataFrame.Lazy.IO.CSV,
                     DataFrame.Lazy.Internal.DataFrame
     build-depends:    base >= 4 && <5,
-                      array ^>= 0.5,
+                      array ^>= 0.5.6.0,
                       attoparsec >= 0.12 && < 0.15,
                       bytestring >= 0.11 && < 0.13,
                       bytestring-lexing >= 0.5 && < 0.6,
