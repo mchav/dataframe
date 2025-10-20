@@ -29,6 +29,12 @@ parseDefault n safeRead dateFormat (BoxedColumn (c :: V.Vector a)) =
             Just Refl -> parseFromExamples n dateFormat safeRead (V.map T.pack c)
             Nothing -> BoxedColumn c
         Just Refl -> parseFromExamples n dateFormat safeRead c
+parseDefault n safeRead dateFormat (OptionalColumn (c :: V.Vector (Maybe a))) =
+    case (typeRep @a) `testEquality` (typeRep @T.Text) of
+        Nothing -> case (typeRep @a) `testEquality` (typeRep @String) of
+            Just Refl -> parseFromExamples n dateFormat safeRead (V.map (T.pack . fromMaybe "") c)
+            Nothing -> BoxedColumn c
+        Just Refl -> parseFromExamples n dateFormat safeRead (V.map (fromMaybe "") c)
 parseDefault _ _ _ column = column
 
 emptyToNothing :: T.Text -> Maybe T.Text
