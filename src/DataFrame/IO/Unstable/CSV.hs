@@ -37,8 +37,9 @@ import qualified Data.Text.Encoding as TextEncoding
 import Data.Word (Word8)
 
 import Control.Parallel.Strategies (parList, rpar, using)
-import Data.Array.IArray (genArray, (!))
+import Data.Array.IArray (array, (!))
 import Data.Array.Unboxed (UArray)
+import Data.Ix (range)
 
 import DataFrame.IO.CSV (
     HeaderSpec (..),
@@ -207,7 +208,7 @@ data State
 
 {-# INLINE stateTransitionTable #-}
 stateTransitionTable :: UArray (Int, Word8) Int
-stateTransitionTable = genArray ((0, 0), (1, 255)) f
+stateTransitionTable = array ((0, 0), (1, 255)) [(i, f i) | i <- range ((0, 0), (1, 255))]
   where
     -- Unescaped newline
     f (0, 0x0A) = fromEnum UnEscaped
