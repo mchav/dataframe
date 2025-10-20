@@ -250,8 +250,11 @@ import DataFrame.IO.CSV as CSV (
     writeCsv,
     writeSeparated,
  )
-import DataFrame.IO.Unstable.CSV as UnstableCSV (fastReadCsvUnstable, readCsvUnstable)
 import DataFrame.IO.Parquet as Parquet (readParquet)
+import DataFrame.IO.Unstable.CSV as UnstableCSV (
+    fastReadCsvUnstable,
+    readCsvUnstable,
+ )
 import DataFrame.Internal.Column as Column (
     Column,
     fromList,
