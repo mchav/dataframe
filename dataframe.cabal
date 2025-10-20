@@ -17,6 +17,13 @@ category: Data
 tested-with: GHC ==9.4.8 || ==9.6.7 || ==9.8.4 || ==9.10.3 || ==9.12.2
 extra-doc-files: CHANGELOG.md README.md
 extra-source-files: cbits/process_csv.h
+                    tests/data/*.csv
+                    -- tests/data/*.parquet
+                    -- tests/data/*.md
+                    -- tests/data/*.bin
+                    -- tests/data/*.json
+                    -- tests/data/*.txt
+                    -- tests/data/*.encrypted
 
 source-repository head
   type:     git
