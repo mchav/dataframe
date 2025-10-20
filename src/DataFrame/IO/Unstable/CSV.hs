@@ -36,7 +36,6 @@ import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TextEncoding
 import Data.Word (Word8)
 
-import Control.Monad (when)
 import Control.Parallel.Strategies (parList, rpar, using)
 import Data.Array.IArray (array, (!))
 import Data.Array.Unboxed (UArray)
@@ -56,21 +55,20 @@ fastReadCsvUnstable :: FilePath -> IO DataFrame
 fastReadCsvUnstable =
     readCsvUnstable'
         defaultReadOptions
-        getDelimiterIndices
+        (\originalLen paddedFile -> getDelimiterIndices originalLen paddedFile)
 
 readCsvUnstable :: FilePath -> IO DataFrame
 readCsvUnstable =
     readCsvUnstable'
         defaultReadOptions
-        ( \v -> do
-            let len = VS.length v
-            indices <- mallocArray len
-            getDelimiterIndices_ v len indices
+        ( \originalLen v -> do
+            indices <- mallocArray originalLen
+            getDelimiterIndices_ originalLen v indices
         )
 
 readCsvUnstable' ::
     ReadOptions ->
-    (VS.Vector Word8 -> IO (VS.Vector CSize)) ->
+    (Int -> VS.Vector Word8 -> IO (VS.Vector CSize)) ->
     FilePath ->
     IO DataFrame
 readCsvUnstable' opts delimiterIndices filePath = do
@@ -83,13 +81,8 @@ readCsvUnstable' opts delimiterIndices filePath = do
             Nothing
     let mutableFile = unsafeFromForeignPtr bufferPtr offset len
     paddedMutableFile <- grow mutableFile 64
-    -- If file doesn't end with newline, add one to the padded region
-    when (len > 0) $ do
-        lastChar <- VSM.read paddedMutableFile (len - 1)
-        when (lastChar /= lf) $
-            VSM.write paddedMutableFile len lf
     paddedCSVFile <- VS.unsafeFreeze paddedMutableFile
-    indices <- delimiterIndices paddedCSVFile
+    indices <- delimiterIndices len paddedCSVFile
     let numCol = countColumnsInFirstRow paddedCSVFile indices
         totalRows = VS.length indices `div` numCol
         extractField' = extractField paddedCSVFile indices
@@ -124,9 +117,9 @@ readCsvUnstable' opts delimiterIndices filePath = do
                     ( map
                         ( \row ->
                             extractField'
-                                ((row + dataStartRow) * numCol + col)
+                                (row * numCol + col)
                         )
-                        [0 .. numRow - 1]
+                        [dataStartRow .. totalRows - 1]
                     )
         columns =
             Vector.fromListN
@@ -174,27 +167,35 @@ foreign import capi "process_csv.h get_delimiter_indices"
 
 {-# INLINE getDelimiterIndices #-}
 getDelimiterIndices ::
+    Int ->
     VS.Vector Word8 ->
     IO (VS.Vector CSize)
-getDelimiterIndices csvFile =
+getDelimiterIndices originalLen csvFile =
     VS.unsafeWith csvFile $ \buffer -> do
-        let len = VS.length csvFile
+        let paddedLen = VS.length csvFile
         -- then number of delimiters cannot exceed the size
         -- of the input array (which would be a series of
         -- empty fields)
-        indices <- mallocArray len
+        indices <- mallocArray paddedLen
         num_fields <-
             get_delimiter_indices
                 (castPtr buffer)
-                (fromIntegral len)
+                (fromIntegral paddedLen)
                 (castPtr indices)
         if num_fields == -1
-            then getDelimiterIndices_ csvFile len indices
+            then getDelimiterIndices_ originalLen csvFile indices
             else do
                 indices' <- newForeignPtr_ indices
-                return $
-                    VS.unsafeFromForeignPtr0 indices' $
-                        fromIntegral num_fields
+                resultVector <- return $ VSM.unsafeFromForeignPtr0 indices' paddedLen
+                -- Handle the case where the file doesn't end with a newline
+                -- We need to add a final delimiter for the last field
+                finalResultLen <-
+                    if originalLen > 0 && csvFile VS.! (originalLen - 1) /= lf
+                        then do
+                            VSM.write resultVector (fromIntegral num_fields) (fromIntegral originalLen)
+                            return (fromIntegral num_fields + 1)
+                        else return (fromIntegral num_fields)
+                VS.unsafeFreeze $ VSM.slice 0 finalResultLen resultVector
 
 -- We have a Native version in case the C version
 -- cannot be used. For example if neither ARM_NEON
@@ -235,22 +236,31 @@ stateTransitionTable = array ((0, 0), (1, 255)) [(i, f i) | i <- range ((0, 0), 
 
 {-# INLINE getDelimiterIndices_ #-}
 getDelimiterIndices_ ::
-    VS.Vector Word8 ->
     Int ->
+    VS.Vector Word8 ->
     Ptr CSize ->
     IO (VS.Vector CSize)
-getDelimiterIndices_ csvFile len resultPtr = do
+getDelimiterIndices_ originalLen csvFile resultPtr = do
     resultVector <- resultVectorM
     (_, resultLen) <-
         VS.ifoldM'
             (processCharacter resultVector)
             (UnEscaped, 0)
             csvFile
-    VS.unsafeFreeze $ VSM.slice 0 resultLen resultVector
+    -- Handle the case where the file doesn't end with a newline
+    -- We need to add a final delimiter for the last field
+    finalResultLen <-
+        if originalLen > 0 && csvFile VS.! (originalLen - 1) /= lf
+            then do
+                VSM.write resultVector resultLen (fromIntegral originalLen)
+                return (resultLen + 1)
+            else return resultLen
+    VS.unsafeFreeze $ VSM.slice 0 finalResultLen resultVector
   where
+    paddedLen = VS.length csvFile
     resultVectorM = do
         resultForeignPtr <- newForeignPtr_ resultPtr
-        return $ VSM.unsafeFromForeignPtr0 resultForeignPtr len
+        return $ VSM.unsafeFromForeignPtr0 resultForeignPtr paddedLen
     processCharacter ::
         VSM.IOVector CSize ->
         (State, Int) ->
