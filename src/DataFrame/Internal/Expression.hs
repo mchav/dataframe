@@ -274,18 +274,20 @@ interpret df expression@(AggVector expr op (f :: v b -> c)) = case interpret @b 
                             , errorColumnName = Nothing
                             }
                         )
-        (UnboxedColumn col) -> case testEquality (typeRep @(v b)) (typeOf col) of
+        (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @(v b)) (typeOf col) of
             Just Refl -> interpret @c df (Lit (f col))
-            Nothing ->
-                Left $
-                    TypeMismatchException
-                        ( MkTypeErrorContext
-                            { userType = Right (typeRep @(v b))
-                            , expectedType = Right (typeOf col)
-                            , callingFunctionName = Just "interpret"
-                            , errorColumnName = Nothing
-                            }
-                        )
+            Nothing -> case testEquality (typeRep @b) (typeRep @d) of
+                Just Refl -> interpret @c df (Lit (f (V.convert col)))
+                Nothing ->
+                    Left $
+                        TypeMismatchException
+                            ( MkTypeErrorContext
+                                { userType = Right (typeRep @(v b))
+                                , expectedType = Right (typeOf col)
+                                , callingFunctionName = Just "interpret"
+                                , errorColumnName = Nothing
+                                }
+                            )
 interpret df expression@(AggReduce expr op (f :: forall a. (Columnable a) => a -> a -> a)) = case interpret @a df expr of
     Left (TypeMismatchException context) ->
         Left $

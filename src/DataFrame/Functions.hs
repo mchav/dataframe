@@ -41,6 +41,7 @@ import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Type.Equality
+import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame.Operations.Core as D
@@ -126,7 +127,18 @@ not :: Expr Bool -> Expr Bool
 not = UnaryOp "not" Prelude.not
 
 count :: (Columnable a) => Expr a -> Expr Int
-count expr = AggFold expr "foldUdf" 0 (\acc _ -> acc + 1)
+count expr = AggFold expr "count" 0 (\acc _ -> acc + 1)
+
+mode :: (Columnable a, Eq a) => Expr a -> Expr a
+mode expr =
+    AggVector
+        expr
+        "mode"
+        ( fst
+            . L.maximumBy (compare `on` snd)
+            . M.toList
+            . V.foldl' (\m e -> M.insertWith (+) e 1 m) M.empty
+        )
 
 minimum :: (Columnable a, Ord a) => Expr a -> Expr a
 minimum expr = AggReduce expr "minimum" Prelude.min
