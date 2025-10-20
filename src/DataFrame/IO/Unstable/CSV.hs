@@ -186,7 +186,7 @@ getDelimiterIndices originalLen csvFile =
             then getDelimiterIndices_ originalLen csvFile indices
             else do
                 indices' <- newForeignPtr_ indices
-                resultVector <- return $ VSM.unsafeFromForeignPtr0 indices' paddedLen
+                let resultVector = VSM.unsafeFromForeignPtr0 indices' paddedLen
                 -- Handle the case where the file doesn't end with a newline
                 -- We need to add a final delimiter for the last field
                 finalResultLen <-
