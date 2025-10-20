@@ -34,6 +34,7 @@ import DataFrame.Operations.Subset (exclude, select)
 import Control.Exception (throw)
 import Control.Monad
 import qualified Data.Char as Char
+import Data.Containers.ListUtils
 import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -172,7 +173,9 @@ zScore :: Expr Double -> Expr Double
 zScore c = (c - mean c) / stddev c
 
 pow :: (Columnable a, Num a) => Int -> Expr a -> Expr a
-pow i = UnaryOp ("pow " <> T.pack (show i)) (^ i)
+pow 0 _ = Lit 1
+pow 1 expr = expr
+pow i expr = UnaryOp ("pow " <> T.pack (show i)) (^ i) expr
 
 relu :: (Columnable a, Num a) => Expr a -> Expr a
 relu = UnaryOp "relu" (Prelude.max 0)
@@ -198,14 +201,10 @@ generatePrograms vars' constants [] =
             ++ [ transform p
                | p <- vars
                , transform <-
-                    [ zScore
-                    , abs
+                    [ abs
                     , sqrt
                     , log . (+ Lit 1)
                     , exp
-                    , mean
-                    , median
-                    , stddev
                     , sin
                     , cos
                     , relu
@@ -226,6 +225,16 @@ generatePrograms vars' constants [] =
                , (j, q) <- zip [0 ..] vars
                , i Prelude.> j
                ]
+            ++ nubOrd
+                [ ifThenElse (p DataFrame.Functions.>= q) r s
+                | (i, p) <- zip [0 ..] vars
+                , (j, q) <- zip [0 ..] vars
+                , p /= q
+                , i /= j
+                , (k, r) <- zip [0 ..] vars
+                , (l, s) <- zip [0 ..] vars
+                , r /= s
+                ]
             ++ [ DataFrame.Functions.max p q
                | (i, p) <- zip [0 ..] vars
                , (j, q) <- zip [0 ..] vars
@@ -287,20 +296,6 @@ generatePrograms vars constants ps =
                , (j, q) <- zip [0 ..] existingPrograms
                , i Prelude.> j
                ]
-            ++ [ ifThenElse (p DataFrame.Functions.>= percentile n p) p q
-               | (i, p) <- zip [0 ..] existingPrograms
-               , (j, q) <- zip [0 ..] existingPrograms
-               , i /= j
-               , n <- [1, 25, 50, 75, 99]
-               ]
-            ++ [ ifThenElse (p DataFrame.Functions.>= q) r s
-               | (i, p) <- zip [0 ..] existingPrograms
-               , (j, q) <- zip [0 ..] existingPrograms
-               , i /= j
-               , (k, r) <- zip [0 ..] existingPrograms
-               , (l, s) <- zip [0 ..] existingPrograms
-               , k /= l
-               ]
             ++ [ p - q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
@@ -312,9 +307,9 @@ generatePrograms vars constants ps =
                , i Prelude.>= j
                ]
             ++ [ p / q
-               | (i, p) <- zip [0 ..] existingPrograms
-               , (j, q) <- zip [0 ..] existingPrograms
-               , i /= j
+               | p <- existingPrograms
+               , q <- existingPrograms
+               , p /= q
                ]
 
 -- | Deduplicate programs pick the least smallest one by size.
@@ -322,7 +317,7 @@ deduplicate ::
     DataFrame ->
     [Expr Double] ->
     [(Expr Double, TypedColumn Double)]
-deduplicate df = go S.empty . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
+deduplicate df = go S.empty . nubOrd . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
   where
     go _ [] = []
     go seen (x : xs)
