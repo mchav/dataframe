@@ -36,6 +36,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Encoding as TextEncoding
 import Data.Word (Word8)
 
+import Control.Monad (when)
 import Control.Parallel.Strategies (parList, rpar, using)
 import Data.Array.IArray (array, (!))
 import Data.Array.Unboxed (UArray)
@@ -82,6 +83,11 @@ readCsvUnstable' opts delimiterIndices filePath = do
             Nothing
     let mutableFile = unsafeFromForeignPtr bufferPtr offset len
     paddedMutableFile <- grow mutableFile 64
+    -- If file doesn't end with newline, add one to the padded region
+    when (len > 0) $ do
+        lastChar <- VSM.read paddedMutableFile (len - 1)
+        when (lastChar /= lf) $
+            VSM.write paddedMutableFile len lf
     paddedCSVFile <- VS.unsafeFreeze paddedMutableFile
     indices <- delimiterIndices paddedCSVFile
     let numCol = countColumnsInFirstRow paddedCSVFile indices
@@ -240,7 +246,7 @@ getDelimiterIndices_ csvFile len resultPtr = do
             (processCharacter resultVector)
             (UnEscaped, 0)
             csvFile
-    VS.unsafeFreeze $ VSM.slice 0 (resultLen + 1) resultVector
+    VS.unsafeFreeze $ VSM.slice 0 resultLen resultVector
   where
     resultVectorM = do
         resultForeignPtr <- newForeignPtr_ resultPtr
