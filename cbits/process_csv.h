@@ -2,17 +2,34 @@
 #define PROCESS_CSV
 
 #include <stddef.h>
+#include <stdint.h>
 
-#ifdef __ARM_NEON
-#include <arm_neon.h>
-#endif /* __ARM_NEON */
+// Define feature macros for SIMD support with carryless multiplication
+// We need both SIMD instructions AND carryless multiplication for the CSV parser
+#if defined(__AVX2__) && defined(__PCLMUL__)
+  #define HAS_SIMD_CSV 1
+  #define USE_AVX2 1
+  #include <immintrin.h>
+  #include <wmmintrin.h>
+#elif defined(__ARM_NEON) && (defined(__ARM_FEATURE_AES) || defined(__ARM_FEATURE_CRYPTO))
+  // Note: __ARM_FEATURE_CRYPTO is deprecated; prefer __ARM_FEATURE_AES
+  // We need polynomial multiply (vmull_p64/PMULL) for carryless multiplication
+  // Runtime check: 'pmull' flag in /proc/cpuinfo on Linux
+  // We support both macros for compatibility with older compilers
+  #define HAS_SIMD_CSV 1
+  #define USE_NEON 1
+  #include <arm_neon.h>
+#endif
 
-uint64_t find_character_in_chunk(uint8x16x4_t src, uint8_t c);
+// CSV parsing constants
+#define COMMA_CHAR 0x2C
+#define NEWLINE_CHAR 0x0A
+#define QUOTE_CHAR 0x22
+#define ALL_ONES_MASK ~0ULL
+#define ALL_ZEROS_MASK 0ULL
 
-uint64_t parse_chunk(uint8_t *in, uint64_t *initial_quoted);
-
-size_t find_one_indices(size_t start_index, uint64_t bits, size_t *indices, size_t *base);
-
+// Only expose a portable API in the public header.
+// Implementation may use platform-specific intrinsics internally.
 size_t get_delimiter_indices(uint8_t *buf, size_t len, size_t* indices);
 
 #endif

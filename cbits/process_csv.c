@@ -1,6 +1,7 @@
 #include "process_csv.h"
 #include <stdlib.h>
 #include <stdio.h>
+
 /*
  * compile with clang -O3
  * in cabal use 
@@ -29,19 +30,6 @@
  *
  */
 
-#define const_vector(x) vmovq_n_u8(x);
-#define compare_vectors(x, y) vceqq_u8(x, y);
-#define and_vectors(x, y) vandq_u8(x, y);
-#define pairwise_add_vectors(x, y) vpaddq_u8(x, y);
-#define bitwise_select(r1, r2, d) vbslq_u8(r1, r2, d);
-#define carryless_product(r1, r2) vmull_p64(r1, r2);
-
-#define comma 0x2C
-#define newline 0x0A
-#define quote 0x22
-#define all_ones ~0ULL
-#define all_zeros 0ULL
-
 // if the character is found at a particular
 // position in the array of bytes, the
 // corresponding bit in the returned uint64_t should
@@ -49,22 +37,26 @@
 // Example: searching for commas in
 // input:  one, two, three
 // result: 000100001000000
-//
-// "one", "two", three
-// 1000100100010000000
-// 1111000111100000000
-//
-//
-// 01001111 / 00001000 / ..
-// 00001000 / 00001000 /....
-// 00000000 / 11111111 / 
-// 01...
-uint64_t find_character_in_chunk(uint8x16x4_t src, uint8_t c) {
-  uint8x16_t mask = const_vector(c);
-  uint8x16_t cmp0 = compare_vectors(src.val[0], mask);
-  uint8x16_t cmp1 = compare_vectors(src.val[1], mask);
-  uint8x16_t cmp2 = compare_vectors(src.val[2], mask);
-  uint8x16_t cmp3 = compare_vectors(src.val[3], mask);
+#ifdef HAS_SIMD_CSV
+static uint64_t find_character_in_chunk(uint8_t *in, uint8_t c) {
+#ifdef USE_AVX2
+  // AVX2 implementation: load two 32-byte chunks
+  __m256i v0 = _mm256_loadu_si256((const __m256i *)(in));
+  __m256i v1 = _mm256_loadu_si256((const __m256i *)(in + 32));
+  __m256i b = _mm256_set1_epi8((char)c);
+  __m256i m0 = _mm256_cmpeq_epi8(v0, b);
+  __m256i m1 = _mm256_cmpeq_epi8(v1, b);
+  uint32_t lo = (uint32_t)_mm256_movemask_epi8(m0);
+  uint32_t hi = (uint32_t)_mm256_movemask_epi8(m1);
+  return ((uint64_t)hi << 32) | (uint64_t)lo;
+#else // USE_NEON
+  // ARM NEON implementation: load 64 bytes deinterleaved
+  uint8x16x4_t src = vld4q_u8(in);
+  uint8x16_t mask = vmovq_n_u8(c);
+  uint8x16_t cmp0 = vceqq_u8(src.val[0], mask);
+  uint8x16_t cmp1 = vceqq_u8(src.val[1], mask);
+  uint8x16_t cmp2 = vceqq_u8(src.val[2], mask);
+  uint8x16_t cmp3 = vceqq_u8(src.val[3], mask);
 
   // For an explanation of how to do movemask in
   // NEON, see: https://branchfree.org/2019/04/01/fitting-my-head-through-the-arm-holes-or-two-sequences-to-substitute-for-the-missing-pmovmskb-instruction-on-arm-neon/
@@ -120,32 +112,45 @@ uint64_t find_character_in_chunk(uint8x16x4_t src, uint8_t c) {
   // (vreinterpret_u64_u8 here does uint8x8 -> uint64x1
   // and vget_lane_u64 does uint64x1 -> uint64) 
   return vget_lane_u64(vreinterpret_u64_u8(t4), 0);
+#endif
 }
+#endif
 
 // I owe a debt to https://github.com/geofflangdale/simdcsv
 // Let's go ahead and assume `in` will only ever get 64 bytes
 // initial_quoted will be either all_ones ~0ULL or all_zeros 0ULL
-uint64_t parse_chunk(uint8_t *in, uint64_t *initial_quoted) {
-  uint8x16x4_t invec = vld4q_u8(in);
-
-  uint64_t quotebits = find_character_in_chunk(invec, quote);
+#ifdef HAS_SIMD_CSV
+static uint64_t parse_chunk(uint8_t *in, uint64_t *initial_quoted) {
+  uint64_t quotebits = find_character_in_chunk(in, QUOTE_CHAR);
   // See https://wunkolo.github.io/post/2020/05/pclmulqdq-tricks/
   // Also, section 3.1.1 of Parsing Gigabytes of JSON per Second,
   // Geoff Langdale, Daniel Lemire, https://arxiv.org/pdf/1902.08318
-  uint64_t quotemask = carryless_product(all_ones, quotebits);
+#ifdef USE_AVX2
+  // Use PCLMUL for carryless multiplication on x86
+  __m128i a = _mm_set_epi64x(0, (int64_t)ALL_ONES_MASK);
+  __m128i b = _mm_set_epi64x(0, (int64_t)quotebits);
+  __m128i result = _mm_clmulepi64_si128(a, b, 0);
+  uint64_t quotemask = (uint64_t)_mm_cvtsi128_si64(result);
+#else // USE_NEON
+  // Use vmull_p64 (PMULL) for carryless multiplication on ARM
+  // Requires ARM crypto extensions (compile: __ARM_FEATURE_AES, runtime: pmull flag)
+  uint64_t quotemask = vmull_p64(ALL_ONES_MASK, quotebits);
+#endif
   quotemask ^= (*initial_quoted);
   // Find out if the chunk ends in a quoted region by looking
   // at the last bit
   (*initial_quoted) = (uint64_t)((int64_t)quotemask >> 63);
 
-  uint64_t commabits = find_character_in_chunk(invec, comma);
-  uint64_t newlinebits = find_character_in_chunk(invec, newline);
+  uint64_t commabits = find_character_in_chunk(in, COMMA_CHAR);
+  uint64_t newlinebits = find_character_in_chunk(in, NEWLINE_CHAR);
 
   uint64_t delimiter_bits = (commabits | newlinebits) & ~quotemask;
   return delimiter_bits;
 }
+#endif
 
-size_t find_one_indices(size_t start_index, uint64_t bits, size_t *indices, size_t *base) {
+#ifdef HAS_SIMD_CSV
+static size_t find_one_indices(size_t start_index, uint64_t bits, size_t *indices, size_t *base) {
   size_t position = 0;
   uint64_t bitset = bits;
   while (bitset != 0) {
@@ -163,6 +168,7 @@ size_t find_one_indices(size_t start_index, uint64_t bits, size_t *indices, size
   *base += position;
   return position;
 }
+#endif
 
 size_t get_delimiter_indices(uint8_t *buf, size_t len, size_t *indices) {
   // Recall we padded our file with 64 empty bytes.
@@ -173,9 +179,7 @@ size_t get_delimiter_indices(uint8_t *buf, size_t len, size_t *indices) {
   // below. This way, in ptr + 128 we have 59 bytes of
   // actual data and 5 bytes of zeros. If we didn't do this
   // we'd be reading past the end of file on the last row
-  // #ifndef __AVX2__
-  //   return -1;
-  // #endif
+#ifdef HAS_SIMD_CSV
   size_t unpaddedLen = len < 64 ? 0 : len - 64;
   uint64_t initial_quoted = 0ULL;
   size_t base = 0;
@@ -185,4 +189,10 @@ size_t get_delimiter_indices(uint8_t *buf, size_t len, size_t *indices) {
     find_one_indices(i, delimiter_bits, indices, &base);
   }
   return base;
+#else
+  // SIMD not available or carryless multiplication not supported.
+  // Signal fallback to Haskell implementation.
+  (void)buf; (void)len; (void)indices;
+  return (size_t)-1;
+#endif
 }
