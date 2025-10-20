@@ -55,7 +55,7 @@ fastReadCsvUnstable :: FilePath -> IO DataFrame
 fastReadCsvUnstable =
     readCsvUnstable'
         defaultReadOptions
-        (\originalLen paddedFile -> getDelimiterIndices originalLen paddedFile)
+        getDelimiterIndices
 
 readCsvUnstable :: FilePath -> IO DataFrame
 readCsvUnstable =
