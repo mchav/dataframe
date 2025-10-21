@@ -871,6 +871,10 @@ instance (Num a, Columnable a) => Num (Expr a) where
         | e1 == e2 = UnaryOp ("mult " <> (T.pack . show) (Lit @a 2)) (* 2) e1
         | otherwise = BinaryOp "add" (+) e1 e2
 
+    (-) :: Expr a -> Expr a -> Expr a
+    (-) (Lit x) (Lit y) = Lit (x - y)
+    (-) e1 e2 = BinaryOp "sub" (-) e1 e2
+
     (*) :: Expr a -> Expr a -> Expr a
     (*) (Lit 0) _ = Lit 0
     (*) _ (Lit 0) = Lit 0

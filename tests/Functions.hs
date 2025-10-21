@@ -6,20 +6,12 @@ module Functions where
 import DataFrame.Functions (
     col,
     generatePrograms,
-    geq,
-    ifThenElse,
     lit,
-    max,
-    mean,
-    median,
-    min,
-    percentile,
     pow,
     relu,
     sanitize,
-    stddev,
  )
-import DataFrame.Internal.Expression (add, divide, mult)
+import DataFrame.Internal.Expression (add, mult)
 import Test.HUnit
 import Prelude hiding (max, min)
 
@@ -80,16 +72,10 @@ generateProgramsCalledWithNoExistingPrograms =
         ( assertEqual
             "generatePrograms called with no existing programs"
             [ col @Double "x"
-            , divide
-                (add (col @Double "x") (negate (mean (col @Double "x"))))
-                (stddev (col @Double "x"))
             , abs (col @Double "x")
-            , exp (mult (log (col @Double "x")) (lit 0.5))
-            , log (add (col @Double "x") (lit 1.0))
+            , exp (mult (lit 0.5) (log (col @Double "x")))
+            , log (add (lit 1.0) (col @Double "x"))
             , exp (col @Double "x")
-            , mean (col @Double "x")
-            , median (col @Double "x")
-            , stddev (col @Double "x")
             , sin (col @Double "x")
             , cos (col @Double "x")
             , relu (col @Double "x")
@@ -99,8 +85,6 @@ generateProgramsCalledWithNoExistingPrograms =
             , pow 4 (col @Double "x")
             , pow 5 (col @Double "x")
             , pow 6 (col @Double "x")
-            , max (col @Double "x") (col @Double "x")
-            , mult (col @Double "x") (col @Double "x")
             ]
             (generatePrograms [col "x"] [] [])
         )

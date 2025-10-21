@@ -197,80 +197,88 @@ generatePrograms vars' constants [] =
     let
         vars = vars' ++ constants
      in
-        vars
-            ++ [ transform p
-               | p <- vars
-               , transform <-
-                    [ abs
-                    , sqrt
-                    , log . (+ Lit 1)
-                    , exp
-                    , sin
-                    , cos
-                    , relu
-                    , signum
+        nubOrd $
+            vars
+                ++ [ transform p
+                   | p <- vars'
+                   , transform <-
+                        [ abs
+                        , sqrt
+                        , log . (+ Lit 1)
+                        , exp
+                        , sin
+                        , cos
+                        , relu
+                        , signum
+                        ]
+                   ]
+                ++ [ pow i p
+                   | p <- vars
+                   , i <- [2 .. 6]
+                   ]
+                ++ [ p + q
+                   | (i, p) <- zip [0 ..] vars
+                   , (j, q) <- zip [0 ..] vars
+                   , Prelude.not (isLiteral p && isLiteral q)
+                   , i Prelude.> j
+                   ]
+                ++ [ DataFrame.Functions.min p q
+                   | (i, p) <- zip [0 ..] vars
+                   , (j, q) <- zip [0 ..] vars
+                   , p /= q
+                   , Prelude.not (isLiteral p && isLiteral q)
+                   , i Prelude.> j
+                   ]
+                ++ [ DataFrame.Functions.max p q
+                   | (i, p) <- zip [0 ..] vars
+                   , (j, q) <- zip [0 ..] vars
+                   , p /= q
+                   , Prelude.not (isLiteral p && isLiteral q)
+                   , i Prelude.> j
+                   ]
+                ++ nubOrd
+                    [ ifThenElse (p DataFrame.Functions.>= q) r s
+                    | (i, p) <- zip [0 ..] vars
+                    , (j, q) <- zip [0 ..] vars
+                    , Prelude.not (isLiteral p && isLiteral q)
+                    , p /= q
+                    , i Prelude.> j
+                    , (k, r) <- zip [0 ..] vars
+                    , (l, s) <- zip [0 ..] vars
+                    , Prelude.not (isLiteral r && isLiteral s)
+                    , r /= s
                     ]
-               ]
-            ++ [ pow i p
-               | p <- vars
-               , i <- [2 .. 6]
-               ]
-            ++ [ p + q
-               | (i, p) <- zip [0 ..] vars
-               , (j, q) <- zip [0 ..] vars
-               , i Prelude.> j
-               ]
-            ++ [ DataFrame.Functions.min p q
-               | (i, p) <- zip [0 ..] vars
-               , (j, q) <- zip [0 ..] vars
-               , i Prelude.> j
-               ]
-            ++ nubOrd
-                [ ifThenElse (p DataFrame.Functions.>= q) r s
-                | (i, p) <- zip [0 ..] vars
-                , (j, q) <- zip [0 ..] vars
-                , p /= q
-                , i /= j
-                , (k, r) <- zip [0 ..] vars
-                , (l, s) <- zip [0 ..] vars
-                , r /= s
-                ]
-            ++ [ DataFrame.Functions.max p q
-               | (i, p) <- zip [0 ..] vars
-               , (j, q) <- zip [0 ..] vars
-               , i Prelude.>= j
-               ]
-            ++ [ p - q
-               | (i, p) <- zip [0 ..] vars
-               , (j, q) <- zip [0 ..] vars
-               , i /= j
-               ]
-            ++ [ p * q
-               | (i, p) <- zip [0 ..] vars
-               , (j, q) <- zip [0 ..] vars
-               , i Prelude.>= j
-               ]
-            ++ [ p / q
-               | (i, p) <- zip [0 ..] vars
-               , (j, q) <- zip [0 ..] vars
-               , i /= j
-               ]
+                ++ [ p - q
+                   | (i, p) <- zip [0 ..] vars
+                   , (j, q) <- zip [0 ..] vars
+                   , Prelude.not (isLiteral p && isLiteral q)
+                   , i /= j
+                   ]
+                ++ [ p * q
+                   | (i, p) <- zip [0 ..] vars
+                   , (j, q) <- zip [0 ..] vars
+                   , Prelude.not (isLiteral p && isLiteral q)
+                   , i Prelude.>= j
+                   ]
+                ++ [ p / q
+                   | (i, p) <- zip [0 ..] vars
+                   , (j, q) <- zip [0 ..] vars
+                   , Prelude.not (isLiteral p && isLiteral q)
+                   , i /= j
+                   ]
 generatePrograms vars constants ps =
     let
-        existingPrograms = vars ++ ps ++ constants
+        existingPrograms = ps ++ vars ++ constants
      in
         existingPrograms
             ++ [ transform p
-               | p <- existingPrograms
+               | p <- ps ++ vars
                , transform <-
                     [ zScore
                     , sqrt
                     , abs
                     , log . (+ Lit 1)
                     , exp
-                    , mean
-                    , median
-                    , stddev
                     , sin
                     , cos
                     , relu
@@ -284,33 +292,57 @@ generatePrograms vars constants ps =
             ++ [ p + q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
+               , Prelude.not (isLiteral p && isLiteral q)
                , i Prelude.>= j
                ]
             ++ [ DataFrame.Functions.min p q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
+               , Prelude.not (isLiteral p && isLiteral q)
+               , p /= q
                , i Prelude.> j
                ]
             ++ [ DataFrame.Functions.max p q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
+               , Prelude.not (isLiteral p && isLiteral q)
+               , p /= q
                , i Prelude.> j
                ]
+            ++ nubOrd
+                [ ifThenElse (p DataFrame.Functions.>= q) r s
+                | (i, p) <- zip [0 ..] existingPrograms
+                , (j, q) <- zip [0 ..] existingPrograms
+                , Prelude.not (isLiteral p && isLiteral q)
+                , p /= q
+                , i Prelude.> j
+                , (k, r) <- zip [0 ..] existingPrograms
+                , (l, s) <- zip [0 ..] existingPrograms
+                , Prelude.not (isLiteral r && isLiteral s)
+                , r /= s
+                ]
             ++ [ p - q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
+               , Prelude.not (isLiteral p && isLiteral q)
                , i /= j
                ]
             ++ [ p * q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
+               , Prelude.not (isLiteral p && isLiteral q)
                , i Prelude.>= j
                ]
             ++ [ p / q
                | p <- existingPrograms
                , q <- existingPrograms
+               , Prelude.not (isLiteral p && isLiteral q)
                , p /= q
                ]
+
+isLiteral :: Expr a -> Bool
+isLiteral (Lit _) = True
+isLiteral _ = False
 
 -- | Deduplicate programs pick the least smallest one by size.
 deduplicate ::
