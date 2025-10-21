@@ -191,9 +191,30 @@ reduce ::
     (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
 reduce expr = AggFold expr "foldUdf"
 
+generateConditions ::
+    TypedColumn Double -> [Expr Bool] -> [Expr Double] -> DataFrame -> [Expr Bool]
+generateConditions labels conds ps df =
+    let
+        newConds =
+            [ p DataFrame.Functions.<= q
+            | p <- ps
+            , q <- ps
+            , p /= q
+            ]
+                ++ [ DataFrame.Functions.not p
+                   | p <- conds
+                   ]
+        expandedConds =
+            conds
+                ++ newConds
+                ++ [p `DataFrame.Functions.and` q | p <- newConds, q <- conds, p /= q]
+                ++ [p `DataFrame.Functions.or` q | p <- newConds, q <- conds, p /= q]
+     in
+        pickTopNBool df labels (deduplicate df expandedConds)
+
 generatePrograms ::
-    [Expr Double] -> [Expr Double] -> [Expr Double] -> [Expr Double]
-generatePrograms vars' constants [] =
+    [Expr Bool] -> [Expr Double] -> [Expr Double] -> [Expr Double] -> [Expr Double]
+generatePrograms conds vars' constants [] =
     let
         vars = vars' ++ constants
      in
@@ -236,18 +257,12 @@ generatePrograms vars' constants [] =
                    , Prelude.not (isLiteral p && isLiteral q)
                    , i Prelude.> j
                    ]
-                ++ nubOrd
-                    [ ifThenElse (p DataFrame.Functions.>= q) r s
-                    | (i, p) <- zip [0 ..] vars
-                    , (j, q) <- zip [0 ..] vars
-                    , Prelude.not (isLiteral p && isLiteral q)
-                    , p /= q
-                    , i Prelude.> j
-                    , (k, r) <- zip [0 ..] vars
-                    , (l, s) <- zip [0 ..] vars
-                    , Prelude.not (isLiteral r && isLiteral s)
-                    , r /= s
-                    ]
+                ++ [ ifThenElse cond r s
+                   | cond <- conds
+                   , r <- vars
+                   , s <- vars
+                   , r /= s
+                   ]
                 ++ [ p - q
                    | (i, p) <- zip [0 ..] vars
                    , (j, q) <- zip [0 ..] vars
@@ -266,7 +281,7 @@ generatePrograms vars' constants [] =
                    , Prelude.not (isLiteral p && isLiteral q)
                    , i /= j
                    ]
-generatePrograms vars constants ps =
+generatePrograms conds vars constants ps =
     let
         existingPrograms = ps ++ vars ++ constants
      in
@@ -274,8 +289,7 @@ generatePrograms vars constants ps =
             ++ [ transform p
                | p <- ps ++ vars
                , transform <-
-                    [ zScore
-                    , sqrt
+                    [ sqrt
                     , abs
                     , log . (+ Lit 1)
                     , exp
@@ -309,18 +323,12 @@ generatePrograms vars constants ps =
                , p /= q
                , i Prelude.> j
                ]
-            ++ nubOrd
-                [ ifThenElse (p DataFrame.Functions.>= q) r s
-                | (i, p) <- zip [0 ..] existingPrograms
-                , (j, q) <- zip [0 ..] existingPrograms
-                , Prelude.not (isLiteral p && isLiteral q)
-                , p /= q
-                , i Prelude.> j
-                , (k, r) <- zip [0 ..] existingPrograms
-                , (l, s) <- zip [0 ..] existingPrograms
-                , Prelude.not (isLiteral r && isLiteral s)
-                , r /= s
-                ]
+            ++ [ ifThenElse cond r s
+               | cond <- conds
+               , r <- existingPrograms
+               , s <- existingPrograms
+               , r /= s
+               ]
             ++ [ p - q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
@@ -344,11 +352,12 @@ isLiteral :: Expr a -> Bool
 isLiteral (Lit _) = True
 isLiteral _ = False
 
--- | Deduplicate programs pick the least smallest one by size.
 deduplicate ::
+    forall a.
+    (Columnable a) =>
     DataFrame ->
-    [Expr Double] ->
-    [(Expr Double, TypedColumn Double)]
+    [Expr a] ->
+    [(Expr a, TypedColumn a)]
 deduplicate df = go S.empty . nubOrd . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
   where
     go _ [] = []
@@ -357,11 +366,11 @@ deduplicate df = go S.empty . nubOrd . L.sortBy (\e1 e2 -> compare (eSize e1) (e
         | S.member res seen = go seen xs
         | otherwise = (x, res) : go (S.insert res seen) xs
       where
-        res = case interpret df x of
+        res = case interpret @a df x of
             Left e -> throw e
             Right v -> v
         hasInvalid = case res of
-            (TColumn (UnboxedColumn (col :: VU.Vector a))) -> case testEquality (typeRep @Double) (typeRep @a) of
+            (TColumn (UnboxedColumn (col :: VU.Vector b))) -> case testEquality (typeRep @Double) (typeRep @b) of
                 Just Refl -> VU.any (\n -> isNaN n || isInfinite n) col
                 Nothing -> False
             _ -> False
@@ -390,6 +399,7 @@ synthesizeFeatureExpr target cfg df =
             cfg
             t
             (percentiles df')
+            []
             [] of
             Nothing -> Left "No programs found"
             Just p -> Right p
@@ -440,6 +450,7 @@ fitClassifier target d b df =
             (BeamConfig d b F1)
             t
             (percentiles df' ++ [lit 1, lit 0, lit (-1)])
+            []
             [] of
             Nothing -> Left "No programs found"
             Just p -> Right (ifThenElse (p DataFrame.Functions.> 0) 1 0)
@@ -479,6 +490,7 @@ fitRegression target d b df =
             )
             t
             (percentiles df')
+            []
             [] of
             Nothing -> Left "No programs found"
             Just p ->
@@ -491,6 +503,7 @@ fitRegression target d b df =
                             (BeamConfig d b MeanSquaredError)
                             t
                             (percentiles df' ++ [lit targetMean, lit 10])
+                            []
                             [Col "_generated_regression_feature_"] of
                             Nothing -> Left "Could not find coefficients"
                             Just p' -> Right (replaceExpr p (Col @Double "_generated_regression_feature_") p')
@@ -532,10 +545,12 @@ beamSearch ::
     TypedColumn Double ->
     -- | Constants
     [Expr Double] ->
+    -- | Conditions
+    [Expr Bool] ->
     -- | Programs
     [Expr Double] ->
     Maybe (Expr Double)
-beamSearch df cfg outputs constants programs
+beamSearch df cfg outputs constants conds programs
     | searchDepth cfg Prelude.== 0 = case ps of
         [] -> Nothing
         (x : _) -> Just x
@@ -545,8 +560,11 @@ beamSearch df cfg outputs constants programs
             (cfg{searchDepth = searchDepth cfg - 1})
             outputs
             constants
-            (generatePrograms (map col names) constants ps)
+            conditions
+            (generatePrograms conditions vars constants ps)
   where
+    vars = map col names
+    conditions = generateConditions outputs conds (vars ++ constants ++ ps) df
     ps = pickTopN df outputs cfg $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
 
@@ -607,6 +625,45 @@ pickTopN df (TColumn col) cfg ps =
                 ++ (if null ordered then "empty" else show (listToMaybe ordered))
             )
             ordered
+
+pickTopNBool ::
+    DataFrame ->
+    TypedColumn Double ->
+    [(Expr Bool, TypedColumn Bool)] ->
+    [Expr Bool]
+pickTopNBool _ _ [] = []
+pickTopNBool df (TColumn col) ps =
+    let
+        l = case toVector @Double @VU.Vector col of
+            Left e -> throw e
+            Right v -> v
+        ordered =
+            Prelude.take
+                100
+                ( map fst $
+                    L.sortBy
+                        ( \(_, c2) (_, c1) ->
+                            if maybe False isInfinite c1
+                                || maybe False isInfinite c2
+                                || maybe False isNaN c1
+                                || maybe False isNaN c2
+                                then LT
+                                else compare c1 c2
+                        )
+                        ( map
+                            (\(e, res) -> (e, getLossFunction MutualInformation l (asDoubleVector res)))
+                            ps
+                        )
+                )
+        asDoubleVector c =
+            let
+                (TColumn col') = c
+             in
+                case toVector @Bool @VU.Vector col' of
+                    Left e -> throw e
+                    Right v -> VU.map (fromIntegral @Int @Double . fromEnum) v
+     in
+        ordered
 
 satisfiesExamples :: DataFrame -> TypedColumn Double -> Expr Double -> Bool
 satisfiesExamples df col expr =

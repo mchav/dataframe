@@ -86,7 +86,7 @@ generateProgramsCalledWithNoExistingPrograms =
             , pow 5 (col @Double "x")
             , pow 6 (col @Double "x")
             ]
-            (generatePrograms [col "x"] [] [])
+            (generatePrograms [] [col "x"] [] [])
         )
 
 tests :: [Test]
