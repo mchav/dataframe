@@ -22,6 +22,7 @@ import qualified Operations.Filter
 import qualified Operations.GroupBy
 import qualified Operations.InsertColumn
 import qualified Operations.Merge
+import qualified Operations.ReadCsv
 import qualified Operations.Sort
 import qualified Operations.Statistics
 import qualified Operations.Take
@@ -122,6 +123,7 @@ tests =
             ++ Operations.GroupBy.tests
             ++ Operations.InsertColumn.tests
             ++ Operations.Merge.tests
+            ++ Operations.ReadCsv.tests
             ++ Operations.Sort.tests
             ++ Operations.Statistics.tests
             ++ Operations.Take.tests
