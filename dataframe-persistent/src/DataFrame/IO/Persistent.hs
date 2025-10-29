@@ -28,7 +28,7 @@ module DataFrame.IO.Persistent (
     -- * Type classes
     EntityToDataFrame (..),
     DataFrameToEntity (..),
-    
+
     -- * Helper types
     SomeColumn (..),
 
@@ -43,19 +43,19 @@ import Control.Monad (forM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Reader (ReaderT)
 import Data.ByteString (ByteString)
-import Data.Proxy (Proxy (..))
 import qualified Data.Map.Strict as M
+import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Vector as V
 import Data.Time (Day, TimeOfDay, UTCTime)
-import Database.Persist
-import Database.Persist.Sql hiding (Column)
-import Database.Persist.Types (unFieldNameHS, fieldHaskell, getEntityFields)
-import Unsafe.Coerce (unsafeCoerce)
+import qualified Data.Vector as V
 import qualified DataFrame.Internal.Column as DFCol
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import qualified DataFrame.Internal.DataFrame as DF
+import Database.Persist
+import Database.Persist.Sql hiding (Column)
+import Database.Persist.Types (fieldHaskell, getEntityFields, unFieldNameHS)
+import Unsafe.Coerce (unsafeCoerce)
 
 -- | Get number of rows in a DataFrame
 nRows :: DataFrame -> Int
@@ -93,7 +93,7 @@ class (PersistEntity record) => DataFrameToEntity record where
     -- | Convert a row from DataFrame to entity
     rowToEntity :: Int -> DataFrame -> Either String (Entity record)
 
--- | Helper type for heterogeneous column data  
+-- | Helper type for heterogeneous column data
 data SomeColumn = forall a. (DFCol.Columnable a) => SomeColumn (V.Vector a)
 
 -- | Read entities from database into a DataFrame
@@ -127,7 +127,8 @@ fromPersistentWith config filters = do
 
 -- | Convert entities to DataFrame
 entitiesToDataFrame ::
-    forall record. (PersistEntity record, EntityToDataFrame record, Show record) =>
+    forall record.
+    (PersistEntity record, EntityToDataFrame record, Show record) =>
     PersistentConfig ->
     [Entity record] ->
     IO DataFrame
@@ -142,7 +143,7 @@ entitiesToDataFrame config entities = do
     if null entities
         then do
             -- Create empty dataframe with proper column structure
-            let indices = M.fromList $ zip colNames [0..]
+            let indices = M.fromList $ zip colNames [0 ..]
                 numCols = length colNames
                 dimensions = (0, numCols)
                 emptyColumns = replicate numCols (DFCol.fromList ([] :: [Text]))
@@ -150,7 +151,7 @@ entitiesToDataFrame config entities = do
         else do
             -- Create columns from entity data
             columns <- createColumnsFromEntities @record config entities
-            let indices = M.fromList $ zip colNames [0..]
+            let indices = M.fromList $ zip colNames [0 ..]
                 numRows = if null entities then 0 else length entities
                 numCols = length colNames
                 dimensions = (numRows, numCols)
@@ -158,14 +159,15 @@ entitiesToDataFrame config entities = do
 
 -- | Create columns from entities
 createColumnsFromEntities ::
-    forall record. (PersistEntity record, EntityToDataFrame record, Show record) =>
+    forall record.
+    (PersistEntity record, EntityToDataFrame record, Show record) =>
     PersistentConfig ->
     [Entity record] ->
     IO [DFCol.Column]
 createColumnsFromEntities config entities = do
     -- Get column data for all entities
     let allColumnData = map entityToColumnData entities
-        
+
     -- Determine column names (with or without ID)
     let proxy = Proxy @record
         baseColNames = entityColumnNames proxy
@@ -173,7 +175,7 @@ createColumnsFromEntities config entities = do
             if pcIncludeId config
                 then pcIdColumnName config : baseColNames
                 else baseColNames
-    
+
     -- For each column name, collect and combine data from all entities
     let columns = map (createColumnFromEntityData allColumnData) allColNames
     return columns
@@ -182,25 +184,26 @@ createColumnsFromEntities config entities = do
 createColumnFromEntityData :: [[(Text, SomeColumn)]] -> Text -> DFCol.Column
 createColumnFromEntityData allEntityData colName =
     -- Find all matching columns for this name
-    case [ someCol | entityData <- allEntityData
-                   , (name, someCol) <- entityData
-                   , name == colName ] of
-        [] -> DFCol.fromList ([] :: [Text])  -- Empty column
-        allSomeColumns -> 
+    case [ someCol
+         | entityData <- allEntityData
+         , (name, someCol) <- entityData
+         , name == colName
+         ] of
+        [] -> DFCol.fromList ([] :: [Text]) -- Empty column
+        allSomeColumns ->
             -- Extract and concatenate vectors from SomeColumn wrappers
             concatSomeColumns allSomeColumns
 
 -- | Helper to concatenate SomeColumn values into a single Column
 concatSomeColumns :: [SomeColumn] -> DFCol.Column
 concatSomeColumns [] = DFCol.fromList ([] :: [Text])
-concatSomeColumns (SomeColumn (firstVec :: V.Vector a) : rest) = 
+concatSomeColumns (SomeColumn (firstVec :: V.Vector a) : rest) =
     -- Since all columns for a given field should have the same type,
     -- we can safely extract and concatenate them
     let vectors = firstVec : map extractSameType rest
         extractSameType (SomeColumn v) = unsafeCoerce v :: V.Vector a
         combined = V.concat vectors
-    in DFCol.fromVector combined
-
+     in DFCol.fromVector combined
 
 -- | Write DataFrame to database as entities
 toPersistent ::
@@ -225,17 +228,19 @@ entityToColumns ::
     (PersistEntity record, ToBackendKey SqlBackend record) =>
     Entity record ->
     [(Text, SomeColumn)]
-entityToColumns (Entity key val) = 
+entityToColumns (Entity key val) =
     [("id", SomeColumn (V.singleton $ fromSqlKey key))]
 
 -- | Convert persistent fields to columns
-persistFieldsToColumns :: (PersistEntity record) => record -> [(Text, SomeColumn)]
-persistFieldsToColumns record = 
+persistFieldsToColumns ::
+    (PersistEntity record) => record -> [(Text, SomeColumn)]
+persistFieldsToColumns record =
     let persistValues = toPersistFields record
         -- Get entity definition using proxy - pass the record value to get the correct type
-        fieldNames = map (unFieldNameHS . fieldHaskell) $ getEntityFields $ entityDef (Just record)
+        fieldNames =
+            map (unFieldNameHS . fieldHaskell) $ getEntityFields $ entityDef (Just record)
         fieldPairs = zip fieldNames persistValues
-    in map persistValueToColumn fieldPairs
+     in map persistValueToColumn fieldPairs
   where
     persistValueToColumn :: (Text, PersistValue) -> (Text, SomeColumn)
     persistValueToColumn (name, pval) = (name, persistValueToSomeColumn pval)
@@ -252,12 +257,12 @@ persistValueToSomeColumn pval = case pval of
     PersistDay d -> SomeColumn (V.singleton d)
     PersistTimeOfDay tod -> SomeColumn (V.singleton tod)
     PersistUTCTime utc -> SomeColumn (V.singleton utc)
-    PersistNull -> SomeColumn (V.singleton ("" :: Text))  -- Handle nulls as empty text
-    PersistList vals -> SomeColumn (V.singleton (T.pack $ show vals))  -- Convert list to string representation
-    PersistMap m -> SomeColumn (V.singleton (T.pack $ show m))  -- Convert map to string representation
-    PersistObjectId oid -> SomeColumn (V.singleton (T.pack $ show oid))  -- Convert ObjectId to string
-    PersistArray vals -> SomeColumn (V.singleton (T.pack $ show vals))  -- Convert array to string representation
-    PersistLiteral_ _ bs -> SomeColumn (V.singleton bs)  -- Use the raw bytes
+    PersistNull -> SomeColumn (V.singleton ("" :: Text)) -- Handle nulls as empty text
+    PersistList vals -> SomeColumn (V.singleton (T.pack $ show vals)) -- Convert list to string representation
+    PersistMap m -> SomeColumn (V.singleton (T.pack $ show m)) -- Convert map to string representation
+    PersistObjectId oid -> SomeColumn (V.singleton (T.pack $ show oid)) -- Convert ObjectId to string
+    PersistArray vals -> SomeColumn (V.singleton (T.pack $ show vals)) -- Convert array to string representation
+    PersistLiteral_ _ bs -> SomeColumn (V.singleton bs) -- Use the raw bytes
 
 -- | Convert columns back to entity (helper for implementations)
 columnsToEntity ::
@@ -265,6 +270,6 @@ columnsToEntity ::
     Int ->
     DataFrame ->
     Either String (Entity record)
-columnsToEntity rowIdx df = 
+columnsToEntity rowIdx df =
     -- This would need to be implemented per entity type
     Left "Not implemented: entity-specific conversion required"
