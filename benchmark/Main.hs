@@ -79,12 +79,13 @@ groupByExplorer = do
     putStrLn output
 
 parseFile :: String -> IO ()
-parseFile path = void $ D.readCsv path
+parseFile = void . D.readCsv
 
-parseCovidEffectsCSV :: IO ()
-parseCovidEffectsCSV =
-    parseFile
-        "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
+parseFileUnstable :: String -> IO ()
+parseFileUnstable = void . D.readCsvUnstable
+
+parseFileUnstableSIMD :: String -> IO ()
+parseFileUnstableSIMD = void . D.fastReadCsvUnstable
 
 parseHousingCSV :: IO ()
 parseHousingCSV = parseFile "./data/housing.csv"
@@ -114,13 +115,32 @@ main = do
             , bench "groupByExplorer" $ nfIO groupByExplorer
             ]
         , bgroup
-            "Parsing"
-            [ bench
-                "effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv (9.0 MB)"
-                $ nfIO parseCovidEffectsCSV
-            , bench "housing.csv (1.4 MB)" $ nfIO parseHousingCSV
-            , bench "starwars.csv (10 KB)" $ nfIO parseStarWarsCSV
-            , bench "chipotle.tsv (356 KB)" $ nfIO parseChipotleTSV
-            , bench "measurements.txt (135 KB)" $ nfIO parseMeasurementsTXT
+            "housing.csv (1.4 MB)"
+            [ bench "Attoparsec" $ nfIO $ parseFile "./data/housing.csv"
+            , bench "Native Haskell" $ nfIO $ parseFileUnstable "./data/housing.csv"
+            , bench "SIMD" $ nfIO $ parseFileUnstableSIMD "./data/housing.csv"
             ]
+        , bgroup
+            "effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv (9.1 MB)"
+            [ bench "Attoparsec" $
+                nfIO $
+                    parseFile
+                        "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
+            , bench "Native Haskell" $
+                nfIO $
+                    parseFileUnstable
+                        "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
+            , bench "SIMD" $
+                nfIO $
+                    parseFileUnstableSIMD
+                        "./data/effects-of-covid-19-on-trade-at-15-december-2021-provisional.csv"
+            ]
+            -- this file was removed as it's too large you may substitute
+            -- with your own if you wish to run it locally on a large file
+            -- , bgroup
+            --     "customers.csv (334 MB)"
+            --     [ bench "Attoparsec" $ nfIO $ parseFile "./data/customers.csv"
+            --     , bench "Native Haskell" $ nfIO $ parseFileUnstable "./data/customers.csv"
+            --     , bench "SIMD" $ nfIO $ parseFileUnstableSIMD "./data/customers.csv"
+            --     ]
         ]
