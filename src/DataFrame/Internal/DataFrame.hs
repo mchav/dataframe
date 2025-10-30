@@ -70,18 +70,19 @@ instance Show DataFrame where
     show :: DataFrame -> String
     show d =
         let
+            (r, c) = dataframeDimensions d
             d' =
                 d
                     { columns = V.map (takeColumn 10) (columns d)
-                    , dataframeDimensions = (10, snd (dataframeDimensions d))
+                    , dataframeDimensions = (min 10 r, c)
                     }
          in
             T.unpack (asText d' False)
                 ++ "\n"
                 ++ "Showing "
-                ++ show (min 10 (fst (dataframeDimensions d)))
+                ++ show (min 10 r)
                 ++ " rows out of "
-                ++ show (fst (dataframeDimensions d))
+                ++ show r
 
 -- | For showing the dataframe as markdown in notebooks.
 toMarkdownTable :: DataFrame -> T.Text
