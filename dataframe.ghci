@@ -19,8 +19,6 @@ setNumCapabilities $ max 1 (min 4 (n-1))
 
 default (Int, T.Text, Double)
 
-:! clear
-
 :def! exposeColumns \s -> return ("_ = (); declareColumns " ++ s)
 :set prompt "\ESC[34m\STXdataframe> \ESC[m\STX"
 
