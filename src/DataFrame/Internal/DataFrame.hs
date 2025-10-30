@@ -78,7 +78,9 @@ instance Show DataFrame where
          in
             T.unpack (asText d' False)
                 ++ "\n"
-                ++ "Showing 10 rows out of "
+                ++ "Showing "
+                ++ show (min 10 (fst (dataframeDimensions d)))
+                ++ " rows out of "
                 ++ show (fst (dataframeDimensions d))
 
 -- | For showing the dataframe as markdown in notebooks.
