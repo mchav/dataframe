@@ -101,13 +101,12 @@ library
                       vector-algorithms ^>= 0.9,
                       zstd >= 0.1.2.0 && < 0.2,
                       mmap >= 0.5.8 && <= 0.5.9,
-                      parallel >= 3.2.2.0
+                      parallel >= 3.2.2.0 && < 5
     hs-source-dirs:   src
     c-sources:        cbits/process_csv.c
     include-dirs:     cbits
     includes:         process_csv.h
     install-includes: process_csv.h
-    cc-options:       -O3
     default-language: Haskell2010
 
 executable dataframe-benchmark-example
@@ -146,7 +145,6 @@ benchmark dataframe-benchmark
                    dataframe ^>= 0.3
     default-language: Haskell2010
     ghc-options:
-      -O2
       -threaded
       -rtsopts
       -with-rtsopts=-N
