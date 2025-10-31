@@ -64,7 +64,7 @@ parseFromExamples n dateFormat safeRead c
          in if safeRead && hasNulls
                 then BoxedColumn safeVector
                 else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
-    | V.all isJust (V.map readDouble examples) =
+    | V.any isJust (V.map readDouble examples) =
         let safeVector = V.map ((=<<) readDouble . emptyToNothing) c
             hasNulls = V.elem Nothing safeVector
          in if safeRead && hasNulls
