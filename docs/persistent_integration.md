@@ -87,6 +87,12 @@ loadUsers = runSqlite "test.db" $ do
     liftIO $ print allUsersDF
 ```
 
+If the dataframe already has a primary key you can refer to it by:
+
+```
+Id sql=<name> Int64
+```
+
 ### 3. Perform DataFrame Operations
 
 Once loaded, you can use all standard DataFrame operations:

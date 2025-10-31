@@ -99,7 +99,7 @@ generateEntityToColumnData conName fields cleanFieldNames = do
                         (ConE 'SomeColumn)
                         ( AppE
                             (VarE 'V.singleton)
-                            (AppE (VarE 'fromSqlKey) (VarE keyVar))
+                            (VarE keyVar)
                         )
                     )
                 ]

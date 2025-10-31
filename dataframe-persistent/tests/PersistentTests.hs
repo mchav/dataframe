@@ -73,9 +73,19 @@ TestOrder
     deriving Show Eq
 |]
 
+share
+    [mkPersist sqlSettings]
+    [persistLowerCase|
+Artist sql=artists
+    Id sql=ArtistId Int64
+    name Text sql=Name
+    deriving Show Eq
+|]
+
 -- Derive DataFrame instances
 $(derivePersistentDataFrame ''TestUser)
 $(derivePersistentDataFrame ''TestOrder)
+$(derivePersistentDataFrame ''Artist)
 
 -- Test fixture data
 testUsers :: [TestUser]
@@ -119,6 +129,25 @@ testFromPersistent = TestCase $ withTestDb $ do
         let names = V.toList (DF.columnAsVector @Text "name" df)
 
         assertEqual "Names match" ["Alice", "Bob", "Charlie", "Diana"] names
+
+testChinookFromPersistent :: Test
+testChinookFromPersistent = TestCase $ do
+    let dbPath = "./data/chinook.db"
+    runSqlite (T.pack dbPath) $ do
+        -- No migration necessary since the table already exists.
+        df <- fromPersistent @Artist []
+        liftIO $ do
+            assertEqual "Row count" 275 (nRows df)
+            let cols = DF.columnNames df
+            print cols
+            assertBool "Has id column" ("id" `elem` cols)
+            assertBool "Has name column" ("name" `elem` cols)
+            let names = V.toList (DF.columnAsVector @Text "name" (DF.take 5 df))
+
+            assertEqual
+                "Names match"
+                ["AC/DC", "Accept", "Aerosmith", "Alanis Morissette", "Alice In Chains"]
+                names
 
 -- Test loading with filters
 testFromPersistentWithFilters :: Test
@@ -277,4 +306,5 @@ persistentTests =
         , TestLabel "With relationships" testWithRelationships
         , TestLabel "Empty result set" testEmptyResultSet
         , TestLabel "Test persistFieldsToColumns" testPersistFieldsToColumns
+        , TestLabel "Chinook: Reads first 10 rows" testChinookFromPersistent
         ]
