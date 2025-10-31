@@ -3,10 +3,6 @@
 set -xe
 ghc --version
 
-curl https://www.stackage.org/lts-22.44/cabal.config | \
-sed -e 's/with-compiler: .*$//g' |\
-sed -e 's/.*inline-c.*//g' > cabal.project.freeze
-
 case "$(uname)" in
   "Darwin")
       TOTAL_MEM_GB=$(sysctl hw.memsize | awk '{print int($2/1024/1024/1024)}')
