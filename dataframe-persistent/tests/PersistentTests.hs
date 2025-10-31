@@ -17,26 +17,9 @@
 
 module PersistentTests where
 
-import Control.Exception (bracket)
-import Control.Monad (forM_)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.IO.Unlift (
-    MonadIO (..),
-    MonadUnliftIO,
-    askRunInIO,
-    unliftIO,
-    withRunInIO,
-    withUnliftIO,
- )
-import Control.Monad.Logger (
-    MonadLoggerIO,
-    NoLoggingT,
-    askLoggerIO,
-    logWarn,
-    runLoggingT,
-    runNoLoggingT,
- )
-import Control.Monad.Trans.Reader (ReaderT, ask)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Logger (NoLoggingT)
+import Control.Monad.Trans.Reader (ReaderT)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time
@@ -45,15 +28,13 @@ import qualified DataFrame as DF
 import qualified DataFrame.Functions as F
 import DataFrame.IO.Persistent
 import DataFrame.IO.Persistent.TH
-import qualified DataFrame.Internal.DataFrame as DF
 import Database.Persist
 import Database.Persist.Sqlite
 import Database.Persist.TH
-import System.Directory (removeFile)
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempFile)
 import Test.HUnit
-import UnliftIO.Resource (ResourceT, runResourceT)
+import UnliftIO.Resource (ResourceT)
 
 -- Define test entities
 share
