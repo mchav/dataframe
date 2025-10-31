@@ -31,4 +31,4 @@ A fast, safe, and intuitive DataFrame library.
 * Designed for interactivity: expressive syntax, helpful error messages, and sensible defaults.
 * Works seamlessly in both command-line and notebook environments—great for exploration and scripting alike.
 
-For an installation guide and tutorials checkout the [project documentation](https://dataframe.readthedocs.io/) and for an API reference checkout the [hackage documentation](https://hackage-content.haskell.org/package/dataframe-0.3.3.2/docs/DataFrame.html).
+For an installation guide and tutorials checkout the [project documentation](https://dataframe.readthedocs.io/) and for an API reference checkout the [hackage documentation](https://hackage-content.haskell.org/package/dataframe-0.3.3.5/docs/DataFrame.html).

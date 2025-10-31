@@ -1,5 +1,14 @@
 # Revision history for dataframe
 
+## 0.3.3.5
+* Fix parsing logic for doubles. Entire parsing logic is still a work in progress.
+* Speed up index selection by using backPermute.
+* Add `mode` function to `Functions`.
+* Rewrite some expressions to evaluation more efficient.
+* Show correct number of rows in message after truncating for display.
+* Add experimental fast CSV parsers (thanks @jhingon)
+* Add support to read dataframes from SQL databases.
+
 ## 0.3.3.4
 * Add linting CI step + fix existing lint errors.
 * Show now only prints 10 row. To print more you should use the new `display` function that takes the number of rows as a parameter in its configuration.
