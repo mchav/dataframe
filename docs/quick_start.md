@@ -21,7 +21,7 @@
     * For MacOS/Linux/WSL2: `curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | BOOTSTRAP_HASKELL_NONINTERACTIVE=1 sh`
     * For windows: `$ErrorActionPreference = 'Stop';Set-ExecutionPolicy Bypass -Scope Process -Force;[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;try { & ([ScriptBlock]::Create((Invoke-WebRequest https://www.haskell.org/ghcup/sh/bootstrap-haskell.ps1 -UseBasicParsing))) -InBash -InstallDir "C:\" } catch { Write-Error $_ }`
 * Run `cabal install dataframe`.
-* Start the dataframe REPL by running `dataframe` which should be in your ca
+* Start the dataframe REPL by running `dataframe` which should be in your PATH.
 
 ### Example usage
 
