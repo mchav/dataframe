@@ -1,38 +1,60 @@
-{-# LANGUAGE NumericUnderscores #-}
--- Useful Haskell extensions.
--- Allow string literal to be interpreted as any other string type.
-{-# LANGUAGE OverloadedStrings #-}
+module Main where
 
-import Data.Time
-import qualified Data.Vector.Unboxed as VU
-import qualified DataFrame as D -- import for general functionality.
-import System.Random.Stateful
+import Control.Monad
+import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
+import System.Directory (
+    XdgDirectory (..),
+    createDirectoryIfMissing,
+    doesFileExist,
+    getModificationTime,
+    getXdgDirectory,
+ )
+import System.FilePath ((</>))
+import System.Process
 
 main :: IO ()
 main = do
-    let n = 100_000_000
-    g <- newIOGenM =<< newStdGen
-    let range = (0 :: Double, 1 :: Double)
-    startGeneration <- getCurrentTime
-    ns <- VU.replicateM n (uniformRM range g)
-    xs <- VU.replicateM n (uniformRM range g)
-    ys <- VU.replicateM n (uniformRM range g)
-    let df = D.fromUnnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
-    print df
-    endGeneration <- getCurrentTime
-    let generationTime = diffUTCTime endGeneration startGeneration
-    putStrLn $ "Data generation Time: " ++ show generationTime
-    startCalculation <- getCurrentTime
-    print $ D.mean "0" df
-    print $ D.variance "1" df
-    print $ D.correlation "1" "2" df
-    endCalculation <- getCurrentTime
-    let calculationTime = diffUTCTime endCalculation startCalculation
-    putStrLn $ "Calculation Time: " ++ show calculationTime
-    startFilter <- getCurrentTime
-    print $ D.filter "0" (> (0.971 :: Double)) df D.|> D.take 10
-    endFilter <- getCurrentTime
-    let filterTime = diffUTCTime endFilter startFilter
-    putStrLn $ "Filter Time: " ++ show filterTime
-    let totalTime = diffUTCTime endFilter startGeneration
-    putStrLn $ "Total Time: " ++ show totalTime
+    cacheDir <- getXdgDirectory XdgCache "dataframe_repl"
+    createDirectoryIfMissing True cacheDir
+
+    let filepath = cacheDir </> "dataframe.ghci"
+    shouldDownload <- needsUpdate filepath
+
+    when shouldDownload $ do
+        putStrLn "\ESC[92mDownloading latest version of dataframe config...\ESC[0m"
+        output <-
+            readProcess
+                "curl"
+                [ "--output"
+                , filepath
+                , "https://raw.githubusercontent.com/mchav/dataframe/refs/heads/main/dataframe.ghci"
+                ]
+                ""
+        putStrLn output
+
+    let command = "cabal"
+        args =
+            [ "repl"
+            , "-O2"
+            , "--build-depends"
+            , "dataframe"
+            , "--repl-option=-ghci-script=" ++ filepath
+            ]
+    (_, _, _, processHandle) <- createProcess (proc command args)
+
+    exitCode <- waitForProcess processHandle
+    pure ()
+
+oneWeek :: NominalDiffTime
+oneWeek = 7 * 24 * 60 * 60
+
+needsUpdate :: FilePath -> IO Bool
+needsUpdate filepath = do
+    exists <- doesFileExist filepath
+    if not exists
+        then return True
+        else do
+            modTime <- getModificationTime filepath
+            currentTime <- getCurrentTime
+            let age = diffUTCTime currentTime modTime
+            return (age > oneWeek)

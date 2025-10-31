@@ -11,7 +11,7 @@ import System.Process
 
 haskell :: IO ()
 haskell = do
-    output <- readProcess "cabal" ["run", "dataframe", "-O2"] ""
+    output <- readProcess "cabal" ["run", "dataframe-benchmark-example", "-O2"] ""
     putStrLn output
 
 polars :: IO ()

@@ -1,20 +1,35 @@
 # Quick Start
 
-## Notebooks
+## Jupyter
 
-A downloaded notebook is available [here](https://github.com/mchav/ihaskell-dataframe/blob/main/app/California%20Housing.ipynb).
+### Online
+* Try out our [playground](https://ulwazi-exh9dbh2exbzgbc9.westus-01.azurewebsites.net/lab?)
+
+### Run locally from docker
+* Clone the [ihaskell-dataframe repository](https://github.com/mchav/ihaskell-dataframe/).
+* Ensure that docker is installed on your machine.
+* Run `sudo make up` from the root directory.
+
+### Examples
+* There are pre-loaded examples in the Jupyter environment.
 
 ## Command-line
+
+### Installation
+
+* Install GHC (The Haskell compiler) and cabal
+    * For MacOS/Linux/WSL2: `curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | BOOTSTRAP_HASKELL_NONINTERACTIVE=1 sh`
+    * For windows: `$ErrorActionPreference = 'Stop';Set-ExecutionPolicy Bypass -Scope Process -Force;[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;try { & ([ScriptBlock]::Create((Invoke-WebRequest https://www.haskell.org/ghcup/sh/bootstrap-haskell.ps1 -UseBasicParsing))) -InBash -InstallDir "C:\" } catch { Write-Error $_ }`
+* Run `cabal install dataframe`.
+* Start the dataframe REPL by running `dataframe` which should be in your ca
 
 ### Example usage
 
 Looking through the structure of the columns.
 
 ```haskell    
-ghci> import qualified DataFrame as D
-ghci> import DataFrame ((|>))
-ghci> df <- D.readCsv "./data/housing.csv"
-ghci> D.describeColumns df
+dataframe> df <- D.readCsv "./data/housing.csv"
+dataframe> D.describeColumns df
 --------------------------------------------------------------------------------------------------------------------
 index |    Column Name     | ## Non-null Values | ## Null Values | ## Partially parsed | ## Unique Values |     Type    
 ------|--------------------|-------------------|---------------|--------------------|-----------------|-------------
@@ -35,15 +50,13 @@ index |    Column Name     | ## Non-null Values | ## Null Values | ## Partially 
 Automatically generate column names.
 
 ```haskell
-ghci> :set -XTypeApplications -XTemplateHaskell -XOverloadedStrings
-ghci> import DataFrame.Functions (declareColumns)
-ghci> _ = (); declareColumns df
+dataframe> :exposeColumns df
 ```
 
 We can use the generated columns in expressions.
 
 ```haskell
-ghci> df |> D.groupBy ["ocean_proximity"] |> D.aggregate [(F.mean median_house_value) `F.as` "avg_house_value" ]
+dataframe> df |> D.groupBy ["ocean_proximity"] |> D.aggregate [(F.mean median_house_value) `F.as` "avg_house_value" ]
 --------------------------------------------
 index | ocean_proximity |  avg_house_value  
 ------|-----------------|-------------------
@@ -59,7 +72,7 @@ index | ocean_proximity |  avg_house_value
 Create a new column based on other columns.
 
 ```haskell
-ghci> df |> D.derive "rooms_per_household" (total_rooms / households)
+dataframe> df |> D.derive "rooms_per_household" (total_rooms / households)
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 index | longitude | latitude | housing_median_age | total_rooms | total_bedrooms | population | households |   median_income    | median_house_value | ocean_proximity | rooms_per_household
 ------|-----------|----------|--------------------|-------------|----------------|------------|------------|--------------------|--------------------|-----------------|--------------------
@@ -81,7 +94,7 @@ If two columns don't type check we catch this with a type error instead of a run
 
 ```haskell
 
-ghci> df |> D.derive "nonsense_feature" (latitude + ocean_proximity) |> D.take 10
+dataframe> df |> D.derive "nonsense_feature" (latitude + ocean_proximity) |> D.take 10
 
 <interactive>:14:47: error: [GHC-83865]
     • Couldn't match type ‘Text’ with ‘Double’
