@@ -141,7 +141,7 @@ filterBy = flip filter
 filterWhere :: Expr Bool -> DataFrame -> DataFrame
 filterWhere expr df =
     let
-        (TColumn col) = case interpret @Bool df expr of
+        (TColumn col) = case interpret @Bool df (normalize expr) of
             Left e -> throw e
             Right c -> c
         indexes = case findIndices id col of

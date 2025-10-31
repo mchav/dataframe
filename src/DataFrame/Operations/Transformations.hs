@@ -64,7 +64,7 @@ safeApply f columnName d = case getColumn columnName d of
 add the result into `alias` column.
 -}
 derive :: forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> DataFrame
-derive name expr df = case interpret @a df expr of
+derive name expr df = case interpret @a df (normalize expr) of
     Left e -> throw e
     Right (TColumn value) -> insertColumn name value df
 
