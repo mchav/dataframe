@@ -13,7 +13,9 @@ import GHC.Stack (HasCallStack)
 import Text.Read (readMaybe)
 
 isNullish :: T.Text -> Bool
-isNullish s = s `S.member` S.fromList ["Nothing", "NULL", "", " ", "nan", "null"]
+isNullish s =
+    s
+        `S.member` S.fromList ["Nothing", "NULL", "", " ", "nan", "null", "N/A", "NaN", "NAN"]
 
 readValue :: (HasCallStack, Read a) => T.Text -> a
 readValue s = case readMaybe (T.unpack s) of

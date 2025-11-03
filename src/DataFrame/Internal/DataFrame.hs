@@ -70,20 +70,21 @@ instance Show DataFrame where
     show :: DataFrame -> String
     show d =
         let
+            rows = 20
             (r, c) = dataframeDimensions d
             d' =
                 d
-                    { columns = V.map (takeColumn 10) (columns d)
-                    , dataframeDimensions = (min 10 r, c)
+                    { columns = V.map (takeColumn rows) (columns d)
+                    , dataframeDimensions = (min rows r, c)
                     }
             truncationInfo =
                 "\n"
                     ++ "Showing "
-                    ++ show (min 20 r)
+                    ++ show (min rows r)
                     ++ " rows out of "
                     ++ show r
          in
-            T.unpack (asText d' False) ++ (if r > 20 then truncationInfo else "")
+            T.unpack (asText d' False) ++ (if r > rows then truncationInfo else "")
 
 -- | For showing the dataframe as markdown in notebooks.
 toMarkdownTable :: DataFrame -> T.Text

@@ -41,17 +41,27 @@ parseFromExamples :: Int -> String -> Bool -> V.Vector T.Text -> Column
 parseFromExamples n dateFormat safeRead c
     | V.any isJust (V.map readInt examples)
         && equalNonEmpty (V.map readInt examples) (V.map readDouble examples) =
-        let safeVector = V.map ((=<<) readInt . emptyToNothing) c
-            hasNulls = V.elem Nothing safeVector
-         in if safeRead && hasNulls
-                then OptionalColumn safeVector
-                else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
+        let safeVector = V.map readIntEither c
+            notAllParsed = V.any isLeft safeVector
+         in if safeRead && notAllParsed
+                then
+                    if V.all (either isNullish (const False)) (V.filter isLeft safeVector)
+                        then OptionalColumn (V.map (either (const Nothing) Just) safeVector)
+                        else BoxedColumn safeVector
+                else
+                    UnboxedColumn
+                        (VU.generate (V.length c) (either undefined id . (safeVector V.!)))
     | V.any isJust (V.map readDouble examples) =
-        let safeVector = V.map ((=<<) readDouble . emptyToNothing) c
-            hasNulls = V.elem Nothing safeVector
-         in if safeRead && hasNulls
-                then OptionalColumn safeVector
-                else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
+        let safeVector = V.map readDoubleEither c
+            notAllParsed = V.any isLeft safeVector
+         in if safeRead && notAllParsed
+                then
+                    if V.all (either isNullish (const False)) (V.filter isLeft safeVector)
+                        then OptionalColumn (V.map (either (const Nothing) Just) safeVector)
+                        else BoxedColumn safeVector
+                else
+                    UnboxedColumn
+                        (VU.generate (V.length c) (either undefined id . (safeVector V.!)))
     | V.any isJust (V.map (parseTimeOpt dateFormat) examples) =
         let
             -- failed parse should be Either, nullish should be Maybe
