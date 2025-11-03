@@ -2,7 +2,7 @@
 
 The following exercies are adapted from Hackerrank's SQL challenges. They outline how to do basic SQL-like operations using dataframe.
 
-# Working with DataFrames in Haskell
+## Working with DataFrames in Haskell
 
 This tutorial introduces you to data manipulation using Haskell's DataFrame library. We'll work through filtering, selecting, sorting, and combining data using a functional programming approach that's both powerful and expressive.
 
