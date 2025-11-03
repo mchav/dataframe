@@ -41,7 +41,8 @@ Query all columns for a city with the ID 1661.
 
 ### Solution
 ```haskell
-dataframe> df |> D.filterWhere (id .== 1661)-----------------------------------------------------
+dataframe> df |> D.filterWhere (id .== 1661)
+-----------------------------------------------------
   id  |  name  | country_code | district | population
 ------|--------|--------------|----------|-----------
  Int  |  Text  |     Text     |   Text   |    Int    
