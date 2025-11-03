@@ -62,13 +62,13 @@ parseFromExamples n dateFormat safeRead c
         let safeVector = V.map ((=<<) readInt . emptyToNothing) c
             hasNulls = V.elem Nothing safeVector
          in if safeRead && hasNulls
-                then BoxedColumn safeVector
+                then OptionalColumn safeVector
                 else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
     | V.any isJust (V.map readDouble examples) =
         let safeVector = V.map ((=<<) readDouble . emptyToNothing) c
             hasNulls = V.elem Nothing safeVector
          in if safeRead && hasNulls
-                then BoxedColumn safeVector
+                then OptionalColumn safeVector
                 else UnboxedColumn (VU.generate (V.length c) (fromMaybe 0 . (safeVector V.!)))
     | V.any isJust (V.map (parseTimeOpt dateFormat) examples) =
         let
@@ -86,7 +86,7 @@ parseFromExamples n dateFormat safeRead c
             if safeRead
                 then
                     if onlyNulls
-                        then BoxedColumn (V.map toMaybe safeVector)
+                        then OptionalColumn (V.map toMaybe safeVector)
                         else
                             if V.any isLeft safeVector
                                 then BoxedColumn safeVector
@@ -97,6 +97,6 @@ parseFromExamples n dateFormat safeRead c
             safeVector = V.map emptyToNothing c
             hasNulls = V.any isNullish c
          in
-            if safeRead && hasNulls then BoxedColumn safeVector else BoxedColumn c
+            if safeRead && hasNulls then OptionalColumn safeVector else BoxedColumn c
   where
     examples = V.take n c

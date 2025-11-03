@@ -76,13 +76,14 @@ instance Show DataFrame where
                     { columns = V.map (takeColumn 10) (columns d)
                     , dataframeDimensions = (min 10 r, c)
                     }
+            truncationInfo =
+                "\n"
+                    ++ "Showing "
+                    ++ show (min 10 r)
+                    ++ " rows out of "
+                    ++ show r
          in
-            T.unpack (asText d' False)
-                ++ "\n"
-                ++ "Showing "
-                ++ show (min 10 r)
-                ++ " rows out of "
-                ++ show r
+            T.unpack (asText d' False) ++ (if r > 10 then truncationInfo else "")
 
 -- | For showing the dataframe as markdown in notebooks.
 toMarkdownTable :: DataFrame -> T.Text

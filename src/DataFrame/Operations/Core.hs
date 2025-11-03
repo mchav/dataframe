@@ -11,7 +11,6 @@ module DataFrame.Operations.Core where
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Map.Strict as MS
-import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
@@ -325,8 +324,6 @@ data ColumnInfo = ColumnInfo
     { nameOfColumn :: !T.Text
     , nonNullValues :: !Int
     , nullValues :: !Int
-    , partiallyParsedValues :: !Int
-    , uniqueValues :: !Int
     , typeOfColumn :: !T.Text
     }
 
@@ -340,13 +337,13 @@ ghci> df = D.insertVector "others" (V.fromList [11..20]) (D.insertVector "number
 
 ghci> D.describeColumns df
 
------------------------------------------------------------------------------------------------------
-index | Column Name | # Non-null Values | # Null Values | # Partially parsed | # Unique Values | Type
-------|-------------|-------------------|---------------|--------------------|-----------------|-----
- Int  |    Text     |        Int        |      Int      |        Int         |       Int       | Text
-------|-------------|-------------------|---------------|--------------------|-----------------|-----
-0     | others      | 10                | 0             | 0                  | 10              | Int
-1     | numbers     | 10                | 0             | 0                  | 10              | Int
+--------------------------------------------------------
+ Column Name | # Non-null Values | # Null Values | Type
+-------------|-------------------|---------------|-----
+    Text     |        Int        |      Int      | Text
+-------------|-------------------|---------------|-----
+ others      | 10                | 0             | Int
+ numbers     | 10                | 0             | Int
 
 @
 -}
@@ -356,8 +353,6 @@ describeColumns df =
         & insertColumn "Column Name" (fromList (map nameOfColumn infos))
         & insertColumn "# Non-null Values" (fromList (map nonNullValues infos))
         & insertColumn "# Null Values" (fromList (map nullValues infos))
-        & insertColumn "# Partially parsed" (fromList (map partiallyParsedValues infos))
-        & insertColumn "# Unique Values" (fromList (map uniqueValues infos))
         & insertColumn "Type" (fromList (map typeOfColumn infos))
   where
     infos =
@@ -369,9 +364,7 @@ describeColumns df =
         let
             cname = columnName i
             countNulls = nulls col
-            countPartial = partiallyParsed col
             columnType = T.pack $ show $ typeRep @a
-            unique = S.size $ VG.foldr S.insert S.empty c
          in
             if isNothing cname
                 then acc
@@ -380,16 +373,12 @@ describeColumns df =
                         (fromMaybe "" cname)
                         (columnLength col - countNulls)
                         countNulls
-                        countPartial
-                        unique
                         columnType
                         : acc
     go acc i col@(BoxedColumn (c :: V.Vector a)) =
         let
             cname = columnName i
-            countPartial = partiallyParsed col
             columnType = T.pack $ show $ typeRep @a
-            unique = S.size $ VG.foldr S.insert S.empty c
          in
             if isNothing cname
                 then acc
@@ -398,22 +387,19 @@ describeColumns df =
                         (fromMaybe "" cname)
                         (columnLength col)
                         0
-                        countPartial
-                        unique
                         columnType
                         : acc
     go acc i col@(UnboxedColumn c) =
         let
             cname = columnName i
             columnType = T.pack $ columnTypeString col
-            unique = S.size $ VG.foldr S.insert S.empty c
          in
             -- Unboxed columns cannot have nulls since Maybe
             -- is not an instance of Unbox a
             if isNothing cname
                 then acc
                 else
-                    ColumnInfo (fromMaybe "" cname) (columnLength col) 0 0 unique columnType : acc
+                    ColumnInfo (fromMaybe "" cname) (columnLength col) 0 columnType : acc
 
 nulls :: Column -> Int
 nulls (OptionalColumn xs) = VG.length $ VG.filter isNothing xs

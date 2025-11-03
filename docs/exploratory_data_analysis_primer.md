@@ -25,19 +25,32 @@ Univariate non-graphical analysis should give us a sense of the distribution of 
 
 For categorical data the best univariate non-graphical analysis is a tabulation of the frequency of each category.
 
-```haskell
-ghci> import qualified DataFrame as D
-ghci> df <- D.readCsv "./housing.csv"
-ghci> :set -XOverloadedStrings 
-ghci> D.frequencies "ocean_proximity" df
+Make sure you have the dataframe package installed and present in your PATH through `~/.cabal/bin`.
 
-------------------------------------------------------------------------------
-index |   Statistic    | <1H OCEAN | INLAND  | ISLAND  | NEAR BAY | NEAR OCEAN
-------|----------------|-----------|---------|---------|----------|-----------
- Int  |      Text      |  Integer  | Integer | Integer | Integer  |  Integer  
-------|----------------|-----------|---------|---------|----------|-----------
-0     | Count          | 9136      | 6551    | 5       | 2290     | 2658      
-1     | Percentage (%) | 44        | 31      | 0       | 11       | 12
+```haskell
+$ dataframe
+========================================
+              📦Dataframe
+========================================
+
+✨  Modules were automatically imported.
+
+💡  Use prefix 'D' for core functionality.
+        ● E.g. D.readCsv "/path/to/file"
+💡  Use prefix 'F' for expression functions.
+        ● E.g. F.sum (F.col @Int "value")
+
+✅ Ready.
+dataframe> df <- D.readCsv "./housing.csv" 
+dataframe> D.frequencies "ocean_proximity" df
+
+--------------------------------------------------------------------
+  Statistic    | <1H OCEAN | INLAND | ISLAND | NEAR BAY | NEAR OCEAN
+---------------|-----------|--------|--------|----------|-----------
+     Text      |    Any    |  Any   |  Any   |   Any    |    Any
+---------------|-----------|--------|--------|----------|-----------
+Count          | 9136      | 6551   | 5      | 2290     | 2658
+Percentage (%) | 44.26%    | 31.74% | 0.02%  | 11.09%   | 12.88%
 ```
 
 We can also plot similar tables for non-categorical data with a small value set e.g shoe sizes.
@@ -57,22 +70,22 @@ We can calculate sample statistics from the data such as the sample mean, sample
 Arguably the first thing to do when presented with a datset is check for null values.
 
 ```haskell
-ghci> D.describeColumns df
------------------------------------------------------------------------------
-index |    Column Name     | # Non-null Values | # Null Values |     Type    
-------|--------------------|-------------------|---------------|-------------
- Int  |       [Char]       |        Int        |      Int      |    [Char]   
-------|--------------------|-------------------|---------------|-------------
-0     | total_bedrooms     | 20433             | 207           | Maybe Double
-1     | ocean_proximity    | 20640             | 0             | Text        
-2     | median_house_value | 20640             | 0             | Double      
-3     | median_income      | 20640             | 0             | Double      
-4     | households         | 20640             | 0             | Double      
-5     | population         | 20640             | 0             | Double      
-6     | total_rooms        | 20640             | 0             | Double      
-7     | housing_median_age | 20640             | 0             | Double      
-8     | latitude           | 20640             | 0             | Double      
-9     | longitude          | 20640             | 0             | Double
+dataframe> D.describeColumns df
+---------------------------------------------------------------------
+   Column Name     | # Non-null Values | # Null Values |     Type
+-------------------|-------------------|---------------|-------------
+       Text        |        Int        |      Int      |     Text
+-------------------|-------------------|---------------|-------------
+total_bedrooms     | 20433             | 207           | Maybe Double
+ocean_proximity    | 20640             | 0             | Text
+median_house_value | 20640             | 0             | Double
+median_income      | 20640             | 0             | Double
+households         | 20640             | 0             | Double
+population         | 20640             | 0             | Double
+total_rooms        | 20640             | 0             | Double
+housing_median_age | 20640             | 0             | Double
+latitude           | 20640             | 0             | Double
+longitude          | 20640             | 0             | Double
 ```
 
 It seems we have most of the data except some missing total bedrooms. Dealing with nulls is a separate topic that requires intimate knowledge of the data. So for this initial pass we'll leave out the total_bedrooms variable.
@@ -100,61 +113,41 @@ We start by looking at mean absolute deviation since it's the simplest measure o
 In the housing dataset it'll tell how "typical" our typical home price is.
 
 ```haskell
-ghci> import Data.Maybe
-ghci> m = fromMaybe 0 $ D.mean "median_house_value" df
-ghci> m
-206855.81690891474
-ghci> import DataFrame ((|>))
-ghci> import qualified DataFrame.Functions as F
-ghci> df |> D.derive "deviation" (abs $ F.col "median_house_value" - F.lit m) |> D.select ["median_house_value", "deviation"] |> D.take 10
------------------------------------------------
-index | median_house_value |     deviation     
-------|--------------------|-------------------
- Int  |       Double       |       Double      
-------|--------------------|-------------------
-0     | 452600.0           | 245744.18309108526
-1     | 358500.0           | 151644.18309108526
-2     | 352100.0           | 145244.18309108526
-3     | 341300.0           | 134444.18309108526
-4     | 342200.0           | 135344.18309108526
-5     | 269700.0           | 62844.18309108526 
-6     | 299200.0           | 92344.18309108526 
-7     | 241400.0           | 34544.18309108526 
-8     | 226700.0           | 19844.18309108526 
-9     | 261100.0           | 54244.18309108526
+dataframe> :exposeColumns df
+dataframe> df |> D.derive "deviation" (abs (median_house_value - (F.mean median_house_value))) |> D.select ["median_house_value", "deviation"]
+---------------------------------------
+median_house_value |     deviation
+-------------------|-------------------
+      Double       |       Double
+-------------------|-------------------
+452600.0           | 245744.18309108526
+358500.0           | 151644.18309108526
+352100.0           | 145244.18309108526
+341300.0           | 134444.18309108526
+342200.0           | 135344.18309108526
+269700.0           | 62844.18309108526
+299200.0           | 92344.18309108526
+241400.0           | 34544.18309108526
+226700.0           | 19844.18309108526
+261100.0           | 54244.18309108526
+
+Showing 10 rows out of 20640
 ```
 
-Read left to right, we begin by calling `derive` which creates a new column computed from a given expression. The order of arguments is `derive <target column> <expression>  <dataframe>`. We then select only the two columns we want and take the first 10 rows.
+The first part (`:exposeColumns df`) creates typed references to our columns that we can use in expressions. This command gets the types from a snapshot of the schema.
+
+The main logic, read left to right, we begin by calling `derive` which creates a new column computed from a given expression. The order of arguments is `derive <target column> <expression>  <dataframe>`. We then select only the two columns we want and take the first 10 rows.
 
 This gives us a list of the deviations.
-
-* Dealing with nulls *
-Haskell's solution to potentially missing data is a type called `Maybe`. It can be in one of two states: `Just <value>` if the value exists or `Nothing` if the value is null.
-
-So an integer column with some missing values will be of type `Maybe Int`. And it's values will look like: `[Just 1, Nothing, Just 2]`.
-
-Since operations like addition and multiplication only work on integers, and not this wrapped integer type, we have to unwrap the data before we use it.
-
-This is where the function `fromMaybe` comes in. It takes a default value to return if the thing being inspected is null/Nothing.
-
-```haskell
-ghci> fromMaybe 0 (Just 2)
-2
-ghci> fromMaybe 0 Nothing
-0
-```
-
-In the above example, our mean function returns a `Maybe Double` since there is a chance you could call it on a non-numeric field. So we always have to unwrap the result before we use it.
-
-Now, returning to our previous example.
 
 From the small sample it does seem like there are some wild deviations. The first one is greater than the mean! How typical is this? Well to answer that we take the average of all these values.
 
 ```haskell
-ghci> withDeviation = df |> D.derive "deviation" (abs $ F.col "median_house_value" - F.lit m) |> D.select ["median_house_value", "deviation"]
-ghci> D.mean "deviation" withDeviation
-Just 91170.43994367732
+dataframe> df |> D.derive "deviation" (abs (median_house_value - (F.mean median_house_value))) |> D.select ["median_house_value", "deviation"] |> D.mean "deviation"
+Just 91170.43994367118
 ```
+
+Getting the mean of the deviations was as simple as tacking `D.mean "deviation"` to the end of our existing pipeline. Composability is a big strength of Haskell code.
 
 So the $200'000 deviation we saw in the sample isn't very typical but it raises a question about outliers.
 What if we give more weight to the further deviations?
@@ -164,9 +157,14 @@ What if we give more weight to the further deviations?
 That's what standard deviation aims to do. Standard deviation considers the spread of outliers. Instead of calculating the absolute difference of each observation from the mean we calculate the square of the difference. This has the effect of exaggerating further outliers.
 
 ```haskell
-ghci> sumOfSqureDifferences = fromMaybe 0 $ D.sum "deviation^2" $ withDeviation |> D.derive "deviation^2" ((F.col "deviation") ** (F.lit 2))
-ghci> n = fromIntegral $ (fst $ D.dimensions df) - 1
-ghci> sqrt (sumOfSqureDifferences / n)
+dataframe> withDeviation = df |> D.derive "deviation" (abs (median_house_value - (F.mean median_house_value))) |> D.select ["median_house_value", "deviation"]
+dataframe> :exposeColumns withDeviation
+"median_house_value :: Expr Double"
+"deviation :: Expr Double"
+dataframe> import Data.Maybe
+dataframe> sumOfSqureDifferences = withDeviation |> D.derive "deviation^2" (F.pow 2 deviation) |> D.sum @Double "deviation^2" |> fromMaybe 0
+dataframe> n = fromIntegral (fst (D.dimensions df) - 1)
+dataframe> sqrt (sumOfSqureDifferences / n)
 115395.6158744
 ```
 The standard deviation being larger than the mean absolute deviation means we do have some outliers. However, since the difference is fairly small we can conclude that there aren't very many outliers in our dataset.
@@ -174,7 +172,7 @@ The standard deviation being larger than the mean absolute deviation means we do
 We can calculate the standard deviation in one line as follows:
 
 ```haskell
-ghci> D.standardDeviation "median_house_value" df
+dataframe> D.standardDeviation "median_house_value" df
 Just 115395.6158744
 ```
 
@@ -186,7 +184,7 @@ The IQR is a more robust measure of spread than the variance or standard deviati
 For our dataset:
 
 ```haskell
-ghci> D.interQuartileRange "median_house_value" df
+dataframe> D.interQuartileRange "median_house_value" df
 Just 145158.3333333336
 ```
 
@@ -198,7 +196,7 @@ Variance is the square of the standard deviation. It is much more sensitive to o
 In our example it's a very large number:
 
 ``` haskell
-ghci> D.variance  "median_house_value" df
+dataframe> D.variance  "median_house_value" df
 Just 1.3315503000818077e10
 ```
 
@@ -214,7 +212,7 @@ The intuition behind why a positive skew is left shifted follows from the formul
 A skewness score between -0.5 and 0.5 means the data has little skew. A score between -0.5 and -1 or 0.5 and 1 means the data has moderate skew. A skewness greater than 1 or less than -1 means the data is heavily skewed.
 
 ```haskell
-ghci> D.skewness "median_house_value" df
+dataframe> D.skewness "median_house_value" df
 Just 0.9776922140978703
 ```
 So the median house value is moderately skewed to the left. That is, there are more houses that are cheaper than the mean values and a tail of expensive outliers. Having lived in California, I can confirm that this data reflects reality.
@@ -225,21 +223,22 @@ So the median house value is moderately skewed to the left. That is, there are m
 We can get all these statistics with a single command:
 
 ```haskell
-ghci> D.summarize df
-------------------------------------------------------------------------------------------------------------------------------------------
-index | Statistic | median_house_value | median_income | households | population | total_rooms | housing_median_age | latitude | longitude
-------|-----------|--------------------|---------------|------------|------------|-------------|--------------------|----------|----------
- Int  |   Text    |       Double       |    Double     |   Double   |   Double   |   Double    |       Double       |  Double  |  Double  
-------|-----------|--------------------|---------------|------------|------------|-------------|--------------------|----------|----------
-0     | Mean      | 206855.82          | 3.87          | 499.54     | 1425.48    | 2635.76     | 28.64              | 35.63    | -119.57  
-1     | Minimum   | 14999.0            | 0.5           | 1.0        | 3.0        | 2.0         | 1.0                | 32.54    | -124.35  
-2     | 25%       | 119600.0           | 2.56          | 280.0      | 787.0      | 1447.42     | 18.0               | 33.93    | -121.8   
-3     | Median    | 179700.0           | 3.53          | 409.0      | 1166.0     | 2127.0      | 29.0               | 34.26    | -118.49  
-4     | 75%       | 264758.33          | 4.74          | 605.0      | 1725.0     | 3148.0      | 37.0               | 37.71    | -118.01  
-5     | Max       | 500001.0           | 15.0          | 6082.0     | 35682.0    | 39320.0     | 52.0               | 41.95    | -114.31  
-6     | StdDev    | 115395.62          | 1.9           | 382.33     | 1132.46    | 2181.62     | 12.59              | 2.14     | 2.0      
-7     | IQR       | 145158.33          | 2.18          | 325.0      | 938.0      | 1700.58     | 19.0               | 3.78     | 3.79     
-8     | Skewness  | 0.98               | 1.65          | 3.41       | 4.94       | 4.15        | 6.0e-2             | 0.47     | -0.3
+dataframe> D.summarize df
+---------------------------------------------------------------------------------------------------------------------------------------------------
+Statistic | longitude | latitude | housing_median_age | total_rooms | total_bedrooms | population | households | median_income | median_house_value
+----------|-----------|----------|--------------------|-------------|----------------|------------|------------|---------------|-------------------
+  Text    |  Double   |  Double  |       Double       |   Double    |     Double     |   Double   |   Double   |    Double     |       Double
+----------|-----------|----------|--------------------|-------------|----------------|------------|------------|---------------|-------------------
+Count     | 20640.0   | 20640.0  | 20640.0            | 20640.0     | 20433.0        | 20640.0    | 20640.0    | 20640.0       | 20640.0
+Mean      | -119.57   | 35.63    | 28.64              | 2635.76     | 537.87         | 1425.48    | 499.54     | 3.87          | 206855.82
+Minimum   | -124.35   | 32.54    | 1.0                | 2.0         | 1.0            | 3.0        | 1.0        | 0.5           | 14999.0
+25%       | -121.8    | 33.93    | 18.0               | 1447.75     | 296.0          | 787.0      | 280.0      | 2.56          | 119600.0
+Median    | -118.49   | 34.26    | 29.0               | 2127.0      | 435.0          | 1166.0     | 409.0      | 3.53          | 179700.0
+75%       | -118.01   | 37.71    | 37.0               | 3148.0      | 647.0          | 1725.0     | 605.0      | 4.74          | 264725.0
+Max       | -114.31   | 41.95    | 52.0               | 39320.0     | 6445.0         | 35682.0    | 6082.0     | 15.0          | 500001.0
+StdDev    | 2.0       | 2.14     | 12.59              | 2181.62     | 421.39         | 1132.46    | 382.33     | 1.9           | 115395.62
+IQR       | 3.79      | 3.78     | 19.0               | 1700.25     | 351.0          | 938.0      | 325.0      | 2.18          | 145125.0
+Skewness  | -0.3      | 0.47     | 6.0e-2             | 4.15        | 3.46           | 4.94       | 3.41       | 1.65          | 0.98
 ```
 
 As a recap we'll go over what this tells us about the data:

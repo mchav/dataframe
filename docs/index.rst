@@ -1,45 +1,63 @@
 dataframe
 =========
 
-A fast, safe, and intuitive DataFrame library.
+A fast, safe, and intuitive DataFrame library for Haskell.
+
+**dataframe** brings the power of type-safe, functional data manipulation to your analytics workflow. Built on Haskell's strong type system, it catches errors at compile time while delivering the performance and expressiveness you need for real-world data analysis.
 
 *******************************
 Why use this DataFrame library?
 *******************************
 
-* Encourages concise, declarative, and composable data pipelines.
-* Static typing makes code easier to reason about and catches many bugs at compile time—before your code ever runs.
-* Delivers high performance thanks to Haskell’s optimizing compiler and efficient memory model.
-* Designed for interactivity: expressive syntax, helpful error messages, and sensible defaults.
-* Works seamlessly in both command-line and notebook environments—great for exploration and scripting alike.
+**Type Safety Meets Data Analysis**
 
-***************
-Getting started
-***************
+* **Catch bugs before runtime**: Statically typed expressions makes code easier to reason about and catches many bugs at compile time—before your code ever runs.
+* **Expressive and composable**: Encourages concise, declarative, and composable data pipelines that read like the logic you're thinking.
+* **Performance without compromise**: Delivers high performance thanks to Haskell's optimizing compiler and efficient memory model.
+
+**Designed for Productivity**
+
+* **Interactive-first design**: Expressive syntax, helpful error messages, and sensible defaults make exploration a joy.
+* **Works everywhere**: Works seamlessly in both command-line and notebook environments—great for exploration and scripting alike.
+* **Familiar operations**: If you've used pandas, dplyr, or polars, you'll feel right at home.
 
 ****************
-Jupyter notebook
+Who is this for?
 ****************
 
-* We have a `hosted version of the Jupyter notebook <https://ulwazi-exh9dbh2exbzgbc9.westus-01.azurewebsites.net/lab>`_ on azure sites. This is hosted on Azure's free tier so it can only support 3 or 4 kernels at a time.
-* To get started quickly, use the Dockerfile in the `ihaskell-dataframe <https://github.com/mchav/ihaskell-dataframe>`_ to build and run an image with dataframe integration.
-* For a preview check out the `California Housing <https://github.com/mchav/dataframe/blob/main/docs/California%20Housing.ipynb>`_ notebook.
+* **Data scientists and analysts** who want type safety with minimal cognitive/code overhead.
+* **Haskell developers** building data/machine learning pipelines or analytics applications
 
-***
-CLI
-***
-
-* Run the installation script :code:`curl '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/mchav/dataframe/refs/heads/main/scripts/install.sh | sh`
-* Download the run script with: :code:`curl --output dataframe "https://raw.githubusercontent.com/mchav/dataframe/refs/heads/main/scripts/dataframe.sh"`
-* Make the script executable: :code:`chmod +x dataframe`
-* Add the script your path: :code:`export PATH=$PATH:./dataframe`
-* Run the script with: :code:`dataframe`
-
+Tutorials
+---------
+*Learn by doing—step-by-step lessons to get you started.*
 
 .. toctree::
-    :maxdepth: 2
+   :maxdepth: 1
 
-    quick_start
-    haskell_for_data_analysis
-    coming_from_other_implementations
-    exploratory_data_analysis_primer
+   quick_start
+   exploratory_data_analysis_primer
+   intro_to_probability_and_data
+
+How-to Guides
+-------------
+*Practical guides for accomplishing specific tasks.*
+
+.. toctree::
+   :maxdepth: 1
+
+   cookbook
+
+Explanation
+-----------
+*Understand the concepts and design decisions.*
+
+.. toctree::
+   :maxdepth: 1
+
+   haskell_for_data_analysis
+   coming_from_other_implementations
+
+Reference
+---------
+The API is documented in Hackage.
