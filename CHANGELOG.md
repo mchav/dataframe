@@ -1,5 +1,10 @@
 # Revision history for dataframe
 
+## 0.3.3.6
+* Fix bug where doubles were parsing as ints
+* Fix bugs where optionals were left in boxed column (instead of optionals)
+* Change syntax for conditional operations so it doesn't clash with regular operations.
+
 ## 0.3.3.5
 * Fix parsing logic for doubles. Entire parsing logic is still a work in progress.
 * Speed up index selection by using backPermute.
