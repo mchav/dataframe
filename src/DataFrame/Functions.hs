@@ -136,6 +136,9 @@ not = UnaryOp "not" Prelude.not
 count :: (Columnable a) => Expr a -> Expr Int
 count expr = AggFold expr "count" 0 (\acc _ -> acc + 1)
 
+collect :: (Columnable a) => Expr a -> Expr [a]
+collect expr = AggFold expr "collect" [] (flip (:))
+
 mode :: (Columnable a, Eq a) => Expr a -> Expr a
 mode expr =
     AggVector

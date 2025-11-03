@@ -53,21 +53,21 @@ Load a CSV, select a few columns, filter, derive a column, then group + aggregat
 -- 1) Load data
 ghci> df0 <- D.readCsv "data/housing.csv"
 ghci> D.describeColumns df0
---------------------------------------------------------------------------------------------------------------------
-index |    Column Name     | # Non-null Values | # Null Values | # Partially parsed | # Unique Values |     Type
-------|--------------------|-------------------|---------------|--------------------|-----------------|-------------
- Int  |        Text        |        Int        |      Int      |        Int         |       Int       |     Text
-------|--------------------|-------------------|---------------|--------------------|-----------------|-------------
-0     | ocean_proximity    | 20640             | 0             | 0                  | 5               | Text
-1     | median_house_value | 20640             | 0             | 0                  | 3842            | Double
-2     | median_income      | 20640             | 0             | 0                  | 12928           | Double
-3     | households         | 20640             | 0             | 0                  | 1815            | Double
-4     | population         | 20640             | 0             | 0                  | 3888            | Double
-5     | total_bedrooms     | 20640             | 0             | 0                  | 1924            | Maybe Double
-6     | total_rooms        | 20640             | 0             | 0                  | 5926            | Double
-7     | housing_median_age | 20640             | 0             | 0                  | 52              | Double
-8     | latitude           | 20640             | 0             | 0                  | 862             | Double
-9     | longitude          | 20640             | 0             | 0                  | 844             | Double
+-------------------------------------------------------------------------------------------------------------
+    Column Name     | # Non-null Values | # Null Values | # Partially parsed | # Unique Values |     Type
+--------------------|-------------------|---------------|--------------------|-----------------|-------------
+        Text        |        Int        |      Int      |        Int         |       Int       |     Text
+--------------------|-------------------|---------------|--------------------|-----------------|-------------
+ ocean_proximity    | 20640             | 0             | 0                  | 5               | Text
+ median_house_value | 20640             | 0             | 0                  | 3842            | Double
+ median_income      | 20640             | 0             | 0                  | 12928           | Double
+ households         | 20640             | 0             | 0                  | 1815            | Double
+ population         | 20640             | 0             | 0                  | 3888            | Double
+ total_bedrooms     | 20640             | 0             | 0                  | 1924            | Maybe Double
+ total_rooms        | 20640             | 0             | 0                  | 5926            | Double
+ housing_median_age | 20640             | 0             | 0                  | 52              | Double
+ latitude           | 20640             | 0             | 0                  | 862             | Double
+ longitude          | 20640             | 0             | 0                  | 844             | Double
 
 -- 2) Project & filter
 ghci> :exposeColumn df
@@ -84,16 +84,16 @@ ghci> let summary   =
              [ F.maximum median_house_value \`F.as\` "max_house_value"]
              grouped
 ghci> D.take 5 summary
------------------------------------------
-index | ocean_proximity | max_house_value
-------|-----------------|----------------
- Int  |      Text       |     Double
-------|-----------------|----------------
-0     | <1H OCEAN       | 500001.0
-1     | INLAND          | 500001.0
-2     | ISLAND          | 450000.0
-3     | NEAR BAY        | 500001.0
-4     | NEAR OCEAN      | 500001.0
+----------------------------------
+ ocean_proximity | max_house_value
+-----------------|----------------
+      Text       |     Double
+-----------------|----------------
+ <1H OCEAN       | 500001.0
+ INLAND          | 500001.0
+ ISLAND          | 450000.0
+ NEAR BAY        | 500001.0
+ NEAR OCEAN      | 500001.0
 @
 
 == Simple operations (cheat sheet)

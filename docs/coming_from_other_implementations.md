@@ -1,18 +1,36 @@
-# Coming from other implementations
+# Coming from Other DataFrame Implementations
+
+This guide helps users familiar with pandas, Polars, or dplyr understand how to work with our Haskell DataFrame library. We'll walk through common patterns and show how concepts translate between these tools.
+
+## Philosophy and Key Differences
+
+Before diving into specific examples, it's important to understand the core philosophy of our Haskell DataFrame implementation:
+
+1. **Type Safety**: We leverage Haskell's type system to catch errors at compile time rather than runtime
+2. **Explicit Operations**: Rather than overloading operators like `[]`, we provide explicit functions for each operation
+3. **Functional Composition**: Operations are designed to chain together using `|>` (pipe operator) or function composition
+4. **Immutability**: All operations return new DataFrames rather than modifying existing ones
+5. **No Implicit Conversions**: Type conversions and transformations must be explicit
 
 ## Coming from pandas
 
-We'll be porting over concepts from [10 minutes to Pandas](https://pandas.pydata.org/docs/user_guide/10min.html).
+We'll port over concepts from [10 minutes to Pandas](https://pandas.pydata.org/docs/user_guide/10min.html), showing how familiar pandas operations map to our library.
 
 ### Basic Data Structures
 
-A pandas `Series` maps to a `Column`. `Series` are indexable (labelled) arrays. We currently don't support indexing so `Column`s aren't meant to be manipulated directly so we don't focus on them too much.
+**pandas Series → DataFrame Column**
 
-A `DataFrame` maps to a `DataFrame` as expected. Our dataframes are essentially a list of `Vector`s with some metadata for managing state.
+A pandas `Series` is an indexable (labelled) array. In our library, these map to `Column` values. However, we currently don't support row indexing, so `Column`s aren't typically manipulated directly—instead, you work with them through DataFrame operations.
 
-### Creating our structures
+**pandas DataFrame → DataFrame DataFrame**
 
-Creaing a series.
+Both use the name `DataFrame`, but the internal representation differs. Our DataFrames are essentially lists of `Vector`s with metadata for managing state and type information. This means operations are designed to work efficiently with columnar data.
+
+### Creating Data Structures
+
+#### Creating a Series/Column
+
+In pandas, you might create a series with some missing values:
 
 ```python
 python> s = pd.Series([1, 3, 5, np.nan, 6, 8])
@@ -26,11 +44,29 @@ python> s
 dtype: float64
 ```
 
+In our library, you can create a similar structure:
+
 ```haskell
 ghci> import qualified DataFrame as D
 ghci> D.fromList [1, 3, 5, read @Float "NaN", 6, 8]
 [1.0,3.0,5.0,NaN,6.0,8.0]
 ```
+
+**However**, this is considered an anti-pattern in Haskell. Using `NaN` mixes valid data with invalid data in an unsafe way. The idiomatic Haskell approach uses the `Maybe` type to explicitly represent missing values:
+
+```haskell
+ghci> D.fromList [Just (1 :: Double), Just 3, Just 5, Nothing, Just 6, Just 8]
+[Just 1.0, Just 3.0, Just 5.0, Nothing, Just 6.0, Just 8.0]
+```
+
+This approach is superior because:
+- The type system forces you to handle missing values explicitly
+- You can't accidentally treat `Nothing` as a number
+- Pattern matching ensures you consider all cases
+
+#### Creating Date Ranges
+
+pandas provides convenient date range generation:
 
 ```python
 python> dates = pd.date_range("20130101", periods=6)
@@ -40,6 +76,8 @@ DatetimeIndex(['2013-01-01', '2013-01-02', '2013-01-03', '2013-01-04',
               dtype='datetime64[ns]', freq='D')
 ```
 
+In Haskell, we use the `Data.Time.Calendar` module and leverage lazy list generation:
+
 ```haskell
 ghci> import Data.Time.Calendar
 ghci> dates = D.fromList $ Prelude.take 6 $ [fromGregorian 2013 01 01..]
@@ -47,7 +85,15 @@ ghci> dates
 [2013-01-01,2013-01-02,2013-01-03,2013-01-04,2013-01-05,2013-01-06]
 ```
 
-Use the series to create a dataframe.
+Here we're using:
+- `fromGregorian` to create a `Day` value
+- `[fromGregorian 2013 01 01..]` to create an infinite lazy list of consecutive days
+- `take 6` to extract just the first 6 days
+- `D.fromList` to convert to our DataFrame column type
+
+#### Creating a DataFrame from Random Data
+
+pandas makes it easy to create DataFrames with random data:
 
 ```python
 python> df = pd.DataFrame(np.random.randn(6, 4), index=dates, columns=list("ABCD"))
@@ -61,30 +107,44 @@ python> df
 2013-01-06 -0.673690  0.113648 -1.478427  0.524988
 ```
 
+In Haskell, we need to be more explicit, but we gain type safety:
+
 ```haskell
 ghci> import qualified Data.Vector as V
 ghci> import System.Random (randomRIO)
 ghci> import Control.Monad (replicateM)
 ghci> import Data.List (foldl')
 ghci> :set -XOverloadedStrings
+
+-- Start with a DataFrame containing just the date column
 ghci> initDf = D.fromNamedColumns [("date", dates)]
+
+-- Generate 4 columns of 6 random numbers each
 ghci> ns <- replicateM 4 (replicateM 6 (randomRIO (-2.0, 2.0)))
-ghci> df = foldl' (\d (name, col) -> D.insertColumn name (V.fromList col) d) initDf (zip ["A","B","C","D"] ns)
+
+-- Add each column to the DataFrame
+ghci> df = foldl' (\d (name, col) -> D.insertColumn name (V.fromList col) d) 
+                  initDf 
+                  (zip ["A","B","C","D"] ns)
 ghci> df
-------------------------------------------------------------------------------------------------------------
-index |    date    |          A          |          B           |          C           |          D         
-------|------------|---------------------|----------------------|----------------------|--------------------
- Int  |    Day     |       Double        |        Double        |        Double        |       Double       
-------|------------|---------------------|----------------------|----------------------|--------------------
-0     | 2013-01-01 | 0.49287792598710745 | 1.2126312556288785   | -1.3553292904555625  | 1.8491213627748553 
-1     | 2013-01-02 | 0.7936547276080512  | -1.5209756494542028  | -0.5208055385837551  | 0.8895325450813525 
-2     | 2013-01-03 | 1.8883976214395153  | 1.3453541205495676   | -1.1801018894304223  | 0.20583994035730901
-3     | 2013-01-04 | -1.3262867911904324 | -0.37375298679005686 | -0.8580515357149543  | 1.4681616115128593 
-4     | 2013-01-05 | 1.9068894062167745  | 0.792553168600036    | -0.13526265076664545 | -1.6239378251651466
-5     | 2013-01-06 | -0.5541246187320041 | -1.5791034339829042  | -1.5650415391333796  | -1.7802523632196152
+-----------------------------------------------------------------------------------------------------
+    date    |          A          |          B           |          C           |          D         
+------------|---------------------|----------------------|----------------------|--------------------
+    Day     |       Double        |        Double        |        Double        |       Double       
+------------|---------------------|----------------------|----------------------|--------------------
+ 2013-01-01 | 0.49287792598710745 | 1.2126312556288785   | -1.3553292904555625  | 1.8491213627748553 
+ 2013-01-02 | 0.7936547276080512  | -1.5209756494542028  | -0.5208055385837551  | 0.8895325450813525 
+ 2013-01-03 | 1.8883976214395153  | 1.3453541205495676   | -1.1801018894304223  | 0.20583994035730901
+ 2013-01-04 | -1.3262867911904324 | -0.37375298679005686 | -0.8580515357149543  | 1.4681616115128593 
+ 2013-01-05 | 1.9068894062167745  | 0.792553168600036    | -0.13526265076664545 | -1.6239378251651466
+ 2013-01-06 | -0.5541246187320041 | -1.5791034339829042  | -1.5650415391333796  | -1.7802523632196152
 ```
 
-As hinted in the previous example we can create a dataframe with `fromNamedColumns`. This function takes in a list of tuples. We don't broadast values like python does i.e if you put in a single value into a column all other values will be null/nothing. But we'll detail how to get the same functionality.
+Notice how the output includes type information in the header—this is part of our library's explicit approach to types.
+
+#### Creating a DataFrame with Mixed Types
+
+pandas allows heterogeneous DataFrames with various column types:
 
 ```python
 df2 = pd.DataFrame(
@@ -99,18 +159,20 @@ df2 = pd.DataFrame(
 )
 
 ## Result
-## df2
 ##      A          B    C  D      E    F
 ## 0  1.0 2013-01-02  1.0  3   test  foo
 ## 1  1.0 2013-01-02  1.0  3  train  foo
 ## 2  1.0 2013-01-02  1.0  3   test  foo
 ## 3  1.0 2013-01-02  1.0  3  train  foo
-
 ```
 
+In Haskell, we achieve the same result with explicit types:
+
 ```haskell
--- All our data types must be printable and orderable.
+-- Define a custom type for categorical data
+-- All DataFrame types must be printable (Show) and orderable (Ord, Eq)
 data Transport = Test | Train deriving (Show, Ord, Eq)
+
 ghci> :{
 ghci| df = D.fromNamedColumns [
 ghci|        ("A", D.fromList (replicate 4 1.0)),
@@ -121,76 +183,113 @@ ghci|        ("E", D.fromList (take 4 $ cycle [Test, Train])),
 ghci|        ("F", D.fromList (replicate 4 "foo"))]
 ghci|:}
 ghci> df
---------------------------------------------------------------
-index |   A    |     B      |   C   |  D  |     E     |   F   
-------|--------|------------|-------|-----|-----------|-------
- Int  | Double |    Day     | Float | Int | Transport | [Char]
-------|--------|------------|-------|-----|-----------|-------
-0     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
-1     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo   
-2     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
-3     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo
+-------------------------------------------------------
+   A    |     B      |   C   |  D  |     E     |   F   
+--------|------------|-------|-----|-----------|-------
+ Double |    Day     | Float | Int | Transport | [Char]
+--------|------------|-------|-----|-----------|-------
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo   
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo
 ```
 
-Rather than label a string value as categorial we create a type that encapsulates the value.
+**Key differences from pandas:**
 
-### Viewing data
+1. **Broadcasting**: pandas automatically broadcasts scalar values. In Haskell, you must explicitly replicate values
+2. **Categorical Data**: Instead of marking strings as categorical, we define custom algebraic data types. This provides compile-time guarantees about valid values
+3. **Type Annotations**: We sometimes need type annotations (like `:: Float`) to disambiguate numeric types
+4. **Named Columns**: `fromNamedColumns` takes a list of `(name, column)` tuples
 
-By default we print the whole dataframe. To see the first `n` rows we instead provide a `take` function that takes in as arguments `n` and the dataframe.
+### Viewing Data
+
+#### Taking the First N Rows
+
+pandas provides `head()` to view the first few rows:
+
+```python
+python> df.head()  # Shows first 5 rows by default
+```
+
+We provide a `take` function that requires you to specify the number of rows:
 
 ```haskell
 ghci> D.take 2 df
---------------------------------------------------------------
-index |   A    |     B      |   C   |  D  |     E     |   F   
-------|--------|------------|-------|-----|-----------|-------
- Int  | Double |    Day     | Float | Int | Transport | [Char]
-------|--------|------------|-------|-----|-----------|-------
-0     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
-1     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo 
+-------------------------------------------------------
+   A    |     B      |   C   |  D  |     E     |   F   
+--------|------------|-------|-----|-----------|-------
+ Double |    Day     | Float | Int | Transport | [Char]
+--------|------------|-------|-----|-----------|-------
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo 
 ```
 
-Our equivalent of describe is `summarize`:
+By default, our library prints the entire DataFrame (unlike pandas which truncates large DataFrames). Use `take` when you want to limit output.
+
+#### Summary Statistics
+
+pandas provides `describe()` for summary statistics:
+
+```python
+python> df.describe()
+```
+
+Our equivalent is `summarize`, which computes statistics for numeric columns:
 
 ```haskell
 ghci> D.summarize df
------------------------------------------------------
-index | Statistic |     D     |     C     |     A    
-------|-----------|-----------|-----------|----------
- Int  |   Text    |  Double   |  Double   |  Double  
-------|-----------|-----------|-----------|----------
-0     | Mean      | 3.0       | 1.0       | 1.0      
-1     | Minimum   | 3.0       | 1.0       | 1.0      
-2     | 25%       | 3.0       | 1.0       | 1.0      
-3     | Median    | 3.0       | 1.0       | 1.0      
-4     | 75%       | 3.0       | 1.0       | 1.0      
-5     | Max       | 3.0       | 1.0       | 1.0      
-6     | StdDev    | 0.0       | 0.0       | 0.0      
-7     | IQR       | 0.0       | 0.0       | 0.0      
-8     | Skewness  | -Infinity | -Infinity | -Infinity
+----------------------------------------------
+ Statistic |     D     |     C     |     A    
+-----------|-----------|-----------|----------
+   Text    |  Double   |  Double   |  Double  
+-----------|-----------|-----------|----------
+ Mean      | 3.0       | 1.0       | 1.0      
+ Minimum   | 3.0       | 1.0       | 1.0      
+ 25%       | 3.0       | 1.0       | 1.0      
+ Median    | 3.0       | 1.0       | 1.0      
+ 75%       | 3.0       | 1.0       | 1.0      
+ Max       | 3.0       | 1.0       | 1.0      
+ StdDev    | 0.0       | 0.0       | 0.0      
+ IQR       | 0.0       | 0.0       | 0.0      
+ Skewness  | -Infinity | -Infinity | -Infinity
 ```
 
-##### Sorting
+**Note**: `summarize` only operates on numeric columns. The `-Infinity` for skewness occurs when there's no variance in the data (all values are identical).
 
-Since we don't have indexes we only have one sort function that sorts by a column.
+### Sorting
+
+#### Sorting by Column Values
+
+pandas allows sorting by index or column values:
+
+```python
+python> df.sort_values(by='E')
+```
+
+Since we don't support row indexes, we only provide column-based sorting. You specify the sort direction and column names:
 
 ```haskell
 ghci> D.sortBy D.Ascending ["E"] df
---------------------------------------------------------------
-index |   A    |     B      |   C   |  D  |     E     |   F   
-------|--------|------------|-------|-----|-----------|-------
- Int  | Double |    Day     | Float | Int | Transport | [Char]
-------|--------|------------|-------|-----|-----------|-------
-0     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
-1     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
-2     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo   
-3     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo
+-------------------------------------------------------
+   A    |     B      |   C   |  D  |     E     |   F   
+--------|------------|-------|-----|-----------|-------
+ Double |    Day     | Float | Int | Transport | [Char]
+--------|------------|-------|-----|-----------|-------
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo   
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo   
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo
 ```
 
-### Selection
-Panda's `[]` operator is a jack-knife that does a number of kinds of aggregation.
-As such it doesn't map to one construct and doesn't always have an equivalent in Haskell.
+You can sort by multiple columns by providing a list: `["E", "A"]` would sort first by E, then by A for tied values.
 
-#### Selecting columns
+### Selection
+
+pandas' `[]` operator is overloaded to perform many different operations depending on what you pass to it. We provide explicit functions for each operation type instead.
+
+#### Selecting Columns
+
+In pandas, you can select columns in several ways:
 
 ```python
 python> df.loc[:, ["A", "B"]]
@@ -203,24 +302,26 @@ python> df.loc[:, ["A", "B"]]
 2013-01-06 -0.673690  0.113648
 ```
 
-Pandas indexes the dataframe like a 2D array. We get all rows with `:` and then specify which columns after the comma.
-
-In DataFrame we mimick SQL's select.
+We use the SQL-inspired `select` function:
 
 ```haskell
 ghci> D.select ["A"] df
---------------
-index |   A   
-------|-------
- Int  | Double
-------|-------
-0     | 1.0   
-1     | 1.0   
-2     | 1.0   
-3     | 1.0
+-------
+   A   
+-------
+ Double
+-------
+ 1.0   
+ 1.0   
+ 1.0   
+ 1.0
 ```
 
-To filter by rows we have to filter by the values we are interested in rather than indexes.
+The function name makes it immediately clear we're selecting columns, and the type signature ensures we pass valid column names.
+
+#### Filtering Rows
+
+pandas allows row selection by index range:
 
 ```python
 python> df.loc["20130102":"20130104", ["A", "B"]]
@@ -230,72 +331,115 @@ python> df.loc["20130102":"20130104", ["A", "B"]]
 2013-01-04  0.721555 -0.706771
 ```
 
+Since we don't have row indexes, we filter by actual values using predicates:
+
 ```haskell
 ghci> :{
-ghci| df' |> D.filter "date" (\d -> d >= (fromGregorian 2013 01 02) && d <= (fromGregorian 2013 01 04))
-ghci| |> D.select ["A", "B"]
+ghci| df' |> D.filter "date" (\d -> d >= (fromGregorian 2013 01 02) 
+ghci|                              && d <= (fromGregorian 2013 01 04))
+ghci|     |> D.select ["A", "B"]
 ghci| :}
-ghci> df
----------------------------
-index |   A    |     B     
-------|--------|-----------
- Int  | Double |    Day    
-------|--------|-----------
-0     | 1.0    | 2013-01-02
-1     | 1.0    | 2013-01-02
-2     | 1.0    | 2013-01-02
+--------------------
+   A    |     B     
+--------|-----------
+ Double |    Day    
+--------|-----------
+ 1.0    | 2013-01-02
+ 1.0    | 2013-01-02
+ 1.0    | 2013-01-02
 ```
 
-### Missing values
+**Key points:**
 
-Rows with missing values are represented by a `Maybe a` type. Dealing with missing values means applying the usual `Maybe` functions to the data.
+- `filter` takes a column name and a predicate function
+- The predicate function receives each value from that column
+- We use the pipe operator `|>` to chain operations
+- This approach is more flexible than index-based selection since it works with any filtering logic
 
-#### Filling
+### Missing Values
+
+In pandas, missing values are typically represented as `NaN` or `None`. In Haskell, we use the `Maybe` type, which forces explicit handling.
+
+#### Working with Missing Data
+
+Let's add a column with missing values:
 
 ```haskell
-ghci> df' = D.addColumn "G" (V.fromList [Just 1, Just 2, Nothing, Just 4]) df
+ghci> df' = D.insertColumn "G" (D.fromList [Just 1, Just 2, Nothing, Just 4]) df
 ghci> df'
-------------------------------------------------------------------------------
-index |   A    |     B      |   C   |  D  |     E     |   F    |       G      
-------|--------|------------|-------|-----|-----------|--------|--------------
- Int  | Double |    Day     | Float | Int | Transport | [Char] | Maybe Integer
-------|--------|------------|-------|-----|-----------|--------|--------------
-0     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | Just 1       
-1     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | Just 2       
-2     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | Nothing      
-3     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | Just 4 
-ghci> D.apply (fromMaybe 5) "G" df'
-------------------------------------------------------------------------
-index |   A    |     B      |   C   |  D  |     E     |   F    |    G   
-------|--------|------------|-------|-----|-----------|--------|--------
- Int  | Double |    Day     | Float | Int | Transport | [Char] | Integer
-------|--------|------------|-------|-----|-----------|--------|--------
-0     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | 1      
-1     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | 2      
-2     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | 5      
-3     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | 4
-ghci> df' |> D.filter "G" (isJust @Integer)
-------------------------------------------------------------------------------
-index |   A    |     B      |   C   |  D  |     E     |   F    |       G      
-------|--------|------------|-------|-----|-----------|--------|--------------
- Int  | Double |    Day     | Float | Int | Transport | [Char] | Maybe Integer
-------|--------|------------|-------|-----|-----------|--------|--------------
-0     | 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | Just 1       
-1     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | Just 2       
-2     | 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | Just 4
+-----------------------------------------------------------------------
+   A    |     B      |   C   |  D  |     E     |   F    |       G      
+--------|------------|-------|-----|-----------|--------|--------------
+ Double |    Day     | Float | Int | Transport | [Char] | Maybe Integer
+--------|------------|-------|-----|-----------|--------|--------------
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | Just 1       
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | Just 2       
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | Nothing      
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | Just 4
 ```
+
+#### Filling Missing Values
+
+pandas provides `fillna()`:
+
+```python
+python> df.fillna(5)
+```
+
+In Haskell, we use the `impute` function:
+
+```haskell
+ghci> D.impute @Integer "G" 5 df'
+-----------------------------------------------------------------
+   A    |     B      |   C   |  D  |     E     |   F    |    G   
+--------|------------|-------|-----|-----------|--------|--------
+ Double |    Day     | Float | Int | Transport | [Char] | Integer
+--------|------------|-------|-----|-----------|--------|--------
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | 1      
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | 2      
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | 5      
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | 4
+```
+
+The `@Integer` is a type application that tells Haskell what type of `Maybe` we're working with.
+
+Notice how the type changed from `Maybe Integer` to `Integer` since we eliminated the possibility of `Nothing`.
+
+#### Filtering Out Missing Values
+
+pandas provides `dropna()`:
+
+```python
+python> df.dropna()
+```
+
+We use `filterJust`:
+
+```haskell
+ghci> df' |> D.filterJust "G"
+--------------------------------------------------------------------
+   A    |     B      |   C   |  D  |     E     |   F    |    G      
+--------|------------|-------|-----|-----------|--------|-----------
+ Double |    Day     | Float | Int | Transport | [Char] | Integer
+--------|------------|-------|-----|-----------|--------|-----------
+ 1.0    | 2013-01-02 | 1.0   | 3   | Test      | foo    | 1       
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | 2       
+ 1.0    | 2013-01-02 | 1.0   | 3   | Train     | foo    | 4
+```
+
+---
 
 ## Coming from Polars
 
-This tutorial will walk through the examples in Polars' [getting started guide](https://docs.pola.rs/user-guide/getting-started/) showing how concepts in Polars map to dataframe.
+This section walks through [Polars' getting started guide](https://docs.pola.rs/user-guide/getting-started/), showing how Polars concepts map to our library.
 
-### Reading and writing CSV
+### Reading and Writing CSV Files
 
-#### Round trip test
+#### Round-trip Test
 
-To test our CSV IO we'll create a dataframe programmatically, write it to a CSV file, then read the CSV file back again.
+Let's create a DataFrame, write it to CSV, then read it back—a good way to test serialization.
 
-In polars this looks like:
+**Polars version:**
 
 ```python
 import polars as pl
@@ -319,65 +463,65 @@ df_csv = pl.read_csv("docs/assets/data/output.csv", try_parse_dates=True)
 print(df_csv)
 ```
 
-As a standalone dataframe script this would look like.
-
+**Our version:**
 
 ```haskell
 import qualified DataFrame as D
 import Data.Time.Calendar
 
-main :: IO
+main :: IO ()
 main = do
-    let df = D.fromList [
-        ("name", D.fromList [ "Alice Archer"
-                            , "Ben Brown"
-                            , "Chloe Cooper"
-                            , "Daniel Donovan"])
-        , ("birthdate", D.fromList [ fromGregorian 1997 01 10
-                                   , fromGregorian 1985 02 15
-                                   , fromGregorian 1983 03 22
-                                   , fromGregorian 1981 04 30])
-        , ("weight", D.fromList [57.9, 72.5, 53.6, 83.1])
-        , ("height", D.fromList [1.56, 1.77, 1.65, 1.75])]
+    let df = D.fromNamedColumns [
+            ("name", D.fromList [ "Alice Archer"
+                                , "Ben Brown"
+                                , "Chloe Cooper"
+                                , "Daniel Donovan"])
+          , ("birthdate", D.fromList [ fromGregorian 1997 01 10
+                                     , fromGregorian 1985 02 15
+                                     , fromGregorian 1983 03 22
+                                     , fromGregorian 1981 04 30])
+          , ("weight", D.fromList [57.9, 72.5, 53.6, 83.1])
+          , ("height", D.fromList [1.56, 1.77, 1.65, 1.75])
+          ]
     print df
     D.writeCsv "./data/output.csv" df
-    let df_csv = D.readCsv "./data/output.csv"
+    df_csv <- D.readCsv "./data/output.csv"
     print df_csv
 ```
 
-This round trip prints the following tables:
+**Output:**
 
 ```
------------------------------------------------------
-index |      name      | birthdate  | weight | height
-------|----------------|------------|--------|-------
- Int  |     [Char]     |    Day     | Double | Double
-------|----------------|------------|--------|-------
-0     | Alice Archer   | 1997-01-10 | 57.9   | 1.56  
-1     | Ben Brown      | 1985-02-15 | 72.5   | 1.77  
-2     | Chloe Cooper   | 1983-03-22 | 53.6   | 1.65  
-3     | Daniel Donovan | 1981-04-30 | 83.1   | 1.75
+----------------------------------------------
+      name      | birthdate  | weight | height
+----------------|------------|--------|-------
+     [Char]     |    Day     | Double | Double
+----------------|------------|--------|-------
+ Alice Archer   | 1997-01-10 | 57.9   | 1.56  
+ Ben Brown      | 1985-02-15 | 72.5   | 1.77  
+ Chloe Cooper   | 1983-03-22 | 53.6   | 1.65  
+ Daniel Donovan | 1981-04-30 | 83.1   | 1.75
 
------------------------------------------------------
-index |      name      | birthdate  | weight | height
-------|----------------|------------|--------|-------
- Int  |      Text      |    Day     | Double | Double
-------|----------------|------------|--------|-------
-0     | Alice Archer   | 1997-01-10 | 57.9   | 1.56  
-1     | Ben Brown      | 1985-02-15 | 72.5   | 1.77  
-2     | Chloe Cooper   | 1983-03-22 | 53.6   | 1.65  
-3     | Daniel Donovan | 1981-04-30 | 83.1   | 1.75  
-
+----------------------------------------------
+      name      | birthdate  | weight | height
+----------------|------------|--------|-------
+      Text      |    Day     | Double | Double
+----------------|------------|--------|-------
+ Alice Archer   | 1997-01-10 | 57.9   | 1.56  
+ Ben Brown      | 1985-02-15 | 72.5   | 1.77  
+ Chloe Cooper   | 1983-03-22 | 53.6   | 1.65  
+ Daniel Donovan | 1981-04-30 | 83.1   | 1.75  
 ```
 
-Notice that the type of the string column changes from `[Char]` (Haskell's default) to `Text` (dataframe's default).
-
+**Notice**: The string column type changes from `[Char]` (Haskell's string type) to `Text` (our library's preferred string type) after the round-trip. This is because `Text` is more efficient for CSV operations.
 
 ### Expressions
 
-We support expressions similar to Polars and PySpark. These expressions help us write row-level computations.
+Both Polars and our library support "expressions"—composable operations that describe transformations. This is a powerful pattern that separates *what* you want to compute from *how* to compute it.
 
-For example:
+#### Basic Column Expressions
+
+**Polars version:**
 
 ```python
 result = df.select(
@@ -388,52 +532,81 @@ result = df.select(
 print(result)
 ```
 
-Would be written as:
+**Our version:**
 
 ```haskell
-{-## LANGUAGE ScopedTypeVariables #-}
-{-## LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 import qualified DataFrame as D
 import qualified Data.Text as T
-
+import qualified DataFrame.Expressions as F
 import DataFrame.Operations ( (|>) )
-import Data.Time.Calendar
+import Data.Time.Calendar (toGregorian)
 
 main :: IO ()
 main = do
-    ...
-    let year = (\(YearMonthDay y _ _) -> y)
+    -- ... create df_csv ...
+    
+    -- Helper to extract year from Day
+    let year d = let (y, _, _) = toGregorian d in y
+    
     print $ df_csv
           |> D.derive "birth_year" (F.lift year (F.col @Day "birthdate"))
-          |> D.derive "bmi" ((F.col @Double "weight") / (F.col @Double "height" ** F.lit 2))
+          |> D.derive "bmi" (F.col @Double "weight" / (F.pow 2 (F.col @Double "height")))
           |> D.select ["name", "birth_year", "bmi"]
 ```
 
-Resulting in:
+**Output:**
 
 ```
---------------------------------------------------------
-index |      name      | birth_year |        bmi        
-------|----------------|------------|-------------------
- Int  |      Text      |  Integer   |       Double      
-------|----------------|------------|-------------------
-0     | Alice Archer   | 1997       | 23.791913214990135
-1     | Ben Brown      | 1985       | 23.14149829231702 
-2     | Chloe Cooper   | 1983       | 19.687786960514234
-3     | Daniel Donovan | 1981       | 27.13469387755102 
+-------------------------------------------------
+      name      | birth_year |        bmi        
+----------------|------------|-------------------
+      Text      |  Integer   |       Double      
+----------------|------------|-------------------
+ Alice Archer   | 1997       | 23.791913214990135
+ Ben Brown      | 1985       | 23.14149829231702 
+ Chloe Cooper   | 1983       | 19.687786960514234
+ Daniel Donovan | 1981       | 27.13469387755102 
 ```
 
+**Reading the code top-to-bottom:**
 
-The Haskell implementation can be read top down:
-* Create a column called `birth_year` by getting the year from the `birthdate` column.
-* Create a column called `bmi`which is computed as `weight / height ** 2`, 
-* then select the `name`, `birth_year` and `bmi` fields.
+1. `derive "birth_year"` creates a new column by extracting years from birthdates
+   - `F.lift` adapts a regular Haskell function to work with columns
+   - `F.col @Day "birthdate"` references the birthdate column with explicit type
+2. `derive "bmi"` creates another column with the BMI formula
+   - `F.pow 2` squares the height
+   - Division works directly on column expressions
+3. `select` keeps only the columns we want
 
-`lift` takes a regular, unary (one argument) Haskell function and applied it to a column. To apply a binary function to two columns we use `lift2`.
+**Key differences from Polars:**
 
-The Polars column type can be a single column or a list of columns. This means that applying a single transformation to many columns can be written as follows:
+- Type annotations (`@Day`, `@Double`) make column types explicit
+- `lift` explicitly converts regular functions to work on columns
+- `derive` is our version of Polars' `with_columns`
 
-In the example Polars expression expansion example:
+#### Lifting Functions
+
+The `lift` family of functions is central to our expression system:
+
+- `lift`: Apply a unary function to one column
+- `lift2`: Apply a binary function to two columns  
+- `lift3`, `lift4`, etc.: Apply functions with more arguments
+
+Example:
+
+```haskell
+-- Using lift for a unary function
+D.derive "doubled" (F.lift (*2) (F.col @Double "weight"))
+
+-- Using lift2 for a binary function
+D.derive "weight_per_height" (F.lift2 (/) (F.col @Double "weight") (F.col @Double "height"))
+```
+
+#### Column Expansion
+
+Polars allows selecting multiple columns in a single expression:
 
 ```python
 result = df.select(
@@ -443,102 +616,122 @@ result = df.select(
 print(result)
 ```
 
-In Haskell, we don't provide a way of doing this out of the box. So you'd have to write something more explicit:
+We don't provide built-in column expansion, so you write multiple explicit operations:
 
 ```haskell
 df_csv
-    |> D.derive "weight-5%" ((col @Double "weight") * (lit 0.95))
-    |> D.derive "height-5%" ((col @Double "height") * (lit 0.95))
+    |> D.derive "weight-5%" ((F.col @Double "weight") * (F.lit 0.95))
+    |> D.derive "height-5%" ((F.col @Double "height") * (F.lit 0.95))
     |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
-```
-----------------------------------------------------------------
-index |      name      |     height-5%      |     weight-5%     
-------|----------------|--------------------|-------------------
- Int  |     [Char]     |       Double       |       Double      
-------|----------------|--------------------|-------------------
-0     | Alice Archer   | 1.482              | 55.004999999999995
-1     | Ben Brown      | 1.6815             | 68.875            
-2     | Chloe Cooper   | 1.5675             | 50.92             
-3     | Daniel Donovan | 1.6624999999999999 | 78.945
-```
-
-We can use standard Haskell machinery to make the program short without sactificing readability.
+**However**, you can use standard Haskell functions to reduce repetition:
 
 ```haskell
-let reduce name = D.derive (name <> "-5%") ((col @Double name) * (lit 0.95))
+let reduce name = D.derive (name <> "-5%") ((F.col @Double name) * (F.lit 0.95))
 df_csv
-    |> D.fold reduce ["weight", "height"]
+    |> foldl (flip reduce) ["weight", "height"]
     |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
-Or alternatively, if our transformation only involves the variable we are modifying we can write the same code as follows:
+Or, if you're transforming columns in place:
 
 ```haskell
-addSuffix suffix name = D.rename name (name <> suffix)
+let addSuffix suffix name = D.rename name (name <> suffix)
 df_csv
   |> D.applyMany ["weight", "height"] (*0.95)
-  -- We have to rename the fields so they match what we had before.
-  |> D.fold (addSuffix "-5%")
+  |> foldl (flip (addSuffix "-5%")) ["weight", "height"]
   |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
-This means that we can still rely on the expressive power of Haskell itself without relying entirely on the column expressions. This keeps our implementation more flexible.
+This demonstrates a key philosophy: rather than building every possible operation into the library, we leverage Haskell's functional programming features to compose operations elegantly.
 
-Filtering looks much the same:
+### Filtering
+
+Filtering by predicates is straightforward in both libraries.
+
+**Polars version:**
 
 ```python
 result = df.filter(pl.col("birthdate").dt.year() < 1990)
 print(result)
 ```
 
-Versus
+**Our version:**
 
 ```haskell
-bornAfter1990 = ( (< 1990)
-                . (\(YearMonthDay y _ _) -> y))
-df_csv &
-    D.filter "birthdate" bornAfter1990
+let bornBefore1990 d = let (y, _, _) = toGregorian d 
+                        in y < 1990
+
+df_csv |> D.filter "birthdate" bornBefore1990
 ```
 
+**Output:**
+
 ```
------------------------------------------------------
-index |      name      | birthdate  | weight | height
-------|----------------|------------|--------|-------
- Int  |      Text      |    Day     | Double | Double
-------|----------------|------------|--------|-------
-0     | Ben Brown      | 1985-02-15 | 72.5   | 1.77  
-1     | Chloe Cooper   | 1983-03-22 | 53.6   | 1.65  
-2     | Daniel Donovan | 1981-04-30 | 83.1   | 1.75
+----------------------------------------------
+      name      | birthdate  | weight | height
+----------------|------------|--------|-------
+      Text      |    Day     | Double | Double
+----------------|------------|--------|-------
+ Ben Brown      | 1985-02-15 | 72.5   | 1.77  
+ Chloe Cooper   | 1983-03-22 | 53.6   | 1.65  
+ Daniel Donovan | 1981-04-30 | 83.1   | 1.75
 ```
 
-For multiple filter conditions we again make all the filter statements separate. Filtering by m
+The predicate function receives individual values from the named column and returns `True` to keep the row.
+
+#### Multiple Filter Conditions
+
+Polars allows multiple filters in one call:
 
 ```python
 result = df.filter(
     pl.col("birthdate").is_between(dt.date(1982, 12, 31), dt.date(1996, 1, 1)),
     pl.col("height") > 1.7,
 )
-print(result)
 ```
+
+We chain multiple `filter` calls:
 
 ```haskell
-year (YearMonthDay y _ _) = y
-between a b y = y >= a && y <= b 
+let year d = let (y, _, _) = toGregorian d in y
+    between lo hi val = val >= lo && val <= hi
+
 df_csv
-  |> D.filter "birthdate"
-             (between 1982 1996 . year)
-  |> D.filter "height" (1.7 <)
+  |> D.filter "birthdate" (between 1982 1996 . year)
+  |> D.filter "height" (> 1.7)
 ```
 
+**Output:**
+
 ```
-------------------------------------------------
-index |   name    | birthdate  | weight | height
- Int  |   Text    |    Day     | Double | Double
-------|-----------|------------|--------|-------
-0     | Ben Brown | 1985-02-15 | 72.5   | 1.77
+-----------------------------------------
+   name    | birthdate  | weight | height
+-----------|------------|--------|-------
+   Text    |    Day     | Double | Double
+-----------|------------|--------|-------
+ Ben Brown | 1985-02-15 | 72.5   | 1.77
 ```
+
+Each filter operates on the DataFrame sequentially, and the types ensure you can't filter on non-existent columns.
+
+Alternatively, you can use `filterWhere` with boolean expression combinations:
+
+```haskell
+df_csv
+  |> D.filterWhere ((F.col @Int "birth_year" .>= 1982) 
+                    .&& (F.col @Int "birth_year" .<= 1996)
+                    .&& (F.col @Double "height" .> 1.7))
+```
+
+### Grouping and Aggregation
+
+Grouping and aggregation is where our library diverges most significantly from Polars.
+
+#### Simple Count by Group
+
+**Polars version:**
 
 ```python
 result = df.group_by(
@@ -548,29 +741,43 @@ result = df.group_by(
 print(result)
 ```
 
-Polars's `groupBy` does an implicit select. In dataframe the select is written explicitly.
-
-We implicitly create a `Count` variable as the result of grouping by an aggregate. In general when for a `groupByAgg` we create a variable with the same name as the aggregation to store the aggregation in.
+**Our version:**
 
 ```haskell
-let decade d = (year d) `div` 10 * 10
+let decade d = let (y, _, _) = toGregorian d 
+                in (y `div` 10) * 10
+
 df_csv
-    |> D.derive "decade" (lift decade (col @Day "birthdate"))
+    |> D.derive "decade" (F.lift decade (F.col @Day "birthdate"))
     |> D.select ["decade"]
-    |> D.groupByAgg D.Count ["decade"]
+    |> D.groupBy ["decade"]
+    |> D.aggregate [F.count (F.col @Day "decade") `F.as` "Count"]
 ```
 
+**Output:**
+
 ```
-----------------------
-index | decade | Count
-------|--------|------
- Int  |  Int   | Int
-------|--------|------
-0     | 1990   | 1  
-1     | 1980   | 3 
+---------------
+ decade | Count
+--------|------
+  Int   | Int
+--------|------
+ 1990   | 1  
+ 1980   | 3 
 ```
 
-TODO: Add notes
+**Key differences:**
+
+1. **Explicit Derivation**: We first create the decade column explicitly with `derive`
+2. **Separate Selection**: We use `select` to choose columns before grouping
+3. **Group Then Aggregate**: `groupBy` creates a grouped DataFrame, then `aggregate` computes statistics
+4. **Named Results**: The aggregation result column must be explicitly named with `as`
+
+This separation makes the data flow clearer: derive → select → group → aggregate.
+
+#### Multiple Aggregations
+
+**Polars version:**
 
 ```python
 result = df.group_by(
@@ -581,28 +788,43 @@ result = df.group_by(
     pl.col("weight").mean().round(2).alias("avg_weight"),
     pl.col("height").max().alias("tallest"),
 )
-print(result)
 ```
+
+**Our version:**
 
 ```haskell
-decade = (*10) . flip div 10 . year
+let decade d = let (y, _, _) = toGregorian d 
+                in (y `div` 10) * 10
+
 df_csv
-    |> D.derive "decade" (lift decade (col @Day "birthdate"))
-    |> D.groupByAgg D.Count ["decade"]
-    |> D.aggregate [("height", D.Maximum), ("weight", D.Mean)]
-    |> D.select ["decade", "sampleSize", "Mean_weight", "Maximum_height"]
+    |> D.derive "decade" (F.lift decade (F.col @Day "birthdate"))
+    |> D.groupBy ["decade"]
+    |> D.aggregate [ F.count (F.col @Day "decade") `F.as` "sample_size"
+                   , F.mean (F.col @Double "weight") `F.as` "avg_weight"
+                   , F.max (F.col @Double "height") `F.as` "tallest"
+                   ]
 ```
 
+**Output:**
+
 ```
-----------------------------------------------------
-index | decade  |    Mean_weight    | Maximum_height
-------|---------|-------------------|---------------
- Int  | Integer |      Double       |     Double    
-------|---------|-------------------|---------------
-0     | 1990    | 57.9              | 1.56          
-1     | 1980    | 69.73333333333333 | 1.77
+---------------------------------------------------
+ decade | sample_size |    avg_weight     | tallest
+--------|-------------|-------------------|--------
+  Int   |     Int     |      Double       | Double    
+--------|-------------|-------------------|--------
+ 1990   | 1           | 57.9              | 1.56          
+ 1980   | 3           | 69.73333333333333 | 1.77
 ```
 
+The `aggregate` function takes a list of aggregation expressions. Each expression specifies:
+- What column to aggregate (`F.col @Type "name"`)
+- What aggregation to perform (`mean`, `max`, `count`, etc.)
+- What to name the result (`as "new_name"`)
+
+#### Complex Aggregations
+
+**Polars version:**
 
 ```python
 result = (
@@ -610,235 +832,236 @@ result = (
         (pl.col("birthdate").dt.year() // 10 * 10).alias("decade"),
         pl.col("name").str.split(by=" ").list.first(),
     )
-    .select(
-        pl.all().exclude("birthdate"),
-    )
-    .group_by(
-        pl.col("decade"),
-        maintain_order=True,
-    )
+    .select(pl.all().exclude("birthdate"))
+    .group_by(pl.col("decade"), maintain_order=True)
     .agg(
         pl.col("name"),
         pl.col("weight", "height").mean().round(2).name.prefix("avg_"),
     )
 )
-print(result)
 ```
+
+**Our version:**
 
 ```haskell
-let firstWord = head . T.split (' ' ==)
+import qualified Data.Text as T
+
+let decade d = let (y, _, _) = toGregorian d 
+                in (y `div` 10) * 10
+    firstName = head . T.split (== ' ')
+
 df_csv
-    |> D.apply firstWord "name"
-    |> D.derive "decade" decade "birthdate"
+    |> D.derive "name" (F.lift firstName (F.col @T.Text "name"))
+    |> D.derive "decade" (F.lift decade (F.col @Day "birthdate"))
     |> D.exclude ["birthdate"]
-    |> D.groupByAgg D.Count ["decade"]
-    |> D.aggregate [("weight",  D.Mean), ("height", D.Mean)]
+    |> D.groupBy ["decade"]
+    |> D.aggregate [ F.mean (F.col @Double "weight") `F.as` "avg_weight"
+                   , F.mean (F.col @Double "height") `F.as` "avg_height"
+                   , F.collect (F.col @T.Text "name") `F.as` "names"
+                   ]
 ```
 
+**Output:**
+
 ```
--------------------------------------------------------------------------------------------
-index | decade  |           name           | Count |    Mean_height     |    Mean_weight   
-------|---------|--------------------------|-------|--------------------|------------------
- Int  | Integer |       Vector Text        |  Int  |       Double       |      Double      
-------|---------|--------------------------|-------|--------------------|------------------
-0     | 1990    | ["Alice"]                | 1     | 1.56               | 57.9             
-1     | 1980    | ["Ben","Daniel","Chloe"] | 3     | 1.7233333333333334 | 69.73333333333333
+---------------------------------------------------------------------------
+decade  |    avg_weight     |     avg_height     |          names          
+--------|-------------------|--------------------|-------------------------
+Integer |      Double       |       Double       |          [Text]         
+--------|-------------------|--------------------|-------------------------
+1980    | 69.73333333333333 | 1.7233333333333334 | ["Daniel","Chloe","Ben"]
+1990    | 57.9              | 1.56               | ["Alice"]
 ```
+
+The `collect` aggregation gathers all values in a group into a list, which is our library's way of handling list-like aggregations.
+
+---
 
 ## Coming from dplyr
 
-This tutorial will walk through the examples in dplyr's [mini tutorial](https://dplyr.tidyverse.org/) showing how concepts in dplyr map to dataframe.
+This section walks through [dplyr's mini tutorial](https://dplyr.tidyverse.org/), showing how R's dplyr concepts map to our library.
 
-### Filtering
-Filtering looks similar in both libraries.
+### The Pipe Operator
+
+Both dplyr and our library use a pipe operator for chaining operations:
+
+- **dplyr**: `%>%` (magrittr pipe)
+- **Our library**: `|>` (Haskell's forward application operator)
+
+The concept is identical: pass the result of one operation as the first argument to the next.
+
+### Filtering Rows
+
+**dplyr version:**
 
 ```r
 starwars %>% 
   filter(species == "Droid")
-#> ## A tibble: 6 × 14
+#> # A tibble: 6 × 14
 #>   name   height  mass hair_color skin_color  eye_color birth_year sex   gender  
 #>   <chr>   <int> <dbl> <chr>      <chr>       <chr>          <dbl> <chr> <chr>   
 #> 1 C-3PO     167    75 <NA>       gold        yellow           112 none  masculi…
 #> 2 R2-D2      96    32 <NA>       white, blue red               33 none  masculi…
-#> 3 R5-D4      97    32 <NA>       white, red  red               NA none  masculi…
-#> 4 IG-88     200   140 none       metal       red               15 none  masculi…
-#> 5 R4-P17     96    NA none       silver, red red, blue         NA none  feminine
-#> ## ℹ 1 more row
-#> ## ℹ 5 more variables: homeworld <chr>, species <chr>, films <list>,
-#> ##   vehicles <list>, starships <list>
+#> ...
 ```
+
+**Our version:**
 
 ```haskell
-starwars |> D.filter "species" (("Droid" :: Str.Text) ==)
-         |> D.take 10
+import qualified Data.Text as T
+
+starwars 
+  |> D.filterWhere (F.col @Text "species" .== "Droid")
 ```
 
+**Output (truncated for readability):**
+
 ```
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-index |  name  |  height   |   mass    | hair_color | skin_color  | eye_color | birth_year | sex  |  gender   | homeworld | species |                                                                   films                                                                   |  vehicles  | starships 
-------|--------|-----------|-----------|------------|-------------|-----------|------------|------|-----------|-----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------|------------|-----------
- Int  |  Text  | Maybe Int | Maybe Int |    Text    |    Text     |   Text    | Maybe Int  | Text |   Text    |   Text    |  Text   |                                                                   Text                                                                    | Maybe Text | Maybe Text
-------|--------|-----------|-----------|------------|-------------|-----------|------------|------|-----------|-----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------|------------|-----------
-0     | C-3PO  | Just 167  | Just 75   | NA         | gold        | yellow    | Just 112   | none | masculine | Tatooine  | Droid   | A New Hope, The Empire Strikes Back, Return of the Jedi, The Phantom Menace, Attack of the Clones, Revenge of the Sith                    | Nothing    | Nothing   
-1     | R2-D2  | Just 96   | Just 32   | NA         | white, blue | red       | Just 33    | none | masculine | Naboo     | Droid   | A New Hope, The Empire Strikes Back, Return of the Jedi, The Phantom Menace, Attack of the Clones, Revenge of the Sith, The Force Awakens | Nothing    | Nothing   
-2     | R5-D4  | Just 97   | Just 32   | NA         | white, red  | red       | Nothing    | none | masculine | Tatooine  | Droid   | A New Hope                                                                                                                                | Nothing    | Nothing   
-3     | IG-88  | Just 200  | Just 140  | none       | metal       | red       | Just 15    | none | masculine | NA        | Droid   | The Empire Strikes Back                                                                                                                   | Nothing    | Nothing   
-4     | R4-P17 | Just 96   | Nothing   | none       | silver, red | red, blue | Nothing    | none | feminine  | NA        | Droid   | Attack of the Clones, Revenge of the Sith                                                                                                 | Nothing    | Nothing   
-5     | BB8    | Nothing   | Nothing   | none       | none        | black     | Nothing    | none | masculine | NA        | Droid   | The Force Awakens                                                                                                                         | Nothing    | Nothing
+-----------------------------------
+  name  |  height   | species | ...
+--------|-----------|---------|----
+  Text  | Maybe Int |  Text   | ...
+--------|-----------|---------|----
+ C-3PO  | Just 167  | Droid   | ...
+ R2-D2  | Just 96   | Droid   | ...
+ R5-D4  | Just 97   | Droid   | ...
+ ...
 ```
 
-### Selecting columns
-Select looks similar except in Haskell we take as argument a list of strings instead of a mix of predicates and strings.
+**Note**: The type application `@Text` is necessary because string literals in Haskell are polymorphic. This tells the compiler we're comparing against `Text` values, not strings.
+
+### Selecting Columns
+
+**dplyr version:**
 
 ```r
 starwars %>% 
   select(name, ends_with("color"))
-#> ## A tibble: 87 × 4
+#> # A tibble: 87 × 4
 #>   name           hair_color skin_color  eye_color
 #>   <chr>          <chr>      <chr>       <chr>    
 #> 1 Luke Skywalker blond      fair        blue     
 #> 2 C-3PO          <NA>       gold        yellow   
-#> 3 R2-D2          <NA>       white, blue red      
-#> 4 Darth Vader    none       white       yellow   
-#> 5 Leia Organa    brown      light       brown    
-#> ## ℹ 82 more rows
+#> ...
 ```
 
-To get the same predicate-like functionality we use `selectBy`.
+**Our version (explicit):**
 
 ```haskell
-starwars |> D.selectBy (\cname -> cname == "name" || T.isSuffixOf "color" cname)
-         |> D.take 10
+starwars 
+  |> D.select ["name", "hair_color", "skin_color", "eye_color"]
+  |> D.take 5
 ```
 
+**Our version (with predicate):**
 
-```
---------------------------------------------------------------------
-index |        name        |  hair_color   | skin_color  | eye_color
-------|--------------------|---------------|-------------|----------
- Int  |        Text        |     Text      |    Text     |   Text   
-------|--------------------|---------------|-------------|----------
-0     | Luke Skywalker     | blond         | fair        | blue     
-1     | C-3PO              | NA            | gold        | yellow   
-2     | R2-D2              | NA            | white, blue | red      
-3     | Darth Vader        | none          | white       | yellow   
-4     | Leia Organa        | brown         | light       | brown    
-5     | Owen Lars          | brown, grey   | light       | blue     
-6     | Beru Whitesun Lars | brown         | light       | blue     
-7     | R5-D4              | NA            | white, red  | red      
-8     | Biggs Darklighter  | black         | light       | brown    
-9     | Obi-Wan Kenobi     | auburn, white | fair        | blue-gray
+For predicate-based selection like `ends_with()`, we use `selectBy`:
+
+```haskell
+starwars 
+  |> D.selectBy (\colName -> colName == "name" || T.isSuffixOf "color" colName)
+  |> D.take 5
 ```
 
-### Transforming columns
+**Output:**
 
-R has a general mutate function that takes in a mix of expressions and column names.
+```
+-------------------------------------------------------------
+        name        |  hair_color   | skin_color  | eye_color
+--------------------|---------------|-------------|----------
+        Text        |     Text      |    Text     |   Text   
+--------------------|---------------|-------------|----------
+ Luke Skywalker     | blond         | fair        | blue     
+ C-3PO              | NA            | gold        | yellow   
+ R2-D2              | NA            | white, blue | red      
+ Darth Vader        | none          | white       | yellow   
+ Leia Organa        | brown         | light       | brown    
+```
+
+`selectBy` takes a predicate function that receives each column name and returns `True` to keep that column.
+
+### Creating New Columns
+
+**dplyr version:**
 
 ```r
 starwars %>% 
-  mutate(name, bmi = mass / ((height / 100)  ^ 2)) %>%
+  mutate(bmi = mass / ((height / 100) ^ 2)) %>%
   select(name:mass, bmi)
-#> ## A tibble: 87 × 4
-#>   name           height  mass   bmi
-#>   <chr>           <int> <dbl> <dbl>
-#> 1 Luke Skywalker    172    77  26.0
-#> 2 C-3PO             167    75  26.9
-#> 3 R2-D2              96    32  34.7
-#> 4 Darth Vader       202   136  33.3
-#> 5 Leia Organa       150    49  21.8
-#> ## ℹ 82 more rows
 ```
 
-Our logic is more explicit about what's going on. Because both our fields are nullable/optional we have to specify the type.
+**Our version:**
 
 ```haskell
-convertEitherToDouble name d = D.apply (either (\unparsed -> if unparsed == "NA" then Nothing else D.readDouble unparsed) (Just . (fromIntegral @Int))) name d
-
 starwars
-  |> D.fold convertEitherToDouble ["mass", "height"]
-  |> D.selectRange ("name", "mass")
-  -- Remove Nothing/empty rows.
+  -- Remove the maybes.
   |> D.filterJust "mass"
   |> D.filterJust "height"
-  |> D.derive "bmi" ((F.col @Double "mass") / (F.lift2 (**) (F.col @Double "height") (F.lit 2)))
-  |> D.take 10
+  |> D.derive "bmi" (F.col @Double "mass" / F.pow 2 (F.col @Double "height" / F.lit 100))
+  |> D.select ["name", "height", "mass", "bmi"]
+  |> D.take 5
 ```
 
+**Output:**
+
 ```
--------------------------------------------------------------------------------
-index |         name          |  height   |   mass    |           bmi          
-------|-----------------------|-----------|-----------|------------------------
- Int  |         Text          | Maybe Int | Maybe Int |      Maybe Double      
-------|-----------------------|-----------|-----------|------------------------
-0     | Luke Skywalker        | Just 172  | Just 77   | Just 26.027582477014604
-1     | C-3PO                 | Just 167  | Just 75   | Just 26.89232313815483 
-2     | R2-D2                 | Just 96   | Just 32   | Just 34.72222222222222 
-3     | Darth Vader           | Just 202  | Just 136  | Just 33.33006567983531 
-4     | Leia Organa           | Just 150  | Just 49   | Just 21.77777777777778 
-5     | Owen Lars             | Just 178  | Just 120  | Just 37.87400580734756 
-6     | Beru Whitesun Lars    | Just 165  | Just 75   | Just 27.548209366391188
-7     | R5-D4                 | Just 97   | Just 32   | Just 34.009990434690195
-8     | Biggs Darklighter     | Just 183  | Just 84   | Just 25.082863029651524
-9     | Obi-Wan Kenobi        | Just 182  | Just 77   | Just 23.24598478444632 
+------------------------------------------------------------------------
+       name        |  height   |   mass    |           bmi          
+-------------------|-----------|-----------|------------------------
+       Text        | Maybe Int | Maybe Int |      Maybe Double      
+-------------------|-----------|-----------|------------------------
+ Luke Skywalker    | Just 172  | Just 77   | Just 26.027582477014604
+ C-3PO             | Just 167  | Just 75   | Just 26.89232313815483 
+ R2-D2             | Just 96   | Just 32   | Just 34.72222222222222 
+ Darth Vader       | Just 202  | Just 136  | Just 33.33006567983531 
+ Leia Organa       | Just 150  | Just 49   | Just 21.77777777777778 
 ```
 
-Haskell's applicative syntax does take some getting used to.
+**What's happening:**
 
-`f <$> a` means apply f to the thing inside the "container". In this
-case the container (or more infamously the monad) is of type `Maybe`.
-So this can also be written as `fmap f a`.
+1. Convert string/integer columns to `Maybe Double` (handling "NA" values)
+2. Filter out rows with missing height or mass
+3. Create the BMI column using column expressions
+4. Select the columns we want to view
 
-But this only works if our `f` takes a single argument. If it takes
-two arguments then the we use `<*>` to specify the second argument.
-
-So, applying bmi to two optionals can be written as:
-
-```haskell
-ghci> fmap (+) (Just 2) <*> Just 2
-Just 4
-ghci> (+) <$> Just 2 <*> Just 2
-Just 4
-```
-
-You'll find a wealth of functions for dealing with optionals in the package
-`Data.Maybe`.
+This is more verbose than dplyr's `mutate`, but it's explicit about type conversions and missing data handling.
 
 ### Sorting
+
+**dplyr version:**
 
 ```r
 starwars %>% 
   arrange(desc(mass))
-#> ## A tibble: 87 × 14
-#>   name      height  mass hair_color skin_color eye_color birth_year sex   gender
-#>   <chr>      <int> <dbl> <chr>      <chr>      <chr>          <dbl> <chr> <chr> 
-#> 1 Jabba De…    175  1358 <NA>       green-tan… orange         600   herm… mascu…
-#> 2 Grievous     216   159 none       brown, wh… green, y…       NA   male  mascu…
-#> 3 IG-88        200   140 none       metal      red             15   none  mascu…
-#> 4 Darth Va…    202   136 none       white      yellow          41.9 male  mascu…
-#> 5 Tarfful      234   136 brown      brown      blue            NA   male  mascu…
-#> ## ℹ 82 more rows
-#> ## ℹ 5 more variables: homeworld <chr>, species <chr>, films <list>,
-#> ##   vehicles <list>, starships <list>
 ```
+
+**Our version:**
 
 ```haskell
-starwars |> D.sortBy D.Descending ["mass"] |> D.take 5
+starwars 
+  |> D.sortBy D.Descending ["mass"]
 ```
 
+**Output (truncated):**
+
 ```
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-index |         name          |  height   |   mass    | hair_color |    skin_color    |   eye_color   | birth_year |      sex       |  gender   | homeworld | species |                                    films                                     |              vehicles              |            starships           
-------|-----------------------|-----------|-----------|------------|------------------|---------------|------------|----------------|-----------|-----------|---------|------------------------------------------------------------------------------|------------------------------------|--------------------------------
- Int  |         Text          | Maybe Int | Maybe Int |    Text    |       Text       |     Text      | Maybe Int  |      Text      |   Text    |   Text    |  Text   |                                     Text                                     |             Maybe Text             |           Maybe Text           
-------|-----------------------|-----------|-----------|------------|------------------|---------------|------------|----------------|-----------|-----------|---------|------------------------------------------------------------------------------|------------------------------------|--------------------------------
-0     | Jabba Desilijic Tiure | Just 175  | Just 1358 | NA         | green-tan, brown | orange        | Just 600   | hermaphroditic | masculine | Nal Hutta | Hutt    | A New Hope, Return of the Jedi, The Phantom Menace                           | Nothing                            | Nothing                        
-1     | Grievous              | Just 216  | Just 159  | none       | brown, white     | green, yellow | Nothing    | male           | masculine | Kalee     | Kaleesh | Revenge of the Sith                                                          | Just "Tsmeu-6 personal wheel bike" | Just "Belbullab-22 starfighter"
-2     | IG-88                 | Just 200  | Just 140  | none       | metal            | red           | Just 15    | none           | masculine | NA        | Droid   | The Empire Strikes Back                                                      | Nothing                            | Nothing                        
-3     | Tarfful               | Just 234  | Just 136  | brown      | brown            | blue          | Nothing    | male           | masculine | Kashyyyk  | Wookiee | Revenge of the Sith                                                          | Nothing                            | Nothing                        
-4     | Darth Vader           | Just 202  | Just 136  | none       | white            | yellow        | Nothing    | male           | masculine | Tatooine  | Human   | A New Hope, The Empire Strikes Back, Return of the Jedi, Revenge of the Sith | Nothing                            | Just "TIE Advanced x1"
+-------------------------------------------------
+         name          |  height   |   mass    | ...
+-----------------------|-----------|-----------|----
+         Text          | Maybe Int | Maybe Int | ...
+-----------------------|-----------|-----------|----
+ Jabba Desilijic Tiure | Just 175  | Just 1358 | ...
+ Grievous              | Just 216  | Just 159  | ...
+ IG-88                 | Just 200  | Just 140  | ...
+ Tarfful               | Just 234  | Just 136  | ...
+ Darth Vader           | Just 202  | Just 136  | ...
 ```
 
-### Grouping and aggregating
+For multi-column sorting, provide multiple column names: `D.sortBy D.Descending ["mass", "height"]`
+
+### Grouping and Summarizing
+
+**dplyr version:**
 
 ```r
 starwars %>%
@@ -847,45 +1070,116 @@ starwars %>%
     n = n(),
     mass = mean(mass, na.rm = TRUE)
   ) %>%
-  filter(
-    n > 1,
-    mass > 50
-  )
-#> ## A tibble: 9 × 3
-#>   species      n  mass
-#>   <chr>    <int> <dbl>
-#> 1 Droid        6  69.8
-#> 2 Gungan       3  74  
-#> 3 Human       35  81.3
-#> 4 Kaminoan     2  88  
-#> 5 Mirialan     2  53.1
-#> ## ℹ 4 more rows
+  filter(n > 1, mass > 50)
 ```
+
+**Our version:**
 
 ```haskell
-starwars |> D.select ["species", "mass"]
-         |> D.groupByAgg D.Count ["species"]
-         -- This will be saved in a variable called  "Mean_mass"
-         |> D.reduceByAgg D.Mean "mass"
-         -- Always better to be explcit about types for
-         -- numbers but you can also turn on defaults
-         -- to save keystrokes.
-         |> D.filterWhere (F.lift2 (&&) (F.lift (>1) (F.col @Int "Count")) (F.lift (>50) (F.col @Int "Mean_mass")))
+starwars 
+  |> D.select ["species", "mass"]
+  |> D.groupBy ["species"]
+  |> D.aggregate [ F.mean (F.col @Double "mass") `F.as` "mean_mass"
+                 , F.count (F.col @Double "mass") `F.as` "count"
+                 ]
+  |> D.filterWhere ((F.col @Int "count" .> 1) .&& (F.col @Double "mean_mass" .> 50))
 ```
 
+**Output:**
+
 ```
---------------------------------------------
-index | species  |     Mean_mass     | Count
-------|----------|-------------------|------
- Int  |   Text   |      Double       |  Int 
-------|----------|-------------------|------
-0     | Human    | 81.47368421052632 | 35   
-1     | Droid    | 69.75             | 6    
-2     | Wookiee  | 124.0             | 2    
-3     | NA       | 81.0              | 4    
-4     | Gungan   | 74.0              | 3    
-5     | Zabrak   | 80.0              | 2    
-6     | Twi'lek  | 55.0              | 2    
-7     | Kaminoan | 88.0              | 2
+-------------------------------------
+ species  |     mean_mass     | count
+----------|-------------------|------
+   Text   |      Double       |  Int 
+----------|-------------------|------
+ Human    | 81.47368421052632 | 35   
+ Droid    | 69.75             | 6    
+ Wookiee  | 124.0             | 2    
+ NA       | 81.0              | 4    
+ Gungan   | 74.0              | 3    
+ Zabrak   | 80.0              | 2    
+ Twi'lek  | 55.0              | 2    
+ Kaminoan | 88.0              | 2
 ```
 
+**Key points:**
+
+1. We use `aggregate` with a list of aggregation expressions
+2. `filterWhere` allows filtering based on multiple column conditions using `.&&` (AND) and `.|` (OR)
+3. Type annotations ensure we're comparing the right types
+
+---
+
+## Summary of Key Patterns
+
+### Our Library's Design Philosophy
+
+1. **Explicit Over Implicit**: Every operation is named and clear
+2. **Types as Documentation**: Type signatures tell you what's possible
+3. **Composition Over Configuration**: Use Haskell functions to build complex operations
+4. **Functional Pipeline**: Chain operations using `|>` for readable data transformations
+
+### Common Idioms
+
+**Creating DataFrames:**
+```haskell
+df = D.fromNamedColumns [
+    ("col1", D.fromList [val1, val2, ...]),
+    ("col2", D.fromList [val3, val4, ...])
+]
+```
+
+**Selecting and Filtering:**
+```haskell
+df |> D.select ["col1", "col2"]
+   |> D.filter "col1" (> (10 :: Int))
+```
+
+**Creating Derived Columns:**
+```haskell
+df |> D.derive "new_col" (F.col @Double "old_col" * 2)
+```
+
+**Grouping and Aggregating:**
+```haskell
+df |> D.groupBy ["group_col"]
+   |> D.aggregate [ F.mean (F.col @Double "val") `F.as` "avg_val"
+                  , F.count (F.col @Double "val") `F.as` "n"
+                  ]
+```
+
+**Handling Missing Data:**
+```haskell
+-- Filter out Nothing values
+df |> D.filterJust "col"
+
+-- Fill Nothing with default
+df |> D.impute "col" defaultVal
+```
+
+### Type Annotations
+
+Our library often requires type annotations to disambiguate operations:
+
+```haskell
+F.col @Double "weight"  -- Specify column contains Doubles
+F.lit @Int 5            -- Specify literal is an Int
+filter "col" (== ("text" :: T.Text))  -- Specify string type
+```
+
+This explicitness catches errors early and serves as inline documentation.
+
+---
+
+## Next Steps
+
+Now that you understand how familiar operations translate to our library:
+
+1. **Explore the API documentation** for the full set of available functions
+2. **Start with simple pipelines** and gradually add complexity
+3. **Leverage Haskell's type system** to catch errors early
+4. **Use functional composition** to build reusable transformation pipelines
+5. **Experiment with expression building** using the `F.*` functions
+
+Remember: while our library requires more explicitness than pandas, Polars, or dplyr, this explicitness provides safety, clarity, and composability that becomes invaluable in production code.

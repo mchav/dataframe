@@ -1,177 +1,280 @@
-# Exercies
+# Cookbook
 
-The following exercies are adapted from Hackerrank's SQL challenges.
+The following exercies are adapted from Hackerrank's SQL challenges. They outline how to do basic SQL-like operations using dataframe.
 
-## Exercise 1: Basic filtering
+# Working with DataFrames in Haskell
+
+This tutorial introduces you to data manipulation using Haskell's DataFrame library. We'll work through filtering, selecting, sorting, and combining data using a functional programming approach that's both powerful and expressive.
+
+Make sure you install `dataframe` and run the custom REPL which provides all the necessary imports and extensions.
+
+## Getting Started with DataFrames
+
+Before we begin, let's load our data. We'll be working primarily with city and station data stored in CSV files. To load a CSV file and expose its columns for easy access:
+
+```haskell
+dataframe> df <- D.readCsv "./data/city.csv"
+dataframe> :exposeColumns df
+```
+
+The `:exposeColumns` command makes column names available as variables in your scope, allowing you to reference them directly (e.g., `id`, `name`, `population`).
+
+## Filtering Data
+
+One of the most fundamental operations in data analysis is filtering - selecting rows that meet certain criteria. In Haskell's DataFrame library, we use the `filterWhere` function combined with comparison operators.
+
+### Basic Comparisons
+
+The `filterWhere` function takes a boolean expression and returns only the rows where that expression evaluates to true. For example, to find rows where a column equals a specific value, we use the `.==` operator:
+
+```haskell
+df |> D.filterWhere (columnName .== value)
+```
+
+The pipe operator `|>` allows us to chain operations in a readable left-to-right style, similar to Unix pipes.
+
+**Exercise 1: Basic filtering**
+
 For this question we will use the data in `./data/city.csv`.
 
 Query all columns for a city with the ID 1661.
 
 ### Solution
 ```haskell
-ghci> df |> D.filterWhere (id .== 1661)
-------------------------------------------------------------
-index |  id  |  name  | country_code | district | population
-------|------|--------|--------------|----------|-----------
- Int  | Int  |  Text  |     Text     |   Text   |    Int    
-------|------|--------|--------------|----------|-----------
-0     | 1661 | Sayama | JPN          | Saitama  | 162472
+dataframe> df |> D.filterWhere (id .== 1661)-----------------------------------------------------
+  id  |  name  | country_code | district | population
+------|--------|--------------|----------|-----------
+ Int  |  Text  |     Text     |   Text   |    Int    
+------|--------|--------------|----------|-----------
+ 1661 | Sayama | JPN          | Saitama  | 162472
 ```
 
-## Exercise 2: Basic filterig (cont)
+**Exercise 2: Basic filtering (cont)**
+
 For this question we will use the data in `./data/city.csv`.
 
 Query all columns of every Japanese city. The `country_code` for Japan is "JPN".
 
 ### Solution
 ```haskell
-ghci> df |> D.filterWhere (country_code .== "JPN")
----------------------------------------------------------------
-index |  id  |   name   | country_code | district  | population
-------|------|----------|--------------|-----------|-----------
- Int  | Int  |   Text   |     Text     |   Text    |    Int    
-------|------|----------|--------------|-----------|-----------
-0     | 1613 | Neyagawa | JPN          | Osaka     | 257315    
-1     | 1630 | Ageo     | JPN          | Saitama   | 209442    
-2     | 1661 | Sayama   | JPN          | Saitama   | 162472    
-3     | 1681 | Omuta    | JPN          | Fukuoka   | 142889    
-4     | 1739 | Tokuyama | JPN          | Yamaguchi | 107078
+dataframe> df |> D.filterWhere (country_code .== "JPN")
+--------------------------------------------------------
+  id  |   name   | country_code | district  | population
+------|----------|--------------|-----------|-----------
+ Int  |   Text   |     Text     |   Text    |    Int    
+------|----------|--------------|-----------|-----------
+ 1613 | Neyagawa | JPN          | Osaka     | 257315    
+ 1630 | Ageo     | JPN          | Saitama   | 209442    
+ 1661 | Sayama   | JPN          | Saitama   | 162472    
+ 1681 | Omuta    | JPN          | Fukuoka   | 142889    
+ 1739 | Tokuyama | JPN          | Yamaguchi | 107078
 ```
 
-## Exercise 3: Basic filtering (cont)
+### Combining Conditions
+
+Often you'll need to filter on multiple conditions simultaneously. You can combine boolean expressions using logical operators:
+- `.&&` for AND (both conditions must be true)
+- `.||` for OR (either condition can be true)
+- `.>`, `.>=`, `.<`, `.<=` for comparisons
+
+For example, to find cities with large populations in a specific country:
+```haskell
+df |> D.filterWhere ((population .> 100000) .&& (country_code .== "USA"))
+```
+
+**Exercise 3: Basic filtering (cont)**
+
 For this question we will use the data in `./data/city.csv`.
 
 Query all columns for all American cities in city dataframe with:
 * populations larger than 100000, and
 * the CountryCode for America is "USA".
 
-## Solution
+### Solution
 ```haskell
-ghci> D.readCsv "./data/country.csv"
-ghci> :exposeColumns df
-ghci> df |> D.filterWhere ((population .> 100000) .&& (country_code .== "USA"))
----------------------------------------------------------------------
-index |  id  |     name      | country_code |  district  | population
-------|------|---------------|--------------|------------|-----------
- Int  | Int  |     Text      |     Text     |    Text    |    Int    
-------|------|---------------|--------------|------------|-----------
-0     | 3878 | Scottsdale    | USA          | Arizona    | 202705    
-1     | 3965 | Corona        | USA          | California | 124966    
-2     | 3973 | Concord       | USA          | California | 121780    
-3     | 3977 | Cedar Rapids  | USA          | Iowa       | 120758    
-4     | 3982 | Coral Springs | USA          | Florida    | 117549
+dataframe> D.readCsv "./data/country.csv"
+dataframe> :exposeColumns df
+dataframe> df |> D.filterWhere ((population .> 100000) .&& (country_code .== "USA"))
+--------------------------------------------------------------
+  id  |     name      | country_code |  district  | population
+------|---------------|--------------|------------|-----------
+ Int  |     Text      |     Text     |    Text    |    Int    
+------|---------------|--------------|------------|-----------
+ 3878 | Scottsdale    | USA          | Arizona    | 202705    
+ 3965 | Corona        | USA          | California | 124966    
+ 3973 | Concord       | USA          | California | 121780    
+ 3977 | Cedar Rapids  | USA          | Iowa       | 120758    
+ 3982 | Coral Springs | USA          | Florida    | 117549
 ```
 
-## Exercise 4: Constraining output
+## Limiting Results
+
+When working with large datasets, you often want to preview just a few rows rather than displaying thousands of results. The `take` function limits the output to a specified number of rows from the beginning of the dataframe.
+
+```haskell
+df |> D.take n  -- Shows first n rows
+```
+
+This is particularly useful for quickly inspecting data or when you only need a sample of results.
+
+**Exercise 4: Constraining output**
+
 For this question we will use the data in `./data/city.csv`.
 
 Show the first 5 rows of the dataframe.
 
 ### Solution
 ```haskell
-ghci> df |> D.take 5
-------------------------------------------------------------------------------
-index | id  |       name       | country_code |     district      | population
-------|-----|------------------|--------------|-------------------|-----------
- Int  | Int |       Text       |     Text     |       Text        |    Int    
-------|-----|------------------|--------------|-------------------|-----------
-0     | 6   | Rotterdam        | NLD          | Zuid-Holland      | 593321    
-1     | 19  | Zaanstad         | NLD          | Noord-Holland     | 135621    
-2     | 214 | Porto Alegre     | BRA          | Rio Grande do Sul | 1314032   
-3     | 397 | Lauro de Freitas | BRA          | Bahia             | 109236    
-4     | 547 | Dobric           | BGR          | Varna             | 100399
+dataframe> df |> D.take 5
+----------------------------------------------------------------
+ id  |       name       | country_code |     district      | population
+-----|------------------|--------------|-------------------|-----------
+ Int |       Text       |     Text     |       Text        |    Int    
+-----|------------------|--------------|-------------------|-----------
+ 6   | Rotterdam        | NLD          | Zuid-Holland      | 593321    
+ 19  | Zaanstad         | NLD          | Noord-Holland     | 135621    
+ 214 | Porto Alegre     | BRA          | Rio Grande do Sul | 1314032   
+ 397 | Lauro de Freitas | BRA          | Bahia             | 109236    
+ 547 | Dobric           | BGR          | Varna             | 100399
 ```
 
-## Exercise 5: Basic selection
+## Selecting Specific Columns
+
+While filtering chooses which rows to include, selecting chooses which columns to display. The `select` function takes a list of column specifications. You can reference columns using `F.name columnName`:
+
+```haskell
+df |> D.select [F.name column1, F.name column2]
+```
+
+This is useful when you want to focus on specific attributes and reduce visual clutter in your output.
+
+**Exercise 5: Basic selection**
+
 For this question we will use the data in `./data/city.csv`.
 
 Get the first 5 names of the city names.
 
 ### Solution
 ```haskell
-ghci> df |> D.select [F.name name] |> D.take 5
-------------------------
-index |       name      
-------|-----------------
- Int  |       Text      
-------|-----------------
-0     | Rotterdam       
-1     | Zaanstad        
-2     | Porto Alegre    
-3     | Lauro de Freitas
-4     | Dobric
+dataframe> df |> D.select [F.name name] |> D.take 5
+-----------------
+       name      
+-----------------
+       Text      
+-----------------
+ Rotterdam       
+ Zaanstad        
+ Porto Alegre    
+ Lauro de Freitas
+ Dobric
 ```
 
-## Exercise 6: Selection and filtering
+### Combining Selection and Filtering
+
+The real power of these operations comes from chaining them together. You can filter rows and then select specific columns (or vice versa) to get exactly the data you need:
+
+```haskell
+df |> D.filterWhere (condition) |> D.select [columns] |> D.take n
+```
+
+The order of operations matters - filtering first reduces the data before selection, which can be more efficient.
+
+**Exercise 6: Selection and filtering**
+
 For this question we will use the data in `./data/city.csv`.
 
 Query the names of all the Japanese cities and show only the first 5 results.
 
-
 ### Solution
 ```haskell
-ghci> df |> D.filterWhere (country_code .== "JPN") |> D.select [F.name name] |> D.take 5
-----------------
-index |   name  
-------|---------
- Int  |   Text  
-------|---------
-0     | Neyagawa
-1     | Ageo    
-2     | Sayama  
-3     | Omuta   
-4     | Tokuyama
+dataframe> df |> D.filterWhere (country_code .== "JPN") |> D.select [F.name name] |> D.take 5
+---------
+   name  
+---------
+   Text  
+---------
+ Neyagawa
+ Ageo    
+ Sayama  
+ Omuta   
+ Tokuyama
 ```
 
-## Exercise 7: Basic select (cont)
+**Exercise 7: Basic select (cont)**
+
 For this question we will use the data in `./data/station.csv`.
 
 Show the first five city and state rows.
 
 ### Solution
 ```haskell
-ghci> df |> D.select [F.name city, F.name state] |> D.take 5
-----------------------------
-index |     city     | state
-------|--------------|------
- Int  |     Text     | Text 
-------|--------------|------
-0     | Kissee Mills | MO   
-1     | Loma Mar     | CA   
-2     | Sandy Hook   | CT   
-3     | Tipton       | IN   
-4     | Arlington    | CO 
+dataframe> df |> D.select [F.name city, F.name state] |> D.take 5
+---------------------
+     city     | state
+--------------|------
+     Text     | Text 
+--------------|------
+ Kissee Mills | MO   
+ Loma Mar     | CA   
+ Sandy Hook   | CT   
+ Tipton       | IN   
+ Arlington    | CO 
 ```
 
-## Exercise 8: Distinct
+## Removing Duplicates
+
+When analyzing categorical data, you often want to see unique values rather than repeated entries. The `distinct` function removes duplicate rows from your result set:
+
+```haskell
+df |> D.select [F.name column] |> D.distinct
+```
+
+This is particularly useful when exploring what values exist in a column or when preparing data for aggregation.
+
+**Exercise 8: Distinct**
+
 For this question we will use the data in `./data/station.csv`.
 
 Query a list of city names for cities that have an even ID number. Show the results in any order, but exclude duplicates from the answer.
 
-
 ### Solution
 ```haskell
-ghci> df |> D.filterWhere (F.lift even id) |> D.select [F.name city] |> D.distinct 
------------------------------
-index |         city         
-------|----------------------
- Int  |         Text         
-------|----------------------
-0     | Rockton              
-1     | Forest Lakes         
-2     | Yellow Pine          
-3     | Mosca                
-4     | Rocheport            
-5     | Millville            
+dataframe> df |> D.filterWhere (F.lift even id) |> D.select [F.name city] |> D.distinct 
+----------------------
+         city         
+----------------------
+         Text         
+----------------------
+ Rockton              
+ Forest Lakes         
+ Yellow Pine          
+ Mosca                
+ Rocheport            
+ Millville            
 ...
-230   | Lee                  
-231   | Elm Grove            
-232   | Orange City          
-233   | Baker                
-234   | Clutier
+ Lee                  
+ Elm Grove            
+ Orange City          
+ Baker                
+ Clutier
 ```
 
-## Exercise 9: Merging
+## Sorting and Combining Results
+
+Sometimes you need to sort data and then combine results from multiple queries. The `sortBy` function orders rows by specified columns, and you can use the `<>` operator to concatenate dataframes vertically (similar to SQL's UNION).
+
+```haskell
+df |> D.sortBy D.Ascending ["column"]   -- Sort ascending
+df |> D.sortBy D.Descending ["column"]  -- Sort descending
+```
+
+You can also derive new columns using `derive` to compute values based on existing columns:
+
+```haskell
+df |> D.derive "newColumn" (F.lift function existingColumn)
+```
+
+**Exercise 9: Merging**
 
 For this question we will use the data in `./data/station.csv`.
 
@@ -187,20 +290,29 @@ UNION
 (SELECT CITY, LENGTH(CITY) FROM STATION ORDER BY LENGTH(CITY) ASC LIMIT 1);
 ```
 
-
 ```haskell
-ghci> letterSort s = df |> D.derive "length" (F.lift T.length city) |> D.select [F.name city, "length"] |> D.sortBy s ["length"] |> D.take 1
-ghci> (letterSort D.Descending) <> (letterSort D.Ascending)
---------------------------------------
-index |         city          | length
-------|-----------------------|-------
- Int  |         Text          |  Int
-------|-----------------------|-------
-0     | Marine On Saint Croix | 21
-1     | Roy                   | 3
+dataframe> letterSort s = df |> D.derive "length" (F.lift T.length city) |> D.select [F.name city, "length"] |> D.sortBy s ["length"] |> D.take 1
+dataframe> (letterSort D.Descending) <> (letterSort D.Ascending)
+-------------------------------
+         city          | length
+-----------------------|-------
+         Text          |  Int
+-----------------------|-------
+ Marine On Saint Croix | 21
+ Roy                   | 3
 ```
 
-## Exercise 10: Duplicates and user defined functions
+## Using Custom Functions
+
+One of the strengths of working with dataframes in Haskell is the ability to use any Haskell function in your queries. The `F.lift` function allows you to apply regular Haskell functions to DataFrame columns. This means you can use string functions, mathematical operations, or even your own custom logic:
+
+```haskell
+df |> D.filterWhere (F.lift customFunction columnName)
+```
+
+This enables sophisticated filtering that goes beyond simple comparisons. For example, you can check string prefixes, perform calculations, or apply complex business logic.
+
+**Exercise 10: Duplicates and user defined functions**
 
 For this question we will use the data in `./data/station.csv`.
 
@@ -209,15 +321,27 @@ Query the list of city names starting with vowels (i.e., a, e, i, o, or u). Your
 ### Solution
 
 ```haskell
-ghci> df |> D.select [F.name city] |> D.filterWhere (F.lift (\c -> any (`T.isPrefixOf` (T.toLower c)) ["a", "e", "i", "o", "u"]) city) |> D.take 5
------------------
-index |   city
-------|----------
- Int  |   Text
-------|----------
-0     | Arlington
-1     | Albany
-2     | Upperco
-3     | Aguanga
-4     | Odin
+dataframe> df |> D.select [F.name city] |> D.filterWhere (F.lift (\c -> any (`T.isPrefixOf` (T.toLower c)) ["a", "e", "i", "o", "u"]) city) |> D.take 5
+----------
+   city
+----------
+   Text
+----------
+ Arlington
+ Albany
+ Upperco
+ Aguanga
+ Odin
 ```
+
+## Summary
+
+You've now learned the fundamental operations for working with dataframes in Haskell:
+- **Filtering** with `filterWhere` to select rows based on conditions
+- **Selecting** with `select` to choose specific columns
+- **Limiting** with `take` to control output size
+- **Removing duplicates** with `distinct`
+- **Sorting** with `sortBy` and combining results with `<>`
+- **Applying custom functions** with `F.lift` for sophisticated data manipulation
+
+These building blocks can be composed together to answer complex data analysis questions in a clear, functional style.
