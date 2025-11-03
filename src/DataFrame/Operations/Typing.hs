@@ -37,28 +37,10 @@ parseDefault n safeRead dateFormat (OptionalColumn (c :: V.Vector (Maybe a))) =
         Just Refl -> parseFromExamples n dateFormat safeRead (V.map (fromMaybe "") c)
 parseDefault _ _ _ column = column
 
-emptyToNothing :: T.Text -> Maybe T.Text
-emptyToNothing v = if isNullish v then Nothing else Just v
-
-parseTimeOpt :: String -> T.Text -> Maybe Day
-parseTimeOpt dateFormat s =
-    parseTimeM {- Accept leading/trailing whitespace -}
-        True
-        defaultTimeLocale
-        dateFormat
-        (T.unpack s)
-
-unsafeParseTime :: String -> T.Text -> Day
-unsafeParseTime dateFormat s =
-    parseTimeOrError {- Accept leading/trailing whitespace -}
-        True
-        defaultTimeLocale
-        dateFormat
-        (T.unpack s)
-
 parseFromExamples :: Int -> String -> Bool -> V.Vector T.Text -> Column
 parseFromExamples n dateFormat safeRead c
-    | V.all isJust (V.map readInt examples) =
+    | V.any isJust (V.map readInt examples)
+        && equalNonEmpty (V.map readInt examples) (V.map readDouble examples) =
         let safeVector = V.map ((=<<) readInt . emptyToNothing) c
             hasNulls = V.elem Nothing safeVector
          in if safeRead && hasNulls
@@ -100,3 +82,28 @@ parseFromExamples n dateFormat safeRead c
             if safeRead && hasNulls then OptionalColumn safeVector else BoxedColumn c
   where
     examples = V.take n c
+
+emptyToNothing :: T.Text -> Maybe T.Text
+emptyToNothing v = if isNullish v then Nothing else Just v
+
+parseTimeOpt :: String -> T.Text -> Maybe Day
+parseTimeOpt dateFormat s =
+    parseTimeM {- Accept leading/trailing whitespace -}
+        True
+        defaultTimeLocale
+        dateFormat
+        (T.unpack s)
+
+unsafeParseTime :: String -> T.Text -> Day
+unsafeParseTime dateFormat s =
+    parseTimeOrError {- Accept leading/trailing whitespace -}
+        True
+        defaultTimeLocale
+        dateFormat
+        (T.unpack s)
+
+countNonEmpty :: V.Vector (Maybe a) -> Int
+countNonEmpty xs = V.length (V.filter isJust xs)
+
+equalNonEmpty :: V.Vector (Maybe a) -> V.Vector (Maybe b) -> Bool
+equalNonEmpty xs ys = countNonEmpty xs == countNonEmpty ys

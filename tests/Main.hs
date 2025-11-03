@@ -5,6 +5,7 @@ module Main where
 
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
 import qualified DataFrame.Internal.Column as DI
 import qualified DataFrame.Operations.Typing as D
@@ -66,6 +67,74 @@ parseDate =
      in
         TestCase (assertEqual "Correctly parses gregorian date" expected actual)
 
+parseInt :: Test
+parseInt =
+    let
+        expected =
+            DI.UnboxedColumn
+                ( VU.fromList
+                    [1 :: Int .. 5]
+                )
+        actual =
+            D.parseDefault
+                10
+                True
+                "%Y-%m-%d"
+                (DI.fromVector (V.fromList ["1" :: T.Text, "2", "3", "4", "5"]))
+     in
+        TestCase (assertEqual "Correctly parses integers" expected actual)
+
+parseMaybeInt :: Test
+parseMaybeInt =
+    let
+        expected =
+            DI.OptionalColumn
+                ( V.fromList
+                    [Just (1 :: Int), Nothing, Just 3, Just 4, Just 5]
+                )
+        actual =
+            D.parseDefault
+                10
+                True
+                "%Y-%m-%d"
+                (DI.fromVector (V.fromList ["1" :: T.Text, "N/A", "3", "4", "5"]))
+     in
+        TestCase (assertEqual "Correctly parses optional integers" expected actual)
+
+parseDouble :: Test
+parseDouble =
+    let
+        expected =
+            DI.UnboxedColumn
+                ( VU.fromList
+                    [1 :: Double, 2, 3, 4, 5]
+                )
+        actual =
+            D.parseDefault
+                10
+                True
+                "%Y-%m-%d"
+                (DI.fromVector (V.fromList ["1" :: T.Text, "2.0", "3", "4", "5"]))
+     in
+        TestCase (assertEqual "Correctly parses doubles" expected actual)
+
+parseMaybeDouble :: Test
+parseMaybeDouble =
+    let
+        expected =
+            DI.OptionalColumn
+                ( V.fromList
+                    [Just 1 :: Maybe Double, Nothing, Just 3, Just 4, Just 5]
+                )
+        actual =
+            D.parseDefault
+                10
+                True
+                "%Y-%m-%d"
+                (DI.fromVector (V.fromList ["1" :: T.Text, "N/A", "3.0", "4", "5"]))
+     in
+        TestCase (assertEqual "Correctly parses optional doubles" expected actual)
+
 incompleteDataParseEither :: Test
 incompleteDataParseEither =
     let
@@ -109,6 +178,10 @@ parseTests =
     [ TestLabel "parseDate" parseDate
     , TestLabel "incompleteDataParseMaybe" incompleteDataParseMaybe
     , TestLabel "incompleteDataParseEither" incompleteDataParseEither
+    , TestLabel "parseInt" parseInt
+    , TestLabel "parseMaybeInt" parseMaybeInt
+    , TestLabel "parseDouble" parseDouble
+    , TestLabel "parseMaybeDouble" parseMaybeDouble
     ]
 
 tests :: Test
