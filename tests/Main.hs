@@ -90,7 +90,7 @@ incompleteDataParseMaybe :: Test
 incompleteDataParseMaybe =
     let
         expected =
-            DI.BoxedColumn
+            DI.OptionalColumn
                 ( V.fromList
                     [Just $ fromGregorian 2020 02 14, Nothing, Just $ fromGregorian 2022 02 14]
                 )

@@ -88,41 +88,47 @@ div = BinaryOp "div" Prelude.div
 mod :: (Integral a, Columnable a) => Expr a -> Expr a -> Expr a
 mod = BinaryOp "mod" Prelude.mod
 
-(==) :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
-(==) = BinaryOp "eq" (Prelude.==)
+(.==) :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
+(.==) = BinaryOp "eq" (==)
 
 eq :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
-eq = BinaryOp "eq" (Prelude.==)
+eq = BinaryOp "eq" (==)
 
-(<) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-(<) = BinaryOp "lt" (Prelude.<)
+(.<) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
+(.<) = BinaryOp "lt" (<)
 
 lt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-lt = BinaryOp "lt" (Prelude.<)
+lt = BinaryOp "lt" (<)
 
-(>) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-(>) = BinaryOp "gt" (Prelude.>)
+(.>) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
+(.>) = BinaryOp "gt" (>)
 
 gt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-gt = BinaryOp "gt" (Prelude.>)
+gt = BinaryOp "gt" (>)
 
-(<=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-(<=) = BinaryOp "leq" (Prelude.<=)
+(.<=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
+(.<=) = BinaryOp "leq" (<=)
 
 leq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-leq = BinaryOp "leq" (Prelude.<=)
+leq = BinaryOp "leq" (<=)
 
-(>=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-(>=) = BinaryOp "geq" (Prelude.>=)
+(.>=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
+(.>=) = BinaryOp "geq" (>=)
 
 geq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-geq = BinaryOp "geq" (Prelude.>=)
+geq = BinaryOp "geq" (>=)
 
 and :: Expr Bool -> Expr Bool -> Expr Bool
 and = BinaryOp "and" (&&)
 
+(.&&) :: Expr Bool -> Expr Bool -> Expr Bool
+(.&&) = BinaryOp "and" (&&)
+
 or :: Expr Bool -> Expr Bool -> Expr Bool
 or = BinaryOp "or" (||)
+
+(.||) :: Expr Bool -> Expr Bool -> Expr Bool
+(.||) = BinaryOp "or" (||)
 
 not :: Expr Bool -> Expr Bool
 not = UnaryOp "not" Prelude.not
@@ -196,7 +202,7 @@ generateConditions ::
 generateConditions labels conds ps df =
     let
         newConds =
-            [ p DataFrame.Functions.<= q
+            [ p .<= q
             | p <- ps
             , q <- ps
             , p /= q
@@ -207,8 +213,8 @@ generateConditions labels conds ps df =
         expandedConds =
             conds
                 ++ newConds
-                ++ [p `DataFrame.Functions.and` q | p <- newConds, q <- conds, p /= q]
-                ++ [p `DataFrame.Functions.or` q | p <- newConds, q <- conds, p /= q]
+                ++ [p .&& q | p <- newConds, q <- conds, p /= q]
+                ++ [p .|| q | p <- newConds, q <- conds, p /= q]
      in
         pickTopNBool df labels (deduplicate df expandedConds)
 
@@ -241,21 +247,21 @@ generatePrograms conds vars' constants [] =
                    | (i, p) <- zip [0 ..] vars
                    , (j, q) <- zip [0 ..] vars
                    , Prelude.not (isLiteral p && isLiteral q)
-                   , i Prelude.> j
+                   , i > j
                    ]
                 ++ [ DataFrame.Functions.min p q
                    | (i, p) <- zip [0 ..] vars
                    , (j, q) <- zip [0 ..] vars
                    , p /= q
                    , Prelude.not (isLiteral p && isLiteral q)
-                   , i Prelude.> j
+                   , i > j
                    ]
                 ++ [ DataFrame.Functions.max p q
                    | (i, p) <- zip [0 ..] vars
                    , (j, q) <- zip [0 ..] vars
                    , p /= q
                    , Prelude.not (isLiteral p && isLiteral q)
-                   , i Prelude.> j
+                   , i > j
                    ]
                 ++ [ ifThenElse cond r s
                    | cond <- conds
@@ -273,7 +279,7 @@ generatePrograms conds vars' constants [] =
                    | (i, p) <- zip [0 ..] vars
                    , (j, q) <- zip [0 ..] vars
                    , Prelude.not (isLiteral p && isLiteral q)
-                   , i Prelude.>= j
+                   , i >= j
                    ]
                 ++ [ p / q
                    | (i, p) <- zip [0 ..] vars
@@ -307,21 +313,21 @@ generatePrograms conds vars constants ps =
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
                , Prelude.not (isLiteral p && isLiteral q)
-               , i Prelude.>= j
+               , i >= j
                ]
             ++ [ DataFrame.Functions.min p q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
                , Prelude.not (isLiteral p && isLiteral q)
                , p /= q
-               , i Prelude.> j
+               , i > j
                ]
             ++ [ DataFrame.Functions.max p q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
                , Prelude.not (isLiteral p && isLiteral q)
                , p /= q
-               , i Prelude.> j
+               , i > j
                ]
             ++ [ ifThenElse cond r s
                | cond <- conds
@@ -339,7 +345,7 @@ generatePrograms conds vars constants ps =
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
                , Prelude.not (isLiteral p && isLiteral q)
-               , i Prelude.>= j
+               , i >= j
                ]
             ++ [ p / q
                | p <- existingPrograms
@@ -377,7 +383,7 @@ deduplicate df = go S.empty . nubOrd . L.sortBy (\e1 e2 -> compare (eSize e1) (e
 
 -- | Checks if two programs generate the same outputs given all the same inputs.
 equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
-equivalent df p1 p2 = case (Prelude.==) <$> interpret df p1 <*> interpret df p2 of
+equivalent df p1 p2 = case (==) <$> interpret df p1 <*> interpret df p2 of
     Left e -> throw e
     Right v -> v
 
@@ -408,7 +414,7 @@ f1FromBinary :: VU.Vector Double -> VU.Vector Double -> Maybe Double
 f1FromBinary trues preds =
     let (!tp, !fp, !fn) =
             VU.foldl' step (0 :: Int, 0 :: Int, 0 :: Int) $
-                VU.zip (VU.map (Prelude.> 0) preds) (VU.map (Prelude.> 0) trues)
+                VU.zip (VU.map (> 0) preds) (VU.map (> 0) trues)
      in f1FromCounts tp fp fn
   where
     step (!tp, !fp, !fn) (!p, !t) =
@@ -423,9 +429,9 @@ f1FromCounts tp fp fn =
     let tp' = fromIntegral tp
         fp' = fromIntegral fp
         fn' = fromIntegral fn
-        precision = if tp' + fp' Prelude.== 0 then 0 else tp' / (tp' + fp')
-        recall = if tp' + fn' Prelude.== 0 then 0 else tp' / (tp' + fn')
-     in if precision + recall Prelude.== 0
+        precision = if tp' + fp' == 0 then 0 else tp' / (tp' + fp')
+        recall = if tp' + fn' == 0 then 0 else tp' / (tp' + fn')
+     in if precision + recall == 0
             then Nothing
             else Just (2 * precision * recall / (precision + recall))
 
@@ -453,7 +459,7 @@ fitClassifier target d b df =
             []
             [] of
             Nothing -> Left "No programs found"
-            Just p -> Right (ifThenElse (p DataFrame.Functions.> 0) 1 0)
+            Just p -> Right (ifThenElse (p .> 0) 1 0)
 
 percentiles :: DataFrame -> [Expr Double]
 percentiles df =
@@ -551,7 +557,7 @@ beamSearch ::
     [Expr Double] ->
     Maybe (Expr Double)
 beamSearch df cfg outputs constants conds programs
-    | searchDepth cfg Prelude.== 0 = case ps of
+    | searchDepth cfg == 0 = case ps of
         [] -> Nothing
         (x : _) -> Just x
     | otherwise =
@@ -672,7 +678,7 @@ satisfiesExamples df col expr =
             Left e -> throw e
             Right v -> v
      in
-        result Prelude.== col
+        result == col
 
 -- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
 isReservedId :: T.Text -> Bool

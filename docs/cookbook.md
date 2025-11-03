@@ -9,7 +9,7 @@ Query all columns for a city with the ID 1661.
 
 ### Solution
 ```haskell
-ghci> df |> D.filterWhere (id F.== F.lit 1661)
+ghci> df |> D.filterWhere (id .== 1661)
 ------------------------------------------------------------
 index |  id  |  name  | country_code | district | population
 ------|------|--------|--------------|----------|-----------
@@ -25,7 +25,7 @@ Query all columns of every Japanese city. The `country_code` for Japan is "JPN".
 
 ### Solution
 ```haskell
-ghci> df |> D.filterWhere (country_code F.== F.lit "JPN")
+ghci> df |> D.filterWhere (country_code .== "JPN")
 ---------------------------------------------------------------
 index |  id  |   name   | country_code | district  | population
 ------|------|----------|--------------|-----------|-----------
@@ -49,7 +49,7 @@ Query all columns for all American cities in city dataframe with:
 ```haskell
 ghci> D.readCsv "./data/country.csv"
 ghci> :exposeColumns df
-ghci> df |> D.filterWhere ((population F.> F.lit 100000) `F.and` (country_code F.== F.lit "USA"))
+ghci> df |> D.filterWhere ((population .> 100000) .&& (country_code .== "USA"))
 ---------------------------------------------------------------------
 index |  id  |     name      | country_code |  district  | population
 ------|------|---------------|--------------|------------|-----------
@@ -110,7 +110,7 @@ Query the names of all the Japanese cities and show only the first 5 results.
 
 ### Solution
 ```haskell
-ghci> df |> D.filterWhere (country_code F.== F.lit "JPN") |> D.select [F.name name] |> D.take 5
+ghci> df |> D.filterWhere (country_code .== "JPN") |> D.select [F.name name] |> D.take 5
 ----------------
 index |   name  
 ------|---------

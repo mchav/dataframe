@@ -71,7 +71,7 @@ index |    Column Name     | # Non-null Values | # Null Values | # Partially par
 
 -- 2) Project & filter
 ghci> :exposeColumn df
-ghci> df1 = D.filterWhere (ocean_proximity F.== F.lit \"ISLAND\") df0 D.|> D.select [F.name median_house_value, F.name median_income, F.name ocean_proximity]
+ghci> df1 = D.filterWhere (ocean_proximity .== \"ISLAND\") df0 D.|> D.select [F.name median_house_value, F.name median_income, F.name ocean_proximity]
 
 -- 3) Add a derived column using the expression DSL
 --    (col types are explicit via TypeApplications)
@@ -148,6 +148,7 @@ Math & comparisons (overloaded by type):
 @
 (+), (-), (*), (/), abs, log, exp, round
 (F.eq), (F.gt), (F.geq), (F.lt), (F.leq)
+(.==), (.>), (.>=), (.<), (.<=)
 @
 
 Aggregations (for D.'aggregate'):
@@ -182,7 +183,7 @@ ghci> :type payment
 payment :: Expr Text
 
 -- You can use them directly:
-ghci> D.derive "fare_with_tip" (fare * F.lit 1.2)
+ghci> D.derive "fare_with_tip" (fare * 1.2)
 @
 
 Notes:
