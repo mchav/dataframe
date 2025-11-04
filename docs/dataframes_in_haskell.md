@@ -196,10 +196,12 @@ The data science community seems to have converged on the former (i.e lists of c
 
 We follow this convention and define our core data structure as a heterogeneous list of vectors.
 
-data DataFrame \= DataFrame  
+```haskell
+data DataFrame = DataFrame  
     {  
-        columns :: HeterogeneousCollection \[Vector T1, Vector T2…\]  
+        columns :: HeterogeneousCollection [Vector T1, Vector T2…]  
     }
+```
 
 This isn’t a rigorous (or implementable) definition. Instead it gives us a north star for our implementation.
 
@@ -218,28 +220,34 @@ To keep the implementation as close to vanilla Haskell as possible, we’ll impl
 
 Our Object-like primitive in this case will be a column type defined as a GADT.
 
+```haskell
 data Column where  
-  ValueColumn :: (Typeable a, Ord a, Show a) \=\> Vector a \-\> Column
+  ValueColumn :: (Typeable a, Ord a, Show a) => Vector a -> Column
+```
 
 Our choice of vector here is too coarse. We want to store the data in the most ergonomic or memory efficient way.
 
-\-- enable constraint kinds for constraint synonyms  
-type Columnable a \= Typeable a, Ord a, Show a, Read a
+```haskell
+-- enable constraint kinds for constraint synonyms  
+type Columnable a = Typeable a, Ord a, Show a, Read a
 
 data Column where  
-  BoxedColumn :: Columnable a \=\> B.Vector a \-\> Column  
-  UnboxedColumn :: Columnable a, Unboxable a \=\> U.Vector a \-\> Column  
-  OptionalColumn :: Columnable a \=\> B.Vector (Maybe a) \-\> Column
+  BoxedColumn :: Columnable a => B.Vector a -> Column  
+  UnboxedColumn :: (Columnable a, Unboxable a) => U.Vector a -> Column  
+  OptionalColumn :: Columnable a => B.Vector (Maybe a) -> Column
+```
 
 DataFrames are row-ordered[^8] so their elements are instances of Ord since we can sort a dataframe by any of its columns.
 
 A minimal dataframe definition is:
 
-data DataFrame \= DataFrame  
+```haskell
+data DataFrame = DataFrame  
     {  
         columns :: Vector Column,  
         columnNames :: Map String Int  
     }
+```
 
 ### Schema induction
 
@@ -270,7 +278,7 @@ Algorithm (per column):
    * Prefer Int if success rate ≥ τ and no overflow; otherwise consider Double.  
    * Accept Date if success rate ≥ τ and strict format match (avoid false positives like 2021-13-40).  
    * Fall back to Text.  
-   * Default τ \= 0.98 (tunable).  
+   * Default τ = 0.98 (tunable).  
 3. Materialize the column using the chosen decoder and null policy:  
    * If nulls exist: use OptionalColumn a \~ Column (Maybe a).  
    * If parse failures exist but are rare: use Either Text a (so errors are visible).  
@@ -285,21 +293,25 @@ This approach is similar to [Polars](https://docs.pola.rs/user-guide/expressions
 
 Implementing the expression DSL means defining an expression datatype that looks roughly like the following:
 
+```haskell
 data Expr a where  
-Col :: Text \-\> Expr a              \-- Reference to a column  
-      Lit :: a \-\> Expr a                 \-- A constant double value  
-      UnaryOp :: (b \-\> a) \-\> Expr b \-\> Expr a  
-      BinaryOp :: (c \-\> b \-\> a) \-\> Expr c \-\> Expr b \-\> Expr a
+  Col :: Text -> Expr a              -- Reference to a column  
+  Lit :: a -> Expr a                 -- A constant value  
+  UnaryOp :: (b -> a) -> Expr b -> Expr a  
+  BinaryOp :: (c -> b -> a) -> Expr c -> Expr b -> Expr a
+```
 
 With some convenience function we can define our expression for Compound interest as:
 
+```haskell
 ciExpr :: Expr Double  
-ciExpr \=  
-  let p \= Col "principal"  
-      r \= Col "rate"  
-      n \= Col "numCompounds"  
-      t \= Col "years"  
-  in  p \* (Lit 1 \+ r / n) \*\* (n \* t) \- p
+ciExpr =  
+  let p = Col "principal"  
+      r = Col "rate"  
+      n = Col "numCompounds"  
+      t = Col "years"  
+  in  p * (Lit 1 + r / n) ** (n * t) - p
+```
 
 To interpret the expression we go through the Expr a syntax tree resolving each column reference and function application against the dataframe.
 
@@ -307,9 +319,11 @@ To interpret the expression we go through the Expr a syntax tree resolving each 
 
 This design gives us local type-safety. That is, expressions must always type check. It doesn't guarantee us global type safety however. You could refer to a column that doesn't exist or specify the wrong type for an expression. We can solve this by exporting typed references in template Haskell. E.g.
 
+```haskell
 $(exportColumns "data.csv")  
-\-- generates bindings like:  
-principal :: Expr Double; principal \= Col "principal"
+-- generates bindings like:  
+principal :: Expr Double; principal = Col "principal"
+```
 
 Would put the typed column expressions for the dataframe in context using normal template haskell machinery.
 
@@ -335,30 +349,30 @@ The API favors **consistency, small primitives, and composition**. Names mirror 
 
 **Core principles**
 
-* **Composable:** df |\> filter (col "b" .== 1\) |\> derive "a2" (col "a" \+ 2\) |\> sortBy Asc \["e"\] |\> takeN 10  
+* **Composable:** `df |> filter (col "b" .== 1) |> derive "a2" (col "a" + 2) |> sortBy Asc ["e"] |> take 10`  
 * **Column/row symmetry:** columns are first-class; row logic expressed via the DSL.  
 * **Declarative & explicit:** minimal magic; predictable behavior despite dynamic inputs.
 
 **Selected operations**
 
 * Columns  
-  * apply :: (a \-\> b) \-\> Text \-\> DataFrame \-\> DataFrame  
-  * derive :: Text \-\> Expr a \-\> DataFrame \-\> DataFrame  
-  * select :: \[Text\] \-\> DataFrame \-\> DataFrame  
-  * rename :: Text \-\> Text \-\> DataFrame \-\> DataFrame  
+  * `apply :: (a -> b) -> Text -> DataFrame -> DataFrame`  
+  * `derive :: Text -> Expr a -> DataFrame -> DataFrame`  
+  * `select :: [Text] -> DataFrame -> DataFrame`  
+  * `rename :: Text -> Text -> DataFrame -> DataFrame`  
 * Rows (DSL-based)  
-  * filter :: Expr Bool \-\> DataFrame \-\> DataFrame  
-  * sortBy :: Order \-\> \[Text\] \-\> DataFrame \-\> DataFrame  
-  * groupByAgg :: \[Text\] \-\> \[(Text, AggSpec)\] \-\> DataFrame \-\> DataFrame  
+  * `filter :: Expr Bool -> DataFrame -> DataFrame`  
+  * `sortBy :: Order -> [Text] -> DataFrame -> DataFrame`  
+  * `groupBy :: [UExpr] -> DataFrame -> DataFrame`  
 * Whole-frame  
-  * transpose :: DataFrame \-\> DataFrame  
-  * join :: JoinType \-\> \[Text\] \-\> DataFrame \-\> DataFrame \-\> DataFrame  
-  * pivot :: PivotSpec \-\> DataFrame \-\> DataFrame
+  * `transpose :: DataFrame -> DataFrame`  
+  * `join :: JoinType -> [Text] -> DataFrame -> DataFrame -> DataFrame`  
+  * `pivot :: PivotSpec -> DataFrame -> DataFrame`
 
 *Notes:*
 
-* Order \= Asc | Desc  
-* AggSpec includes sum, mean, count, min, max, quantile q, etc.  
+* `Order = Asc | Desc`  
+* `UExpr` is an untyped expression and is defined as `data UExpr = Expr a`.  
 * Joins assume explicit key columns; types must be compatible (coercions explicit).
 
 #### **Integration with Tools and Workflows**
