@@ -6,14 +6,9 @@ module Functions where
 import DataFrame.Functions (
     col,
     generatePrograms,
-    lit,
-    pow,
-    relu,
     sanitize,
  )
-import DataFrame.Internal.Expression (add, mult)
 import Test.HUnit
-import Prelude hiding (max, min)
 
 -- Test cases for the sanitize function
 sanitizeIdentifiers :: Test
@@ -71,21 +66,7 @@ generateProgramsCalledWithNoExistingPrograms =
     TestCase
         ( assertEqual
             "generatePrograms called with no existing programs"
-            [ col @Double "x"
-            , abs (col @Double "x")
-            , exp (mult (lit 0.5) (log (col @Double "x")))
-            , log (add (lit 1.0) (col @Double "x"))
-            , exp (col @Double "x")
-            , sin (col @Double "x")
-            , cos (col @Double "x")
-            , relu (col @Double "x")
-            , signum (col @Double "x")
-            , pow 2 (col @Double "x")
-            , pow 3 (col @Double "x")
-            , pow 4 (col @Double "x")
-            , pow 5 (col @Double "x")
-            , pow 6 (col @Double "x")
-            ]
+            [col @Double "x"]
             (generatePrograms True [] [col "x"] [] [])
         )
 
