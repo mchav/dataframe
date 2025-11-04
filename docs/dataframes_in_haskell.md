@@ -12,12 +12,12 @@ The goal of this document is to detail the design of a dataframe library for exp
 
 A dataframe is an amalgamation of concepts from relational databases, spreadsheets and linear algebra. There has been an interesting debate on whether or not they are a good/principled database abstraction[^1]. But theory aside, their utility has been undeniable. Enough so that formalizing their definition and algebra is an active research area.
 
-The most authoritative paper on the subject[^2] defines a dataframe as a tuple (Amn, Rm, Cn, Dn) where:
+The most authoritative paper on the subject[^2] defines a dataframe as a tuple (A<sub>mn</sub>, R<sub>m</sub>, C<sub>n</sub>, D<sub>n</sub>) where:
 
-* Amn is an array of strings,  
-* Cn is a vector of column labels,  
-* Rm is a vector of row labels  
-* Dn is a vector of n domains/types of each of the columns
+* A<sub>mn</sub> is a two-dimensional array of strings,  
+* C<sub>n</sub> is a vector of column labels,  
+* R<sub>m</sub> is a vector of row labels  
+* D<sub>n</sub> is a vector of n domains/types of each of the columns
 
 While this definition describes a dataframe it’s not very prescriptive. That is, it doesn’t give us a very strong sense of what operations are permitted in a dataframe and what a dataframe algebra could look like. So for the majority of their history dataframes had no formal algebra and amorphously took on the shape compelled by the different problem spaces they were applied to. This is all to say, dataframes are still difficult to model rigorously with a lot left to library implementers and their target audience.
 
