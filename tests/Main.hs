@@ -73,21 +73,42 @@ parseInt =
         expected =
             DI.UnboxedColumn
                 ( VU.fromList
-                    [1 :: Int .. 5]
+                    [1 :: Int .. 100]
                 )
         actual =
             D.parseDefault
                 10
                 True
                 "%Y-%m-%d"
-                (DI.fromVector (V.fromList ["1" :: T.Text, "2", "3", "4", "5"]))
+                (DI.fromVector (T.pack . show <$> V.fromList [1 .. 100]))
      in
         TestCase (assertEqual "Correctly parses integers" expected actual)
 
-parseMaybeInt :: Test
-parseMaybeInt =
+parseMostlyCorrectlyFormattedInts :: Test
+parseMostlyCorrectlyFormattedInts =
     let
         expected =
+            DI.OptionalColumn
+                ( V.fromList
+                    ((Just <$> [1 :: Int .. 100]) ++ [Nothing])
+                )
+        actual =
+            D.parseDefault
+                10
+                True
+                "%Y-%m-%d"
+                (DI.fromVector (V.fromList (T.pack <$> (show <$> [1 .. 100]) ++ ["*"])))
+     in
+        TestCase
+            ( assertEqual
+                "Correctly parses a list of 100 integers followed by a * as Maybe Int"
+                expected
+                actual
+            )
+
+parseMaybeInt :: Test
+parseMaybeInt =
+    let expected =
             DI.OptionalColumn
                 ( V.fromList
                     [Just (1 :: Int), Nothing, Just 3, Just 4, Just 5]
@@ -98,25 +119,63 @@ parseMaybeInt =
                 True
                 "%Y-%m-%d"
                 (DI.fromVector (V.fromList ["1" :: T.Text, "N/A", "3", "4", "5"]))
-     in
-        TestCase (assertEqual "Correctly parses optional integers" expected actual)
+     in TestCase (assertEqual "Correctly parses optional integers" expected actual)
 
-parseDouble :: Test
-parseDouble =
-    let
-        expected =
+parseOnlyDoubles :: Test
+parseOnlyDoubles =
+    let expected =
             DI.UnboxedColumn
                 ( VU.fromList
-                    [1 :: Double, 2, 3, 4, 5]
+                    [1.0 :: Double, 2.0, 3.5, 4.9328, 5.399]
                 )
         actual =
             D.parseDefault
                 10
                 True
                 "%Y-%m-%d"
-                (DI.fromVector (V.fromList ["1" :: T.Text, "2.0", "3", "4", "5"]))
-     in
-        TestCase (assertEqual "Correctly parses doubles" expected actual)
+                (DI.fromVector (V.fromList ["1.0" :: T.Text, "2.0", "3.5", "4.9328", "5.399"]))
+     in TestCase
+            (assertEqual "Correctly parses correctly formatted doubles" expected actual)
+
+parseMixtureOfDoublesAndInts :: Test
+parseMixtureOfDoublesAndInts =
+    let expected =
+            DI.UnboxedColumn
+                ( VU.fromList
+                    [1.0 :: Double, 2, 3, 4.9328, 5.399]
+                )
+        actual =
+            D.parseDefault
+                10
+                True
+                "%Y-%m-%d"
+                (DI.fromVector (V.fromList ["1.0" :: T.Text, "2", "3", "4.9328", "5.399"]))
+     in TestCase
+            (assertEqual "Correctly parses correctly formatted doubles" expected actual)
+
+parseMixtureOfDoublesAndIntsWithOneIncorrectFormatting :: Test
+parseMixtureOfDoublesAndIntsWithOneIncorrectFormatting =
+    let expected =
+            DI.OptionalColumn
+                ( V.fromList
+                    ((Just <$> [1.0 :: Double .. 50.0]) ++ (Just <$> [10.0 .. 100.0]) ++ [Nothing])
+                )
+        actual =
+            D.parseDefault
+                10
+                True
+                "%Y-%m-%d"
+                ( DI.fromVector
+                    ( V.fromList $
+                        T.pack <$> ((show <$> [1 .. 50]) ++ (show <$> [10.0 .. 100.0]) ++ ["0-2"])
+                    )
+                )
+     in TestCase
+            ( assertEqual
+                "Correctly parses mixture of mostly correctly formatted doubles and ints"
+                expected
+                actual
+            )
 
 parseMaybeDouble :: Test
 parseMaybeDouble =
@@ -135,15 +194,22 @@ parseMaybeDouble =
      in
         TestCase (assertEqual "Correctly parses optional doubles" expected actual)
 
-incompleteDataParseEither :: Test
-incompleteDataParseEither =
+onlyOneIncorrectDateParsesAsMaybeDate :: Test
+onlyOneIncorrectDateParsesAsMaybeDate =
     let
         expected =
-            DI.BoxedColumn
+            DI.OptionalColumn
                 ( V.fromList
-                    [ Right $ fromGregorian 2020 02 14
-                    , Left ("2021-02-" :: T.Text)
-                    , Right $ fromGregorian 2022 02 14
+                    [ Just $ fromGregorian 2020 02 14
+                    , Nothing
+                    , Just $ fromGregorian 2022 02 16
+                    , Just $ fromGregorian 2022 02 17
+                    , Just $ fromGregorian 2022 02 18
+                    , Just $ fromGregorian 2022 02 19
+                    , Just $ fromGregorian 2022 02 20
+                    , Just $ fromGregorian 2022 02 21
+                    , Just $ fromGregorian 2022 02 22
+                    , Just $ fromGregorian 2022 02 23
                     ]
                 )
         actual =
@@ -151,9 +217,28 @@ incompleteDataParseEither =
                 10
                 True
                 "%Y-%m-%d"
-                (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "2021-02-", "2022-02-14"]))
+                ( DI.fromVector
+                    ( V.fromList
+                        [ "2020-02-14" :: T.Text
+                        , "2020-02-1("
+                        , "2022-02-16"
+                        , "2022-02-17"
+                        , "2022-02-18"
+                        , "2022-02-19"
+                        , "2022-02-20"
+                        , "2022-02-21"
+                        , "2022-02-22"
+                        , "2022-02-23"
+                        ]
+                    )
+                )
      in
-        TestCase (assertEqual "Parses Either for gregorian date" expected actual)
+        TestCase
+            ( assertEqual
+                "Parses Maybe for gregorian date one incorrect date, when other 9 are correct"
+                expected
+                actual
+            )
 
 incompleteDataParseMaybe :: Test
 incompleteDataParseMaybe =
@@ -161,27 +246,60 @@ incompleteDataParseMaybe =
         expected =
             DI.OptionalColumn
                 ( V.fromList
-                    [Just $ fromGregorian 2020 02 14, Nothing, Just $ fromGregorian 2022 02 14]
+                    [ Just $ fromGregorian 2020 02 14
+                    , Nothing
+                    , Just $ fromGregorian 2022 02 16
+                    , Just $ fromGregorian 2022 02 17
+                    , Just $ fromGregorian 2022 02 18
+                    , Just $ fromGregorian 2022 02 19
+                    , Just $ fromGregorian 2022 02 20
+                    , Just $ fromGregorian 2022 02 21
+                    , Just $ fromGregorian 2022 02 22
+                    , Just $ fromGregorian 2022 02 23
+                    ]
                 )
         actual =
             D.parseDefault
                 10
                 True
                 "%Y-%m-%d"
-                (DI.fromVector (V.fromList ["2020-02-14" :: T.Text, "", "2022-02-14"]))
+                ( DI.fromVector
+                    ( V.fromList
+                        [ "2020-02-14" :: T.Text
+                        , ""
+                        , "2022-02-16"
+                        , "2022-02-17"
+                        , "2022-02-18"
+                        , "2022-02-19"
+                        , "2022-02-20"
+                        , "2022-02-21"
+                        , "2022-02-22"
+                        , "2022-02-23"
+                        ]
+                    )
+                )
      in
         TestCase
-            (assertEqual "Parses Maybe for gregorian date with null/empty" expected actual)
+            ( assertEqual
+                "Parses Maybe for gregorian date one missing date, when other 9 are present"
+                expected
+                actual
+            )
 
 parseTests :: [Test]
 parseTests =
     [ TestLabel "parseDate" parseDate
     , TestLabel "incompleteDataParseMaybe" incompleteDataParseMaybe
-    , TestLabel "incompleteDataParseEither" incompleteDataParseEither
+    , TestLabel
+        "onlyOneIncorrectDateParsesAsMaybeDate"
+        onlyOneIncorrectDateParsesAsMaybeDate
     , TestLabel "parseInt" parseInt
     , TestLabel "parseMaybeInt" parseMaybeInt
-    , TestLabel "parseDouble" parseDouble
+    , TestLabel "parseOnlyDoubles" parseOnlyDoubles
     , TestLabel "parseMaybeDouble" parseMaybeDouble
+    , TestLabel "parseMostlyCorrectlyFormattedInts" parseMostlyCorrectlyFormattedInts
+    , TestLabel "parseOnlyDoubles" parseOnlyDoubles
+    , TestLabel "parseMixtureOfDoublesAndInts" parseMixtureOfDoublesAndInts
     ]
 
 tests :: Test
