@@ -222,75 +222,14 @@ generateConditions labels conds ps df =
         pickTopNBool df labels (deduplicate df expandedConds)
 
 generatePrograms ::
-    [Expr Bool] -> [Expr Double] -> [Expr Double] -> [Expr Double] -> [Expr Double]
-generatePrograms conds vars' constants [] =
-    let
-        vars = vars' ++ constants
-     in
-        nubOrd $
-            vars
-                ++ [ transform p
-                   | p <- vars'
-                   , transform <-
-                        [ abs
-                        , sqrt
-                        , log . (+ Lit 1)
-                        , exp
-                        , sin
-                        , cos
-                        , relu
-                        , signum
-                        ]
-                   ]
-                ++ [ pow i p
-                   | p <- vars
-                   , i <- [2 .. 6]
-                   ]
-                ++ [ p + q
-                   | (i, p) <- zip [0 ..] vars
-                   , (j, q) <- zip [0 ..] vars
-                   , Prelude.not (isLiteral p && isLiteral q)
-                   , i > j
-                   ]
-                ++ [ DataFrame.Functions.min p q
-                   | (i, p) <- zip [0 ..] vars
-                   , (j, q) <- zip [0 ..] vars
-                   , p /= q
-                   , Prelude.not (isLiteral p && isLiteral q)
-                   , i > j
-                   ]
-                ++ [ DataFrame.Functions.max p q
-                   | (i, p) <- zip [0 ..] vars
-                   , (j, q) <- zip [0 ..] vars
-                   , p /= q
-                   , Prelude.not (isLiteral p && isLiteral q)
-                   , i > j
-                   ]
-                ++ [ ifThenElse cond r s
-                   | cond <- conds
-                   , r <- vars
-                   , s <- vars
-                   , r /= s
-                   ]
-                ++ [ p - q
-                   | (i, p) <- zip [0 ..] vars
-                   , (j, q) <- zip [0 ..] vars
-                   , Prelude.not (isLiteral p && isLiteral q)
-                   , i /= j
-                   ]
-                ++ [ p * q
-                   | (i, p) <- zip [0 ..] vars
-                   , (j, q) <- zip [0 ..] vars
-                   , Prelude.not (isLiteral p && isLiteral q)
-                   , i >= j
-                   ]
-                ++ [ p / q
-                   | (i, p) <- zip [0 ..] vars
-                   , (j, q) <- zip [0 ..] vars
-                   , Prelude.not (isLiteral p && isLiteral q)
-                   , i /= j
-                   ]
-generatePrograms conds vars constants ps =
+    Bool ->
+    [Expr Bool] ->
+    [Expr Double] ->
+    [Expr Double] ->
+    [Expr Double] ->
+    [Expr Double]
+generatePrograms _ _ vars' constants [] = vars' ++ constants
+generatePrograms includeConds conds vars constants ps =
     let
         existingPrograms = ps ++ vars ++ constants
      in
@@ -318,26 +257,30 @@ generatePrograms conds vars constants ps =
                , Prelude.not (isLiteral p && isLiteral q)
                , i >= j
                ]
-            ++ [ DataFrame.Functions.min p q
-               | (i, p) <- zip [0 ..] existingPrograms
-               , (j, q) <- zip [0 ..] existingPrograms
-               , Prelude.not (isLiteral p && isLiteral q)
-               , p /= q
-               , i > j
-               ]
-            ++ [ DataFrame.Functions.max p q
-               | (i, p) <- zip [0 ..] existingPrograms
-               , (j, q) <- zip [0 ..] existingPrograms
-               , Prelude.not (isLiteral p && isLiteral q)
-               , p /= q
-               , i > j
-               ]
-            ++ [ ifThenElse cond r s
-               | cond <- conds
-               , r <- existingPrograms
-               , s <- existingPrograms
-               , r /= s
-               ]
+            ++ ( if includeConds
+                    then
+                        [ DataFrame.Functions.min p q
+                        | (i, p) <- zip [0 ..] existingPrograms
+                        , (j, q) <- zip [0 ..] existingPrograms
+                        , Prelude.not (isLiteral p && isLiteral q)
+                        , p /= q
+                        , i > j
+                        ]
+                            ++ [ DataFrame.Functions.max p q
+                               | (i, p) <- zip [0 ..] existingPrograms
+                               , (j, q) <- zip [0 ..] existingPrograms
+                               , Prelude.not (isLiteral p && isLiteral q)
+                               , p /= q
+                               , i > j
+                               ]
+                            ++ [ ifThenElse cond r s
+                               | cond <- conds
+                               , r <- existingPrograms
+                               , s <- existingPrograms
+                               , r /= s
+                               ]
+                    else []
+               )
             ++ [ p - q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
@@ -456,7 +399,7 @@ fitClassifier target d b df =
      in
         case beamSearch
             df'
-            (BeamConfig d b F1)
+            (BeamConfig d b F1 True)
             t
             (percentiles df' ++ [lit 1, lit 0, lit (-1)])
             []
@@ -469,9 +412,22 @@ percentiles df =
     let
         doubleColumns = map (either throw id . (`columnAsDoubleVector` df)) (D.columnNames df)
      in
-        concatMap (\c -> map (lit . (`percentile'` c)) [1, 23, 75, 99]) doubleColumns
-            ++ map (lit . variance') doubleColumns
-            ++ map (lit . sqrt . variance') doubleColumns
+        concatMap
+            (\c -> map (lit . roundTo2SigDigits . (`percentile'` c)) [1, 25, 75, 99])
+            doubleColumns
+            ++ map (lit . roundTo2SigDigits . variance') doubleColumns
+            ++ map (lit . roundTo2SigDigits . sqrt . variance') doubleColumns
+
+roundToSigDigits :: Int -> Double -> Double
+roundToSigDigits n x
+    | x == 0 = 0
+    | otherwise =
+        let magnitude = floor (logBase 10 (abs x))
+            scale = 10 ** fromIntegral (n - 1 - magnitude)
+         in fromIntegral (round (x * scale)) / scale
+
+roundTo2SigDigits :: Double -> Double
+roundTo2SigDigits = roundToSigDigits 2
 
 fitRegression ::
     -- | Target expression
@@ -496,6 +452,7 @@ fitRegression target d b df =
                 d
                 b
                 MutualInformation
+                False
             )
             t
             (percentiles df')
@@ -509,7 +466,7 @@ fitRegression target d b df =
                             ( D.derive "_generated_regression_feature_" p df
                                 & select ["_generated_regression_feature_"]
                             )
-                            (BeamConfig d b MeanSquaredError)
+                            (BeamConfig d b MeanSquaredError False)
                             t
                             (percentiles df' ++ [lit targetMean, lit 10])
                             []
@@ -541,10 +498,11 @@ data BeamConfig = BeamConfig
     { searchDepth :: Int
     , beamLength :: Int
     , lossFunction :: LossFunction
+    , includeConditionals :: Bool
     }
 
 defaultBeamConfig :: BeamConfig
-defaultBeamConfig = BeamConfig 2 100 PearsonCorrelation
+defaultBeamConfig = BeamConfig 2 100 PearsonCorrelation False
 
 beamSearch ::
     DataFrame ->
@@ -570,7 +528,7 @@ beamSearch df cfg outputs constants conds programs
             outputs
             constants
             conditions
-            (generatePrograms conditions vars constants ps)
+            (generatePrograms (includeConditionals cfg) conditions vars constants ps)
   where
     vars = map col names
     conditions = generateConditions outputs conds (vars ++ constants ++ ps) df
@@ -648,7 +606,7 @@ pickTopNBool df (TColumn col) ps =
             Right v -> v
         ordered =
             Prelude.take
-                100
+                10
                 ( map fst $
                     L.sortBy
                         ( \(_, c2) (_, c1) ->
