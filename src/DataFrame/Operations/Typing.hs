@@ -11,7 +11,6 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
 import Control.Monad ((<=<))
-import Data.Either
 import Data.Maybe
 import Data.Time
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
