@@ -1,4 +1,4 @@
-# Initial design document: Dataframes in Haskell
+# Design document - Dataframes in Haskell
 
 Author: [Michael Chavinda](mailto:mschavinda@gmail.com)  
 Created: 29 Nov 2024  
@@ -144,9 +144,9 @@ I list these to provide a working specification of all the operations I’d like
 * Support for parallelism.  
 * Support for streaming
 
-# Possible solutions to the problem
+## Possible solutions to the problem
 
-## Create a new library from scratch
+### Create a new library from scratch
 
 Pros
 
@@ -160,7 +160,7 @@ Cons
 * High development effort  
 * Performance might lag behind other solutions
 
-## Create a wrapper/DSL around Polars
+### Create a wrapper/DSL around Polars
 
 Pros
 
@@ -173,7 +173,7 @@ Cons
 * Interfacing overhead from FFI could mean performance overhead and difficult debugging.  
 * Less customizability since we are ultimately constrained by the design of Polars.
 
-## Expand functionality and design of Frames
+### Expand functionality and design of Frames
 
 Pros
 
@@ -186,9 +186,9 @@ Cons
 
 Since our goals are innovating in the space and creating a deeply integrated Haskell solution, we will create a library from scratch, accepting the high initial development cost.
 
-# High level Design
+## High level Design
 
-## Core data type
+### Core data type
 
 Recall that the core data structure in a dataframe is a 2-dimensional array (“table”) with homogeneous values in each column but heterogeneous rows.  Our first implementation decision centers on this question: is it better to model a dataframe as a list of columns or a list of rows?
 
@@ -203,7 +203,7 @@ data DataFrame \= DataFrame
 
 This isn’t a rigorous (or implementable) definition. Instead it gives us a north star for our implementation.
 
-## Implementing heterogeneous collections
+### Implementing heterogeneous collections
 
 There are two main ways of defining heterogeneous collections in Haskell.[^7]
 
@@ -214,7 +214,7 @@ To my knowledge, these are the only ways to implement heterogeneous collections 
 
 To keep the implementation as close to vanilla Haskell as possible, we’ll implement the “Object” approach. This also ensures that the only learning curves are Haskell itself (parts of it) and the domain.
 
-## Defining Columns
+### Defining Columns
 
 Our Object-like primitive in this case will be a column type defined as a GADT.
 
@@ -241,7 +241,7 @@ data DataFrame \= DataFrame
         columnNames :: Map String Int  
     }
 
-## Schema induction
+### Schema induction
 
 Exploratory data analysis requires type flexibility. Unlike a relational database where we have an explicitly versioned schema-on-read and a schema-on-write, in most cases of EDA we have to induce the schema from some unstructured format. In this world, inferred types aren’t ground truth but are hypotheses themselves that need to be tested. The ground truth is discovered incrementally by testing, validating and partitioning.
 
