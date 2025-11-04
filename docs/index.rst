@@ -55,6 +55,7 @@ Explanation
 .. toctree::
    :maxdepth: 1
 
+   dataframes_in_haskell
    haskell_for_data_analysis
    coming_from_other_implementations
 
