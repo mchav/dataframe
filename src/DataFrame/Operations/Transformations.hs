@@ -1,4 +1,6 @@
+{-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -67,6 +69,16 @@ derive :: forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> DataFrame
 derive name expr df = case interpret @a df (normalize expr) of
     Left e -> throw e
     Right (TColumn value) -> insertColumn name value df
+
+deriveMany :: [NamedExpr] -> DataFrame -> DataFrame
+deriveMany exprs df =
+    let
+        f (name, Wrap (expr :: Expr a)) d =
+            case interpret @a df expr of
+                Left e -> throw e
+                Right (TColumn value) -> insertColumn name value d
+     in
+        fold f exprs df
 
 -- | O(k * n) Apply a function to given column names in a dataframe.
 applyMany ::

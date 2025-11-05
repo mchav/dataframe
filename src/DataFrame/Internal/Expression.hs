@@ -95,6 +95,8 @@ data Expr a where
 data UExpr where
     Wrap :: (Columnable a) => Expr a -> UExpr
 
+type NamedExpr = (T.Text, UExpr)
+
 interpret ::
     forall a.
     (Columnable a) =>

@@ -22,6 +22,7 @@ import DataFrame.Internal.DataFrame (
  )
 import DataFrame.Internal.Expression (
     Expr (..),
+    NamedExpr,
     UExpr (..),
     eSize,
     interpret,
@@ -62,8 +63,12 @@ name other =
 col :: (Columnable a) => T.Text -> Expr a
 col = Col
 
-as :: (Columnable a) => Expr a -> T.Text -> (T.Text, UExpr)
+as :: (Columnable a) => Expr a -> T.Text -> NamedExpr
 as expr name = (name, Wrap expr)
+
+infixr 0 .=
+(.=) :: (Columnable a) => T.Text -> Expr a -> NamedExpr
+(.=) = flip as
 
 ifThenElse :: (Columnable a) => Expr Bool -> Expr a -> Expr a -> Expr a
 ifThenElse = If

@@ -113,7 +113,7 @@ mkGroupedColumns indices df acc name =
 {- | Aggregate a grouped dataframe using the expressions given.
 All ungrouped columns will be dropped.
 -}
-aggregate :: [(T.Text, UExpr)] -> GroupedDataFrame -> DataFrame
+aggregate :: [NamedExpr] -> GroupedDataFrame -> DataFrame
 aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
     let
         df' =
