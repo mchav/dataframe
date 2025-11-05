@@ -152,6 +152,17 @@ let df' = df
                 , "z_petal_length" .= z_pl
                 , "pw4" .= pw4
                 ]
+
+-- Alternatively
+let df2 = df
+            |> D.deriveMany
+                [
+                , ratio `F.as` "ratio"
+                , area `F.as` "area"
+                , wide `F.as` "wide"
+                , z_pl `F.as` "z_petal_length"
+                , pw4 `F.as` "pw4"
+                ]
 ```
 
 Built‑ins commonly available: `abs`, `sqrt`, `log1p`, `exp`, `sin`, `cos`, `relu`, `signum`.
