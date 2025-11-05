@@ -36,6 +36,7 @@ Tutorials
    :maxdepth: 1
 
    quick_start
+   tutoral
    exploratory_data_analysis_primer
    intro_to_probability_and_data
 
