@@ -39,6 +39,7 @@ import System.Process (
     std_out,
     waitForProcess,
  )
+import Text.Printf
 
 newtype HtmlPlot = HtmlPlot T.Text deriving (Show)
 
@@ -94,7 +95,6 @@ wrapInHTML chartId content width height =
         , "px;height:"
         , T.pack (show height)
         , "px\"></canvas>\n"
-        , "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js\"></script>\n"
         , "<script>\n"
         , content
         , "\n</script>\n"
@@ -115,7 +115,7 @@ plotHistogramWith colName config df = do
         counts = calculateHistogram values bins binWidth
 
         labels =
-            T.intercalate "," ["\"" <> T.pack (show (round b :: Int)) <> "\"" | b <- bins]
+            T.intercalate "," ["\"" <> T.pack (printf "%.2f" b) <> "\"" | b <- bins]
         dataPoints = T.intercalate "," [T.pack (show c) | c <- counts]
 
         chartTitle =
@@ -125,9 +125,11 @@ plotHistogramWith colName config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                , "var ctx = document.getElementById('"
                 , chartId
-                , "\", {\n"
+                , "').getContext('2d');\n"
+                , "new Chart(ctx , {\n"
                 , "  type: \"bar\",\n"
                 , "  data: {\n"
                 , "    labels: ["
@@ -153,7 +155,7 @@ plotHistogramWith colName config df = do
                 , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "});});"
                 ]
 
     return $
@@ -186,9 +188,11 @@ plotScatterWith xCol yCol config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                , "var ctx = document.getElementById('"
                 , chartId
-                , "\", {\n"
+                , "').getContext('2d');\n"
+                , "new Chart(ctx , {\n"
                 , "  type: \"scatter\",\n"
                 , "  data: {\n"
                 , "    datasets: [{\n"
@@ -215,7 +219,7 @@ plotScatterWith xCol yCol config df = do
                 , "\" } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "});});"
                 ]
 
     return $
@@ -279,9 +283,11 @@ plotScatterByWith xCol yCol grouping config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                , "var ctx = document.getElementById('"
                 , chartId
-                , "\", {\n"
+                , "').getContext('2d');\n"
+                , "new Chart(ctx , {\n"
                 , "  type: \"scatter\",\n"
                 , "  data: {\n"
                 , "    datasets: [\n"
@@ -301,7 +307,7 @@ plotScatterByWith xCol yCol grouping config df = do
                 , "\" } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "});});"
                 ]
 
     return $
@@ -353,9 +359,11 @@ plotLinesWith xAxis colNames config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                , "var ctx = document.getElementById('"
                 , chartId
-                , "\", {\n"
+                , "').getContext('2d');\n"
+                , "new Chart(ctx , {\n"
                 , "  type: \"line\",\n"
                 , "  data: {\n"
                 , "    labels: ["
@@ -375,7 +383,7 @@ plotLinesWith xAxis colNames config df = do
                 , "\" } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "});});"
                 ]
 
     return $
@@ -407,9 +415,11 @@ plotSingleBars colName config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                        , "var ctx = document.getElementById('"
                         , chartId
-                        , "\", {\n"
+                        , "').getContext('2d');\n"
+                        , "new Chart(ctx , {\n"
                         , "  type: \"bar\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -433,7 +443,7 @@ plotSingleBars colName config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});"
+                        , "});});"
                         ]
             return $
                 HtmlPlot $
@@ -451,8 +461,11 @@ plotSingleBars colName config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                        , "var ctx = document.getElementById('"
                         , chartId
+                        , "').getContext('2d');\n"
+                        , "new Chart(ctx , {\n"
                         , "\", {\n"
                         , "  type: \"bar\",\n"
                         , "  data: {\n"
@@ -477,7 +490,7 @@ plotSingleBars colName config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});"
+                        , "});});"
                         ]
             return $
                 HtmlPlot $
@@ -502,9 +515,11 @@ plotPieWith valCol labelCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                        , "var ctx = document.getElementById('"
                         , chartId
-                        , "\", {\n"
+                        , "').getContext('2d');\n"
+                        , "new Chart(ctx , {\n"
                         , "  type: \"pie\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -524,7 +539,7 @@ plotPieWith valCol labelCol config df = do
                         , chartTitle
                         , "\" }\n"
                         , "  }\n"
-                        , "});"
+                        , "});});"
                         ]
             return $
                 HtmlPlot $
@@ -546,9 +561,11 @@ plotPieWith valCol labelCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                        , "var ctx = document.getElementById('"
                         , chartId
-                        , "\", {\n"
+                        , "').getContext('2d');\n"
+                        , "new Chart(ctx , {\n"
                         , "  type: \"pie\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -568,7 +585,7 @@ plotPieWith valCol labelCol config df = do
                         , chartTitle
                         , "\" }\n"
                         , "  }\n"
-                        , "});"
+                        , "});});"
                         ]
             return $
                 HtmlPlot $
@@ -637,9 +654,11 @@ plotStackedBarsWith categoryCol valueColumns config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                , "var ctx = document.getElementById('"
                 , chartId
-                , "\", {\n"
+                , "').getContext('2d');\n"
+                , "new Chart(ctx , {\n"
                 , "  type: \"bar\",\n"
                 , "  data: {\n"
                 , "    labels: ["
@@ -658,7 +677,7 @@ plotStackedBarsWith categoryCol valueColumns config df = do
                 , "      yAxes: [{ stacked: true, ticks: { beginAtZero: true } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "});});"
                 ]
 
     return $
@@ -689,9 +708,11 @@ plotBoxPlotsWith colNames config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                , "var ctx = document.getElementById('"
                 , chartId
-                , "\", {\n"
+                , "').getContext('2d');\n"
+                , "new Chart(ctx , {\n"
                 , "  type: \"bar\",\n"
                 , "  data: {\n"
                 , "    labels: ["
@@ -715,7 +736,7 @@ plotBoxPlotsWith colNames config df = do
                 , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "});});"
                 ]
 
     return $
@@ -748,9 +769,11 @@ plotGroupedBarsWithN n groupCol valCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                        , "var ctx = document.getElementById('"
                         , chartId
-                        , "\", {\n"
+                        , "').getContext('2d');\n"
+                        , "new Chart(ctx , {\n"
                         , "  type: \"bar\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -776,7 +799,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});"
+                        , "});});"
                         ]
             return $
                 HtmlPlot $
@@ -800,9 +823,11 @@ plotGroupedBarsWithN n groupCol valCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
+                        , "var ctx = document.getElementById('"
                         , chartId
-                        , "\", {\n"
+                        , "').getContext('2d');\n"
+                        , "new Chart(ctx , {\n"
                         , "  type: \"bar\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -826,7 +851,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});"
+                        , "});});"
                         ]
             return $
                 HtmlPlot $
@@ -1032,7 +1057,11 @@ showInDefaultBrowser (HtmlPlot p) = do
                 else home <> "/" <> path
     putStr "Saving plot to: "
     putStrLn fullPath
-    T.writeFile fullPath p
+    T.writeFile
+        fullPath
+        ( "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js\"></script>\n"
+            <> p
+        )
     if operatingSystem == "mingw32"
         then openFileSilently "start" fullPath
         else openFileSilently "xdg-open" fullPath
