@@ -97,7 +97,9 @@ wrapInHTML chartId content width height =
         , "px\"></canvas>\n"
         , "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js\"></script>\n"
         , "<script>\n"
+        , "setTimeout(() => {"
         , content
+        , "}, 200);"
         , "\n</script>\n"
         ]
 
