@@ -95,6 +95,7 @@ wrapInHTML chartId content width height =
         , "px;height:"
         , T.pack (show height)
         , "px\"></canvas>\n"
+        , "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js\"></script>\n"
         , "<script>\n"
         , content
         , "\n</script>\n"
@@ -1057,11 +1058,7 @@ showInDefaultBrowser (HtmlPlot p) = do
                 else home <> "/" <> path
     putStr "Saving plot to: "
     putStrLn fullPath
-    T.writeFile
-        fullPath
-        ( "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js\"></script>\n"
-            <> p
-        )
+    T.writeFile fullPath p
     if operatingSystem == "mingw32"
         then openFileSilently "start" fullPath
         else openFileSilently "xdg-open" fullPath
