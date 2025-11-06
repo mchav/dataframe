@@ -70,10 +70,10 @@ import DataFrame.Functions ((.==), (.=), (.>), (.<), (.>=), (.<=), (.&&), (.||))
 main :: IO ()
 main = do
   dfIris <- D.readCsv "./data/iris.csv"
-  print (DF.dimensions dfIris)  -- (rows, cols)
+  print (D.dimensions dfIris)  -- (rows, cols)
 
   -- Save a filtered slice
-  let small = DF.take 5 dfIris
+  let small = D.take 5 dfIris
   D.writeCSV "out/iris_head.csv" small
 ```
 
@@ -121,8 +121,8 @@ let isVersicolor = spec .== "Versicolor"
 let longPetal    = pLen .> 4.5
 let narrowPetal  = pWid .< 1.3
 
-let dfV = DF.filterWhere isVersicolor df
-let dfC = DF.filterWhere (longPetal .&& narrowPetal) df
+let dfV = D.filterWhere isVersicolor df
+let dfC = D.filterWhere (longPetal .&& narrowPetal) df
 ```
 
 ---
@@ -131,10 +131,10 @@ let dfC = DF.filterWhere (longPetal .&& narrowPetal) df
 
 ```haskell
 -- Build expressions
-let sl = DF.col @Double "sepal.length"
-let sw = DF.col @Double "sepal.width"
-let pl = DF.col @Double "petal.length"
-let pw = DF.col @Double "petal.width"
+let sl = F.col @Double "sepal.length"
+let sw = F.col @Double "sepal.width"
+let pl = F.col @Double "petal.length"
+let pw = F.col @Double "petal.width"
 
 let ratio = sl / sw
 let area  = pl * pw
@@ -220,7 +220,7 @@ let dfImput = D.impute "sepal.length" (10 :: Double) df
 ## 9) Sorting, Distinct, Sampling
 
 ```haskell
-D.sortBy DF.Ascending ["variety"] df
+D.sortBy D.Ascending ["variety"] df
 D.sample (mkStdGen 42) 0.1 df           -- 10% uniform random sample sample
 ```
 
