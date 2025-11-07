@@ -13,7 +13,7 @@ import qualified Data.Vector.Unboxed as VU
 import Data.Maybe (fromMaybe)
 import Data.Time
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
-import DataFrame.Internal.Column (Column (..))
+import DataFrame.Internal.Column (Column (..), Columnable, fromVector, fromUnboxedVector)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
 import Type.Reflection (typeRep)
@@ -54,84 +54,58 @@ parseFromExamples n safeRead dateFormat cols =
 
 handleIntAssumption :: V.Vector (Maybe T.Text) -> Column
 handleIntAssumption asMaybeText
-    | not (hasNullValues asMaybeInt) = UnboxedColumn $ prepForUnboxed asMaybeInt
-    | not (hasNullValues asMaybeDouble) =
-        UnboxedColumn $ prepForUnboxed asMaybeDouble
-    | parsableAsInt = OptionalColumn asMaybeInt
-    | parsableAsDouble = OptionalColumn asMaybeDouble
-    | not (hasNullValues asMaybeText) = BoxedColumn $ prepForBoxed asMaybeText
-    | otherwise = OptionalColumn asMaybeText
+    | parsableAsInt = maybe (fromVector asMaybeInt) fromVector (sequenceA asMaybeInt)
+    | parsableAsDouble = maybe (fromVector asMaybeDouble) fromVector (sequenceA asMaybeDouble)
+    | otherwise = maybe (fromVector asMaybeText) fromVector (sequenceA asMaybeText)
   where
     asMaybeInt = V.map (>>= readInt) asMaybeText
     asMaybeDouble = V.map (>>= readDouble) asMaybeText
-    parsableAsInt = vecSameConstructor asMaybeText asMaybeInt
+    parsableAsInt = vecSameConstructor asMaybeText asMaybeInt && vecSameConstructor asMaybeText asMaybeDouble
     parsableAsDouble = vecSameConstructor asMaybeText asMaybeDouble
 
 handleDoubleAssumption :: V.Vector (Maybe T.Text) -> Column
 handleDoubleAssumption asMaybeText
-    | not (hasNullValues asMaybeDouble) =
-        UnboxedColumn $ prepForUnboxed asMaybeDouble
-    | parsableAsDouble = OptionalColumn asMaybeDouble
-    | not (hasNullValues asMaybeText) = BoxedColumn $ prepForBoxed asMaybeText
-    | otherwise = OptionalColumn asMaybeText
+    | parsableAsDouble = maybe (fromVector asMaybeDouble) fromVector (sequenceA asMaybeDouble)
+    | otherwise = maybe (fromVector asMaybeText) fromVector (sequenceA asMaybeText)
   where
     asMaybeDouble = V.map (>>= readDouble) asMaybeText
     parsableAsDouble = vecSameConstructor asMaybeText asMaybeDouble
 
 handleDateAssumption :: DateFormat -> V.Vector (Maybe T.Text) -> Column
 handleDateAssumption dateFormat asMaybeText
-    | not (hasNullValues asMaybeDate) = BoxedColumn $ prepForBoxed asMaybeDate
-    | parsableAsDate = OptionalColumn asMaybeDate
-    | not (hasNullValues asMaybeText) = BoxedColumn $ prepForBoxed asMaybeText
-    | otherwise = OptionalColumn asMaybeText
+    | parsableAsDate = maybe (fromVector asMaybeDate) fromVector (sequenceA asMaybeDate)
+    | otherwise = maybe (fromVector asMaybeText) fromVector (sequenceA asMaybeText)
   where
     asMaybeDate = V.map (>>= parseTimeOpt dateFormat) asMaybeText
     parsableAsDate = vecSameConstructor asMaybeText asMaybeDate
 
 handleTextAssumption :: V.Vector (Maybe T.Text) -> Column
-handleTextAssumption asMaybeText
-    | not (hasNullValues asMaybeText) = BoxedColumn $ prepForBoxed asMaybeText
-    | otherwise = OptionalColumn asMaybeText
+handleTextAssumption asMaybeText = maybe (fromVector asMaybeText) fromVector (sequenceA asMaybeText)
 
 handleNoAssumption :: DateFormat -> V.Vector (Maybe T.Text) -> Column
 handleNoAssumption dateFormat asMaybeText
     -- No need to check for null values. If we are in this condition, that
     -- means that the examples consisted only of null values, so we can
     -- confidently know that this column must be an OptionalColumn
-    | V.all (== Nothing) asMaybeText = OptionalColumn asMaybeText
-    | vecSameConstructor asMaybeText asMaybeInt
-        && vecSameConstructor asMaybeText asMaybeDouble =
-        OptionalColumn asMaybeInt
-    | vecSameConstructor asMaybeText asMaybeDouble = OptionalColumn asMaybeDouble
-    | vecSameConstructor asMaybeText asMaybeDate = OptionalColumn asMaybeDate
-    | otherwise = OptionalColumn asMaybeText
+    | V.all (== Nothing) asMaybeText = fromVector asMaybeText
+    | parsableAsInt = fromVector asMaybeInt
+    | parsableAsDouble = fromVector asMaybeDouble
+    | parsableAsDate = fromVector asMaybeDate
+    | otherwise = fromVector asMaybeText
   where
     asMaybeInt = V.map (>>= readInt) asMaybeText
     asMaybeDouble = V.map (>>= readDouble) asMaybeText
     asMaybeDate = V.map (>>= parseTimeOpt dateFormat) asMaybeText
+    parsableAsInt = vecSameConstructor asMaybeText asMaybeInt && vecSameConstructor asMaybeText asMaybeDouble
+    parsableAsDouble = vecSameConstructor asMaybeText asMaybeDouble
+    parsableAsDate = vecSameConstructor asMaybeText asMaybeDate
 
-bottomOut :: a
-bottomOut =
-    error
-        "This should never happen in theory, because we already checked that there no Nothings using hasNullValues"
 
 convertNullish :: T.Text -> Maybe T.Text
 convertNullish v = if isNullish v then Nothing else Just v
 
 convertOnlyEmpty :: T.Text -> Maybe T.Text
 convertOnlyEmpty v = if v == "" then Nothing else Just v
-
-prepForUnboxed :: (VU.Unbox a) => V.Vector (Maybe a) -> VU.Vector a
-prepForUnboxed vec = VU.generate n (fromMaybe bottomOut . (vec V.!))
-  where
-    n = V.length vec
-
-prepForBoxed :: V.Vector (Maybe a) -> V.Vector a
-prepForBoxed vec = case sequenceA vec of
-    Just vec' -> vec'
-    Nothing ->
-        error
-            "this should never happen in theory because we checked that there are no Nothings using hasNullValues"
 
 parseTimeOpt :: DateFormat -> T.Text -> Maybe Day
 parseTimeOpt dateFormat s =
