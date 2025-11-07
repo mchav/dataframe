@@ -8,12 +8,11 @@ module DataFrame.Operations.Typing where
 
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Unboxed as VU
 
 import Data.Maybe (fromMaybe)
 import Data.Time
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
-import DataFrame.Internal.Column (Column (..), Columnable, fromVector, fromUnboxedVector)
+import DataFrame.Internal.Column (Column (..), fromVector)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
 import Type.Reflection (typeRep)
@@ -54,18 +53,23 @@ parseFromExamples n safeRead dateFormat cols =
 
 handleIntAssumption :: V.Vector (Maybe T.Text) -> Column
 handleIntAssumption asMaybeText
-    | parsableAsInt = maybe (fromVector asMaybeInt) fromVector (sequenceA asMaybeInt)
-    | parsableAsDouble = maybe (fromVector asMaybeDouble) fromVector (sequenceA asMaybeDouble)
+    | parsableAsInt =
+        maybe (fromVector asMaybeInt) fromVector (sequenceA asMaybeInt)
+    | parsableAsDouble =
+        maybe (fromVector asMaybeDouble) fromVector (sequenceA asMaybeDouble)
     | otherwise = maybe (fromVector asMaybeText) fromVector (sequenceA asMaybeText)
   where
     asMaybeInt = V.map (>>= readInt) asMaybeText
     asMaybeDouble = V.map (>>= readDouble) asMaybeText
-    parsableAsInt = vecSameConstructor asMaybeText asMaybeInt && vecSameConstructor asMaybeText asMaybeDouble
+    parsableAsInt =
+        vecSameConstructor asMaybeText asMaybeInt
+            && vecSameConstructor asMaybeText asMaybeDouble
     parsableAsDouble = vecSameConstructor asMaybeText asMaybeDouble
 
 handleDoubleAssumption :: V.Vector (Maybe T.Text) -> Column
 handleDoubleAssumption asMaybeText
-    | parsableAsDouble = maybe (fromVector asMaybeDouble) fromVector (sequenceA asMaybeDouble)
+    | parsableAsDouble =
+        maybe (fromVector asMaybeDouble) fromVector (sequenceA asMaybeDouble)
     | otherwise = maybe (fromVector asMaybeText) fromVector (sequenceA asMaybeText)
   where
     asMaybeDouble = V.map (>>= readDouble) asMaybeText
@@ -73,7 +77,8 @@ handleDoubleAssumption asMaybeText
 
 handleDateAssumption :: DateFormat -> V.Vector (Maybe T.Text) -> Column
 handleDateAssumption dateFormat asMaybeText
-    | parsableAsDate = maybe (fromVector asMaybeDate) fromVector (sequenceA asMaybeDate)
+    | parsableAsDate =
+        maybe (fromVector asMaybeDate) fromVector (sequenceA asMaybeDate)
     | otherwise = maybe (fromVector asMaybeText) fromVector (sequenceA asMaybeText)
   where
     asMaybeDate = V.map (>>= parseTimeOpt dateFormat) asMaybeText
@@ -96,10 +101,11 @@ handleNoAssumption dateFormat asMaybeText
     asMaybeInt = V.map (>>= readInt) asMaybeText
     asMaybeDouble = V.map (>>= readDouble) asMaybeText
     asMaybeDate = V.map (>>= parseTimeOpt dateFormat) asMaybeText
-    parsableAsInt = vecSameConstructor asMaybeText asMaybeInt && vecSameConstructor asMaybeText asMaybeDouble
+    parsableAsInt =
+        vecSameConstructor asMaybeText asMaybeInt
+            && vecSameConstructor asMaybeText asMaybeDouble
     parsableAsDouble = vecSameConstructor asMaybeText asMaybeDouble
     parsableAsDate = vecSameConstructor asMaybeText asMaybeDate
-
 
 convertNullish :: T.Text -> Maybe T.Text
 convertNullish v = if isNullish v then Nothing else Just v
