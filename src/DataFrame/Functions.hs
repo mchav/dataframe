@@ -205,6 +205,11 @@ reduce ::
     (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
 reduce expr = AggFold expr "foldUdf"
 
+whenPresent ::
+    forall a b.
+    (Columnable a, Columnable b) => Expr (Maybe a) -> (a -> b) -> Expr (Maybe b)
+whenPresent expr f = lift (fmap f) expr
+
 generateConditions ::
     TypedColumn Double -> [Expr Bool] -> [Expr Double] -> DataFrame -> [Expr Bool]
 generateConditions labels conds ps df =
