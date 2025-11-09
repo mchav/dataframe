@@ -32,6 +32,7 @@ import DataFrame.Internal.Column (
     fromVector,
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
+import DataFrame.Internal.Expression
 import DataFrame.Internal.Parsing (isNullish)
 import DataFrame.Internal.Row (Any, mkColumnFromRow)
 import Type.Reflection
@@ -521,8 +522,8 @@ ghci> D.valueCounts @Int "0" df
 
 @
 -}
-valueCounts :: forall a. (Columnable a) => T.Text -> DataFrame -> [(a, Int)]
-valueCounts columnName df = case getColumn columnName df of
+valueCounts :: forall a. (Columnable a) => Expr a -> DataFrame -> [(a, Int)]
+valueCounts (Col columnName) df = case getColumn columnName df of
     Nothing ->
         throw $
             ColumnNotFoundException columnName "valueCounts" (M.keys $ columnIndices df)
@@ -575,6 +576,7 @@ valueCounts columnName df = case getColumn columnName df of
                                 }
                             )
                 Just Refl -> M.toAscList column
+valueCounts _ _ = error "Cannot call value counts on non-column reference"
 
 {- | A left fold for dataframes that takes the dataframe as the last object.
 This makes it easier to chain operations.

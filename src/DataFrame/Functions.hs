@@ -39,7 +39,7 @@ import Data.Containers.ListUtils
 import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (listToMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Type.Equality
@@ -457,7 +457,7 @@ fitRegression ::
 fitRegression target d b df =
     let
         df' = exclude [target] df
-        targetMean = fromMaybe 0 $ Stats.mean target df
+        targetMean = Stats.mean (Col @Double target) df
         t = case interpret df (Col target) of
             Left e -> throw e
             Right v -> v

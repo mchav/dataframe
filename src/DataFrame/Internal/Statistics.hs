@@ -58,9 +58,10 @@ variance' = computeVariance . VU.foldl' varianceStep (VarAcc 0 0 0)
 -- accumulator: count, mean, m2, m3
 data SkewAcc = SkewAcc !Int !Double !Double !Double deriving (Show)
 
-skewnessStep :: SkewAcc -> Double -> SkewAcc
-skewnessStep (SkewAcc !n !mean !m2 !m3) !x =
+skewnessStep :: (VU.Unbox a, Num a, Real a) => SkewAcc -> a -> SkewAcc
+skewnessStep (SkewAcc !n !mean !m2 !m3) !x' =
     let !n' = n + 1
+        x = realToFrac x'
         !k = fromIntegral n'
         !delta = x - mean
         !mean' = mean + delta / k
@@ -75,7 +76,7 @@ computeSkewness (SkewAcc n _ m2 m3)
     | otherwise = (sqrt (fromIntegral n - 1) * m3) / sqrt (m2 ^ 3)
 {-# INLINE computeSkewness #-}
 
-skewness' :: VU.Vector Double -> Double
+skewness' :: (VU.Unbox a, Real a, Num a) => VU.Vector a -> Double
 skewness' = computeSkewness . VU.foldl' skewnessStep (SkewAcc 0 0 0 0)
 {-# INLINE skewness' #-}
 
@@ -106,7 +107,9 @@ correlation' xs ys
         | otherwise = (sumX, sumY, sumSquaredX, sumSquaredY, sumXY)
 {-# INLINE correlation' #-}
 
-quantiles' :: VU.Vector Int -> Int -> VU.Vector Double -> VU.Vector Double
+quantiles' ::
+    (VU.Unbox a, Num a, Real a) =>
+    VU.Vector Int -> Int -> VU.Vector a -> VU.Vector Double
 quantiles' qs q samp
     | VU.null samp = throw $ EmptyDataSetException "quantiles"
     | q < 2 = throw $ WrongQuantileNumberException q
@@ -121,20 +124,20 @@ quantiles' qs q samp
                     !position = p * fromIntegral (n - 1)
                     !index = floor position
                     !f = position - fromIntegral index
-                x <- VUM.read mutableSamp index
+                x <- fmap realToFrac (VUM.read mutableSamp index)
                 if f == 0
                     then return x
                     else do
-                        y <- VUM.read mutableSamp (index + 1)
+                        y <- fmap realToFrac (VUM.read mutableSamp (index + 1))
                         return $ (1 - f) * x + f * y
             )
             qs
 {-# INLINE quantiles' #-}
 
-percentile' :: Int -> VU.Vector Double -> Double
+percentile' :: (VU.Unbox a, Num a, Real a) => Int -> VU.Vector a -> Double
 percentile' n = VU.head . quantiles' (VU.fromList [n]) 100
 
-interQuartileRange' :: VU.Vector Double -> Double
+interQuartileRange' :: (VU.Unbox a, Num a, Real a) => VU.Vector a -> Double
 interQuartileRange' samp =
     let quartiles = quantiles' (VU.fromList [1, 3]) 4 samp
      in quartiles VU.! 1 - quartiles VU.! 0

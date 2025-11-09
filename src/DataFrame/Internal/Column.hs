@@ -1232,3 +1232,31 @@ toIntVector column =
                         , errorColumnName = Nothing
                         }
                     )
+
+toUnboxedVector ::
+    forall a.
+    (Columnable a, VU.Unbox a) => Column -> Either DataFrameException (VU.Vector a)
+toUnboxedVector column =
+    case column of
+        UnboxedColumn (f :: VU.Vector b) -> case testEquality (typeRep @a) (typeRep @b) of
+            Just Refl -> Right f
+            Nothing ->
+                Left $
+                    TypeMismatchException
+                        ( MkTypeErrorContext
+                            { userType = Right (typeRep @Int)
+                            , expectedType = Right (typeRep @a)
+                            , callingFunctionName = Just "toIntVector"
+                            , errorColumnName = Nothing
+                            }
+                        )
+        _ ->
+            Left $
+                TypeMismatchException
+                    ( MkTypeErrorContext
+                        { userType = Right (typeRep @a)
+                        , expectedType = Left (columnTypeString column) :: Either String (TypeRep ())
+                        , callingFunctionName = Just "toUnboxedVector"
+                        , errorColumnName = Nothing
+                        }
+                    )

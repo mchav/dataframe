@@ -5,6 +5,7 @@ module Operations.Filter where
 
 import qualified Data.Text as T
 import qualified DataFrame as D
+import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
 
 import Assertions
@@ -32,7 +33,7 @@ filterColumnDoesNotExist =
         ( assertExpectException
             "[Error Case]"
             (D.columnNotFound "test0" "filter" (D.columnNames testData))
-            (print $ D.filter @Int "test0" even testData)
+            (print $ D.filter (F.col @Int "test0") even testData)
         )
 
 filterColumnWrongType :: Test
@@ -41,7 +42,7 @@ filterColumnWrongType =
         ( assertExpectException
             "[Error Case]"
             (D.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
-            (print $ D.filter @Integer "test1" even testData)
+            (print $ D.filter (F.col @Integer "test1") even testData)
         )
 
 filterByColumnDoesNotExist :: Test
@@ -50,7 +51,7 @@ filterByColumnDoesNotExist =
         ( assertExpectException
             "[Error Case]"
             (D.columnNotFound "test0" "filter" (D.columnNames testData))
-            (print $ D.filterBy @Int even "test0" testData)
+            (print $ D.filterBy even (F.col @Int "test0") testData)
         )
 
 filterByColumnWrongType :: Test
@@ -59,7 +60,7 @@ filterByColumnWrongType =
         ( assertExpectException
             "[Error Case]"
             (D.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
-            (print $ D.filterBy @Integer even "test1" testData)
+            (print $ D.filterBy even (F.col @Integer "test1") testData)
         )
 
 filterColumnInexistentValues :: Test
@@ -68,7 +69,7 @@ filterColumnInexistentValues =
         ( assertEqual
             "Non existent filter value returns no rows"
             (0, 8)
-            (D.dimensions $ D.filter @Int "test1" (< 0) testData)
+            (D.dimensions $ D.filter (F.col @Int "test1") (< 0) testData)
         )
 
 filterColumnAllValues :: Test
@@ -77,7 +78,7 @@ filterColumnAllValues =
         ( assertEqual
             "Filters all columns"
             (26, 8)
-            (D.dimensions $ D.filter @Int "test1" (const True) testData)
+            (D.dimensions $ D.filter (F.col @Int "test1") (const True) testData)
         )
 
 filterJustWAI :: Test

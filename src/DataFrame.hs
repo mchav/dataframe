@@ -216,7 +216,7 @@ module DataFrame (
     module Subset,
     module Transformations,
     module Aggregation,
-    module Sorting,
+    module Permutation,
     module Merge,
     module Join,
     module Statistics,
@@ -305,7 +305,11 @@ import DataFrame.Operations.Core as Core hiding (
  )
 import DataFrame.Operations.Join as Join
 import DataFrame.Operations.Merge as Merge
-import DataFrame.Operations.Sorting as Sorting
+import DataFrame.Operations.Permutation as Permutation (
+    SortOrder (..),
+    shuffle,
+    sortBy,
+ )
 import DataFrame.Operations.Statistics as Statistics (
     correlation,
     frequencies,

@@ -174,11 +174,11 @@ applyAtIndex i f columnName df = case getColumn columnName df of
 impute ::
     forall b.
     (Columnable b) =>
-    T.Text ->
+    Expr (Maybe b) ->
     b ->
     DataFrame ->
     DataFrame
-impute columnName value df = case getColumn columnName df of
+impute (Col columnName) value df = case getColumn columnName df of
     Nothing ->
         throw $ ColumnNotFoundException columnName "impute" (M.keys $ columnIndices df)
     Just (OptionalColumn _) -> case safeApply (fromMaybe value) columnName df of
@@ -186,3 +186,4 @@ impute columnName value df = case getColumn columnName df of
         Left exception -> throw exception
         Right res -> res
     _ -> error $ "Cannot impute to a non-Empty column: " ++ T.unpack columnName
+impute _ _ df = df

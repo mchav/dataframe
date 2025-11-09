@@ -23,7 +23,13 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
-import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
+import DataFrame.Internal.DataFrame (
+    DataFrame (..),
+    columnAsUnboxedVector,
+    empty,
+    getColumn,
+ )
+import DataFrame.Internal.Expression
 import DataFrame.Internal.Row (showValue, toAny)
 import DataFrame.Internal.Statistics
 import DataFrame.Internal.Types
@@ -54,7 +60,7 @@ frequencies :: T.Text -> DataFrame -> DataFrame
 frequencies name df =
     let
         counts :: forall a. (Columnable a) => [(a, Int)]
-        counts = valueCounts name df
+        counts = valueCounts (Col @a name) df
         calculatePercentage cs k = toAny $ toPct2dp (fromIntegral k / fromIntegral (P.sum $ map snd cs))
         initDf =
             empty
@@ -79,28 +85,76 @@ frequencies name df =
             Just ((UnboxedColumn (column :: VU.Vector a))) -> freqs column
 
 -- | Calculates the mean of a given column as a standalone value.
-mean :: T.Text -> DataFrame -> Maybe Double
-mean = applyStatistic mean'
+mean ::
+    forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
+mean (Col name) df = case columnAsUnboxedVector @a name df of
+    Right xs -> mean' xs
+    Left e -> throw e
+mean expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toUnboxedVector @a col of
+        Left e -> throw e
+        Right xs -> mean' xs
 
 -- | Calculates the median of a given column as a standalone value.
-median :: T.Text -> DataFrame -> Maybe Double
-median = applyStatistic median'
+median ::
+    forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
+median (Col name) df = case columnAsUnboxedVector @a name df of
+    Right xs -> median' xs
+    Left e -> throw e
+median expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toUnboxedVector @a col of
+        Left e -> throw e
+        Right xs -> median' xs
 
 -- | Calculates the standard deviation of a given column as a standalone value.
-standardDeviation :: T.Text -> DataFrame -> Maybe Double
-standardDeviation = applyStatistic (sqrt . variance')
+standardDeviation ::
+    forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
+standardDeviation (Col name) df = case columnAsUnboxedVector @a name df of
+    Right xs -> (sqrt . variance') xs
+    Left e -> throw e
+standardDeviation expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toUnboxedVector @a col of
+        Left e -> throw e
+        Right xs -> (sqrt . variance') xs
 
 -- | Calculates the skewness of a given column as a standalone value.
-skewness :: T.Text -> DataFrame -> Maybe Double
-skewness = applyStatistic skewness'
+skewness ::
+    forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
+skewness (Col name) df = case columnAsUnboxedVector @a name df of
+    Right xs -> skewness' xs
+    Left e -> throw e
+skewness expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toUnboxedVector @a col of
+        Left e -> throw e
+        Right xs -> skewness' xs
 
 -- | Calculates the variance of a given column as a standalone value.
-variance :: T.Text -> DataFrame -> Maybe Double
-variance = applyStatistic variance'
+variance ::
+    forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
+variance (Col name) df = case columnAsUnboxedVector @a name df of
+    Right xs -> variance' xs
+    Left e -> throw e
+variance expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toUnboxedVector @a col of
+        Left e -> throw e
+        Right xs -> variance' xs
 
 -- | Calculates the inter-quartile range of a given column as a standalone value.
-interQuartileRange :: T.Text -> DataFrame -> Maybe Double
-interQuartileRange = applyStatistic interQuartileRange'
+interQuartileRange ::
+    forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
+interQuartileRange (Col name) df = case columnAsUnboxedVector @a name df of
+    Right xs -> interQuartileRange' xs
+    Left e -> throw e
+interQuartileRange expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toUnboxedVector @a col of
+        Left e -> throw e
+        Right xs -> interQuartileRange' xs
 
 -- | Calculates the Pearson's correlation coefficient between two given columns as a standalone value.
 correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
@@ -126,18 +180,23 @@ _getColumnAsDouble name df = case getColumn name df of
 
 -- | Calculates the sum of a given column as a standalone value.
 sum ::
-    forall a. (Columnable a, Num a, VU.Unbox a) => T.Text -> DataFrame -> Maybe a
-sum name df = case getColumn name df of
+    forall a. (Columnable a, Num a) => Expr a -> DataFrame -> a
+sum (Col name) df = case getColumn name df of
     Nothing -> throw $ ColumnNotFoundException name "sum" (M.keys $ columnIndices df)
     Just ((UnboxedColumn (column :: VU.Vector a'))) -> case testEquality (typeRep @a') (typeRep @a) of
-        Just Refl -> Just $ VG.sum column
-        Nothing -> Nothing
+        Just Refl -> VG.sum column
+        Nothing -> 0
     Just ((BoxedColumn (column :: V.Vector a'))) -> case testEquality (typeRep @a') (typeRep @a) of
-        Just Refl -> Just $ VG.sum column
-        Nothing -> Nothing
+        Just Refl -> VG.sum column
+        Nothing -> 0
     Just ((OptionalColumn (column :: V.Vector (Maybe a')))) -> case testEquality (typeRep @a') (typeRep @a) of
-        Just Refl -> Just $ VG.sum (VG.map (fromMaybe 0) column)
-        Nothing -> Nothing
+        Just Refl -> VG.sum (VG.map (fromMaybe 0) column)
+        Nothing -> 0
+sum expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn xs) -> case toVector @a @V.Vector xs of
+        Left e -> throw e
+        Right xs -> VG.sum xs
 
 applyStatistic ::
     (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
@@ -202,15 +261,15 @@ summarize df =
             iqr = (-) <$> quartile3 <*> quartile1
          in
             [ count
-            , mean name df
+            , mean' <$> _getColumnAsDouble name df
             , min'
             , quartile1
             , median'
             , quartile3
             , max'
-            , standardDeviation name df
+            , sqrt . variance' <$> _getColumnAsDouble name df
             , iqr
-            , skewness name df
+            , skewness' <$> _getColumnAsDouble name df
             ]
 
 -- | Round a @Double@ to Specified Precision

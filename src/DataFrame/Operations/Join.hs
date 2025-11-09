@@ -1,4 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 
 module DataFrame.Operations.Join where
 
@@ -8,6 +10,7 @@ import qualified Data.Vector as VB
 import qualified Data.Vector.Unboxed as VU
 import DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame as D
+import DataFrame.Internal.Expression
 import DataFrame.Operations.Aggregation as D
 import DataFrame.Operations.Core as D
 
@@ -23,8 +26,10 @@ data JoinType
 Only inner join is implemented for now.
 -}
 join ::
+    forall a.
+    (Columnable a) =>
     JoinType ->
-    [T.Text] ->
+    [Expr a] ->
     DataFrame -> -- Right hand side
     DataFrame -> -- Left hand side
     DataFrame
@@ -36,9 +41,15 @@ join FULL_OUTER xs right = error "UNIMPLEMENTED"
 {- | Inner join of two dataframes. Note: for chaining, the left dataframe is actually
 on the right side.
 -}
-innerJoin :: [T.Text] -> DataFrame -> DataFrame -> DataFrame
-innerJoin cs right left =
+innerJoin ::
+    forall a. (Columnable a) => [Expr a] -> DataFrame -> DataFrame -> DataFrame
+innerJoin exprs right left =
     let
+        getColumnName :: Expr a -> T.Text
+        getColumnName c = case c of
+            Col name -> name
+            _ -> error "Cannot join on expressions that aren't column references."
+        cs = map getColumnName exprs
         leftIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices left)
         leftRowRepresentations = VU.generate (fst (D.dimensions left)) (D.mkRowRep leftIndicesToGroup left)
         -- key -> [index0, index1]

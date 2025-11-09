@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module DataFrame.Operations.Sorting where
+module DataFrame.Operations.Permutation where
 
 import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
 import DataFrame.Errors (DataFrameException (..))
@@ -12,6 +13,7 @@ import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Row
 import DataFrame.Operations.Core
+import System.Random
 
 -- | Sort order taken as a parameter by the 'sortBy' function.
 data SortOrder = Ascending | Descending deriving (Eq)
@@ -37,3 +39,17 @@ sortBy order names df
             indexes = sortedIndexes' (order == Ascending) (toRowVector names df)
          in
             df{columns = V.map (atIndicesStable indexes) (columns df)}
+
+shuffle ::
+    (RandomGen g) =>
+    g ->
+    DataFrame ->
+    DataFrame
+shuffle pureGen df =
+    let
+        indexes = shuffledIndices pureGen (fst (dimensions df))
+     in
+        df{columns = V.map (atIndicesStable indexes) (columns df)}
+
+shuffledIndices :: (RandomGen g) => g -> Int -> VU.Vector Int
+shuffledIndices pureGen k = VU.fromList (fst (uniformShuffleList [0 .. (k - 1)] pureGen))

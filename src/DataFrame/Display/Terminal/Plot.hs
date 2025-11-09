@@ -24,6 +24,7 @@ import Type.Reflection (typeRep)
 import DataFrame.Internal.Column (Column (..), isNumeric)
 import qualified DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
+import DataFrame.Internal.Expression
 import DataFrame.Operations.Core
 import qualified DataFrame.Operations.Subset as D
 import Granite
@@ -82,7 +83,7 @@ plotScatterByWith xCol yCol grouping config df = do
     let vals = extractStringColumn grouping df
     let df' = insertColumn grouping (D.fromList vals) df
     xs <- forM (L.nub vals) $ \col -> do
-        let filtered = D.filter grouping (== col) df'
+        let filtered = D.filter (Col grouping) (== col) df'
             xVals = extractNumericColumn xCol filtered
             yVals = extractNumericColumn yCol filtered
             points = zip xVals yVals

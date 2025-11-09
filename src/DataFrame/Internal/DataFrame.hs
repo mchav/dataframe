@@ -297,3 +297,9 @@ This may occur if the column contains non-numeric data.
 columnAsFloatVector ::
     T.Text -> DataFrame -> Either DataFrameException (VU.Vector Float)
 columnAsFloatVector name df = toFloatVector (unsafeGetColumn name df)
+
+columnAsUnboxedVector ::
+    forall a.
+    (Columnable a, VU.Unbox a) =>
+    T.Text -> DataFrame -> Either DataFrameException (VU.Vector a)
+columnAsUnboxedVector name df = toUnboxedVector @a (unsafeGetColumn name df)

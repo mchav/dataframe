@@ -26,6 +26,7 @@ import Type.Reflection (typeRep)
 import DataFrame.Internal.Column (Column (..), isNumeric)
 import qualified DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
+import DataFrame.Internal.Expression
 import DataFrame.Operations.Core
 import qualified DataFrame.Operations.Subset as D
 import System.Directory
@@ -253,7 +254,7 @@ plotScatterByWith xCol yCol grouping config df = do
                 ]
 
     datasets <- forM (zip uniqueVals colors) $ \(val, color) -> do
-        let filtered = D.filter grouping (== val) df'
+        let filtered = D.filter (Col grouping) (== val) df'
             xVals = extractNumericColumn xCol filtered
             yVals = extractNumericColumn yCol filtered
             points = zip xVals yVals

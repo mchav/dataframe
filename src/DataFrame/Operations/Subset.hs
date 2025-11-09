@@ -89,19 +89,33 @@ filter ::
     forall a.
     (Columnable a) =>
     -- | Column to filter by
-    T.Text ->
+    Expr a ->
     -- | Filter condition
     (a -> Bool) ->
     -- | Dataframe to filter
     DataFrame ->
     DataFrame
-filter filterColumnName condition df = case getColumn filterColumnName df of
+filter (Col filterColumnName) condition df = case getColumn filterColumnName df of
     Nothing ->
         throw $
             ColumnNotFoundException filterColumnName "filter" (M.keys $ columnIndices df)
     Just (BoxedColumn (column :: V.Vector b)) -> filterByVector filterColumnName column condition df
     Just (OptionalColumn (column :: V.Vector b)) -> filterByVector filterColumnName column condition df
     Just (UnboxedColumn (column :: VU.Vector b)) -> filterByVector filterColumnName column condition df
+filter expr condition df =
+    let
+        (TColumn col) = case interpret @a df (normalize expr) of
+            Left e -> throw e
+            Right c -> c
+        indexes = case findIndices condition col of
+            Right ixs -> ixs
+            Left e -> throw e
+        c' = snd $ dataframeDimensions df
+     in
+        df
+            { columns = V.map (atIndicesStable indexes) (columns df)
+            , dataframeDimensions = (VU.length indexes, c')
+            }
 
 filterByVector ::
     forall a b v.
@@ -131,7 +145,7 @@ filterByVector filterColumnName column condition df = case testEquality (typeRep
 
 > filterBy even "x" df
 -}
-filterBy :: (Columnable a) => (a -> Bool) -> T.Text -> DataFrame -> DataFrame
+filterBy :: (Columnable a) => (a -> Bool) -> Expr a -> DataFrame -> DataFrame
 filterBy = flip filter
 
 {- | O(k) filters the dataframe with a boolean expression.
@@ -162,7 +176,7 @@ filterJust :: T.Text -> DataFrame -> DataFrame
 filterJust name df = case getColumn name df of
     Nothing ->
         throw $ ColumnNotFoundException name "filterJust" (M.keys $ columnIndices df)
-    Just column@(OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isJust df & apply @(Maybe a) fromJust name
+    Just column@(OptionalColumn (col :: V.Vector (Maybe a))) -> filter (Col @(Maybe a) name) isJust df & apply @(Maybe a) fromJust name
     Just column -> df
 
 {- | O(k) returns all rows with `Nothing` in a give column.
@@ -173,7 +187,7 @@ filterNothing :: T.Text -> DataFrame -> DataFrame
 filterNothing name df = case getColumn name df of
     Nothing ->
         throw $ ColumnNotFoundException name "filterNothing" (M.keys $ columnIndices df)
-    Just (OptionalColumn (col :: V.Vector (Maybe a))) -> filter @(Maybe a) name isNothing df
+    Just (OptionalColumn (col :: V.Vector (Maybe a))) -> filter (Col @(Maybe a) name) isNothing df
     _ -> df
 
 {- | O(n * k) removes all rows with `Nothing` from the dataframe.

@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Parquet where
 
 import qualified DataFrame as D
+import qualified DataFrame.Functions as F
 
 import Data.Int
 import Data.Text (Text)
@@ -64,7 +66,7 @@ allTypesPlainSnappy =
     TestCase
         ( assertEqual
             "allTypesPlainSnappy"
-            (D.filter "id" (`elem` [6 :: Int32, 7]) allTypes)
+            (D.filter (F.col @Int32 "id") (`elem` [6, 7]) allTypes)
             (unsafePerformIO (D.readParquet "./tests/data/alltypes_plain.snappy.parquet"))
         )
 
@@ -73,7 +75,7 @@ allTypesDictionary =
     TestCase
         ( assertEqual
             "allTypesPlainSnappy"
-            (D.filter "id" (`elem` [0 :: Int32, 1]) allTypes)
+            (D.filter (F.col @Int32 "id") (`elem` [0, 1]) allTypes)
             (unsafePerformIO (D.readParquet "./tests/data/alltypes_dictionary.parquet"))
         )
 
