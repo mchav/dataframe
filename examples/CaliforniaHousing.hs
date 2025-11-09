@@ -73,7 +73,7 @@ normalizeFeatures df =
                  in
                     D.derive name ((col - F.minimum col) / (F.maximum col - F.minimum col)) d
             )
-            (D.columnNames df)
+            (D.columnNames (df |> D.selectBy [D.byProperty (D.hasElemType @Double)]))
 
 model :: Linear -> Tensor -> Tensor
 model state input = squeezeAll $ linear state input
