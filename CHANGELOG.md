@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.3.3.7
+* Functions how rely on expressions (not strings).
+
 ## 0.3.3.6
 * Fix bug where doubles were parsing as ints
 * Fix bugs where optionals were left in boxed column (instead of optionals)
