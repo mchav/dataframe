@@ -740,7 +740,7 @@ typeFromString [tycon, t1, t2] = do
     lhs <- typeFromString [t1]
     rhs <- typeFromString [t2]
     return (AppT (AppT outer lhs) rhs)
-typeFromString s = fail $ "Unsupported type: " ++ unwords s
+typeFromString s = fail $ "Unsupported types: " ++ unwords s
 
 declareColumns :: DataFrame -> DecsQ
 declareColumns df =

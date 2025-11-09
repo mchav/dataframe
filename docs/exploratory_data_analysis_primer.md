@@ -96,13 +96,13 @@ The central tendency of a distribution describes a "typical" value of that distr
 For a given column calculating the mean and median is fairly straightfoward and shown below.
 
 ```haskell
-ghci> D.mean "housing_median_age" df
-Just 28.63948643410852
-ghci> D.median "housing_median_age" df
-Just 29.0
+ghci> D.mean (F.col @Double "housing_median_age") df
+28.63948643410852
+ghci> D.median (F.col @Double "housing_median_age") df
+29.0
 ```
 
-Note: the values are displayed with a `Just` to denote that they may not be computable or not exist. Trying to get the mean or median of a non-numeric column would return `Nothing`. `Nothing` is similar to `NULL` in SQL.
+Note: You need to pass the expression for the column into these functions not the column name so the program knows that you are actually calling `mean` or `median` on a column containing numbers.
 
 ### Spread
 Spread is a measure of how far away from the center we are still likely to find data values. There are three main measures of spread: variance, mean absolute deviation, standard deviation, and interquartile range.
@@ -143,8 +143,8 @@ This gives us a list of the deviations.
 From the small sample it does seem like there are some wild deviations. The first one is greater than the mean! How typical is this? Well to answer that we take the average of all these values.
 
 ```haskell
-dataframe> df |> D.derive "deviation" (abs (median_house_value - (F.mean median_house_value))) |> D.select ["median_house_value", "deviation"] |> D.mean "deviation"
-Just 91170.43994367118
+dataframe> df |> D.derive "deviation" (abs (median_house_value - (F.mean median_house_value))) |> D.select ["median_house_value", "deviation"] |> D.mean (F.col @Double "deviation")
+91170.43994367118
 ```
 
 Getting the mean of the deviations was as simple as tacking `D.mean "deviation"` to the end of our existing pipeline. Composability is a big strength of Haskell code.
@@ -172,8 +172,8 @@ The standard deviation being larger than the mean absolute deviation means we do
 We can calculate the standard deviation in one line as follows:
 
 ```haskell
-dataframe> D.standardDeviation "median_house_value" df
-Just 115395.6158744
+dataframe> D.standardDeviation (F.col @Double "median_house_value") df
+115395.6158744
 ```
 
 ## Interquartile range (IQR)
@@ -184,8 +184,8 @@ The IQR is a more robust measure of spread than the variance or standard deviati
 For our dataset:
 
 ```haskell
-dataframe> D.interQuartileRange "median_house_value" df
-Just 145158.3333333336
+dataframe> D.interQuartileRange (F.col @Double "median_house_value") df
+145158.3333333336
 ```
 
 This is larger than the standard deviation but not by much. This means that outliers don't have a significant influence on the distribution and most values are close to typical.
@@ -196,8 +196,8 @@ Variance is the square of the standard deviation. It is much more sensitive to o
 In our example it's a very large number:
 
 ``` haskell
-dataframe> D.variance  "median_house_value" df
-Just 1.3315503000818077e10
+dataframe> D.variance (F.col @Double "median_house_value") df
+1.3315503000818077e10
 ```
 
 The variance is more useful when comparing different datasets. If the variance of house prices in Minnesota was lower than California this would mean there were much fewer really cheap and really expensive house in Minnesota.
@@ -212,8 +212,8 @@ The intuition behind why a positive skew is left shifted follows from the formul
 A skewness score between -0.5 and 0.5 means the data has little skew. A score between -0.5 and -1 or 0.5 and 1 means the data has moderate skew. A skewness greater than 1 or less than -1 means the data is heavily skewed.
 
 ```haskell
-dataframe> D.skewness "median_house_value" df
-Just 0.9776922140978703
+dataframe> D.skewness (F.col @Double "median_house_value") df
+0.9776922140978703
 ```
 So the median house value is moderately skewed to the left. That is, there are more houses that are cheaper than the mean values and a tail of expensive outliers. Having lived in California, I can confirm that this data reflects reality.
 

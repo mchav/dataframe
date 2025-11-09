@@ -61,7 +61,9 @@ skewnessOfSimpleDataSet =
         ( assertBool
             "Skewness of a simple data set"
             ( abs
-                (D.skewness' (VU.fromList [25 :: Int, 28, 26, 30, 40, 50, 40]) - 0.566_731_633_676)
+                ( D.skewness' (VU.fromList [25 :: Int, 28, 26, 30, 40, 50, 40])
+                    - 0.566_731_633_676
+                )
                 < 1e-12
             )
         )
@@ -145,7 +147,9 @@ interQuartileRangeOfOddLengthDataSet =
     TestCase
         ( assertEqual
             "Inter quartile range of an odd length data set"
-            (D.interQuartileRange' (VU.fromList [3 :: Int, 6, 7, 8, 8, 9, 10, 13, 15, 16, 20]))
+            ( D.interQuartileRange'
+                (VU.fromList [3 :: Int, 6, 7, 8, 8, 9, 10, 13, 15, 16, 20])
+            )
             6.5
         )
 

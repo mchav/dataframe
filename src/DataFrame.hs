@@ -115,6 +115,7 @@ __Exploration__
 
 __Row ops__
 
+  * @D.filter :: Expr a -> (a -> Bool) -> DataFrame -> DataFrame@
   * @D.filterWhere :: Expr Bool -> DataFrame -> DataFrame@
   * @D.sortBy :: SortOrder -> [Text] -> DataFrame -> DataFrame@
 
@@ -128,7 +129,7 @@ __Column ops__
 __Group & aggregate__
 
   * @D.groupBy :: [Text] -> DataFrame -> GroupedDataFrame@
-  * @D.aggregate :: [(Text, F.UExpr)] -> GroupedDataFrame -> DataFrame@
+  * @D.aggregate :: [NamedExpr] -> GroupedDataFrame -> DataFrame@
 
 __Joins__
 

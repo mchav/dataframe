@@ -1,9 +1,11 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
 import Data.Time
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
+import qualified DataFrame.Functions as F
 import System.Random.Stateful
 
 main :: IO ()
@@ -21,14 +23,14 @@ main = do
     let generationTime = diffUTCTime endGeneration startGeneration
     putStrLn $ "Data generation Time: " ++ show generationTime
     startCalculation <- getCurrentTime
-    print $ D.mean "0" df
-    print $ D.variance "1" df
+    print $ D.mean (F.col @Double "0") df
+    print $ D.variance (F.col @Double "1") df
     print $ D.correlation "1" "2" df
     endCalculation <- getCurrentTime
     let calculationTime = diffUTCTime endCalculation startCalculation
     putStrLn $ "Calculation Time: " ++ show calculationTime
     startFilter <- getCurrentTime
-    print $ D.filter "0" (> (0.971 :: Double)) df D.|> D.take 10
+    print $ D.filter (F.col @Double "0") (> 0.971) df D.|> D.take 10
     endFilter <- getCurrentTime
     let filterTime = diffUTCTime endFilter startFilter
     putStrLn $ "Filter Time: " ++ show filterTime

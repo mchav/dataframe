@@ -389,7 +389,7 @@ python> df.fillna(5)
 In Haskell, we use the `impute` function:
 
 ```haskell
-ghci> D.impute @Integer "G" 5 df'
+ghci> D.impute (F.col @Integer "G") 5 df'
 -----------------------------------------------------------------
    A    |     B      |   C   |  D  |     E     |   F    |    G   
 --------|------------|-------|-----|-----------|--------|--------
@@ -1155,7 +1155,7 @@ df |> D.groupBy ["group_col"]
 df |> D.filterJust "col"
 
 -- Fill Nothing with default
-df |> D.impute "col" defaultVal
+df |> D.impute (F.col @Type "col") defaultVal
 ```
 
 ### Type Annotations

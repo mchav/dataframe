@@ -26,9 +26,10 @@ main = do
     {- Feature ingestion and engineering -}
     df <- D.readCsv "../data/housing.csv"
 
+    let meanTotalBedrooms = df |> D.filterJust "total_bedrooms" |> D.mean
     let cleaned =
             df
-                |> D.impute "total_bedrooms" (fromMaybe 0 (D.mean "total_bedrooms" df))
+                |> D.impute (F.col @(Maybe Double "total_bedrooms")) meanTotalBedrooms
                 |> D.exclude ["median_house_value"]
                 |> D.derive "ocean_proximity" (F.lift oceanProximity (F.col "ocean_proximity"))
                 |> D.derive

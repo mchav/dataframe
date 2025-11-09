@@ -319,7 +319,7 @@ ghci> D.filterAllJust df
 To fill in the missing values we the impute function which replaces all instances of `Nothing` with a given value.
 
 ```haskell
-ghci> D.impute "0" (0 :: Integer) df
+ghci> D.impute (F.col @Integer "0") 0 df
 --------------------------------------
     0    |      1       |      2      
 ---------|--------------|-------------
@@ -334,7 +334,7 @@ ghci> D.impute "0" (0 :: Integer) df
 There is no general way to replace ALL nothing values with a default since the default depends on the type. In fact, trying to apply the wrong type to a function throws an error:
 
 ```haskell
-ghci> D.impute "0" (0 :: Double) df
+ghci> D.impute (F.col @Double "0") 0 df
 *** Exception: 
 
 [Error]: Type Mismatch

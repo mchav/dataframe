@@ -74,14 +74,14 @@ main = do
 
   -- Save a filtered slice
   let small = D.take 5 dfIris
-  D.writeCSV "out/iris_head.csv" small
+  D.writeCsv "out/iris_head.csv" small
 ```
 
 ### Parquet
 
 ```haskell
 main :: IO ()
-    df <- PQ.readParquet "data/iris.parquet"
+    df <- D.readParquet "data/iris.parquet"
     print df
 ```
 
@@ -101,7 +101,7 @@ let df3 = D.renameMany [ ("sepal.length","sepal_len")
                        , ("sepal.width" ,"sepal_wid") ] df2
 
 -- Drop columns
-let df4 = D.drop ["id","unused"] df
+let df4 = D.exclude ["id","unused"] df
 
 -- Reorder columns
 let df5 = D.select ["variety","sepal_len","sepal_wid"] df3
@@ -157,11 +157,11 @@ let df' = df
 let df2 = df
             |> D.deriveMany
                 [
-                , ratio `F.as` "ratio"
-                , area `F.as` "area"
-                , wide `F.as` "wide"
-                , z_pl `F.as` "z_petal_length"
-                , pw4 `F.as` "pw4"
+                , ratio `as` "ratio"
+                , area `as` "area"
+                , wide `as` "wide"
+                , z_pl `as` "z_petal_length"
+                , pw4 `as` "pw4"
                 ]
 ```
 
@@ -200,7 +200,7 @@ print stats  -- pretty table to terminal
 ## 7) Joins
 
 ```haskell
-let joined = J.inner [J.on "id" "id"] dfLeft dfRight
+let joined = D.innerJoin [F.col @Double "id"] dfLeft dfRight
 ```
 
 Only inner join is currently supported.
@@ -212,16 +212,17 @@ Only inner join is currently supported.
 ```haskell
 let hasNA   = not (D.selectBy [D.byProperty D.hasMissing] df == D.empty)
 let dfNoNA  = D.filterAllJust df  -- drop rows with any NA
-let dfImput = D.impute "sepal.length" (10 :: Double) df
+let dfImput = D.impute (F.col @Double "sepal.length") 10 df
 ```
 
 ---
 
-## 9) Sorting, Distinct, Sampling
+## 9) Sorting, Shuffling, Distinct, Sampling
 
 ```haskell
 D.sortBy D.Ascending ["variety"] df
 D.sample (mkStdGen 42) 0.1 df           -- 10% uniform random sample sample
+D.shuffle (mStdGen 42) df
 ```
 
 ---
@@ -240,7 +241,7 @@ let original = train <> test |> D.sortBy D.Ascending ["index"]
 ### Granite (Terminal Plots)
 
 ```haskell
-D.plotHistogram 40 "petal.length" df
+D.plotHistogram "petal.length" df
 D.plotScatter "sepal.length" "sepal.width" df
-D.plotStackedBars "species" "count" stats
+D.plotStackedBars "variety" ["sepal.width"] stats
 ```
