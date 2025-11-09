@@ -107,8 +107,8 @@ readCsvUnstable' opts delimiterIndices filePath = do
                         else 0
              in parseFromExamples
                     n
-                    (dateFormat opts)
                     (safeRead opts)
+                    (dateFormat opts)
                     col
         generateColumn col =
             parseTypes $

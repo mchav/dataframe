@@ -43,7 +43,7 @@ You can contribute in many ways:
    * Prefer total functions and avoid partial ones unless necessary (with clear documentation).
    * Use strict folds when applicable to avoid space leaks.
    * Maintain performance discipline: avoid unnecessary allocations or intermediate structures.
-   * Run HLint before submitting: `./scripts/lint.sh` (or `./scripts/lint.sh --fix` to auto-fix some issues).
+   * Please run `./scripts/format.sh` and `./scripts/lint.sh` (or `./scripts/lint.sh --fix`) before submitting your code! 
    * Code is formatted with Fourmolu. Both HLint and Fourmolu run in CI and must pass.
 4. **Testing**
    We use HUnit and QuickCheck for unit and property-based tests. Add tests for new features under `test/`. If you're fixing a bug, add a test that fails without your fix.
