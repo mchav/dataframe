@@ -336,6 +336,7 @@ import DataFrame.Operations.Subset as Subset (
     exclude,
     filter,
     filterAllJust,
+    filterAllNothing,
     filterBy,
     filterJust,
     filterNothing,

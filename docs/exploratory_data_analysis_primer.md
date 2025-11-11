@@ -251,3 +251,43 @@ As a recap we'll go over what this tells us about the data:
 * latitude: the south has slightly more people than the north (moderate skew)
 * longitude: most houses are in the west coast (moderate right skew)
 
+## Univariate graphical EDA
+
+Pictures oftentimes give a more informative account of what our data looks like. We can densely embed a lot of information in a picture: colour, shape, size, hue etc. All things the human mind has spent centuries getting better at. The informativeness of graphical tools comes at the cost of precision. Thus, non-graphical and graphical methods complement each other to create a holistic view of data. 
+
+In this section, we'll next look at some techniques for visualizing univariate data.
+
+### Histograms
+Histograms are bar plots where each bar represents the frequency (count) or propotion (count / total) of cases for a
+range of value. Going back to our california housing dataset, we can plot a histogram of house prices:
+
+```haskell
+ghci> D.plotHistogram "median_house_value" df
+1501.0│                ▁▁██
+      │              ▂▂████
+      │        ██  ▂▂████████
+      │        ██▅▅██████████
+      │        ██████████████
+      │        ██████████████  ▄▄                                ▁▁
+      │      ▄▄██████████████  ██                                ██
+      │      ████████████████▂▂██▆▆                              ██
+      │      ██████████████████████                              ██
+      │      ██████████████████████                              ██
+ 750.5│    ██████████████████████████▆▆                          ██
+      │    ████████████████████████████▂▂                        ██
+      │    ██████████████████████████████                        ██
+      │    ██████████████████████████████                        ██
+      │    ██████████████████████████████▅▅  ▅▅██                ██
+      │    ████████████████████████████████▇▇████▁▁              ██
+      │    ████████████████████████████████████████▁▁            ██
+      │    ██████████████████████████████████████████▆▆▂▂  ▁▁    ██
+      │  ▄▄██████████████████████████████████████████████▇▇██▂▂▁▁██
+   0.0│▂▂██████████████████████████████████████████████████████████
+      └────────────────────────────────────────────────────────────
+       1.5e4                         2.6e5                        5.0e5
+
+⣿ count
+```
+
+From the histogram above we can already tell things like whether or not there are outliers, the central tendency of the data, and the spread.
+

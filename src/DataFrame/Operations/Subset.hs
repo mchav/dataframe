@@ -197,6 +197,13 @@ filterNothing name df = case getColumn name df of
 filterAllJust :: DataFrame -> DataFrame
 filterAllJust df = foldr filterJust df (columnNames df)
 
+{- | O(n * k) keeps any row with a null value.
+
+> filterAllNothing df
+-}
+filterAllNothing :: DataFrame -> DataFrame
+filterAllNothing df = foldr filterNothing df (columnNames df)
+
 {- | O(k) cuts the dataframe in a cube of size (a, b) where
   a is the length and b is the width.
 

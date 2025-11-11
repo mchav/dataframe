@@ -266,9 +266,6 @@ This is a much clearer error message because the types are much simpler. The fun
 
 The compiler is just keeping you honest.
 
-## Plotting
-<TODO>
-
 ## Data preparation
 Data in the wild doesn't always come in a form that's easy to work with. A data analysis tool should make preparing and cleaning data easy. There are a number of common issues that data analysis tool must handle. We'll go through a few common ones and show how to deal with them in Haskell.
 
@@ -316,10 +313,12 @@ ghci> D.filterAllJust df
  1       | 6.5    | 3.0   
 ```
 
+On the other hand we might want to inspect all rows that have missing data rather than filtering them out. The functions above have two companions that do exactly that: `filterNothing` and `filterAllNothing`.
+
 To fill in the missing values we the impute function which replaces all instances of `Nothing` with a given value.
 
 ```haskell
-ghci> D.impute (F.col @Integer "0") 0 df
+ghci> D.impute (F.col @(Maybe Integer) "0") 0 df
 --------------------------------------
     0    |      1       |      2      
 ---------|--------------|-------------
@@ -334,20 +333,174 @@ ghci> D.impute (F.col @Integer "0") 0 df
 There is no general way to replace ALL nothing values with a default since the default depends on the type. In fact, trying to apply the wrong type to a function throws an error:
 
 ```haskell
-ghci> D.impute (F.col @Double "0") 0 df
+ghci> D.impute (F.col @(Maybe Double) "0") 0 df
 *** Exception: 
 
 [Error]: Type Mismatch
         While running your code I tried to get a column of type: "Maybe Double" but column was of type: "Maybe Integer"
-        This happened when calling function apply on the column 0
-
-
-
-        Try adding a type at the end of the function e.g change
-                apply arg1 arg2 to 
-                (apply arg1 arg2 :: <Type>)
-        or add {-# LANGUAGE TypeApplications #-} to the top of your file then change the call to 
-                apply @<Type> arg1 arg2
+        This happened when calling function impute
 ```
 
+We'll explain what `F.col` means shortly. For now we just need to know that it's what we do for some functions.
+
+### Removing duplicates
+Data often times contains duplicates that we want to clean out. A fair number of times duplicate entries are caused by data entry or process mistakes. We can use the `distinct` function to remove duplicates.
+
+```haskell
+ghci> df = D.fromNamedColumns [("k1", D.fromList ((take 6 (cycle ["one", "two"])) ++ ["two"])), ("k2", D.fromList [1, 1, 2, 3, 3, 4, 4])]
+ghci> df
+----------
+ k1  | k2
+-----|----
+Text | Int
+-----|----
+one  | 1
+two  | 1
+one  | 2
+two  | 3
+one  | 3
+two  | 4
+two  | 4
+
+ghci> D.distinct df
+----------
+ k1  | k2
+-----|----
+Text | Int
+-----|----
+one  | 3
+one  | 2
+two  | 4
+two  | 1
+one  | 1
+two  | 3
+```
+
+## Transforming data
+Most datasets aren't given to you in a usable state. You have to change the contents of the dataset in some way to suit your needs. Take this hypothetical data about various kinds of meat:
+
+```haskell
+ghci> :{
+ghci| foodOptions = ["bacon", "pulled pork", "bacon", "pastrami", "corned beef", "bacon", "pastrami", "honey ham", "nova lox"]
+ghci| measurements = [4, 3, 12, 6, 7.5, 8, 3, 5, 6]
+ghci| df = D.fromNamedColumns [ ("food", D.fromList foodOptions)
+ghci|                         , ("ounces", D.fromList measurements)]
+ghci| :}
+ghci> df
+--------------------
+   food     | ounces
+------------|-------
+   Text     | Double
+------------|-------
+bacon       | 4.0
+pulled pork | 3.0
+bacon       | 12.0
+pastrami    | 6.0
+corned beef | 7.5
+bacon       | 8.0
+pastrami    | 3.0
+honey ham   | 5.0
+nova lox    | 6.0
+```
+
+Suppose you wanted to add a column that showed the weight in kilograms. 1 ounce is 0.03 kilograms. So to get the weight in kilograms we multiply the ounces by `0.03`.
+
+Let's use that in our dataframe to capture this conversion.
+
+```haskell
+ghci> D.derive "kilograms" (F.col @Double "ounces" * 0.03) df
+------------------------------------------
+   food     | ounces |      kilograms
+------------|--------|--------------------
+   Text     | Double |       Double
+------------|--------|--------------------
+bacon       | 4.0    | 0.12
+pulled pork | 3.0    | 9.0e-2
+bacon       | 12.0   | 0.36
+pastrami    | 6.0    | 0.18
+corned beef | 7.5    | 0.22499999999999998
+bacon       | 8.0    | 0.24
+pastrami    | 3.0    | 9.0e-2
+honey ham   | 5.0    | 0.15
+nova lox    | 6.0    | 0.18
+```
+
+Again we see this `F.col` thing. It's time to explain what it means.
+
+### Expressions
+Whenever we refer to a column in the context of a computation we have to refer to its reference. The reference is part of a smaller language within our language that's used to alter the dataframe. Our mini-language has expressions that we can use to compute things in dataframes. Remember, in order to do anything with columns we have to know what kind of column it is. For example, if we want to add two columns we want to ensure they contain the same kind of number. `F.col @Double` says there is a column that contains a double. `F.col` takes in a column name and gives us back an expression.
+
+So in the previous example we said: take the column "ounces" and multiply it by 0.03. The expression follows pretty clearly from our intention.
+
+You can imagine that writing `F.col` for everything becomes tedious after some time so we provide a useful tool that generates the column references of a dataframe.
+
+```haskell
+ghci> :exposeColumns df
+"food :: Expr Text"
+"ounces :: Expr Double"
+ghci> D.derive "kilograms" (ounces * 0.03) df
+------------------------------------------
+   food     | ounces |      kilograms
+------------|--------|--------------------
+   Text     | Double |       Double
+------------|--------|--------------------
+bacon       | 4.0    | 0.12
+pulled pork | 3.0    | 9.0e-2
+bacon       | 12.0   | 0.36
+pastrami    | 6.0    | 0.18
+corned beef | 7.5    | 0.22499999999999998
+bacon       | 8.0    | 0.24
+pastrami    | 3.0    | 9.0e-2
+honey ham   | 5.0    | 0.15
+nova lox    | 6.0    | 0.18
+```
+
+Now our expression is extremely readable. After we generated the column references in this way, the function showed us all the generated expressions and their types. So we know that "food" is an expression that gives you back a `Text` and ounces is an expression that gives you back a `Double`.
+
+### Transforming with a custom function
+In the previous transformation we did a simple multiplication (which `dataframe` already defines for expressions). What if we wanted to define our own function that worked on an expression? We need some way of saying: let me peek into what's inside the expression, change it a bit, and then put it back inside the expression. This process is called lifting in Haskell. You're figuratively lifting the expression container, doing something to the value then putting the expression container back.
+
+As an example, let's create a new column that says what animal each food is from.
+
+```haskell
+meatToAnimal :: Text -> Text
+meatToAnimal "bacon" = "pig"
+meatToAnimal "pulled pork" = "pig"
+meatToAnimal "pastrami" = "cow"
+meatToAnimal "corned beef" = "cow"
+meatToAnimal "honey ham" = "pig"
+meatToAnimal "nova lox" = "salmon"
+meatToAnimal _ = "unknown"
+```
+
+In Haskell we can define a function with many cases like this by giving the function name, the expected input and the expected output. So this reads: if the meat is bacon then the animal is a pig, otherwise, if the meat is pulled pork then the animal is a pig, otherwise...etc.
+
+And in the final case we say "anything else is unknown". Here "anything else" is denoted by the `_` symbol.
+
+We can now lift our expression and then apply the function.
+
+```haskell
+ghci> import Data.Text (Text)
+ghci> D.derive "animal" (F.lift meatToAnimal food) df
+-----------------------------
+   food     | ounces | animal
+------------|--------|-------
+   Text     | Double |  Text
+------------|--------|-------
+bacon       | 4.0    | pig
+pulled pork | 3.0    | pig
+bacon       | 12.0   | pig
+pastrami    | 6.0    | cow
+corned beef | 7.5    | cow
+bacon       | 8.0    | pig
+pastrami    | 3.0    | cow
+honey ham   | 5.0    | pig
+nova lox    | 6.0    | salmon
+```
+
+Hopefully most things you want to do are already supported so you never have to lift often. But even if you do have to lift, you're more now more than empowered to do so.
+
+Why didn't we lift multiplication before? `dataframe` already defines what multiplication means for expression and it is defined with a function similar to `lift` called `lift2`. `lift2` takes a custom operation and applies it to two expressions.
+
+## Plotting
 <TODO>
