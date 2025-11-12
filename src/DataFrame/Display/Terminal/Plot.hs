@@ -53,14 +53,14 @@ defaultPlotConfig ptype =
         }
 
 plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO ()
-plotHistogram colName = plotHistogramWith colName (defaultPlotConfig Histogram)
+plotHistogram colName = plotHistogramWith colName 30 (defaultPlotConfig Histogram)
 
 plotHistogramWith ::
-    (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO ()
-plotHistogramWith colName config df = do
+    (HasCallStack) => T.Text -> Int -> PlotConfig -> DataFrame -> IO ()
+plotHistogramWith colName numBins config df = do
     let values = extractNumericColumn colName df
         (minVal, maxVal) = if null values then (0, 1) else (minimum values, maximum values)
-    T.putStrLn $ histogram (bins 30 minVal maxVal) values (plotSettings config)
+    T.putStrLn $ histogram (bins numBins minVal maxVal) values (plotSettings config)
 
 plotScatter :: (HasCallStack) => T.Text -> T.Text -> DataFrame -> IO ()
 plotScatter xCol yCol = plotScatterWith xCol yCol (defaultPlotConfig Scatter)
