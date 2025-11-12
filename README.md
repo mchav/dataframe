@@ -36,6 +36,9 @@ A fast, safe, and intuitive DataFrame library.
 - Familiar, approachable API designed to feel easy coming from other languages.
 - Interactive REPL for data exploration and plotting.
 
+## Quick start
+Browse through some examples in [binder](https://mybinder.org/v2/gh/mchav/ihaskell-dataframe/HEAD) or in our [playground](https://ulwazi-exh9dbh2exbzgbc9.westus-01.azurewebsites.net/lab).
+
 ## Install
 
 ### Cabal
