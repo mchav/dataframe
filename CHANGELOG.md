@@ -2,6 +2,7 @@
 
 ## 0.3.3.7
 * Functions how rely on expressions (not strings).
+* full, left, and right join now implemented.
 
 ## 0.3.3.6
 * Fix bug where doubles were parsing as ints

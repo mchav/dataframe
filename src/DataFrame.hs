@@ -22,9 +22,8 @@ We provide a script that imports the core functionality and defines helpful
 macros for writing safe code.
 
 @
-\$ curl --output dataframe \"https:\/\/raw.githubusercontent.com\/mchav\/dataframe\/refs\/heads\/main\/scripts\/dataframe.sh\"
-\$ chmod +x dataframe
-\$ export PATH=$PATH:$PWD/dataframe
+\$ cabal update
+\$ cabal install dataframe
 \$ dataframe
 Configuring library for fake-package-0...
 Warning: No exposed modules
@@ -133,7 +132,7 @@ __Group & aggregate__
 
 __Joins__
 
-  * @D.innerJoin \/ D.leftJoin \/ D.rightJoin \/ D.fullJoin@
+  * @D.innerJoin \/ D.leftJoin \/ D.rightJoin \/ D.fullOuterJoin@
 
 == Expression DSL (F.*) at a glance
 Columns (typed):

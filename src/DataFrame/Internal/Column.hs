@@ -334,6 +334,20 @@ atIndicesStable indexes (UnboxedColumn column) = UnboxedColumn $ VG.unsafeBackpe
 atIndicesStable indexes (OptionalColumn column) = OptionalColumn $ VG.unsafeBackpermute column (VG.convert indexes)
 {-# INLINE atIndicesStable #-}
 
+atIndicesWithNulls :: VB.Vector (Maybe Int) -> Column -> Column
+atIndicesWithNulls indices column
+    | VB.all isJust indices =
+        atIndicesStable
+            (VU.fromList (catMaybes (VB.toList indices)))
+            column
+    | otherwise = case column of
+        BoxedColumn col ->
+            OptionalColumn $ VB.map (\ix -> fmap (col VB.!) ix) indices
+        UnboxedColumn col ->
+            OptionalColumn $ VB.map (\ix -> fmap (col VU.!) ix) indices
+        OptionalColumn col ->
+            OptionalColumn $ VB.map (\ix -> ix >>= (col VB.!)) indices
+
 -- | Internal helper to get indices in a boxed vector.
 getIndices :: VU.Vector Int -> VB.Vector a -> VB.Vector a
 getIndices indices xs = VB.generate (VU.length indices) (\i -> xs VB.! (indices VU.! i))

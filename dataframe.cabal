@@ -162,6 +162,7 @@ test-suite tests
                    Operations.Filter,
                    Operations.GroupBy,
                    Operations.InsertColumn,
+                   Operations.Join,
                    Operations.Merge,
                    Operations.ReadCsv,
                    Operations.Sort,
