@@ -73,8 +73,8 @@ parseDoubles =
         afterParse = [1.0 .. 50.0] ++ [3.14, 2.22, 8.55, 23.3, 12.22222235049450945049504950]
         beforeParse :: [T.Text]
         beforeParse =
-            (T.pack . show)
-                <$> ([1.0 .. 50.0] ++ [3.14, 2.22, 8.55, 23.3, 12.22222235049450945049504950])
+            T.pack . show
+                <$> [1.0 .. 50.0] ++ [3.14, 2.22, 8.55, 23.3, 12.22222235049450945049504950]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
         actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase

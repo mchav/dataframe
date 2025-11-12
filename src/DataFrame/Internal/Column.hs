@@ -342,9 +342,9 @@ atIndicesWithNulls indices column
             column
     | otherwise = case column of
         BoxedColumn col ->
-            OptionalColumn $ VB.map (\ix -> fmap (col VB.!) ix) indices
+            OptionalColumn $ VB.map (fmap (col VB.!)) indices
         UnboxedColumn col ->
-            OptionalColumn $ VB.map (\ix -> fmap (col VU.!) ix) indices
+            OptionalColumn $ VB.map (fmap (col VU.!)) indices
         OptionalColumn col ->
             OptionalColumn $ VB.map (\ix -> ix >>= (col VB.!)) indices
 
