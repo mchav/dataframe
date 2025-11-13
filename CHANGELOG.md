@@ -1,8 +1,16 @@
 # Revision history for dataframe
 
 ## 0.3.3.7
-* Functions how rely on expressions (not strings).
+* Many functions how rely on expressions (not strings).
 * full, left, and right join now implemented.
+* fastCsv now strips quotations from text.
+* Add "NA" as a nullish pattern.
+* Add bin parameter to terminal plotting.
+* Implement filterAllNothing for null handling.
+* Remove behaviour where we parse mixed types as `Either`
+* Add `whenPresent`, `whenBothPresent` and `recode` functions.
+* Web charts now show on first load.
+* Add deriveMay function for multiple column derivations.
 
 ## 0.3.3.6
 * Fix bug where doubles were parsing as ints
