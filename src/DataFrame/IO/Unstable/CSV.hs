@@ -117,7 +117,7 @@ readCsvUnstable' opts delimiterIndices filePath = do
                     numRow
                     ( map
                         ( \row ->
-                            extractField'
+                            (stripQuotes . extractField')
                                 (row * numCol + col)
                         )
                         [dataStartRow .. totalRows - 1]
