@@ -216,6 +216,11 @@ whenBothPresent ::
     (a -> b -> c) -> Expr (Maybe a) -> Expr (Maybe b) -> Expr (Maybe c)
 whenBothPresent f = lift2 (\l r -> f <$> l <*> r)
 
+recode ::
+    forall a b.
+    (Columnable a, Columnable b) => [(a, b)] -> Expr a -> Expr (Maybe b)
+recode mapping = UnaryOp (T.pack ("recode " ++ show mapping)) (`lookup` mapping)
+
 generateConditions ::
     TypedColumn Double -> [Expr Bool] -> [Expr Double] -> DataFrame -> [Expr Bool]
 generateConditions labels conds ps df =

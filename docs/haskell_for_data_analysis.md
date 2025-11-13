@@ -502,5 +502,12 @@ Hopefully most things you want to do are already supported so you never have to 
 
 Why didn't we lift multiplication before? `dataframe` already defines what multiplication means for expression and it is defined with a function similar to `lift` called `lift2`. `lift2` takes a custom operation and applies it to two expressions.
 
+There's actually an easier way to do this using a function called `recode` inspired by R's dplyr.
+
+```haskell
+ghci> mapping = [("bacon", "pig"), ("pulled pork", "pig"), ("pastrami", "cow"), ("corned beef", "cow"), ("honey ham", "pig"), ("nova lox", "salmon")]
+ghci> D.derive "animal" (F.recode mapping food)
+```
+
 ## Plotting
 <TODO>
