@@ -32,6 +32,8 @@ main = do
                 ""
         putStrLn output
 
+        join (fmap putStrLn (readProcess "cabal" ["update"] ""))
+
     let command = "cabal"
         args =
             [ "repl"
