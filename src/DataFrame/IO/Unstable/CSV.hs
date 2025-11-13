@@ -46,6 +46,7 @@ import DataFrame.IO.CSV (
     ReadOptions (..),
     defaultReadOptions,
     shouldInferFromSample,
+    stripQuotes,
     typeInferenceSampleSize,
  )
 import DataFrame.Internal.DataFrame (DataFrame (..))
@@ -94,7 +95,7 @@ readCsvUnstable' opts delimiterIndices filePath = do
                 )
             UseFirstRow ->
                 ( Vector.fromList $
-                    map extractField' [0 .. numCol - 1]
+                    map (stripQuotes . extractField') [0 .. numCol - 1]
                 , 1
                 )
             ProvideNames ns ->

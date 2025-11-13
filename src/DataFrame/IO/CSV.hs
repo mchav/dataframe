@@ -228,7 +228,7 @@ readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
     let firstRow = parseLine sep firstLine
         columnNames = case headerSpec opts of
             NoHeader -> map (T.pack . show) [0 .. length firstRow - 1]
-            UseFirstRow -> map (T.filter (/= '\"') . TE.decodeUtf8Lenient) firstRow
+            UseFirstRow -> map (stripQuotes . TE.decodeUtf8Lenient) firstRow
             ProvideNames ns -> ns
 
     unless (headerSpec opts == UseFirstRow) $ hSeek handle AbsoluteSeek 0
@@ -478,3 +478,12 @@ getRowAsText df i = V.ifoldr go [] (columns df)
                     ++ " has less items than "
                     ++ "the other columns at index "
                     ++ show i
+
+stripQuotes :: T.Text -> T.Text
+stripQuotes txt =
+    case T.uncons txt of
+        Just ('"', rest) ->
+            case T.unsnoc rest of
+                Just (middle, '"') -> middle
+                _ -> txt
+        _ -> txt
