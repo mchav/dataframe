@@ -303,3 +303,22 @@ columnAsUnboxedVector ::
     (Columnable a, VU.Unbox a) =>
     T.Text -> DataFrame -> Either DataFrameException (VU.Vector a)
 columnAsUnboxedVector name df = toUnboxedVector @a (unsafeGetColumn name df)
+
+{- | Get a specific column as a list.
+
+You must specify the type via type applications.
+
+==== __Examples__
+
+>>> columnAsList @Int "age" df
+[25, 30, 35, ...]
+
+>>> columnAsList @Text "name" df
+["Alice", "Bob", "Charlie", ...]
+
+==== __Throws__
+
+* 'error' - if the column type doesn't match the requested type
+-}
+columnAsList :: forall a. (Columnable a) => T.Text -> DataFrame -> [a]
+columnAsList name df = V.toList (columnAsVector name df)

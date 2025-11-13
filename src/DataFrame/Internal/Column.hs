@@ -70,6 +70,11 @@ hasMissing :: Column -> Bool
 hasMissing (OptionalColumn column) = True
 hasMissing _ = False
 
+-- | Checks if a column contains only missing values.
+allMissing :: Column -> Bool
+allMissing (OptionalColumn column) = VB.length (VB.filter isNothing column) == VB.length column
+allMissing _ = False
+
 -- | Checks if a column contains numeric values.
 isNumeric :: Column -> Bool
 isNumeric (UnboxedColumn (vec :: VU.Vector a)) = case sNumeric @a of

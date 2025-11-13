@@ -179,10 +179,9 @@ year, but there is a faster way. If we add the vector for baptisms for boys to
 that of girls, Haskell will compute all sums simultaneously.
 
 ```haskell
-ghci> import qualified Data.Vector as V
-ghci> bs = D.columnAsVector @Int "boys" df
-ghci> gs = D.columnAsVector @Int "girls" df
-ghci> V.zipWith (+) bs gs
+ghci> bs = D.columnAsList @Int "boys" df
+ghci> gs = D.columnAsList @Int "girls" df
+ghci> zipWith (+) bs gs
 ```
 
 What you will see are 82 numbers each one representing the sum we are after. Take a

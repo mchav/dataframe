@@ -273,6 +273,7 @@ import DataFrame.Internal.DataFrame as Dataframe (
     columnAsDoubleVector,
     columnAsFloatVector,
     columnAsIntVector,
+    columnAsList,
     columnAsVector,
     empty,
     null,
