@@ -18,6 +18,7 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
 import Data.Either
+import qualified Data.Foldable as Fold
 import Data.Function (on, (&))
 import Data.Maybe
 import Data.Type.Equality (TestEquality (..))
@@ -42,7 +43,10 @@ import Prelude hiding (null)
 
 ==== __Example__
 @
-ghci> D.dimensions df
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> df = D.fromNamedColumns [("a", D.fromList [1..100]), ("b", D.fromList [1..100]), ("c", D.fromList [1..100])]
+>>> D.dimensions df
 
 (100, 3)
 @
@@ -55,9 +59,12 @@ dimensions = dataframeDimensions
 
 ==== __Example__
 @
-ghci> D.columnNames df
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> df = D.fromNamedColumns [("a", D.fromList [1..100]), ("b", D.fromList [1..100]), ("c", D.fromList [1..100])]
+>>> D.columnNames df
 
-["col_a", "col_b", "col_c"]
+["a", "b", "c"]
 @
 -}
 columnNames :: DataFrame -> [T.Text]
@@ -71,9 +78,10 @@ change to `Maybe <Type>` and filled with `Nothing`.
 
 ==== __Example__
 @
-ghci> import qualified Data.Vector as V
-
-ghci> D.insertVector "numbers" (V.fromList [1..10]) D.empty
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> import qualified Data.Vector as V
+>>> D.insertVector "numbers" (V.fromList [(1 :: Int)..10]) D.empty
 
 --------
  numbers
@@ -106,10 +114,78 @@ insertVector ::
 insertVector name xs = insertColumn name (fromVector xs)
 {-# INLINE insertVector #-}
 
-{- | /O(k)/ Add a column to the dataframe providing a default.
-This constructs a new vector and also may convert it
-to an unboxed vector if necessary. Since columns are usually
-large the runtime is dominated by the length of the list, k.
+{- | Adds a foldable collection to the dataframe. If the collection has less elements than the
+dataframe and the dataframe is not empty
+the collection is converted to type `Maybe a` filled with `Nothing` to match the size of the dataframe. Similarly,
+if the collection has more elements than what's currently in the dataframe, the other columns in the dataframe are
+change to `Maybe <Type>` and filled with `Nothing`.
+
+Be careful not to insert infinite collections with this function as that will crash the program.
+
+==== __Example__
+@
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> D.insert "numbers" [(1 :: Int)..10] D.empty
+
+--------
+ numbers
+--------
+   Int
+--------
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+ 10
+
+@
+-}
+insert ::
+    forall a t.
+    (Columnable a, Foldable t) =>
+    -- | Column Name
+    T.Text ->
+    -- | Sequence to add to dataframe
+    t a ->
+    -- | DataFrame to add column to
+    DataFrame ->
+    DataFrame
+insert name xs = insertColumn name (fromList (Fold.foldr' (:) [] xs)) -- TODO: Do reflection on container type so we can sometimes avoid the list construction.
+{-# INLINE insert #-}
+
+{- | Adds a vector to the dataframe and pads it with a default value if it has less elements than the number of rows.
+
+==== __Example__
+@
+>>> :set -XOverloadedStrings
+>>> import qualified Data.Vector as V
+>>> import qualified DataFrame as D
+>>> df = D.fromNamedColumns [("x", D.fromList [(1 :: Int)..10])]
+>>> D.insertVectorWithDefault 0 "numbers" (V.fromList [(1 :: Int),2,3]) df
+
+-------------
+ x  | numbers
+----|--------
+Int |   Int
+----|--------
+1   | 1
+2   | 2
+3   | 3
+4   | 0
+5   | 0
+6   | 0
+7   | 0
+8   | 0
+9   | 0
+10  | 0
+
+@
 -}
 insertVectorWithDefault ::
     forall a.
@@ -127,6 +203,51 @@ insertVectorWithDefault defaultValue name xs d =
     let (rows, _) = dataframeDimensions d
         values = xs V.++ V.replicate (rows - V.length xs) defaultValue
      in insertColumn name (fromVector values) d
+
+{- | Adds a list to the dataframe and pads it with a default value if it has less elements than the number of rows.
+
+==== __Example__
+@
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> df = D.fromNamedColumns [("x", D.fromList [(1 :: Int)..10])]
+>>> D.insertWithDefault 0 "numbers" [(1 :: Int),2,3] df
+
+-------------
+ x  | numbers
+----|--------
+Int |   Int
+----|--------
+1   | 1
+2   | 2
+3   | 3
+4   | 0
+5   | 0
+6   | 0
+7   | 0
+8   | 0
+9   | 0
+10  | 0
+
+@
+-}
+insertWithDefault ::
+    forall a t.
+    (Columnable a, Foldable t) =>
+    -- | Default Value
+    a ->
+    -- | Column name
+    T.Text ->
+    -- | Data to add to column
+    t a ->
+    -- | DataFrame to add the column to
+    DataFrame ->
+    DataFrame
+insertWithDefault defaultValue name xs d =
+    let (rows, _) = dataframeDimensions d
+        xs' = Fold.foldr' (:) [] xs
+        values = xs' ++ replicate (rows - length xs') defaultValue
+     in insertColumn name (fromList values) d
 
 {- | /O(n)/ Adds an unboxed vector to the dataframe.
 
@@ -149,7 +270,9 @@ insertUnboxedVector name xs = insertColumn name (UnboxedColumn xs)
 
 ==== __Example__
 @
-ghci> D.insertColumn "numbers" (D.fromList [1..10]) D.empty
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> D.insertColumn "numbers" (D.fromList [(1 :: Int)..10]) D.empty
 
 --------
  numbers
@@ -198,11 +321,10 @@ insertColumn name column d =
 
 ==== __Example__
 @
-ghci> import qualified Data.Vector as V
-
-ghci> df = insertVector "numbers" (V.fromList [1..10]) D.empty
-
-ghci> D.cloneColumn "numbers" "others" df
+>>> :set -XOverloadedStrings
+>>> import qualified Data.Vector as V
+>>> df = insertVector "numbers" (V.fromList [1..10]) D.empty
+>>> D.cloneColumn "numbers" "others" df
 
 -----------------
  numbers | others
@@ -235,11 +357,11 @@ cloneColumn original new df = fromMaybe
 
 ==== __Example__
 @
-ghci> import qualified Data.Vector as V
-
-ghci> df = insertVector "numbers" (V.fromList [1..10]) D.empty
-
-ghci> D.rename "numbers" "others" df
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> import qualified Data.Vector as V
+>>> df = insertVector "numbers" (V.fromList [1..10]) D.empty
+>>> D.rename "numbers" "others" df
 
 -------
  others
@@ -266,11 +388,11 @@ rename orig new df = either throw id (renameSafe orig new df)
 
 ==== __Example__
 @
-ghci> import qualified Data.Vector as V
-
-ghci> df = D.insertVector "others" (V.fromList [11..20]) (D.insertVector "numbers" (V.fromList [1..10]) D.empty)
-
-ghci> df
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> import qualified Data.Vector as V
+>>> df = D.insertVector "others" (V.fromList [11..20]) (D.insertVector "numbers" (V.fromList [1..10]) D.empty)
+>>> df
 
 -----------------
  numbers | others
@@ -288,7 +410,7 @@ ghci> df
  9       | 19
  10      | 20
 
-ghci> D.renameMany [("numbers", "first_10"), ("others", "next_10")] df
+>>> D.renameMany [("numbers", "first_10"), ("others", "next_10")] df
 
 -------------------
  first_10 | next_10
@@ -332,11 +454,9 @@ data ColumnInfo = ColumnInfo
 
 ==== __Example__
 @
-ghci> import qualified Data.Vector as V
-
-ghci> df = D.insertVector "others" (V.fromList [11..20]) (D.insertVector "numbers" (V.fromList [1..10]) D.empty)
-
-ghci> D.describeColumns df
+>>> import qualified Data.Vector as V
+>>> df = D.insertVector "others" (V.fromList [11..20]) (D.insertVector "numbers" (V.fromList [1..10]) D.empty)
+>>> D.describeColumns df
 
 --------------------------------------------------------
  Column Name | # Non-null Values | # Null Values | Type
@@ -428,10 +548,8 @@ partiallyParsed _ = 0
 
 ==== __Example__
 @
-ghci> df = D.fromNamedColumns [("numbers", D.fromList [1..10]), ("others", D.fromList [11..20])]
-
-ghci> df
-
+>>> df = D.fromNamedColumns [("numbers", D.fromList [1..10]), ("others", D.fromList [11..20])]
+>>> df
 -----------------
  numbers | others
 ---------|-------
@@ -459,10 +577,8 @@ or drop the ones you don't want.
 
 ==== __Example__
 @
-ghci> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
-
-ghci> df
-
+>>> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
+>>> df
 -----------------
   0  |  1
 -----|----
@@ -488,9 +604,9 @@ fromUnnamedColumns = fromNamedColumns . zip (map (T.pack . show) [0 ..])
 
 ==== __Example__
 @
-ghci> df = D.fromRows ["A", "B"] [[D.toAny 1, D.toAny 11], [D.toAny 2, D.toAny 12], [D.toAny 3, D.toAny 13]]
+>>> df = D.fromRows ["A", "B"] [[D.toAny 1, D.toAny 11], [D.toAny 2, D.toAny 12], [D.toAny 3, D.toAny 13]]
 
-ghci> df
+>>> df
 
 ----------
   A  |  B
@@ -514,9 +630,9 @@ fromRows names rows =
 
 ==== __Example__
 @
-ghci> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
+>>> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
 
-ghci> D.valueCounts @Int "0" df
+>>> D.valueCounts @Int "0" df
 
 [(1,1),(2,1),(3,1),(4,1),(5,1),(6,1),(7,1),(8,1),(9,1),(10,1)]
 
@@ -583,7 +699,7 @@ This makes it easier to chain operations.
 
 ==== __Example__
 @
-ghci> D.fold (const id) [1..5] df
+>>> D.fold (const id) [1..5] df
 
 ----------
   0  |  1

@@ -230,7 +230,7 @@ D.shuffle (mStdGen 42) df
 ## 10) Split / Combine
 
 ```haskell
-let (train, test) = D.randomSplit (mkStdGen 42) 0.8 (df |> D.insertColumn "index" (D.fromList [1..(fst (D.dimensions df))]))
+let (train, test) = D.randomSplit (mkStdGen 42) 0.8 (df |> D.insert "index" [1..(fst (D.dimensions df))])
 let original = train <> test |> D.sortBy D.Ascending ["index"]
 ```
 

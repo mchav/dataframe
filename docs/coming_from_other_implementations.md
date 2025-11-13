@@ -123,7 +123,7 @@ ghci> initDf = D.fromNamedColumns [("date", dates)]
 ghci> ns <- replicateM 4 (replicateM 6 (randomRIO (-2.0, 2.0)))
 
 -- Add each column to the DataFrame
-ghci> df = foldl' (\d (name, col) -> D.insertColumn name (V.fromList col) d) 
+ghci> df = foldl' (\d (name, col) -> D.insert name col d) 
                   initDf 
                   (zip ["A","B","C","D"] ns)
 ghci> df
@@ -365,7 +365,7 @@ In pandas, missing values are typically represented as `NaN` or `None`. In Haske
 Let's add a column with missing values:
 
 ```haskell
-ghci> df' = D.insertColumn "G" (D.fromList [Just 1, Just 2, Nothing, Just 4]) df
+ghci> df' = D.insert "G" [Just 1, Just 2, Nothing, Just 4] df
 ghci> df'
 -----------------------------------------------------------------------
    A    |     B      |   C   |  D  |     E     |   F    |       G      
