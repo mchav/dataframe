@@ -55,6 +55,34 @@ dimensions :: DataFrame -> (Int, Int)
 dimensions = dataframeDimensions
 {-# INLINE dimensions #-}
 
+{- | O(1) Get number of rows in a dataframe.
+
+==== __Example__
+@
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> df = D.fromNamedColumns [("a", D.fromList [1..100]), ("b", D.fromList [1..100]), ("c", D.fromList [1..100])]
+>>> D.nRows df
+100
+@
+-}
+nRows :: DataFrame -> Int
+nRows = fst . dataframeDimensions
+
+{- | O(1) Get number of columns in a dataframe.
+
+==== __Example__
+@
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> df = D.fromNamedColumns [("a", D.fromList [1..100]), ("b", D.fromList [1..100]), ("c", D.fromList [1..100])]
+>>> D.nColumns df
+3
+@
+-}
+nColumns :: DataFrame -> Int
+nColumns = fst . dataframeDimensions
+
 {- | O(k) Get column names of the DataFrame in order of insertion.
 
 ==== __Example__

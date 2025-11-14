@@ -57,7 +57,7 @@ import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 
 import DataFrame ((|>))
-import DataFrame.Functions ((.==), (.=), (.>), (.<), (.>=), (.<=), (.&&), (.||))
+import DataFrame.Functions ((.==), (.=), (.>), (.<), (.>=), (.<=), (.&&), (.||), as)
 ```
 
 ---
@@ -91,7 +91,9 @@ main :: IO ()
 
 ```haskell
 D.dimensions df               -- (nRows, nCols)
-D.describeColumns df
+D.nRows
+D.nColumns
+D.describeColumns df          -- Shows column types and null counts
 D.take 10 df
 D.takeLast 5 df
 
@@ -127,9 +129,22 @@ let dfC = D.filterWhere (longPetal .&& narrowPetal) df
 
 ---
 
-## 5) Creating / Mutating Columns (Expr DSL)
+## 5) Creating / Mutating Column
 
 ```haskell
+-- Column from a list (or any foldable structure)
+let df = D.insert "age" [10,30,40,50] D.empty
+-- From a vector
+import qualified Data.Vector as V
+let d2 = D.insert "age" (V.fromList [10,30,40,50]) D.empty
+-- Unboxed vectors aren't foldable so they get their own function.
+import qualified Data.Vector.Unboxed as VU
+let df3 = D.insertUnboxedVector "age" (VU.fromList [10,30,40,50])
+-- Insert a column with less items than rows in the dataframe and have the
+-- tail appear as a default value.
+-- In the example below, Nyasha gets a grade of 0.
+let df4 = D.insertWithDefault 0 "grades" [90,10] (D.fromNamedColumns [("Student", D.fromList ["Sizwe", "Tendai", "Nyasha"])])
+
 -- Build expressions
 let sl = F.col @Double "sepal.length"
 let sw = F.col @Double "sepal.width"
