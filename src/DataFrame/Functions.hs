@@ -42,6 +42,7 @@ import qualified Data.Map as M
 import Data.Maybe (listToMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
+import Data.Time
 import Data.Type.Equality
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
@@ -51,6 +52,7 @@ import qualified DataFrame.Operations.Transformations as D
 import Debug.Trace (trace, traceShow)
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
+import Text.Regex.TDFA
 import Type.Reflection (typeRep)
 import Prelude hiding (maximum, minimum, sum)
 
@@ -220,6 +222,42 @@ recode ::
     forall a b.
     (Columnable a, Columnable b) => [(a, b)] -> Expr a -> Expr (Maybe b)
 recode mapping = UnaryOp (T.pack ("recode " ++ show mapping)) (`lookup` mapping)
+
+firstOrNothing :: (Columnable a) => Expr [a] -> Expr (Maybe a)
+firstOrNothing = lift listToMaybe
+
+lastOrNothing :: (Columnable a) => Expr [a] -> Expr (Maybe a)
+lastOrNothing = lift (listToMaybe . reverse)
+
+splitOn :: T.Text -> Expr T.Text -> Expr [T.Text]
+splitOn delim = lift (T.splitOn delim)
+
+match :: T.Text -> Expr T.Text -> Expr (Maybe T.Text)
+match regex = lift ((\r -> if T.null r then Nothing else Just r) . (=~ regex))
+
+matchAll :: T.Text -> Expr T.Text -> Expr [T.Text]
+matchAll regex = lift (getAllTextMatches . (=~ regex))
+
+parseDate :: T.Text -> Expr T.Text -> Expr (Maybe Day)
+parseDate format = lift (parseTimeM True defaultTimeLocale (T.unpack format) . T.unpack)
+
+daysBetween :: Expr Day -> Expr Day -> Expr Int
+daysBetween d1 d2 = lift fromIntegral (lift2 diffDays d1 d2)
+
+formatDays :: T.Text -> Expr Int -> Expr T.Text
+formatDays format =
+    lift
+        ( T.pack
+            . formatTime defaultTimeLocale (T.unpack format)
+            . CalendarDiffDays 0
+            . fromIntegral
+        )
+
+bind ::
+    forall a m.
+    (Columnable a, Columnable (m a), Monad m) =>
+    (a -> m a) -> Expr (m a) -> Expr (m a)
+bind f = lift (>>= f)
 
 generateConditions ::
     TypedColumn Double -> [Expr Bool] -> [Expr Double] -> DataFrame -> [Expr Bool]
