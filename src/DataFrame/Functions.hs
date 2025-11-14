@@ -244,19 +244,10 @@ parseDate format = lift (parseTimeM True defaultTimeLocale (T.unpack format) . T
 daysBetween :: Expr Day -> Expr Day -> Expr Int
 daysBetween d1 d2 = lift fromIntegral (lift2 diffDays d1 d2)
 
-formatDays :: T.Text -> Expr Int -> Expr T.Text
-formatDays format =
-    lift
-        ( T.pack
-            . formatTime defaultTimeLocale (T.unpack format)
-            . CalendarDiffDays 0
-            . fromIntegral
-        )
-
 bind ::
     forall a m.
-    (Columnable a, Columnable (m a), Monad m) =>
-    (a -> m a) -> Expr (m a) -> Expr (m a)
+    (Columnable a, Columnable (m a), Monad m, Columnable b, Columnable (m b)) =>
+    (a -> m b) -> Expr (m a) -> Expr (m b)
 bind f = lift (>>= f)
 
 generateConditions ::
