@@ -245,7 +245,7 @@ daysBetween :: Expr Day -> Expr Day -> Expr Int
 daysBetween d1 d2 = lift fromIntegral (lift2 diffDays d1 d2)
 
 bind ::
-    forall a m.
+    forall a b m.
     (Columnable a, Columnable (m a), Monad m, Columnable b, Columnable (m b)) =>
     (a -> m b) -> Expr (m a) -> Expr (m b)
 bind f = lift (>>= f)
