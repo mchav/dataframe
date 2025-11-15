@@ -259,17 +259,18 @@ summarize df =
             quartile3 = flip (VG.!) 3 <$> quantiles
             max' = flip (VG.!) 4 <$> quantiles
             iqr = (-) <$> quartile3 <*> quartile1
+            doubleColumn col = _getColumnAsDouble col (filterJust col df)
          in
             [ count
-            , mean' <$> _getColumnAsDouble name df
+            , mean' <$> doubleColumn name
             , min'
             , quartile1
             , median'
             , quartile3
             , max'
-            , sqrt . variance' <$> _getColumnAsDouble name df
+            , sqrt . variance' <$> doubleColumn name
             , iqr
-            , skewness' <$> _getColumnAsDouble name df
+            , skewness' <$> doubleColumn name
             ]
 
 -- | Round a @Double@ to Specified Precision

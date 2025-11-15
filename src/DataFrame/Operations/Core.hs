@@ -81,7 +81,7 @@ nRows = fst . dataframeDimensions
 @
 -}
 nColumns :: DataFrame -> Int
-nColumns = fst . dataframeDimensions
+nColumns = snd . dataframeDimensions
 
 {- | O(k) Get column names of the DataFrame in order of insertion.
 

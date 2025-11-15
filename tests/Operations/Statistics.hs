@@ -180,6 +180,23 @@ wrongQuantileIndex =
             (print $ D.quantiles' (VU.fromList [5]) 4 (VU.fromList [1 :: Int, 2, 3, 4, 5]))
         )
 
+summarizeOptional :: Test
+summarizeOptional =
+    TestCase
+        ( assertEqual
+            "Summarizes `Num a => Maybe a` column"
+            3 -- The three columns should be Statistics, A, and B
+            ( D.nColumns
+                ( D.summarize
+                    ( D.fromNamedColumns
+                        [ ("A", D.fromList [1 :: Int, 2])
+                        , ("B", D.fromList [Just (1 :: Int), Nothing])
+                        ]
+                    )
+                )
+            )
+        )
+
 tests :: [Test]
 tests =
     [ TestLabel "medianOfOddLengthDataSet" medianOfOddLengthDataSet
@@ -202,4 +219,5 @@ tests =
         interQuartileRangeOfEvenLengthDataSet
     , TestLabel "wrongQuantileNumber" wrongQuantileNumber
     , TestLabel "wrongQuantileIndex" wrongQuantileIndex
+    , TestLabel "summarizeOptional" summarizeOptional
     ]
