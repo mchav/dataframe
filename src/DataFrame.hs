@@ -314,6 +314,7 @@ import DataFrame.Operations.Permutation as Permutation (
 import DataFrame.Operations.Statistics as Statistics (
     correlation,
     frequencies,
+    imputeWith,
     interQuartileRange,
     mean,
     median,

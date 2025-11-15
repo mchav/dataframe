@@ -35,6 +35,7 @@ import DataFrame.Internal.Statistics
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import DataFrame.Operations.Subset (filterJust)
+import DataFrame.Operations.Transformations (impute)
 import Text.Printf (printf)
 import Type.Reflection (typeRep)
 
@@ -197,6 +198,60 @@ sum expr df = case interpret df expr of
     Right (TColumn xs) -> case toVector @a @V.Vector xs of
         Left e -> throw e
         Right xs -> VG.sum xs
+
+{- | /O(n)/ Impute missing values in a column using a derived scalar.
+
+Given
+
+* an expression @f :: 'Expr' b -> 'Expr' b@ that, when interpreted over a
+  non-nullable column, produces the same value in every row (for example a
+  mean, median, or other aggregate), and
+* a nullable column @'Expr' ('Maybe' b)@
+
+this function:
+
+1. Drops all @Nothing@ values from the target column.
+2. Interprets @f@ on the remaining non-null values.
+3. Checks that the resulting column contains a single repeated value.
+4. Uses that value to impute all @Nothing@s in the original column.
+
+==== __Throws__
+
+* 'DataFrameException' - if the column does not exist, is empty, 
+
+==== __Example__
+@
+>>> :set -XOverloadedStrings
+>>> import qualified DataFrame as D
+>>> let df =
+...       D.fromNamedColumns
+...         [ ("age", D.fromList [Just 10, Nothing, Just 20 :: Maybe Int]) ]
+>>>
+>>> -- Impute missing ages with the mean of the observed ages
+>>> D.imputeWith F.mean "age" df
+-- age
+-- ----
+-- 10
+-- 15
+-- 20
+@
+-}
+imputeWith ::
+    forall b.
+    (Columnable b) =>
+    (Expr b -> Expr b) ->
+    Expr (Maybe b) ->
+    DataFrame ->
+    DataFrame
+imputeWith f col@(Col columnName) df = case interpret @b (filterJust columnName df) (f (Col @b columnName)) of
+    Left e -> throw e
+    Right (TColumn value) -> case headColumn @b value of
+        Left e -> throw e
+        Right h ->
+            if all (== h) (toList @b value)
+                then impute col h df
+                else error "Impute expression returned more than one value"
+impute _ _ df = df
 
 applyStatistic ::
     (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
