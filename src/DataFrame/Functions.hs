@@ -39,7 +39,7 @@ import Data.Containers.ListUtils
 import Data.Function
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Time
@@ -222,6 +222,12 @@ recode ::
     forall a b.
     (Columnable a, Columnable b) => [(a, b)] -> Expr a -> Expr (Maybe b)
 recode mapping = UnaryOp (T.pack ("recode " ++ show mapping)) (`lookup` mapping)
+
+recodeWithDefault ::
+    forall a b.
+    (Columnable a, Columnable b) => b -> [(a, b)] -> Expr a -> Expr b
+recodeWithDefault d mapping =
+    UnaryOp (T.pack ("recode " ++ show mapping)) (fromMaybe d . (`lookup` mapping))
 
 firstOrNothing :: (Columnable a) => Expr [a] -> Expr (Maybe a)
 firstOrNothing = lift listToMaybe
