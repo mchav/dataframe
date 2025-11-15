@@ -65,10 +65,10 @@ showTable properMarkdown header types rows =
         lines =
             if properMarkdown
                 then
-                    border
-                        : fillCols colTitleFill consolidatedHeader
-                        : separator
-                        : map (fillCols colValueFill) rows
+                    T.concat ["  ", border, "  "]
+                        : T.concat ["| ", fillCols colTitleFill consolidatedHeader, " |"]
+                        : T.concat ["| ", separator, " |"]
+                        : map ((\t -> T.concat ["| ", t, " |"]) . fillCols colValueFill) rows
                 else
                     border
                         : fillCols colTitleFill consolidatedHeader
