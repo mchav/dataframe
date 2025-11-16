@@ -249,7 +249,7 @@ imputeWith f col@(Col columnName) df = case interpret @b (filterJust columnName 
         Left e -> throw e
         Right h ->
             if all (== h) (toList @b value)
-                then impute col h df
+                then DataFrame.Operations.Transformations.impute col h df
                 else error "Impute expression returned more than one value"
 impute _ _ df = df
 
