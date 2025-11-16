@@ -249,9 +249,9 @@ imputeWith f col@(Col columnName) df = case interpret @b (filterJust columnName 
         Left e -> throw e
         Right h ->
             if all (== h) (toList @b value)
-                then DataFrame.Operations.Transformations.impute col h df
+                then impute col h df
                 else error "Impute expression returned more than one value"
-impute _ _ df = df
+imputeWith _ _ df = df
 
 applyStatistic ::
     (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
