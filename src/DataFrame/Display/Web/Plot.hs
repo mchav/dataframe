@@ -2,6 +2,7 @@
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -41,6 +42,9 @@ import System.Process (
     waitForProcess,
  )
 import Text.Printf
+import Chart
+import Optics.Core ((&), set, (%))
+
 
 newtype HtmlPlot = HtmlPlot T.Text deriving (Show)
 
@@ -104,67 +108,63 @@ wrapInHTML chartId content width height =
         , "\n</script>\n"
         ]
 
+wrapSvgInHTML :: T.Text -> T.Text -> Int -> Int -> T.Text
+wrapSvgInHTML title svgContent width height =
+    T.concat
+        [ "<!DOCTYPE html>\n"
+        , "<html>\n"
+        , "<head>\n"
+        , "  <meta charset=\"utf-8\">\n"
+        , "  <title>", title, "</title>\n"
+        , "  <style>\n"
+        , "    body { font-family: Arial, sans-serif; margin: 20px; }\n"
+        , "    .chart-container { max-width: ", T.pack (show width), "px; margin: 0 auto; }\n"
+        , "  </style>\n"
+        , "</head>\n"
+        , "<body>\n"
+        , "  <div class=\"chart-container\">\n"
+        , svgContent, "\n"
+        , "  </div>\n"
+        , "</body>\n"
+        , "</html>\n"
+        ]
+
 plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
-plotHistogram colName = plotHistogramWith colName 30 (defaultPlotConfig Histogram)
+plotHistogram colName = plotHistogramWith colName (defaultPlotConfig Histogram)
 
 plotHistogramWith ::
-    (HasCallStack) => T.Text -> Int -> PlotConfig -> DataFrame -> IO HtmlPlot
-plotHistogramWith colName numBins config df = do
-    chartId <- generateChartId
+    (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
+plotHistogramWith colName config df = do
     let values = extractNumericColumn colName df
         (minVal, maxVal) = if null values then (0, 1) else (minimum values, maximum values)
         numBins = 30
         binWidth = (maxVal - minVal) / fromIntegral numBins
         bins = [minVal + fromIntegral i * binWidth | i <- [0 .. numBins - 1]]
         counts = calculateHistogram values bins binWidth
-
-        labels =
-            T.intercalate "," ["\"" <> T.pack (printf "%.2f" b) <> "\"" | b <- bins]
-        dataPoints = T.intercalate "," [T.pack (show c) | c <- counts]
-
+        
         chartTitle =
             if T.null (plotTitle config)
                 then "Histogram of " <> colName
                 else plotTitle config
 
-        jsCode =
-            T.concat
-                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                , "var ctx = document.getElementById('"
-                , chartId
-                , "').getContext('2d');\n"
-                , "new Chart(ctx , {\n"
-                , "  type: \"bar\",\n"
-                , "  data: {\n"
-                , "    labels: ["
-                , labels
-                , "],\n"
-                , "    datasets: [{\n"
-                , "      label: \""
-                , colName
-                , "\",\n"
-                , "      data: ["
-                , dataPoints
-                , "],\n"
-                , "      backgroundColor: \"rgba(75, 192, 192, 0.6)\",\n"
-                , "      borderColor: \"rgba(75, 192, 192, 1)\",\n"
-                , "      borderWidth: 1\n"
-                , "    }]\n"
-                , "  },\n"
-                , "  options: {\n"
-                , "    title: { display: true, text: \""
-                , chartTitle
-                , "\" },\n"
-                , "    scales: {\n"
-                , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
-                , "    }\n"
-                , "  }\n"
-                , "});});"
-                ]
 
-    return $
-        HtmlPlot $
-            wrapInHTML chartId jsCode (plotWidth config) (plotHeight config)
+        binLabels = [T.pack (printf "%.2f" b) | b <- bins]
+        
+        barData = BarData
+            [map fromIntegral counts]
+            binLabels
+            [colName]
+ 
+        chartOpts = barChart defaultBarOptions barData
+            & set (#hudOptions % #titles) 
+                [Priority 11 (defaultTitleOptions chartTitle & set #style (defaultTextStyle & set #size 0.08))]
+            & set (#hudOptions % #frames) 
+                [Priority 101 (defaultFrameOptions & set #buffer 0.02)]
+        
+        -- Render to SVG
+        svgContent = renderChartOptions chartOpts
+        
+    return $ HtmlPlot $ wrapSvgInHTML chartTitle svgContent (plotWidth config) (plotHeight config)
 
 calculateHistogram :: [Double] -> [Double] -> Double -> [Int]
 calculateHistogram values bins binWidth =
