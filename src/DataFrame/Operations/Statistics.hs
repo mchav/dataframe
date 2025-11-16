@@ -251,7 +251,7 @@ imputeWith f col@(Col columnName) df = case interpret @b (filterJust columnName 
             if all (== h) (toList @b value)
                 then impute col h df
                 else error "Impute expression returned more than one value"
-impute _ _ df = df
+imputeWith _ _ df = df
 
 applyStatistic ::
     (VU.Vector Double -> Double) -> T.Text -> DataFrame -> Maybe Double
