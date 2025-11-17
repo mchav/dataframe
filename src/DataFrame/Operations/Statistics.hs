@@ -217,7 +217,7 @@ this function:
 
 ==== __Throws__
 
-* 'DataFrameException' - if the column does not exist, is empty, 
+* 'DataFrameException' - if the column does not exist, is empty,
 
 ==== __Example__
 @
