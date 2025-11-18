@@ -1,17 +1,24 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module DataFrame.Operations.Join where
 
+import Control.Applicative (asum)
 import qualified Data.Map.Strict as M
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
+import Data.Type.Equality (TestEquality (..))
 import qualified Data.Vector as VB
 import qualified Data.Vector.Unboxed as VU
 import DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame as D
 import DataFrame.Operations.Aggregation as D
 import DataFrame.Operations.Core as D
+import Type.Reflection
 
 -- | Equivalent to SQL join types.
 data JoinType
@@ -346,12 +353,22 @@ fullOuterJoin cs right left =
         D.fold
             ( \name df ->
                 if name `elem` cs
-                    then df
+                    then case (D.unsafeGetColumn name expandedRight, D.unsafeGetColumn name expandedLeft) of
+                        ( OptionalColumn (left :: VB.Vector (Maybe a))
+                            , OptionalColumn (right :: VB.Vector (Maybe b))
+                            ) -> case testEquality (typeRep @a) (typeRep @b) of
+                                Nothing -> error "Cannot join columns of different types"
+                                Just Refl ->
+                                    D.insert
+                                        name
+                                        (VB.map (fromMaybe undefined) (VB.zipWith (\l r -> asum [l, r]) left right))
+                                        df
+                        _ -> error "Join should have optional keys."
                     else
                         ( if name `elem` leftColumns
                             then insertIfPresent ("Right_" <> name) (D.getColumn name expandedRight) df
                             else insertIfPresent name (D.getColumn name expandedRight) df
                         )
-            )
+            ) -- ???
             rightColumns
             initDf

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Operations.Join where
 
@@ -63,18 +64,51 @@ testRightJoin =
             (D.sortBy D.Ascending ["key"] (rightJoin ["key"] df2 df1))
         )
 
+staffDf :: D.DataFrame
+staffDf =
+    D.fromRows
+        ["Name", "Role"]
+        [ [D.toAny @Text "Kelly", D.toAny @Text "Director of HR"]
+        , [D.toAny @Text "Sally", D.toAny @Text "Course liasion"]
+        , [D.toAny @Text "James", D.toAny @Text "Grader"]
+        ]
+
+studentDf :: D.DataFrame
+studentDf =
+    D.fromRows
+        ["Name", "School"]
+        [ [D.toAny @Text "James", D.toAny @Text "Business"]
+        , [D.toAny @Text "Mike", D.toAny @Text "Law"]
+        , [D.toAny @Text "Sally", D.toAny @Text "Engineering"]
+        ]
+
 testFullOuterJoin :: Test
 testFullOuterJoin =
     TestCase
         ( assertEqual
             "Test full outer join with single key"
             ( D.fromNamedColumns
-                [ ("key", D.fromList ["K0" :: Text, "K1", "K2", "K3", "K4", "K5"])
-                , ("A", D.fromList ["A0" :: Text, "A1", "A2", "A3", "A4", "A5"])
-                , ("B", D.fromList [Just "B0", Just "B1" :: Maybe Text, Just "B2"])
+                [
+                    ( "Name"
+                    , D.fromList ["James" :: Text, "Kelly", "Mike", "Sally"]
+                    )
+                ,
+                    ( "Role"
+                    , D.fromList
+                        [ Just "Grader" :: Maybe Text
+                        , Just "Director of HR"
+                        , Nothing
+                        , Just "Course liasion"
+                        ]
+                    )
+                ,
+                    ( "School"
+                    , D.fromList
+                        [Just "Business" :: Maybe Text, Nothing, Just "Law", Just "Engineering"]
+                    )
                 ]
             )
-            (D.sortBy D.Ascending ["key"] (fullOuterJoin ["key"] df2 df1))
+            (D.sortBy D.Ascending ["Name"] (fullOuterJoin ["Name"] studentDf staffDf))
         )
 
 tests :: [Test]
@@ -82,4 +116,5 @@ tests =
     [ TestLabel "innerJoin" testInnerJoin
     , TestLabel "leftJoin" testLeftJoin
     , TestLabel "rightJoin" testRightJoin
+    , TestLabel "fullOuterJoin" testFullOuterJoin
     ]
