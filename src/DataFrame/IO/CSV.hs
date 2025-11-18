@@ -296,7 +296,7 @@ processRow !rowIdx !vals !cols = zipWithM_ (processValue rowIdx) vals cols
     processValue :: Int -> BS.ByteString -> GrowingColumn -> IO ()
     processValue _ "" _ = pure ()
     processValue !idx !bs !col = do
-        let !val = (stripQuotes . TE.decodeUtf8Lenient) bs
+        let !val = (T.strip . stripQuotes . TE.decodeUtf8Lenient) bs
         case col of
             GrowingInt gv nulls ->
                 case readByteStringInt bs of
