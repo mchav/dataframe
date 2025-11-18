@@ -262,7 +262,10 @@ readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
                     (safeRead opts)
                     (dateFormat opts)
                     df
-            else df
+            else
+                if not (null (schemaTypes (typeSpec opts)))
+                    then parseWithTypes (schemaTypes (typeSpec opts)) df
+                    else df
 
 initializeColumns :: [BS.ByteString] -> ReadOptions -> IO [GrowingColumn]
 initializeColumns row opts = case typeSpec opts of
