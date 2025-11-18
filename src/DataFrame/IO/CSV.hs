@@ -233,7 +233,7 @@ readSeparated !sep !opts !path = withFile path ReadMode $ \handle -> do
         columnNames = case headerSpec opts of
             NoHeader -> map (T.pack . show) [0 .. length firstRow - 1]
             UseFirstRow -> map (stripQuotes . TE.decodeUtf8Lenient) firstRow
-            ProvideNames ns -> ns
+            ProvideNames ns -> ns ++ drop (length ns) (map (T.pack . show) [0 .. length firstRow - 1])
 
     unless (headerSpec opts == UseFirstRow) $ hSeek handle AbsoluteSeek 0
 
