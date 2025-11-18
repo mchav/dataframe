@@ -79,6 +79,10 @@ shouldInferFromSample :: TypeSpec -> Bool
 shouldInferFromSample (InferFromSample _) = True
 shouldInferFromSample _ = False
 
+schemaTypes :: TypeSpec -> [SchemaType]
+schemaTypes (SpecifyTypes xs) = xs
+schemaTypes _ = []
+
 typeInferenceSampleSize :: TypeSpec -> Int
 typeInferenceSampleSize (InferFromSample n) = n
 typeInferenceSampleSize _ = 0
@@ -290,6 +294,7 @@ processRow :: Int -> [BS.ByteString] -> [GrowingColumn] -> IO ()
 processRow !rowIdx !vals !cols = zipWithM_ (processValue rowIdx) vals cols
   where
     processValue :: Int -> BS.ByteString -> GrowingColumn -> IO ()
+    processValue _ "" _ = pure ()
     processValue !idx !bs !col = do
         let !val = (stripQuotes . TE.decodeUtf8Lenient) bs
         case col of
