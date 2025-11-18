@@ -16,7 +16,7 @@
 <p align="center">
   <a href="https://dataframe.readthedocs.io/en/latest/">User guide</a>
   |
-  <a href="https://discord.gg/XJE5wKT2kb">Discord</a>
+  <a href="https://discord.gg/8u8SCWfrNC">Discord</a>
 </p>
 
 # DataFrame
