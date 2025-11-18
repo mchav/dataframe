@@ -19,10 +19,22 @@ isNullish =
             ["Nothing", "NULL", "", " ", "nan", "null", "N/A", "NaN", "NAN", "NA"]
     )
 
+isTrueish :: T.Text -> Bool
+isTrueish t = t `elem` ["True", "true", "TRUE"]
+
+isFalseish :: T.Text -> Bool
+isFalseish t = t `elem` ["False", "false", "FALSE"]
+
 readValue :: (HasCallStack, Read a) => T.Text -> a
 readValue s = case readMaybe (T.unpack s) of
     Nothing -> error $ "Could not read value: " ++ T.unpack s
     Just value -> value
+
+readBool :: (HasCallStack) => T.Text -> Maybe Bool
+readBool s
+    | isTrueish s = Just True
+    | isFalseish s = Just False
+    | otherwise = Nothing
 
 readInteger :: (HasCallStack) => T.Text -> Maybe Integer
 readInteger s = case signed decimal (T.strip s) of

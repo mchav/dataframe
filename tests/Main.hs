@@ -52,6 +52,21 @@ dimensionsTest =
 
 -- PARSING TESTS
 ------- 1. SIMPLE CASES
+parseBools :: Test
+parseBools =
+    let afterParse :: [Bool]
+        afterParse = [True, True, True] ++ [False, False, False]
+        beforeParse :: [T.Text]
+        beforeParse = ["True", "true", "TRUE"] ++ ["False", "false", "FALSE"]
+        expected = DI.UnboxedColumn $ VU.fromList afterParse
+        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+     in TestCase
+            ( assertEqual
+                "Correctly parses Bools without missing values as UnboxedColumn of Bools"
+                expected
+                actual
+            )
+
 parseInts :: Test
 parseInts =
     let afterParse :: [Int]
@@ -217,6 +232,21 @@ parseTexts =
             )
 
 --- 2. COMBINATION CASES
+parseBoolsAndIntsAsTexts :: Test
+parseBoolsAndIntsAsTexts =
+    let afterParse :: [T.Text]
+        afterParse = ["True", "true", "TRUE"] ++ ["False", "false", "FALSE"] ++ ["1", "0", "1"]
+        beforeParse :: [T.Text]
+        beforeParse = ["True", "true", "TRUE"] ++ ["False", "false", "FALSE"] ++ ["1", "0", "1"]
+        expected = DI.BoxedColumn $ V.fromList afterParse
+        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+     in TestCase
+            ( assertEqual
+                "Correctly parses mixture of Bools and Ints as Text"
+                expected
+                actual
+            )
+
 parseIntsAndDoublesAsDoubles :: Test
 parseIntsAndDoublesAsDoubles =
     let afterParse :: [Double]
@@ -733,6 +763,21 @@ parseDatesAndTextsAsTexts =
 
 -- 3A. PARSING WITH SAFEREAD OFF
 
+parseBoolsWithoutSafeRead :: Test
+parseBoolsWithoutSafeRead =
+    let afterParse :: [Bool]
+        afterParse = replicate 10 True ++ replicate 10 False
+        beforeParse :: [T.Text]
+        beforeParse = replicate 10 "true" ++ replicate 10 "false"
+        expected = DI.UnboxedColumn $ VU.fromList afterParse
+        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+     in TestCase
+            ( assertEqual
+                "Correctly parses Bools without missing values as UnboxedColumn of Bools, when safeRead is off"
+                expected
+                actual
+            )
+
 parseIntsWithoutSafeRead :: Test
 parseIntsWithoutSafeRead =
     let afterParse :: [Int]
@@ -1105,6 +1150,21 @@ parseTextsWithoutSafeRead =
      in TestCase
             ( assertEqual
                 "Correctly parses Text without missing values as BoxedColumn of Text"
+                expected
+                actual
+            )
+
+parseBoolsAndEmptyStringsWithoutSafeRead :: Test
+parseBoolsAndEmptyStringsWithoutSafeRead =
+    let afterParse :: [Maybe Bool]
+        afterParse = replicate 10 Nothing ++ replicate 10 (Just True) ++ replicate 10 (Just False)
+        beforeParse :: [T.Text]
+        beforeParse = replicate 10 "" ++ replicate 10 "true" ++ replicate 10 "false"
+        expected = DI.OptionalColumn $ V.fromList afterParse
+        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+     in TestCase
+            ( assertEqual
+                "Correctly parses Bools and empty Strings as OptionalColumn of Bools, when safeRead is off"
                 expected
                 actual
             )
@@ -1525,6 +1585,21 @@ parseTextsAndEmptyStringsWithoutSafeRead =
      in TestCase
             ( assertEqual
                 "Correctly parses Texts and Empty Strings as OptionalColumn of Text, with safeRead off"
+                expected
+                actual
+            )
+
+parseBoolsAndNullishStringsWithoutSafeRead :: Test
+parseBoolsAndNullishStringsWithoutSafeRead =
+    let afterParse :: [T.Text]
+        afterParse = replicate 10 "N/A" ++ replicate 10 "True" ++ replicate 10 "False"
+        beforeParse :: [T.Text]
+        beforeParse = replicate 10 "N/A" ++ replicate 10 "True" ++ replicate 10 "False"
+        expected = DI.BoxedColumn $ V.fromList afterParse
+        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+     in TestCase
+            ( assertEqual
+                "Correctly parses Bools with nullish values as BoxedColumn of Texts, when safeRead is off"
                 expected
                 actual
             )
@@ -2038,6 +2113,21 @@ parseTextsAndEmptyAndNullishStringsWithoutSafeRead =
             )
 
 -- 3B. PARSING WITH SAFEREAD ON
+parseBoolsAndEmptyStringsWithSafeRead :: Test
+parseBoolsAndEmptyStringsWithSafeRead =
+    let afterParse :: [Maybe Bool]
+        afterParse = replicate 10 Nothing ++ replicate 10 (Just True)
+        beforeParse :: [T.Text]
+        beforeParse = replicate 10 "" ++ replicate 10 "true"
+        expected = DI.OptionalColumn $ V.fromList afterParse
+        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+     in TestCase
+            ( assertEqual
+                "Correctly parses Bools and empty strings as OptionalColumn of Bools, when safeRead is on"
+                expected
+                actual
+            )
+
 parseIntsAndEmptyStringsWithSafeRead :: Test
 parseIntsAndEmptyStringsWithSafeRead =
     let afterParse :: [Maybe Int]
@@ -3064,6 +3154,36 @@ parseTextsAndEmptyAndNullishStringsWithSafeRead =
             )
 
 -- 4. PARSING SHOULD NOT DEPEND ON THE NUMBER OF EXAMPLES.
+parseBoolsWithOneExample :: Test
+parseBoolsWithOneExample =
+    let afterParse :: [Bool]
+        afterParse = False : replicate 50 True
+        beforeParse :: [T.Text]
+        beforeParse = "false" : replicate 50 "true"
+        expected = DI.UnboxedColumn $ VU.fromList afterParse
+        actual = D.parseDefault 1 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+     in TestCase
+            ( assertEqual
+                "Correctly parses Bools without missing values as UnboxedColumn of Ints with only one example"
+                expected
+                actual
+            )
+
+parseBoolsWithManyExamples :: Test
+parseBoolsWithManyExamples =
+    let afterParse :: [Bool]
+        afterParse = False : replicate 50 True
+        beforeParse :: [T.Text]
+        beforeParse = "false" : replicate 50 "true"
+        expected = DI.UnboxedColumn $ VU.fromList afterParse
+        actual = D.parseDefault 49 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+     in TestCase
+            ( assertEqual
+                "Correctly parses Bools without missing values as UnboxedColumn of Ints with only one example"
+                expected
+                actual
+            )
+
 parseIntsWithOneExample :: Test
 parseIntsWithOneExample =
     let afterParse :: [Int]
@@ -4854,20 +4974,26 @@ parseRepeatedNullish =
 parseTests :: [Test]
 parseTests =
     [ -- 1. SIMPLE CASES
-      TestLabel "parseInts" parseInts
+      TestLabel "parseBools" parseBools
+    , TestLabel "parseInts" parseInts
     , TestLabel "parseDoubles" parseDoubles
     , TestLabel "parseDates" parseDates
     , TestLabel "parseTexts" parseTexts
     , -- 2. COMBINATION CASES
-      TestLabel "parseIntsAndDoublesAsDoubles" parseIntsAndDoublesAsDoubles
+      TestLabel "parseBoolsAndIntsAsTexts" parseBoolsAndIntsAsTexts
+    , TestLabel "parseIntsAndDoublesAsDoubles" parseIntsAndDoublesAsDoubles
     , TestLabel "parseIntsAndDatesAsTexts" parseIntsAndDatesAsTexts
     , TestLabel "parseTextsAndDoublesAsTexts" parseTextsAndDoublesAsTexts
     , TestLabel "parseDatesAndTextsAsTexts" parseDatesAndTextsAsTexts
     , -- 3A. PARSING WITH SAFEREAD OFF
-      TestLabel "parseIntsWithoutSafeRead" parseIntsWithoutSafeRead
+      TestLabel "parseBoolsWithoutSafeRead" parseBoolsWithoutSafeRead
+    , TestLabel "parseIntsWithoutSafeRead" parseIntsWithoutSafeRead
     , TestLabel "parseDoublesWithoutSafeRead" parseDoublesWithoutSafeRead
     , TestLabel "parseDatesWithoutSafeRead" parseDatesWithoutSafeRead
     , TestLabel "parseTextsWithoutSafeRead" parseTextsWithoutSafeRead
+    , TestLabel
+        "parseBoolsAndEmptyStringsWithoutSafeRead"
+        parseBoolsAndEmptyStringsWithoutSafeRead
     , TestLabel
         "parseIntsAndEmptyStringsWithoutSafeRead"
         parseIntsAndEmptyStringsWithoutSafeRead
@@ -4880,6 +5006,9 @@ parseTests =
     , TestLabel
         "parseTextsAndEmptyStringsWithoutSafeRead"
         parseTextsAndEmptyStringsWithoutSafeRead
+    , TestLabel
+        "parseBoolsAndNullishStringsWithoutSafeRead"
+        parseBoolsAndNullishStringsWithoutSafeRead
     , TestLabel
         "parseIntsAndNullishStringsWithoutSafeRead"
         parseIntsAndNullishStringsWithoutSafeRead
@@ -4894,6 +5023,9 @@ parseTests =
         parseTextsAndEmptyAndNullishStringsWithoutSafeRead
     , -- 3B. PARSING WITH SAFEREAD ON
       TestLabel
+        "parseBoolsAndEmptyStringsWithSafeRead"
+        parseBoolsAndEmptyStringsWithSafeRead
+    , TestLabel
         "parseIntsAndEmptyStringsWithSafeRead"
         parseIntsAndEmptyStringsWithSafeRead
     , TestLabel
@@ -4920,8 +5052,10 @@ parseTests =
     , TestLabel
         "parseTextsAndEmptyAndNullishStringsWithSafeRead"
         parseTextsAndEmptyAndNullishStringsWithSafeRead
-    , -- 4A. PARSING MUST NOT DEPEND ON THE NUMBER OF EXAMPLES
-      TestLabel "parseIntsWithOneExample" parseIntsWithOneExample
+    , -- 4. PARSING MUST NOT DEPEND ON THE NUMBER OF EXAMPLES
+      TestLabel "parseBoolsWithOneExample" parseBoolsWithOneExample
+    , TestLabel "parseBoolsWithManyExamples" parseBoolsWithManyExamples
+    , TestLabel "parseIntsWithOneExample" parseIntsWithOneExample
     , TestLabel "parseIntsWithTwentyFiveExamples" parseIntsWithTwentyFiveExamples
     , TestLabel "parseIntsWithFortyNineExamples" parseIntsWithFortyNineExamples
     , TestLabel "parseDatesWithOneExample" parseDatesWithOneExample
