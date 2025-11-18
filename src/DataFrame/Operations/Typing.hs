@@ -45,11 +45,21 @@ parseFromExamples n safeRead dateFormat cols =
         asMaybeText = V.map converter cols
      in
         case makeParsingAssumption dateFormat examples of
+            BoolAssumption -> handleBoolAssumption asMaybeText
             IntAssumption -> handleIntAssumption asMaybeText
             DoubleAssumption -> handleDoubleAssumption asMaybeText
             TextAssumption -> handleTextAssumption asMaybeText
             DateAssumption -> handleDateAssumption dateFormat asMaybeText
             NoAssumption -> handleNoAssumption dateFormat asMaybeText
+
+handleBoolAssumption :: V.Vector (Maybe T.Text) -> Column
+handleBoolAssumption asMaybeText
+    | parsableAsBool =
+        maybe (fromVector asMaybeBool) fromVector (sequenceA asMaybeBool)
+    | otherwise = maybe (fromVector asMaybeText) fromVector (sequenceA asMaybeText)
+  where
+    asMaybeBool = V.map (>>= readBool) asMaybeText
+    parsableAsBool = vecSameConstructor asMaybeText asMaybeBool
 
 handleIntAssumption :: V.Vector (Maybe T.Text) -> Column
 handleIntAssumption asMaybeText
@@ -93,14 +103,17 @@ handleNoAssumption dateFormat asMaybeText
     -- means that the examples consisted only of null values, so we can
     -- confidently know that this column must be an OptionalColumn
     | V.all (== Nothing) asMaybeText = fromVector asMaybeText
+    | parsableAsBool = fromVector asMaybeBool
     | parsableAsInt = fromVector asMaybeInt
     | parsableAsDouble = fromVector asMaybeDouble
     | parsableAsDate = fromVector asMaybeDate
     | otherwise = fromVector asMaybeText
   where
+    asMaybeBool = V.map (>>= readBool) asMaybeText
     asMaybeInt = V.map (>>= readInt) asMaybeText
     asMaybeDouble = V.map (>>= readDouble) asMaybeText
     asMaybeDate = V.map (>>= parseTimeOpt dateFormat) asMaybeText
+    parsableAsBool = vecSameConstructor asMaybeText asMaybeBool
     parsableAsInt =
         vecSameConstructor asMaybeText asMaybeInt
             && vecSameConstructor asMaybeText asMaybeDouble
@@ -149,6 +162,7 @@ makeParsingAssumption dateFormat asMaybeText
     -- After accounting for nulls, parsing for Ints and Doubles results in the
     -- same corresponding positions of Justs and Nothings, so we assume
     -- that the best way to parse is Int
+    | vecSameConstructor asMaybeText asMaybeBool = BoolAssumption
     | vecSameConstructor asMaybeText asMaybeInt
         && vecSameConstructor asMaybeText asMaybeDouble =
         IntAssumption
@@ -160,12 +174,14 @@ makeParsingAssumption dateFormat asMaybeText
     | vecSameConstructor asMaybeText asMaybeDate = DateAssumption
     | otherwise = TextAssumption
   where
+    asMaybeBool = V.map (>>= readBool) asMaybeText
     asMaybeInt = V.map (>>= readInt) asMaybeText
     asMaybeDouble = V.map (>>= readDouble) asMaybeText
     asMaybeDate = V.map (>>= parseTimeOpt dateFormat) asMaybeText
 
 data ParsingAssumption
-    = IntAssumption
+    = BoolAssumption
+    | IntAssumption
     | DoubleAssumption
     | DateAssumption
     | NoAssumption
