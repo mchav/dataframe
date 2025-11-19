@@ -101,6 +101,7 @@ library
                       template-haskell >= 2.0 && < 3,
                       text >= 2.0 && < 3,
                       time >= 1.12 && < 2,
+                      unordered-containers >= 0.1 && < 1,
                       vector ^>= 0.13,
                       vector-algorithms ^>= 0.9,
                       zstd >= 0.1.2.0 && < 0.2,

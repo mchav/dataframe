@@ -8,6 +8,7 @@
 module DataFrame.Operations.Join where
 
 import Control.Applicative (asum)
+import qualified Data.HashMap.Strict as HM
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -62,64 +63,73 @@ ghci> D.innerJoin ["key"] df other
 
 @
 -}
-innerJoin ::
-    [T.Text] -> DataFrame -> DataFrame -> DataFrame
+innerJoin :: [T.Text] -> DataFrame -> DataFrame -> DataFrame
 innerJoin cs right left =
     let
-        leftIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices left)
-        leftRowRepresentations = VU.generate (fst (D.dimensions left)) (D.mkRowRep leftIndicesToGroup left)
-        -- key -> [index0, index1]
-        leftKeyCountsAndIndices =
-            VU.foldr
-                (\(i, v) acc -> M.insertWith (++) v [i] acc)
-                M.empty
-                (VU.indexed leftRowRepresentations)
-        -- key -> [index0, index1]
-        rightIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices right)
-        rightRowRepresentations = VU.generate (fst (D.dimensions right)) (D.mkRowRep rightIndicesToGroup right)
-        rightKeyCountsAndIndices =
-            VU.foldr
-                (\(i, v) acc -> M.insertWith (++) v [i] acc)
-                M.empty
-                (VU.indexed rightRowRepresentations)
-        -- key -> [(left_indexes0, right_indexes1)]
-        mergedKeyCountsAndIndices =
-            M.foldrWithKey
-                ( \k v m ->
-                    if k `M.member` rightKeyCountsAndIndices
-                        then M.insert k (VU.fromList v, VU.fromList (rightKeyCountsAndIndices M.! k)) m
-                        else m
+        -- Prepare Keys for the Right DataFrame
+        rightIndicesToGroup =
+            [c | (k, c) <- M.toList (D.columnIndices right), k `elem` cs]
+
+        rightRowRepresentations :: VU.Vector Int
+        rightRowRepresentations =
+            VU.generate (fst (D.dimensions right)) (D.mkRowRep rightIndicesToGroup right)
+
+        -- Build the Hash Map: Int -> Vector of Indices
+        -- We use ifoldr to efficiently insert (index, key) without intermediate allocations.
+        rightKeyMap :: HM.HashMap Int (VU.Vector Int)
+        rightKeyMap =
+            let accumulator =
+                    VU.ifoldr
+                        (\i key acc -> HM.insertWith (++) key [i] acc)
+                        HM.empty
+                        rightRowRepresentations
+             in HM.map (VU.fromList . reverse) accumulator
+
+        -- Prepare Keys for Left DataFrame
+        leftIndicesToGroup =
+            [c | (k, c) <- M.toList (D.columnIndices left), k `elem` cs]
+
+        leftRowRepresentations :: VU.Vector Int
+        leftRowRepresentations =
+            VU.generate (fst (D.dimensions left)) (D.mkRowRep leftIndicesToGroup left)
+
+        -- Perform the Join
+        (leftIndexChunks, rightIndexChunks) =
+            VU.ifoldr
+                ( \lIdx key (lAcc, rAcc) ->
+                    case HM.lookup key rightKeyMap of
+                        Nothing -> (lAcc, rAcc)
+                        Just rIndices ->
+                            let len = VU.length rIndices
+                                -- Replicate the Left Index to match the number of Right matches
+                                lChunk = VU.replicate len lIdx
+                             in (lChunk : lAcc, rIndices : rAcc)
                 )
-                M.empty
-                leftKeyCountsAndIndices
-        -- [(ints, ints)]
-        leftAndRightIndicies = M.elems mergedKeyCountsAndIndices
-        -- [(ints, ints)] (expanded to n * m)
-        expandedIndices =
-            map
-                ( \(l, r) -> (mconcat (replicate (VU.length r) l), mconcat (replicate (VU.length l) r))
-                )
-                leftAndRightIndicies
-        expandedLeftIndicies = mconcat (map fst expandedIndices)
-        expandedRightIndicies = mconcat (map snd expandedIndices)
-        -- df
+                ([], [])
+                leftRowRepresentations
+
+        -- Flatten chunks
+        expandedLeftIndicies = VU.concat leftIndexChunks
+        expandedRightIndicies = VU.concat rightIndexChunks
+
+        resultLen = VU.length expandedLeftIndicies
+
+        -- Construct Result DataFrames
         expandedLeft =
             left
                 { columns = VB.map (D.atIndicesStable expandedLeftIndicies) (D.columns left)
-                , dataframeDimensions =
-                    (VU.length expandedLeftIndicies, snd (D.dataframeDimensions left))
+                , dataframeDimensions = (resultLen, snd (D.dataframeDimensions left))
                 }
-        -- df
+
         expandedRight =
             right
                 { columns = VB.map (D.atIndicesStable expandedRightIndicies) (D.columns right)
-                , dataframeDimensions =
-                    (VU.length expandedRightIndicies, snd (D.dataframeDimensions right))
+                , dataframeDimensions = (resultLen, snd (D.dataframeDimensions right))
                 }
-        -- [string]
+
         leftColumns = D.columnNames left
         rightColumns = D.columnNames right
-        initDf = expandedLeft
+
         insertIfPresent _ Nothing df = df
         insertIfPresent name (Just c) df = D.insertColumn name c df
      in
@@ -134,7 +144,7 @@ innerJoin cs right left =
                         )
             )
             rightColumns
-            initDf
+            expandedLeft
 
 {- | Performs a left join on two dataframes using the specified key columns.
 Returns all rows from the left dataframe, with matching rows from the right dataframe.
