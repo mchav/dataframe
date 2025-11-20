@@ -404,7 +404,7 @@ variable which of the following statements is true?
 
 
 8. In what year did we see the most total number of births in the U.S.? *Hint:* Sort 
-your dataset in descending order based on the `total` column. You can do this with the new function: `D.sortBy D.Descending <column names to sort by>` (for 
+your dataset in descending order based on the `total` column. You can do this with the new function: `D.sortBy [D.Desc <column name to sort by>]` (for 
 descending order).
 <ol>
 <li> 1940 </li>

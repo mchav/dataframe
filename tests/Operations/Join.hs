@@ -33,7 +33,7 @@ testInnerJoin =
                 , ("B", D.fromList ["B0" :: Text, "B1", "B2"])
                 ]
             )
-            (D.sortBy D.Ascending ["key"] (innerJoin ["key"] df1 df2))
+            (D.sortBy [D.Asc "key"] (innerJoin ["key"] df1 df2))
         )
 
 testLeftJoin :: Test
@@ -47,7 +47,7 @@ testLeftJoin =
                 , ("B", D.fromList [Just "B0", Just "B1" :: Maybe Text, Just "B2"])
                 ]
             )
-            (D.sortBy D.Ascending ["key"] (leftJoin ["key"] df2 df1))
+            (D.sortBy [D.Asc "key"] (leftJoin ["key"] df2 df1))
         )
 
 testRightJoin :: Test
@@ -61,7 +61,7 @@ testRightJoin =
                 , ("B", D.fromList ["B0" :: Text, "B1", "B2"])
                 ]
             )
-            (D.sortBy D.Ascending ["key"] (rightJoin ["key"] df2 df1))
+            (D.sortBy [D.Asc "key"] (rightJoin ["key"] df2 df1))
         )
 
 staffDf :: D.DataFrame
@@ -108,7 +108,7 @@ testFullOuterJoin =
                     )
                 ]
             )
-            (D.sortBy D.Ascending ["Name"] (fullOuterJoin ["Name"] studentDf staffDf))
+            (D.sortBy [D.Asc "Name"] (fullOuterJoin ["Name"] studentDf staffDf))
         )
 
 tests :: [Test]
