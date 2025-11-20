@@ -23,18 +23,15 @@ import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import DataFrame.Errors
 import DataFrame.Internal.Column (
     Column (..),
-    Columnable,
     TypedColumn (..),
     atIndicesStable,
-    getIndices,
-    getIndicesUnboxed,
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), GroupedDataFrame (..))
 import DataFrame.Internal.Expression
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import DataFrame.Operations.Subset
-import Type.Reflection (typeOf, typeRep)
+import Type.Reflection (typeRep)
 
 {- | O(k * n) groups the dataframe by the given rows aggregating the remaining rows
 into vector that should be reduced later.
@@ -75,7 +72,7 @@ changingPoints vs = VG.length vs : fst (VU.ifoldl findChangePoints initialState 
 
 computeRowHashes :: [Int] -> DataFrame -> VU.Vector Int
 computeRowHashes indices df =
-    foldl' combineCol initialHashes selectedCols
+    L.foldl' combineCol initialHashes selectedCols
   where
     n = fst (dimensions df)
     initialHashes = VU.replicate n 0
@@ -89,9 +86,9 @@ computeRowHashes indices df =
             Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
                 Just Refl -> VU.zipWith (\h d -> hashWithSalt h (doubleToInt d)) acc v
                 Nothing -> case sIntegral @a of
-                    STrue -> VU.zipWith (\h d -> hashWithSalt h (fromIntegral d)) acc v
+                    STrue -> VU.zipWith (\h d -> hashWithSalt h (fromIntegral @a @Int d)) acc v
                     SFalse -> case sFloating @a of
-                        STrue -> VU.zipWith (\h d -> hashWithSalt h (realToFrac d)) acc v
+                        STrue -> VU.zipWith (\h d -> hashWithSalt h ((doubleToInt . realToFrac) d)) acc v
                         SFalse -> VU.zipWith (\h d -> hashWithSalt h (hash (show d))) acc v
         BoxedColumn (v :: V.Vector a) -> case testEquality (typeRep @a) (typeRep @T.Text) of
             Just Refl -> VG.convert (V.zipWith hashWithSalt (VG.convert acc) v)
