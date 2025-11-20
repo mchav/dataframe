@@ -31,6 +31,7 @@ import DataFrame.Internal.Column (
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), GroupedDataFrame (..))
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import DataFrame.Operations.Subset
 import Type.Reflection (typeOf, typeRep)
@@ -57,11 +58,11 @@ groupBy names df
             (VU.fromList (reverse (changingPoints valueIndices)))
   where
     indicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` names) (columnIndices df)
-    rowRepresentations = VU.generate (fst (dimensions df)) (mkRowRep indicesToGroup df)
+    rowRepresentations = computeRowHashes indicesToGroup df
 
     valueIndices = runST $ do
         withIndexes <- VG.thaw $ VG.indexed rowRepresentations
-        VA.sortBy (\(a, b) (a', b') -> compare b b') withIndexes
+        VA.sortBy (\(a, b) (a', b') -> compare b' b) withIndexes
         VG.unsafeFreeze withIndexes
 
 changingPoints :: (Eq a, VU.Unbox a) => VU.Vector (Int, a) -> [Int]
@@ -72,43 +73,37 @@ changingPoints vs = VG.length vs : fst (VU.ifoldl findChangePoints initialState 
         | currentVal == newVal = (offsets, currentVal)
         | otherwise = (index : offsets, newVal)
 
-mkRowRep :: [Int] -> DataFrame -> Int -> Int
-mkRowRep groupColumnIndices df i = case h of
-    [x] -> x
-    xs -> hash h
+computeRowHashes :: [Int] -> DataFrame -> VU.Vector Int
+computeRowHashes indices df =
+    foldl' combineCol initialHashes selectedCols
   where
-    h = map mkHash groupColumnIndices
-    getHashedElem :: Column -> Int -> Int
-    getHashedElem (BoxedColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
-    getHashedElem (UnboxedColumn (c :: VU.Vector a)) j = hash' @a (c VU.! j)
-    getHashedElem (OptionalColumn (c :: V.Vector a)) j = hash' @a (c V.! j)
-    mkHash j = getHashedElem ((V.!) (columns df) j) i
+    n = fst (dimensions df)
+    initialHashes = VU.replicate n 0
 
-{- | This hash function returns the hash when given a non numeric type but
-the value when given a numeric.
--}
-hash' :: (Columnable a) => a -> Int
-hash' value = case testEquality (typeOf value) (typeRep @Double) of
-    Just Refl -> round $ value * 1000
-    Nothing -> case testEquality (typeOf value) (typeRep @Int) of
-        Just Refl -> value
-        Nothing -> case testEquality (typeOf value) (typeRep @T.Text) of
-            Just Refl -> hash value
-            Nothing -> hash (show value)
+    selectedCols = map (columns df V.!) indices
 
-mkGroupedColumns ::
-    VU.Vector Int -> DataFrame -> DataFrame -> T.Text -> DataFrame
-mkGroupedColumns indices df acc name =
-    case (V.!) (columns df) (columnIndices df M.! name) of
-        BoxedColumn column ->
-            let vs = indices `getIndices` column
-             in insertVector name vs acc
-        OptionalColumn column ->
-            let vs = indices `getIndices` column
-             in insertVector name vs acc
-        UnboxedColumn column ->
-            let vs = indices `getIndicesUnboxed` column
-             in insertUnboxedVector name vs acc
+    combineCol :: VU.Vector Int -> Column -> VU.Vector Int
+    combineCol acc col = case col of
+        UnboxedColumn (v :: VU.Vector a) -> case testEquality (typeRep @a) (typeRep @Int) of
+            Just Refl -> VU.zipWith hashWithSalt acc v
+            Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
+                Just Refl -> VU.zipWith (\h d -> hashWithSalt h (doubleToInt d)) acc v
+                Nothing -> case sIntegral @a of
+                    STrue -> VU.zipWith (\h d -> hashWithSalt h (fromIntegral d)) acc v
+                    SFalse -> case sFloating @a of
+                        STrue -> VU.zipWith (\h d -> hashWithSalt h (realToFrac d)) acc v
+                        SFalse -> VU.zipWith (\h d -> hashWithSalt h (hash (show d))) acc v
+        BoxedColumn (v :: V.Vector a) -> case testEquality (typeRep @a) (typeRep @T.Text) of
+            Just Refl -> VG.convert (V.zipWith hashWithSalt (VG.convert acc) v)
+            Nothing ->
+                VG.convert
+                    (V.zipWith (\h d -> hashWithSalt h (hash (show d))) (VG.convert acc) v)
+        OptionalColumn v ->
+            VG.convert
+                (V.zipWith (\h d -> hashWithSalt h (hash (show d))) (VG.convert acc) v)
+
+    doubleToInt :: Double -> Int
+    doubleToInt = floor
 
 {- | Aggregate a grouped dataframe using the expressions given.
 All ungrouped columns will be dropped.

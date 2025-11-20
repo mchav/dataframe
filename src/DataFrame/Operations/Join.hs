@@ -71,8 +71,7 @@ innerJoin cs right left =
             [c | (k, c) <- M.toList (D.columnIndices right), k `elem` cs]
 
         rightRowRepresentations :: VU.Vector Int
-        rightRowRepresentations =
-            VU.generate (fst (D.dimensions right)) (D.mkRowRep rightIndicesToGroup right)
+        rightRowRepresentations = D.computeRowHashes rightIndicesToGroup right
 
         -- Build the Hash Map: Int -> Vector of Indices
         -- We use ifoldr to efficiently insert (index, key) without intermediate allocations.
@@ -90,8 +89,7 @@ innerJoin cs right left =
             [c | (k, c) <- M.toList (D.columnIndices left), k `elem` cs]
 
         leftRowRepresentations :: VU.Vector Int
-        leftRowRepresentations =
-            VU.generate (fst (D.dimensions left)) (D.mkRowRep leftIndicesToGroup left)
+        leftRowRepresentations = D.computeRowHashes leftIndicesToGroup left
 
         -- Perform the Join
         (leftIndexChunks, rightIndexChunks) =
@@ -173,9 +171,9 @@ leftJoin ::
 leftJoin cs right left =
     let
         leftIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices left)
-        leftRowRepresentations = VU.generate (fst (D.dimensions left)) (D.mkRowRep leftIndicesToGroup left)
+        leftRowRepresentations = D.computeRowHashes leftIndicesToGroup left
         rightIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices right)
-        rightRowRepresentations = VU.generate (fst (D.dimensions right)) (D.mkRowRep rightIndicesToGroup right)
+        rightRowRepresentations = D.computeRowHashes rightIndicesToGroup right
         rightKeyCountsAndIndices =
             VU.foldr
                 (\(i, v) acc -> M.insertWith (++) v [i] acc)
@@ -249,7 +247,7 @@ rightJoin ::
 rightJoin cs right left =
     let
         leftIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices left)
-        leftRowRepresentations = VU.generate (fst (D.dimensions left)) (D.mkRowRep leftIndicesToGroup left)
+        leftRowRepresentations = D.computeRowHashes leftIndicesToGroup left
         leftKeyCountsAndIndicesVec =
             M.map VU.fromList $
                 VU.foldr
@@ -257,7 +255,7 @@ rightJoin cs right left =
                     M.empty
                     (VU.indexed leftRowRepresentations)
         rightIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices right)
-        rightRowRepresentations = VU.generate (fst (D.dimensions right)) (D.mkRowRep rightIndicesToGroup right)
+        rightRowRepresentations = D.computeRowHashes rightIndicesToGroup right
         rightRowCount = fst (D.dimensions right)
         pairs =
             [ (maybeLeft, j)
@@ -305,7 +303,7 @@ fullOuterJoin ::
 fullOuterJoin cs right left =
     let
         leftIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices left)
-        leftRowRepresentations = VU.generate (fst (D.dimensions left)) (D.mkRowRep leftIndicesToGroup left)
+        leftRowRepresentations = D.computeRowHashes leftIndicesToGroup left
         leftKeyCountsAndIndices =
             VU.foldr
                 (\(i, v) acc -> M.insertWith (++) v [i] acc)
@@ -313,7 +311,7 @@ fullOuterJoin cs right left =
                 (VU.indexed leftRowRepresentations)
         leftKeyCountsAndIndicesVec = M.map VU.fromList leftKeyCountsAndIndices
         rightIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices right)
-        rightRowRepresentations = VU.generate (fst (D.dimensions right)) (D.mkRowRep rightIndicesToGroup right)
+        rightRowRepresentations = D.computeRowHashes rightIndicesToGroup right
         rightKeyCountsAndIndices =
             VU.foldr
                 (\(i, v) acc -> M.insertWith (++) v [i] acc)
