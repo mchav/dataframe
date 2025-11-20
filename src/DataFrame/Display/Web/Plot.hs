@@ -29,6 +29,7 @@ import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Internal.Expression
 import DataFrame.Operations.Core
 import qualified DataFrame.Operations.Subset as D
+import Numeric (showFFloat)
 import System.Directory
 import System.Info
 import System.Process (
@@ -40,7 +41,6 @@ import System.Process (
     std_out,
     waitForProcess,
  )
-import Text.Printf
 
 newtype HtmlPlot = HtmlPlot T.Text deriving (Show)
 
@@ -73,10 +73,6 @@ defaultPlotConfig ptype =
         , plotFile = Nothing
         }
 
-chartJsScript :: T.Text
-chartJsScript =
-    "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js\"></script>\n"
-
 generateChartId :: IO T.Text
 generateChartId = do
     gen <- newStdGen
@@ -96,20 +92,18 @@ wrapInHTML chartId content width height =
         , "px;height:"
         , T.pack (show height)
         , "px\"></canvas>\n"
-        , "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js\"></script>\n"
+        , "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js\"></script>\n"
         , "<script>\n"
-        , "setTimeout(() => {"
         , content
-        , "}, 200);"
         , "\n</script>\n"
         ]
 
 plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
-plotHistogram colName = plotHistogramWith colName 30 (defaultPlotConfig Histogram)
+plotHistogram colName = plotHistogramWith colName (defaultPlotConfig Histogram)
 
 plotHistogramWith ::
-    (HasCallStack) => T.Text -> Int -> PlotConfig -> DataFrame -> IO HtmlPlot
-plotHistogramWith colName numBins config df = do
+    (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
+plotHistogramWith colName config df = do
     chartId <- generateChartId
     let values = extractNumericColumn colName df
         (minVal, maxVal) = if null values then (0, 1) else (minimum values, maximum values)
@@ -117,9 +111,14 @@ plotHistogramWith colName numBins config df = do
         binWidth = (maxVal - minVal) / fromIntegral numBins
         bins = [minVal + fromIntegral i * binWidth | i <- [0 .. numBins - 1]]
         counts = calculateHistogram values bins binWidth
+        precision = max 0 $ ceiling (negate $ logBase 10 binWidth)
 
         labels =
-            T.intercalate "," ["\"" <> T.pack (printf "%.2f" b) <> "\"" | b <- bins]
+            T.intercalate
+                ","
+                [ "\"" <> T.pack (showFFloat (Just precision) b "") <> "\""
+                | b <- bins
+                ]
         dataPoints = T.intercalate "," [T.pack (show c) | c <- counts]
 
         chartTitle =
@@ -129,11 +128,9 @@ plotHistogramWith colName numBins config df = do
 
         jsCode =
             T.concat
-                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                , "var ctx = document.getElementById('"
+                [ "new Chart(\""
                 , chartId
-                , "').getContext('2d');\n"
-                , "new Chart(ctx , {\n"
+                , "\", {\n"
                 , "  type: \"bar\",\n"
                 , "  data: {\n"
                 , "    labels: ["
@@ -159,7 +156,7 @@ plotHistogramWith colName numBins config df = do
                 , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});});"
+                , "});"
                 ]
 
     return $
@@ -192,11 +189,9 @@ plotScatterWith xCol yCol config df = do
 
         jsCode =
             T.concat
-                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                , "var ctx = document.getElementById('"
+                [ "new Chart(\""
                 , chartId
-                , "').getContext('2d');\n"
-                , "new Chart(ctx , {\n"
+                , "\", {\n"
                 , "  type: \"scatter\",\n"
                 , "  data: {\n"
                 , "    datasets: [{\n"
@@ -223,7 +218,7 @@ plotScatterWith xCol yCol config df = do
                 , "\" } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});});"
+                , "});"
                 ]
 
     return $
@@ -287,11 +282,9 @@ plotScatterByWith xCol yCol grouping config df = do
 
         jsCode =
             T.concat
-                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                , "var ctx = document.getElementById('"
+                [ "new Chart(\""
                 , chartId
-                , "').getContext('2d');\n"
-                , "new Chart(ctx , {\n"
+                , "\", {\n"
                 , "  type: \"scatter\",\n"
                 , "  data: {\n"
                 , "    datasets: [\n"
@@ -311,7 +304,7 @@ plotScatterByWith xCol yCol grouping config df = do
                 , "\" } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});});"
+                , "});"
                 ]
 
     return $
@@ -363,11 +356,9 @@ plotLinesWith xAxis colNames config df = do
 
         jsCode =
             T.concat
-                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                , "var ctx = document.getElementById('"
+                [ "new Chart(\""
                 , chartId
-                , "').getContext('2d');\n"
-                , "new Chart(ctx , {\n"
+                , "\", {\n"
                 , "  type: \"line\",\n"
                 , "  data: {\n"
                 , "    labels: ["
@@ -387,7 +378,7 @@ plotLinesWith xAxis colNames config df = do
                 , "\" } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});});"
+                , "});"
                 ]
 
     return $
@@ -419,11 +410,9 @@ plotSingleBars colName config df = do
 
                 jsCode =
                     T.concat
-                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                        , "var ctx = document.getElementById('"
+                        [ "new Chart(\""
                         , chartId
-                        , "').getContext('2d');\n"
-                        , "new Chart(ctx , {\n"
+                        , "\", {\n"
                         , "  type: \"bar\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -447,7 +436,7 @@ plotSingleBars colName config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});});"
+                        , "});"
                         ]
             return $
                 HtmlPlot $
@@ -465,11 +454,8 @@ plotSingleBars colName config df = do
 
                 jsCode =
                     T.concat
-                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                        , "var ctx = document.getElementById('"
+                        [ "new Chart(\""
                         , chartId
-                        , "').getContext('2d');\n"
-                        , "new Chart(ctx , {\n"
                         , "\", {\n"
                         , "  type: \"bar\",\n"
                         , "  data: {\n"
@@ -494,7 +480,7 @@ plotSingleBars colName config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});});"
+                        , "});"
                         ]
             return $
                 HtmlPlot $
@@ -519,11 +505,9 @@ plotPieWith valCol labelCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                        , "var ctx = document.getElementById('"
+                        [ "new Chart(\""
                         , chartId
-                        , "').getContext('2d');\n"
-                        , "new Chart(ctx , {\n"
+                        , "\", {\n"
                         , "  type: \"pie\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -543,7 +527,7 @@ plotPieWith valCol labelCol config df = do
                         , chartTitle
                         , "\" }\n"
                         , "  }\n"
-                        , "});});"
+                        , "});"
                         ]
             return $
                 HtmlPlot $
@@ -565,11 +549,9 @@ plotPieWith valCol labelCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                        , "var ctx = document.getElementById('"
+                        [ "new Chart(\""
                         , chartId
-                        , "').getContext('2d');\n"
-                        , "new Chart(ctx , {\n"
+                        , "\", {\n"
                         , "  type: \"pie\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -589,7 +571,7 @@ plotPieWith valCol labelCol config df = do
                         , chartTitle
                         , "\" }\n"
                         , "  }\n"
-                        , "});});"
+                        , "});"
                         ]
             return $
                 HtmlPlot $
@@ -658,11 +640,9 @@ plotStackedBarsWith categoryCol valueColumns config df = do
 
         jsCode =
             T.concat
-                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                , "var ctx = document.getElementById('"
+                [ "new Chart(\""
                 , chartId
-                , "').getContext('2d');\n"
-                , "new Chart(ctx , {\n"
+                , "\", {\n"
                 , "  type: \"bar\",\n"
                 , "  data: {\n"
                 , "    labels: ["
@@ -681,7 +661,7 @@ plotStackedBarsWith categoryCol valueColumns config df = do
                 , "      yAxes: [{ stacked: true, ticks: { beginAtZero: true } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});});"
+                , "});"
                 ]
 
     return $
@@ -712,11 +692,9 @@ plotBoxPlotsWith colNames config df = do
 
         jsCode =
             T.concat
-                [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                , "var ctx = document.getElementById('"
+                [ "new Chart(\""
                 , chartId
-                , "').getContext('2d');\n"
-                , "new Chart(ctx , {\n"
+                , "\", {\n"
                 , "  type: \"bar\",\n"
                 , "  data: {\n"
                 , "    labels: ["
@@ -740,7 +718,7 @@ plotBoxPlotsWith colNames config df = do
                 , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});});"
+                , "});"
                 ]
 
     return $
@@ -773,11 +751,9 @@ plotGroupedBarsWithN n groupCol valCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                        , "var ctx = document.getElementById('"
+                        [ "new Chart(\""
                         , chartId
-                        , "').getContext('2d');\n"
-                        , "new Chart(ctx , {\n"
+                        , "\", {\n"
                         , "  type: \"bar\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -803,7 +779,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});});"
+                        , "});"
                         ]
             return $
                 HtmlPlot $
@@ -827,11 +803,9 @@ plotGroupedBarsWithN n groupCol valCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "requirejs(['https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js'], function (Chart) {\n"
-                        , "var ctx = document.getElementById('"
+                        [ "new Chart(\""
                         , chartId
-                        , "').getContext('2d');\n"
-                        , "new Chart(ctx , {\n"
+                        , "\", {\n"
                         , "  type: \"bar\",\n"
                         , "  data: {\n"
                         , "    labels: ["
@@ -855,7 +829,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});});"
+                        , "});"
                         ]
             return $
                 HtmlPlot $
