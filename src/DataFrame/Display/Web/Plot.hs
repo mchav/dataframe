@@ -92,7 +92,7 @@ wrapInHTML chartId content width height =
         , "px;height:"
         , T.pack (show height)
         , "px\"></canvas>\n"
-        , "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js\"></script>\n"
+        , "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js\"></script>\n"
         , "<script>\n"
         , content
         , "\n</script>\n"
@@ -127,7 +127,7 @@ plotHistogramWith colName numBins config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "setTimeout(function() { new Chart(\""
                 , chartId
                 , "\", {\n"
                 , "  type: \"bar\",\n"
@@ -155,7 +155,7 @@ plotHistogramWith colName numBins config df = do
                 , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "})}, 100);"
                 ]
 
     return $
@@ -188,7 +188,7 @@ plotScatterWith xCol yCol config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "setTimeout(function() { new Chart(\""
                 , chartId
                 , "\", {\n"
                 , "  type: \"scatter\",\n"
@@ -217,7 +217,7 @@ plotScatterWith xCol yCol config df = do
                 , "\" } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "})}, 100);"
                 ]
 
     return $
@@ -281,7 +281,7 @@ plotScatterByWith xCol yCol grouping config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "setTimeout(function() { new Chart(\""
                 , chartId
                 , "\", {\n"
                 , "  type: \"scatter\",\n"
@@ -303,7 +303,7 @@ plotScatterByWith xCol yCol grouping config df = do
                 , "\" } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "})}, 100);"
                 ]
 
     return $
@@ -355,7 +355,7 @@ plotLinesWith xAxis colNames config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "setTimeout(function() { new Chart(\""
                 , chartId
                 , "\", {\n"
                 , "  type: \"line\",\n"
@@ -377,7 +377,7 @@ plotLinesWith xAxis colNames config df = do
                 , "\" } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "})}, 100);"
                 ]
 
     return $
@@ -409,7 +409,7 @@ plotSingleBars colName config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "setTimeout(function() { new Chart(\""
                         , chartId
                         , "\", {\n"
                         , "  type: \"bar\",\n"
@@ -435,7 +435,7 @@ plotSingleBars colName config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});"
+                        , "})}, 100);"
                         ]
             return $
                 HtmlPlot $
@@ -453,7 +453,7 @@ plotSingleBars colName config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "setTimeout(function() { new Chart(\""
                         , chartId
                         , "\", {\n"
                         , "  type: \"bar\",\n"
@@ -479,7 +479,7 @@ plotSingleBars colName config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});"
+                        , "})}, 100);"
                         ]
             return $
                 HtmlPlot $
@@ -504,7 +504,7 @@ plotPieWith valCol labelCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "setTimeout(function() { new Chart(\""
                         , chartId
                         , "\", {\n"
                         , "  type: \"pie\",\n"
@@ -526,7 +526,7 @@ plotPieWith valCol labelCol config df = do
                         , chartTitle
                         , "\" }\n"
                         , "  }\n"
-                        , "});"
+                        , "})}, 100);"
                         ]
             return $
                 HtmlPlot $
@@ -548,7 +548,7 @@ plotPieWith valCol labelCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "setTimeout(function() { new Chart(\""
                         , chartId
                         , "\", {\n"
                         , "  type: \"pie\",\n"
@@ -570,7 +570,7 @@ plotPieWith valCol labelCol config df = do
                         , chartTitle
                         , "\" }\n"
                         , "  }\n"
-                        , "});"
+                        , "})}, 100);"
                         ]
             return $
                 HtmlPlot $
@@ -639,7 +639,7 @@ plotStackedBarsWith categoryCol valueColumns config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "setTimeout(function() { new Chart(\""
                 , chartId
                 , "\", {\n"
                 , "  type: \"bar\",\n"
@@ -660,7 +660,7 @@ plotStackedBarsWith categoryCol valueColumns config df = do
                 , "      yAxes: [{ stacked: true, ticks: { beginAtZero: true } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "})}, 100);"
                 ]
 
     return $
@@ -691,7 +691,7 @@ plotBoxPlotsWith colNames config df = do
 
         jsCode =
             T.concat
-                [ "new Chart(\""
+                [ "setTimeout(function() { new Chart(\""
                 , chartId
                 , "\", {\n"
                 , "  type: \"bar\",\n"
@@ -717,7 +717,7 @@ plotBoxPlotsWith colNames config df = do
                 , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                 , "    }\n"
                 , "  }\n"
-                , "});"
+                , "})}, 100);"
                 ]
 
     return $
@@ -750,7 +750,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "setTimeout(function() { new Chart(\""
                         , chartId
                         , "\", {\n"
                         , "  type: \"bar\",\n"
@@ -778,7 +778,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});"
+                        , "})}, 100);"
                         ]
             return $
                 HtmlPlot $
@@ -802,7 +802,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
 
                 jsCode =
                     T.concat
-                        [ "new Chart(\""
+                        [ "setTimeout(function() { new Chart(\""
                         , chartId
                         , "\", {\n"
                         , "  type: \"bar\",\n"
@@ -828,7 +828,7 @@ plotGroupedBarsWithN n groupCol valCol config df = do
                         , "      yAxes: [{ ticks: { beginAtZero: true } }]\n"
                         , "    }\n"
                         , "  }\n"
-                        , "});"
+                        , "})}, 100);"
                         ]
             return $
                 HtmlPlot $
