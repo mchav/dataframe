@@ -1,5 +1,16 @@
 # Revision history for dataframe
 
+## 0.3.3.8
+* More efficient inner joins using hashmaps.
+* Initial JSON lines implementation
+* More robust logic when specifying CSV types.
+* Strip spaces from titles and rows in CSV reading.
+* Auto parsing bools in CSV.
+* Add `imputeWith`, `bind`, `nRows`, `nColumns`, `recodeWitDefault` function that takes 
+* Better support for proper markdown
+* Fix bug with full outer join.
+* Unify `insertVector` and `insertList` functions into insert.
+
 ## 0.3.3.7
 * Many functions how rely on expressions (not strings).
 * full, left, and right join now implemented.
