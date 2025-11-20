@@ -287,6 +287,7 @@ initializeColumns row opts = case typeSpec opts of
     SpecifyTypes ts -> zipWithM initColumn row (expandTypes ts)
   where
     expandTypes xs = xs ++ replicate (length row - length xs) (schemaType @T.Text)
+    initColumn :: BL.ByteString -> SchemaType -> IO BuilderColumn
     initColumn _ t = do
         validityRef <- newPagedUnboxedVector
         case t of
