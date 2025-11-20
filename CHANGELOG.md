@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.3.3.9
+* Fix compilation issue for ghc 9.12.*
+
 ## 0.3.3.8
 * More efficient inner joins using hashmaps.
 * Initial JSON lines implementation
