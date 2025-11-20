@@ -16,18 +16,28 @@ import DataFrame.Operations.Core
 import System.Random
 
 -- | Sort order taken as a parameter by the 'sortBy' function.
-data SortOrder = Ascending | Descending deriving (Eq)
+data SortOrder
+    = Asc T.Text
+    | Desc T.Text
+    deriving (Eq)
+
+getSortColumnName :: SortOrder -> T.Text
+getSortColumnName (Asc n) = n
+getSortColumnName (Desc n) = n
+
+mustFlipCompare :: SortOrder -> Bool
+mustFlipCompare (Asc _) = True
+mustFlipCompare (Desc _) = False
 
 {- | O(k log n) Sorts the dataframe by a given row.
 
 > sortBy Ascending ["Age"] df
 -}
 sortBy ::
-    SortOrder ->
-    [T.Text] ->
+    [SortOrder] ->
     DataFrame ->
     DataFrame
-sortBy order names df
+sortBy sortOrds df
     | any (`notElem` columnNames df) names =
         throw $
             ColumnNotFoundException
@@ -36,9 +46,12 @@ sortBy order names df
                 (columnNames df)
     | otherwise =
         let
-            indexes = sortedIndexes' (order == Ascending) (toRowVector names df)
+            indexes = sortedIndexes' mustFlips (toRowVector names df)
          in
             df{columns = V.map (atIndicesStable indexes) (columns df)}
+  where
+    names = map getSortColumnName sortOrds
+    mustFlips = map mustFlipCompare sortOrds
 
 shuffle ::
     (RandomGen g) =>

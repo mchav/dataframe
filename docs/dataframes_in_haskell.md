@@ -362,7 +362,7 @@ The API favors **consistency, small primitives, and composition**. Names mirror 
   * `rename :: Text -> Text -> DataFrame -> DataFrame`  
 * Rows (DSL-based)  
   * `filter :: Expr Bool -> DataFrame -> DataFrame`  
-  * `sortBy :: Order -> [Text] -> DataFrame -> DataFrame`  
+  * `sortBy :: [SortOrder] -> DataFrame -> DataFrame`  
   * `groupBy :: [UExpr] -> DataFrame -> DataFrame`  
 * Whole-frame  
   * `transpose :: DataFrame -> DataFrame`  
