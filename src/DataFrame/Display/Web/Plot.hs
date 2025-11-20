@@ -99,15 +99,14 @@ wrapInHTML chartId content width height =
         ]
 
 plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO HtmlPlot
-plotHistogram colName = plotHistogramWith colName (defaultPlotConfig Histogram)
+plotHistogram colName = plotHistogramWith colName 30 (defaultPlotConfig Histogram)
 
 plotHistogramWith ::
-    (HasCallStack) => T.Text -> PlotConfig -> DataFrame -> IO HtmlPlot
-plotHistogramWith colName config df = do
+    (HasCallStack) => T.Text -> Int -> PlotConfig -> DataFrame -> IO HtmlPlot
+plotHistogramWith colName numBins config df = do
     chartId <- generateChartId
     let values = extractNumericColumn colName df
         (minVal, maxVal) = if null values then (0, 1) else (minimum values, maximum values)
-        numBins = 30
         binWidth = (maxVal - minVal) / fromIntegral numBins
         bins = [minVal + fromIntegral i * binWidth | i <- [0 .. numBins - 1]]
         counts = calculateHistogram values bins binWidth
