@@ -317,12 +317,9 @@ processRow !vals !cols = V.zipWithM_ processValue vals (V.fromList cols)
                 Nothing -> appendPagedUnboxedVector gv 0.0 >> appendPagedUnboxedVector valid 0
             BuilderText gv valid -> do
                 let !val = T.strip (TE.decodeUtf8Lenient bs')
-                if isNull val
+                if isNullish val
                     then appendPagedVector gv T.empty >> appendPagedUnboxedVector valid 0
                     else appendPagedVector gv val >> appendPagedUnboxedVector valid 1
-
-isNull :: T.Text -> Bool
-isNull t = T.null t || t == "NA" || t == "NULL" || t == "null"
 
 freezeBuilderColumn :: BuilderColumn -> IO Column
 freezeBuilderColumn (BuilderInt gv validRef) = do
