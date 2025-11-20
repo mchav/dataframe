@@ -244,59 +244,7 @@ ghci> D.rightJoin ["key"] df other
 -}
 rightJoin ::
     [T.Text] -> DataFrame -> DataFrame -> DataFrame
-rightJoin cs right left =
-    let
-        leftIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices left)
-        leftRowRepresentations = D.computeRowHashes leftIndicesToGroup left
-        leftKeyCountsAndIndicesVec =
-            M.map VU.fromList $
-                VU.foldr
-                    (\(i, v) acc -> M.insertWith (++) v [i] acc)
-                    M.empty
-                    (VU.indexed leftRowRepresentations)
-        rightIndicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` cs) (D.columnIndices right)
-        rightRowRepresentations = D.computeRowHashes rightIndicesToGroup right
-        rightRowCount = fst (D.dimensions right)
-        pairs =
-            [ (maybeLeft, j)
-            | j <- [0 .. rightRowCount - 1]
-            , maybeLeft <-
-                case M.lookup (rightRowRepresentations VU.! j) leftKeyCountsAndIndicesVec of
-                    Nothing -> [Nothing]
-                    Just lVec -> map Just (VU.toList lVec)
-            ]
-        expandedLeftIndicies = VB.fromList (map fst pairs)
-        expandedRightIndicies = VU.fromList (map snd pairs)
-        expandedLeft =
-            left
-                { columns = VB.map (D.atIndicesWithNulls expandedLeftIndicies) (D.columns left)
-                , dataframeDimensions =
-                    (VB.length expandedLeftIndicies, snd (D.dataframeDimensions left))
-                }
-        expandedRight =
-            right
-                { columns = VB.map (D.atIndicesStable expandedRightIndicies) (D.columns right)
-                , dataframeDimensions =
-                    (VU.length expandedRightIndicies, snd (D.dataframeDimensions right))
-                }
-        leftColumns = D.columnNames left
-        rightColumns = D.columnNames right
-        initDf = expandedLeft
-        insertIfPresent _ Nothing df = df
-        insertIfPresent name (Just c) df = D.insertColumn name c df
-     in
-        D.fold
-            ( \name df ->
-                if name `elem` cs
-                    then df
-                    else
-                        ( if name `elem` leftColumns
-                            then insertIfPresent ("Right_" <> name) (D.getColumn name expandedRight) df
-                            else insertIfPresent name (D.getColumn name expandedRight) df
-                        )
-            )
-            rightColumns
-            initDf
+rightJoin cs left right = leftJoin cs right left
 
 fullOuterJoin ::
     [T.Text] -> DataFrame -> DataFrame -> DataFrame
