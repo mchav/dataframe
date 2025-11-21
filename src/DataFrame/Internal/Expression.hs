@@ -421,20 +421,37 @@ data AggregationResult a
     = UnAggregated Column
     | Aggregated (TypedColumn a)
 
-mkUnaggregatedColumn ::
-    forall v a.
-    (VG.Vector v a, Columnable a) =>
-    v a -> VU.Vector Int -> VU.Vector Int -> V.Vector (v a)
-mkUnaggregatedColumn col os indices =
-    V.generate
-        (VU.length os - 1)
-        ( \i ->
-            VG.generate
-                (os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i))
-                ( \j ->
-                    col `VG.unsafeIndex` (indices `VG.unsafeIndex` (j + (os `VG.unsafeIndex` i)))
-                )
-        )
+mkUnaggregatedColumnBoxed ::
+    forall a.
+    (Columnable a) =>
+    V.Vector a -> VU.Vector Int -> VU.Vector Int -> V.Vector (V.Vector a)
+mkUnaggregatedColumnBoxed col os indices =
+    let
+        sorted = V.unsafeBackpermute col (V.convert indices)
+        n i = os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i)
+        start i = os `VG.unsafeIndex` i
+     in
+        V.generate
+            (VU.length os - 1)
+            ( \i ->
+                V.unsafeSlice (start i) (n i) sorted
+            )
+
+mkUnaggregatedColumnUnboxed ::
+    forall a.
+    (Columnable a, VU.Unbox a) =>
+    VU.Vector a -> VU.Vector Int -> VU.Vector Int -> V.Vector (VU.Vector a)
+mkUnaggregatedColumnUnboxed col os indices =
+    let
+        sorted = VU.unsafeBackpermute col indices
+        n i = os `VU.unsafeIndex` (i + 1) - (os `VU.unsafeIndex` i)
+        start i = os `VG.unsafeIndex` i
+     in
+        V.generate
+            (VU.length os - 1)
+            ( \i ->
+                VU.unsafeSlice (start i) (n i) sorted
+            )
 
 nestedTypeException ::
     forall a b. (Typeable a, Typeable b) => String -> DataFrameException
@@ -470,9 +487,10 @@ interpretAggregation gdf (Lit value) =
                     V.replicate (VG.length (offsets gdf) - 1) value
 interpretAggregation gdf@(Grouped df names indices os) (Col name) = case getColumn name df of
     Nothing -> Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
-    Just (BoxedColumn col) -> Right $ UnAggregated $ fromVector $ mkUnaggregatedColumn col os indices
-    Just (OptionalColumn col) -> Right $ UnAggregated $ fromVector $ mkUnaggregatedColumn col os indices
-    Just (UnboxedColumn col) -> Right $ UnAggregated $ fromVector $ mkUnaggregatedColumn col os indices
+    Just (BoxedColumn col) -> Right $ UnAggregated $ fromVector $ mkUnaggregatedColumnBoxed col os indices
+    Just (OptionalColumn col) -> Right $ UnAggregated $ fromVector $ mkUnaggregatedColumnBoxed col os indices
+    Just (UnboxedColumn col) ->
+        Right $ UnAggregated $ fromVector $ mkUnaggregatedColumnUnboxed col os indices
 interpretAggregation gdf expression@(UnaryOp _ (f :: c -> d) expr) =
     case interpretAggregation @c gdf expr of
         Left (TypeMismatchException context) ->
