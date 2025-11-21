@@ -34,14 +34,17 @@ import DataFrame.Operations.Subset (exclude, select)
 
 import Control.Exception (throw)
 import Control.Monad
+import Control.Monad.IO.Class
 import qualified Data.Char as Char
 import Data.Containers.ListUtils
 import Data.Function
+import Data.Functor
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import Data.Time
 import Data.Type.Equality
 import qualified Data.Vector as V
@@ -49,12 +52,13 @@ import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame.Operations.Core as D
 import qualified DataFrame.Operations.Transformations as D
-import Debug.Trace (trace, traceShow)
+import Debug.Trace (trace)
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
 import Text.Regex.TDFA
 import Type.Reflection (typeRep)
-import Prelude hiding (maximum, minimum, sum)
+import Prelude hiding (maximum, minimum)
+import Prelude as P
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n
@@ -166,14 +170,27 @@ maximum expr = AggReduce expr "maximum" Prelude.max
 sum :: forall a. (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
 sum expr = AggNumericVector expr "sum" VG.sum
 
+sumMaybe :: forall a. (Columnable a, Num a) => Expr (Maybe a) -> Expr a
+sumMaybe expr = AggVector expr "sumMaybe" (P.sum . catMaybes . V.toList)
+
 mean :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 mean expr = AggNumericVector expr "mean" mean'
+
+meanMaybe :: forall a. (Columnable a, Real a) => Expr (Maybe a) -> Expr Double
+meanMaybe expr = AggVector expr "meanMaybe" (mean' . optionalToDoubleVector)
 
 variance :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 variance expr = AggNumericVector expr "variance" variance'
 
 median :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 median expr = AggNumericVector expr "median" median'
+
+optionalToDoubleVector :: (Real a) => V.Vector (Maybe a) -> VU.Vector Double
+optionalToDoubleVector =
+    VU.fromList
+        . V.foldl'
+            (\acc e -> if isJust e then realToFrac (fromMaybe 0 e) : acc else acc)
+            []
 
 percentile :: Int -> Expr Double -> Expr Double
 percentile n expr =
@@ -770,7 +787,10 @@ typeFromString [t] = do
     maybeType <- lookupTypeName t
     case maybeType of
         Just name -> return (ConT name)
-        Nothing -> fail $ "Unsupported type: " ++ t
+        Nothing ->
+            if take 1 t == "["
+                then typeFromString [dropFirstAndLast t] <&> AppT ListT
+                else fail $ "Unsupported type: " ++ t
 typeFromString [tycon, t1] = do
     outer <- typeFromString [tycon]
     inner <- typeFromString [t1]
@@ -782,6 +802,9 @@ typeFromString [tycon, t1, t2] = do
     return (AppT (AppT outer lhs) rhs)
 typeFromString s = fail $ "Unsupported types: " ++ unwords s
 
+dropFirstAndLast :: [a] -> [a]
+dropFirstAndLast = reverse . drop 1 . reverse . drop 1
+
 declareColumns :: DataFrame -> DecsQ
 declareColumns df =
     let
@@ -791,7 +814,7 @@ declareColumns df =
      in
         fmap concat $ forM specs $ \(raw, nm, tyStr) -> do
             ty <- typeFromString (words tyStr)
-            traceShow (nm <> " :: Expr " <> T.pack tyStr) (pure ())
+            liftIO $ T.putStrLn (nm <> " :: Expr " <> T.pack tyStr)
             let n = mkName (T.unpack nm)
             sig <- sigD n [t|Expr $(pure ty)|]
             val <- valD (varP n) (normalB [|col $(TH.lift raw)|]) []
