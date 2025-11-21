@@ -202,6 +202,9 @@ percentile n expr =
 stddev :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 stddev expr = AggNumericVector expr "stddev" (sqrt . variance')
 
+stddevMaybe :: forall a. (Columnable a, Real a) => Expr (Maybe a) -> Expr Double
+stddevMaybe expr = AggVector expr "stddevMaybe" (sqrt . variance' . optionalToDoubleVector)
+
 zScore :: Expr Double -> Expr Double
 zScore c = (c - mean c) / stddev c
 
