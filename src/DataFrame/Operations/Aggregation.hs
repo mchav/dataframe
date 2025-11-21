@@ -12,7 +12,7 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Algorithms.Merge as VA
+import qualified Data.Vector.Algorithms.Radix as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 
@@ -59,7 +59,11 @@ groupBy names df
 
     valueIndices = runST $ do
         withIndexes <- VG.thaw $ VG.indexed rowRepresentations
-        VA.sortBy (\(a, b) (a', b') -> compare b' b) withIndexes
+        VA.sortBy
+            (VA.passes @Int 0)
+            (VA.size @Int 0)
+            (\p e -> VA.radix 0 (snd e))
+            withIndexes
         VG.unsafeFreeze withIndexes
 
 changingPoints :: (Eq a, VU.Unbox a) => VU.Vector (Int, a) -> [Int]
