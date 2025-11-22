@@ -58,9 +58,9 @@ import Type.Reflection (typeRep)
 import Prelude hiding (maximum, minimum)
 import Prelude as P
 
-infix  4  .==, .<, .<=, .>=, .>
-infixr 3  .&&
-infixr 2  .||
+infix 4 .==, .<, .<=, .>=, .>
+infixr 3 .&&
+infixr 2 .||
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n
