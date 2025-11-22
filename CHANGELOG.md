@@ -1,5 +1,11 @@
 # Revision history for dataframe
 
+## 0.3.4.0
+* Fix right join - previously erased some values in the key.
+* Change sort API so we can sort on different rows.
+* Add meanMaybe and stddevMaybe that work on `Maybe` values.
+* More efficient numeric groupby - use radix sort for indices and pre-sort when collecting.
+
 ## 0.3.3.9
 * Fix compilation issue for ghc 9.12.*
 
