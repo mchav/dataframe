@@ -453,6 +453,26 @@ mkUnaggregatedColumnUnboxed col os indices =
                 VU.unsafeSlice (start i) (n i) sorted
             )
 
+mkAggregatedColumnUnboxed ::
+    forall a b.
+    (Columnable a, VU.Unbox a, Columnable b, VU.Unbox b) =>
+    VU.Vector a ->
+    VU.Vector Int ->
+    VU.Vector Int ->
+    (VU.Vector a -> b) ->
+    VU.Vector b
+mkAggregatedColumnUnboxed col os indices f =
+    let
+        sorted = VU.unsafeBackpermute col indices
+        n i = os `VU.unsafeIndex` (i + 1) - (os `VU.unsafeIndex` i)
+        start i = os `VG.unsafeIndex` i
+     in
+        VU.generate
+            (VU.length os - 1)
+            ( \i ->
+                f (VU.unsafeSlice (start i) (n i) sorted)
+            )
+
 nestedTypeException ::
     forall a b. (Typeable a, Typeable b) => String -> DataFrameException
 nestedTypeException expression = case typeRep @a of
@@ -756,6 +776,23 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggVector exp
                         }
                     )
         (Left e) -> Left e
+interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVector (Col name) op (f :: VU.Vector b -> c)) =
+    case getColumn name df of
+        -- TODO(mchavinda): Fix the compedium of type errors here
+        -- This is mostly done help with the benchmarking.
+        Nothing -> Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
+        Just (BoxedColumn col) -> error "Type mismatch."
+        Just (OptionalColumn col) -> error "Type mismatch."
+        Just (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @b) (typeRep @d) of
+            Just Refl -> case testEquality (typeRep @c) (typeRep @a) of
+                Just Refl ->
+                    Right $
+                        Aggregated $
+                            TColumn $
+                                fromUnboxedVector $
+                                    mkAggregatedColumnUnboxed col os indices f
+                Nothing -> error "Type mismatch"
+            Nothing -> error "Type mismatch"
 interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVector expr op (f :: VU.Vector b -> c)) =
     case interpretAggregation @b gdf expr of
         (Left (TypeMismatchException context)) ->
