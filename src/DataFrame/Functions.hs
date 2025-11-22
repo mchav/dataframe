@@ -34,7 +34,6 @@ import DataFrame.Operations.Subset (exclude, select)
 
 import Control.Exception (throw)
 import Control.Monad
-import Control.Monad.IO.Class
 import qualified Data.Char as Char
 import Data.Containers.ListUtils
 import Data.Function
@@ -44,7 +43,6 @@ import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe)
 import qualified Data.Set as S
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
 import Data.Time
 import Data.Type.Equality
 import qualified Data.Vector as V
@@ -817,7 +815,7 @@ declareColumns df =
      in
         fmap concat $ forM specs $ \(raw, nm, tyStr) -> do
             ty <- typeFromString (words tyStr)
-            liftIO $ T.putStrLn (nm <> " :: Expr " <> T.pack tyStr)
+            trace (T.unpack (nm <> " :: Expr " <> T.pack tyStr)) pure ()
             let n = mkName (T.unpack nm)
             sig <- sigD n [t|Expr $(pure ty)|]
             val <- valD (varP n) (normalB [|col $(TH.lift raw)|]) []
