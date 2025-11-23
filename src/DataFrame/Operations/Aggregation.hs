@@ -13,7 +13,7 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Algorithms.Radix as VA
+import qualified Data.Vector.Algorithms.Merge as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
@@ -62,11 +62,7 @@ groupBy names df
 
     valueIndices = runST $ do
         withIndexes <- VG.thaw $ VG.indexed rowRepresentations
-        VA.sortBy
-            (VA.passes @Int 0)
-            (VA.size @Int 0)
-            (\p e -> VA.radix 0 (snd e))
-            withIndexes
+        VA.sortBy (\(a, b) (a', b') -> compare b' b) withIndexes
         VG.unsafeFreeze withIndexes
 
 changingPoints :: (Eq a, VU.Unbox a) => VU.Vector (Int, a) -> [Int]
@@ -80,7 +76,7 @@ changingPoints vs = VG.length vs : fst (VU.ifoldl findChangePoints initialState 
 computeRowHashes :: [Int] -> DataFrame -> VU.Vector Int
 computeRowHashes indices df = runST $ do
     let n = fst (dimensions df)
-    mv <- VUM.replicate n 0
+    mv <- VUM.new n
 
     let selectedCols = map (columns df V.!) indices
 
