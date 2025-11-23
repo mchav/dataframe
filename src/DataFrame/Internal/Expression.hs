@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -14,6 +15,7 @@
 
 module DataFrame.Internal.Expression where
 
+import Control.Monad.ST (runST)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
 import Data.String
@@ -21,7 +23,9 @@ import qualified Data.Text as T
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
+import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 import DataFrame.Errors
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame
@@ -475,29 +479,65 @@ mkAggregatedColumnUnboxed col os indices f =
 
 mkReducedColumnUnboxed ::
     forall a.
-    (Columnable a, VU.Unbox a) =>
+    (VU.Unbox a) =>
     VU.Vector a ->
     VU.Vector Int ->
     VU.Vector Int ->
     (a -> a -> a) ->
     VU.Vector a
-mkReducedColumnUnboxed col os indices f =
-    let
-        n i = os `VU.unsafeIndex` (i + 1)
-        start i = os `VG.unsafeIndex` i
-        go acc index end
-            | index == end = acc
-            | otherwise =
-                go
-                    (f acc (col `VU.unsafeIndex` (indices `VG.unsafeIndex` index)))
-                    (index + 1)
-                    end
-     in
-        VU.generate
-            (VU.length os - 1)
-            ( \i ->
-                go (col VU.! i) (start i + 1) (n i)
-            )
+mkReducedColumnUnboxed col os indices f = runST $ do
+    let len = VU.length os - 1
+    mvec <- VUM.unsafeNew len
+
+    let loopOut i
+            | i == len = return ()
+            | otherwise = do
+                let start = os `VU.unsafeIndex` i
+                let end = os `VU.unsafeIndex` (i + 1)
+                let initVal = col `VU.unsafeIndex` (indices `VU.unsafeIndex` start)
+
+                let loopIn !acc idx
+                        | idx == end = acc
+                        | otherwise =
+                            let val = col `VU.unsafeIndex` (indices `VU.unsafeIndex` idx)
+                             in loopIn (f acc val) (idx + 1)
+                let !finalVal = loopIn initVal (start + 1)
+                VUM.unsafeWrite mvec i finalVal
+                loopOut (i + 1)
+
+    loopOut 0
+    VU.unsafeFreeze mvec
+{-# INLINE mkReducedColumnUnboxed #-}
+
+mkReducedColumnBoxed ::
+    V.Vector a ->
+    VU.Vector Int ->
+    VU.Vector Int ->
+    (a -> a -> a) ->
+    V.Vector a
+mkReducedColumnBoxed col os indices f = runST $ do
+    let len = VU.length os - 1
+    mvec <- VM.unsafeNew len
+
+    let loopOut i
+            | i == len = return ()
+            | otherwise = do
+                let start = os `VU.unsafeIndex` i
+                let end = os `VU.unsafeIndex` (i + 1)
+                let initVal = col `V.unsafeIndex` (indices `VU.unsafeIndex` start)
+
+                let loopIn !acc idx
+                        | idx == end = acc
+                        | otherwise =
+                            let val = col `V.unsafeIndex` (indices `VU.unsafeIndex` idx)
+                             in loopIn (f acc val) (idx + 1)
+                let !finalVal = loopIn initVal (start + 1)
+                VM.unsafeWrite mvec i finalVal
+                loopOut (i + 1)
+
+    loopOut 0
+    V.unsafeFreeze mvec
+{-# INLINE mkReducedColumnBoxed #-}
 
 nestedTypeException ::
     forall a b. (Typeable a, Typeable b) => String -> DataFrameException
@@ -889,11 +929,23 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVec
                         )
 interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce (Col name) op (f :: a -> a -> a)) =
     case getColumn name df of
-        -- TODO(mchavinda): Fix the compedium of type errors here
-        -- This is mostly done help with the benchmarking.
         Nothing -> Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
-        Just (BoxedColumn col) -> undefined -- interpretAggregation gdf AggReduce ((UnaryOp "id" id (Col name)) op f)
-        Just (OptionalColumn col) -> undefined -- interpretAggregation gdf AggReduce ((UnaryOp "id" id (Col name)) op f)
+        Just (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @a) (typeRep @d) of
+            Nothing -> error "Type mismatch"
+            Just Refl ->
+                Right $
+                    Aggregated $
+                        TColumn $
+                            fromVector $
+                                mkReducedColumnBoxed col os indices f
+        Just (OptionalColumn (col :: V.Vector d)) -> case testEquality (typeRep @a) (typeRep @d) of
+            Nothing -> error "Type mismatch"
+            Just Refl ->
+                Right $
+                    Aggregated $
+                        TColumn $
+                            fromVector $
+                                mkReducedColumnBoxed col os indices f
         Just (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @a) (typeRep @d) of
             Just Refl ->
                 Right $
