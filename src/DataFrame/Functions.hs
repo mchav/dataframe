@@ -46,7 +46,6 @@ import qualified Data.Text as T
 import Data.Time
 import Data.Type.Equality
 import qualified Data.Vector as V
-import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame.Operations.Core as D
 import qualified DataFrame.Operations.Transformations as D
@@ -169,8 +168,8 @@ minimum expr = AggReduce expr "minimum" Prelude.min
 maximum :: (Columnable a, Ord a) => Expr a -> Expr a
 maximum expr = AggReduce expr "maximum" Prelude.max
 
-sum :: forall a. (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
-sum expr = AggNumericVector expr "sum" VG.sum
+sum :: forall a. (Columnable a, Num a) => Expr a -> Expr a
+sum expr = AggReduce expr "sum" (+)
 
 sumMaybe :: forall a. (Columnable a, Num a) => Expr (Maybe a) -> Expr a
 sumMaybe expr = AggVector expr "sumMaybe" (P.sum . catMaybes . V.toList)
