@@ -1,6 +1,7 @@
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -15,8 +16,10 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Radix as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Exception (throw)
+import Control.Monad
 import Control.Monad.ST (runST)
 import Data.Hashable
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
@@ -75,36 +78,91 @@ changingPoints vs = VG.length vs : fst (VU.ifoldl findChangePoints initialState 
         | otherwise = (index : offsets, newVal)
 
 computeRowHashes :: [Int] -> DataFrame -> VU.Vector Int
-computeRowHashes indices df =
-    L.foldl' combineCol initialHashes selectedCols
-  where
-    n = fst (dimensions df)
-    initialHashes = VU.replicate n 0
+computeRowHashes indices df = runST $ do
+    let n = fst (dimensions df)
+    mv <- VUM.replicate n 0
 
-    selectedCols = map (columns df V.!) indices
+    let selectedCols = map (columns df V.!) indices
 
-    combineCol :: VU.Vector Int -> Column -> VU.Vector Int
-    combineCol acc col = case col of
-        UnboxedColumn (v :: VU.Vector a) -> case testEquality (typeRep @a) (typeRep @Int) of
-            Just Refl -> VU.zipWith hashWithSalt acc v
-            Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
-                Just Refl -> VU.zipWith (\h d -> hashWithSalt h (doubleToInt d)) acc v
-                Nothing -> case sIntegral @a of
-                    STrue -> VU.zipWith (\h d -> hashWithSalt h (fromIntegral @a @Int d)) acc v
-                    SFalse -> case sFloating @a of
-                        STrue -> VU.zipWith (\h d -> hashWithSalt h ((doubleToInt . realToFrac) d)) acc v
-                        SFalse -> VU.zipWith (\h d -> hashWithSalt h (hash (show d))) acc v
-        BoxedColumn (v :: V.Vector a) -> case testEquality (typeRep @a) (typeRep @T.Text) of
-            Just Refl -> VG.convert (V.zipWith hashWithSalt (VG.convert acc) v)
-            Nothing ->
-                VG.convert
-                    (V.zipWith (\h d -> hashWithSalt h (hash (show d))) (VG.convert acc) v)
+    forM_ selectedCols $ \case
+        UnboxedColumn (v :: VU.Vector a) ->
+            case testEquality (typeRep @a) (typeRep @Int) of
+                Just Refl ->
+                    VU.imapM_
+                        ( \i (x :: Int) -> do
+                            h <- VUM.unsafeRead mv i
+                            VUM.unsafeWrite mv i (hashWithSalt h x)
+                        )
+                        v
+                Nothing ->
+                    case testEquality (typeRep @a) (typeRep @Double) of
+                        Just Refl ->
+                            VU.imapM_
+                                ( \i (d :: Double) -> do
+                                    h <- VUM.unsafeRead mv i
+                                    VUM.unsafeWrite mv i (hashWithSalt h (doubleToInt d))
+                                )
+                                v
+                        Nothing ->
+                            case sIntegral @a of
+                                STrue ->
+                                    VU.imapM_
+                                        ( \i d -> do
+                                            let x :: Int
+                                                x = fromIntegral @a @Int d
+                                            h <- VUM.unsafeRead mv i
+                                            VUM.unsafeWrite mv i (hashWithSalt h x)
+                                        )
+                                        v
+                                SFalse ->
+                                    case sFloating @a of
+                                        STrue ->
+                                            VU.imapM_
+                                                ( \i d -> do
+                                                    let x :: Int
+                                                        x = doubleToInt (realToFrac d :: Double)
+                                                    h <- VUM.unsafeRead mv i
+                                                    VUM.unsafeWrite mv i (hashWithSalt h x)
+                                                )
+                                                v
+                                        SFalse ->
+                                            VU.imapM_
+                                                ( \i d -> do
+                                                    let x = hash (show d)
+                                                    h <- VUM.unsafeRead mv i
+                                                    VUM.unsafeWrite mv i (hashWithSalt h x)
+                                                )
+                                                v
+        BoxedColumn (v :: V.Vector a) ->
+            case testEquality (typeRep @a) (typeRep @T.Text) of
+                Just Refl ->
+                    V.imapM_
+                        ( \i (t :: T.Text) -> do
+                            h <- VUM.unsafeRead mv i
+                            VUM.unsafeWrite mv i (hashWithSalt h t)
+                        )
+                        v
+                Nothing ->
+                    V.imapM_
+                        ( \i d -> do
+                            let x = hash (show d)
+                            h <- VUM.unsafeRead mv i
+                            VUM.unsafeWrite mv i (hashWithSalt h x)
+                        )
+                        v
         OptionalColumn v ->
-            VG.convert
-                (V.zipWith (\h d -> hashWithSalt h (hash (show d))) (VG.convert acc) v)
+            V.imapM_
+                ( \i d -> do
+                    let x = hash (show d)
+                    h <- VUM.unsafeRead mv i
+                    VUM.unsafeWrite mv i (hashWithSalt h x)
+                )
+                v
 
+    VU.unsafeFreeze mv
+  where
     doubleToInt :: Double -> Int
-    doubleToInt = floor
+    doubleToInt = floor . (* 1000)
 
 {- | Aggregate a grouped dataframe using the expressions given.
 All ungrouped columns will be dropped.

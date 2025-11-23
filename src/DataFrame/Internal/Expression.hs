@@ -69,7 +69,7 @@ data Expr a where
         (Columnable a) =>
         Expr a ->
         T.Text -> -- Operation name
-        (forall a. (Columnable a) => a -> a -> a) ->
+        (a -> a -> a) ->
         Expr a
     AggNumericVector ::
         ( Columnable a
@@ -290,7 +290,7 @@ interpret df expression@(AggVector expr op (f :: v b -> c)) = case interpret @b 
                                 , errorColumnName = Nothing
                                 }
                             )
-interpret df expression@(AggReduce expr op (f :: forall a. (Columnable a) => a -> a -> a)) = case interpret @a df expr of
+interpret df expression@(AggReduce expr op (f :: a -> a -> a)) = case interpret @a df expr of
     Left (TypeMismatchException context) ->
         Left $
             TypeMismatchException
@@ -471,6 +471,32 @@ mkAggregatedColumnUnboxed col os indices f =
             (VU.length os - 1)
             ( \i ->
                 f (VU.unsafeSlice (start i) (n i) sorted)
+            )
+
+mkReducedColumnUnboxed ::
+    forall a.
+    (Columnable a, VU.Unbox a) =>
+    VU.Vector a ->
+    VU.Vector Int ->
+    VU.Vector Int ->
+    (a -> a -> a) ->
+    VU.Vector a
+mkReducedColumnUnboxed col os indices f =
+    let
+        n i = os `VU.unsafeIndex` (i + 1)
+        start i = os `VG.unsafeIndex` i
+        go acc index end
+            | index == end = acc
+            | otherwise =
+                go
+                    (f acc (col `VU.unsafeIndex` (indices `VG.unsafeIndex` index)))
+                    (index + 1)
+                    end
+     in
+        VU.generate
+            (VU.length os - 1)
+            ( \i ->
+                go (col VU.! i) (start i + 1) (n i)
             )
 
 nestedTypeException ::
@@ -861,7 +887,22 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVec
                             , errorColumnName = Just (show expr)
                             }
                         )
-interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce expr op (f :: forall a. (Columnable a) => a -> a -> a)) =
+interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce (Col name) op (f :: a -> a -> a)) =
+    case getColumn name df of
+        -- TODO(mchavinda): Fix the compedium of type errors here
+        -- This is mostly done help with the benchmarking.
+        Nothing -> Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
+        Just (BoxedColumn col) -> undefined -- interpretAggregation gdf AggReduce ((UnaryOp "id" id (Col name)) op f)
+        Just (OptionalColumn col) -> undefined -- interpretAggregation gdf AggReduce ((UnaryOp "id" id (Col name)) op f)
+        Just (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @a) (typeRep @d) of
+            Just Refl ->
+                Right $
+                    Aggregated $
+                        TColumn $
+                            fromUnboxedVector $
+                                mkReducedColumnUnboxed col os indices f
+            Nothing -> error "Type mismatch"
+interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce expr op (f :: a -> a -> a)) =
     case interpretAggregation @a gdf expr of
         (Left (TypeMismatchException context)) ->
             Left $
