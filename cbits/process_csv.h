@@ -28,8 +28,6 @@
 #define ALL_ONES_MASK ~0ULL
 #define ALL_ZEROS_MASK 0ULL
 
-// Only expose a portable API in the public header.
-// Implementation may use platform-specific intrinsics internally.
-size_t get_delimiter_indices(uint8_t *buf, size_t len, size_t* indices);
+size_t get_delimiter_indices(uint8_t *buf, size_t len, uint8_t separator, size_t* indices);
 
 #endif

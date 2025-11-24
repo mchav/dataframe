@@ -20,6 +20,21 @@ testReadCsvFunctions csvPath = TestCase $ do
         df1
         df3
 
+testReadTsvFunctions :: FilePath -> Test
+testReadTsvFunctions tsvPath = TestCase $ do
+    df1 <- D.readTsv tsvPath
+    df2 <- D.readTsvUnstable tsvPath
+
+    assertEqual
+        ("readTsvUnstable should produce same result as readTsv for " <> tsvPath)
+        df1
+        df2
+    df3 <- D.fastReadTsvUnstable tsvPath
+    assertEqual
+        ("fastReadTsvUnstable should produce same result as readTsv for " <> tsvPath)
+        df1
+        df3
+
 testArbuthnot :: Test
 testArbuthnot = testReadCsvFunctions "./tests/data/arbuthnot.csv"
 
@@ -44,6 +59,9 @@ testNoNewline = testReadCsvFunctions "./tests/data/test_no_newline.csv"
 testWithNewline :: Test
 testWithNewline = testReadCsvFunctions "./tests/data/test_with_newline.csv"
 
+testReadTsv :: Test
+testReadTsv = testReadTsvFunctions "./tests/data/chipotle.tsv"
+
 -- Two tests are commented out because
 -- there are slight differences in type
 -- inference between the implementations
@@ -52,10 +70,10 @@ tests :: [Test]
 tests =
     [ TestLabel "readCsv_arbuthnot" testArbuthnot
     , TestLabel "readCsv_city" testCity
-    , --    , TestLabel "readCsv_housing" testHousing
-      TestLabel "readCsv_present" testPresent
-    , --    , TestLabel "readCsv_starwars" testStarwars
-      TestLabel "readCsv_station" testStation
+    , TestLabel "readCsv_housing" testHousing
+    , TestLabel "readCsv_present" testPresent
+    , TestLabel "readCsv_starwars" testStarwars
+    , TestLabel "readCsv_station" testStation
     , TestLabel "readCsv_no_newline" testNoNewline
     , TestLabel "readCsv_with_newline" testWithNewline
     ]
