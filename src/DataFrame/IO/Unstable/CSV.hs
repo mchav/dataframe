@@ -159,7 +159,8 @@ extractField ::
     Int ->
     Text
 extractField file indices position =
-    TextEncoding.decodeUtf8Lenient
+    Text.strip
+        . TextEncoding.decodeUtf8Lenient
         . unsafeToByteString
         $ VS.slice
             previous
@@ -246,6 +247,7 @@ stateTransitionTable separator = array ((0, 0), (1, 255)) [(i, f i) | i <- range
         | character == separator = fromEnum UnEscaped
         -- Unescaped quote
         | character == 0x22 = fromEnum Escaped
+        | otherwise = fromEnum UnEscaped
     -- Escaped quote
     -- escaped quote in fields are dealt as
     -- consecutive quoted sections of a field
@@ -299,7 +301,7 @@ getDelimiterIndices_ separator originalLen csvFile resultPtr = do
         character =
             case state of
                 UnEscaped ->
-                    if character == lf || character == comma
+                    if character == lf || character == separator
                         then do
                             VSM.write
                                 resultVector

@@ -76,4 +76,5 @@ tests =
     , TestLabel "readCsv_station" testStation
     , TestLabel "readCsv_no_newline" testNoNewline
     , TestLabel "readCsv_with_newline" testWithNewline
+    , TestLabel "readTsv" testReadTsv
     ]
