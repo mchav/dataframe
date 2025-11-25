@@ -1,5 +1,30 @@
 # Revision history for dataframe
 
+## 0.3.4.1
+* Faster sum operation (now does a reduction instead of collecting the vector and aggregating)
+* Update the fixity of comparison operations. Before `(x + y) .<= 10`. Now: `x + y ,<= 10`.
+* Revert sort for groupby back to mergesort.
+
+## 0.3.4.0
+* Fix right join - previously erased some values in the key.
+* Change sort API so we can sort on different rows.
+* Add meanMaybe and stddevMaybe that work on `Maybe` values.
+* More efficient numeric groupby - use radix sort for indices and pre-sort when collecting.
+
+## 0.3.3.9
+* Fix compilation issue for ghc 9.12.*
+
+## 0.3.3.8
+* More efficient inner joins using hashmaps.
+* Initial JSON lines implementation
+* More robust logic when specifying CSV types.
+* Strip spaces from titles and rows in CSV reading.
+* Auto parsing bools in CSV.
+* Add `imputeWith`, `bind`, `nRows`, `nColumns`, `recodeWitDefault` function that takes 
+* Better support for proper markdown
+* Fix bug with full outer join.
+* Unify `insertVector` and `insertList` functions into insert.
+
 ## 0.3.3.7
 * Many functions how rely on expressions (not strings).
 * full, left, and right join now implemented.

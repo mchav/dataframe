@@ -75,7 +75,7 @@ main = do
                 , F.maximum (F.col @Int "quantity") `F.as` "max"
                 , F.mean (F.col @Int "quantity") `F.as` "mean"
                 ]
-            |> D.sortBy D.Descending ["sum"]
+            |> D.sortBy [D.Desc "sum"]
 
     print $
         df

@@ -11,7 +11,6 @@ module DataFrame.Internal.Row where
 
 import qualified Data.List as L
 import qualified Data.Map as M
-import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Merge as VA
@@ -122,10 +121,9 @@ or streaming operations.
 toRowList :: DataFrame -> [Row]
 toRowList df =
     let
-        nameSet =
-            S.fromList (map fst (L.sortBy (compare `on` snd) $ M.toList (columnIndices df)))
+        names = map fst (L.sortBy (compare `on` snd) $ M.toList (columnIndices df))
      in
-        map (mkRowRep df nameSet) [0 .. (fst (dataframeDimensions df) - 1)]
+        map (mkRowRep df names) [0 .. (fst (dataframeDimensions df) - 1)]
 
 {- | Converts the dataframe to a vector of rows with only the specified columns.
 
@@ -149,11 +147,7 @@ Vector of rows with only name and age fields
 Vector of empty rows (one per dataframe row)
 -}
 toRowVector :: [T.Text] -> DataFrame -> V.Vector Row
-toRowVector names df =
-    let
-        nameSet = S.fromList names
-     in
-        V.generate (fst (dataframeDimensions df)) (mkRowRep df nameSet)
+toRowVector names df = V.generate (fst (dataframeDimensions df)) (mkRowRep df names)
 
 mkRowFromArgs :: [T.Text] -> DataFrame -> Int -> Row
 mkRowFromArgs names df i = V.map get (V.fromList names)
@@ -169,11 +163,14 @@ mkRowFromArgs names df i = V.map get (V.fromList names)
         Just (UnboxedColumn column) -> toAny (column VU.! i)
         Just (OptionalColumn column) -> toAny (column V.! i)
 
-mkRowRep :: DataFrame -> S.Set T.Text -> Int -> Row
-mkRowRep df names i = V.generate (S.size names) (\index -> get (names' V.! index))
+-- This function will return the items in the order that is specified
+-- by the user. For example, if the dataframe consists of the columns
+-- "Age", "Pclass", "Name", and the user asks for ["Name", "Age"],
+-- this will order the values in the order ["Mr Smith", 50]
+mkRowRep :: DataFrame -> [T.Text] -> Int -> Row
+mkRowRep df names i = V.generate (L.length names) (\index -> get (names' V.! index))
   where
-    inOrderIndexes = map fst $ L.sortBy (compare `on` snd) $ M.toList (columnIndices df)
-    names' = V.fromList [n | n <- inOrderIndexes, S.member n names]
+    names' = V.fromList names
     throwError name =
         error $
             "Column "
@@ -194,9 +191,16 @@ mkRowRep df names i = V.generate (S.size names) (\index -> get (names' V.! index
         Nothing ->
             throw $ ColumnNotFoundException name "mkRowRep" (M.keys $ columnIndices df)
 
-sortedIndexes' :: Bool -> V.Vector Row -> VU.Vector Int
-sortedIndexes' asc rows = runST $ do
+sortedIndexes' :: [Bool] -> V.Vector Row -> VU.Vector Int
+sortedIndexes' flipCompare rows = runST $ do
     withIndexes <- VG.thaw (V.indexed rows)
-    VA.sortBy ((if asc then compare else flip compare) `on` snd) withIndexes
+    VA.sortBy (produceOrderingFromRow flipCompare `on` snd) withIndexes
     sorted <- VG.unsafeFreeze withIndexes
     return $ VU.generate (VG.length rows) (\i -> fst (sorted VG.! i))
+
+produceOrderingFromRow :: [Bool] -> Row -> Row -> Ordering
+produceOrderingFromRow mustFlips v1 v2 = V.foldr (<>) mempty vZipped
+  where
+    vFlip = V.fromList mustFlips
+    vZipped =
+        V.zipWith3 (\b e1 e2 -> if b then compare e1 e2 else compare e2 e1) vFlip v1 v2

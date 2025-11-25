@@ -262,11 +262,18 @@ dataframe> df |> D.filterWhere (F.lift even id) |> D.select [F.name city] |> D.d
 
 ## Sorting and Combining Results
 
-Sometimes you need to sort data and then combine results from multiple queries. The `sortBy` function orders rows by specified columns, and you can use the `<>` operator to concatenate dataframes vertically (similar to SQL's UNION).
+Sometimes you need to sort data and then combine results from multiple queries. The `sortBy` function orders rows by specified columns. Much like SQL, you can specify multiple columns to
+order by. The results are ordered by the first column, with ties broken by the next column 
+respectively. 
+
+You can also can use the `<>` operator to concatenate dataframes vertically (similar to SQL's UNION).
 
 ```haskell
-df |> D.sortBy D.Ascending ["column"]   -- Sort ascending
-df |> D.sortBy D.Descending ["column"]  -- Sort descending
+-- Sort by ascending age
+df |> D.sortBy [D.Asc "age"]
+-- 1. Sort by descending age
+-- 2. Within those who have the same age, sort by alphabetical order of name.
+df |> D.sortBy [D.Asc "age", D.Desc "name"]  
 ```
 
 You can also derive new columns using `derive` to compute values based on existing columns:
@@ -292,8 +299,8 @@ UNION
 ```
 
 ```haskell
-dataframe> letterSort s = df |> D.derive "length" (F.lift T.length city) |> D.select [F.name city, "length"] |> D.sortBy s ["length"] |> D.take 1
-dataframe> (letterSort D.Descending) <> (letterSort D.Ascending)
+dataframe> letterSort s = df |> D.derive "length" (F.lift T.length city) |> D.select [F.name city, "length"] |> D.sortBy [s "length"] |> D.take 1
+dataframe> (letterSort D.Desc) <> (letterSort D.Asc)
 -------------------------------
          city          | length
 -----------------------|-------

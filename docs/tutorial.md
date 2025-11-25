@@ -235,7 +235,7 @@ let dfImput = D.impute (F.col @Double "sepal.length") 10 df
 ## 9) Sorting, Shuffling, Distinct, Sampling
 
 ```haskell
-D.sortBy D.Ascending ["variety"] df
+D.sortBy [D.Asc "variety"] df
 D.sample (mkStdGen 42) 0.1 df           -- 10% uniform random sample sample
 D.shuffle (mStdGen 42) df
 ```
@@ -246,7 +246,7 @@ D.shuffle (mStdGen 42) df
 
 ```haskell
 let (train, test) = D.randomSplit (mkStdGen 42) 0.8 (df |> D.insert "index" [1..(fst (D.dimensions df))])
-let original = train <> test |> D.sortBy D.Ascending ["index"]
+let original = train <> test |> D.sortBy [D.Asc "index"]
 ```
 
 ---

@@ -26,6 +26,7 @@ import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (
     DataFrame (..),
     columnAsUnboxedVector,
+    columnAsVector,
     empty,
     getColumn,
  )
@@ -96,6 +97,15 @@ mean expr df = case interpret df expr of
     Right (TColumn col) -> case toUnboxedVector @a col of
         Left e -> throw e
         Right xs -> mean' xs
+
+meanMaybe ::
+    forall a. (Columnable a, Real a) => Expr (Maybe a) -> DataFrame -> Double
+meanMaybe (Col name) df = (mean' . optionalToDoubleVector) (columnAsVector @(Maybe a) name df)
+meanMaybe expr df = case interpret @(Maybe a) df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toVector @(Maybe a) col of
+        Left e -> throw e
+        Right xs -> (mean' . optionalToDoubleVector) xs
 
 -- | Calculates the median of a given column as a standalone value.
 median ::
@@ -178,6 +188,13 @@ _getColumnAsDouble name df = case getColumn name df of
             ColumnNotFoundException name "applyStatistic" (M.keys $ columnIndices df)
     _ -> Nothing
 {-# INLINE _getColumnAsDouble #-}
+
+optionalToDoubleVector :: (Real a) => V.Vector (Maybe a) -> VU.Vector Double
+optionalToDoubleVector =
+    VU.fromList
+        . V.foldl'
+            (\acc e -> if isJust e then realToFrac (fromMaybe 0 e) : acc else acc)
+            []
 
 -- | Calculates the sum of a given column as a standalone value.
 sum ::

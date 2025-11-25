@@ -107,7 +107,7 @@ analyzeUsers = runSqlite "test.db" $ do
         let youngUsers = DF.filter @Int "age" (< 30) df
         
         -- Sort
-        let sorted = DF.sortBy DF.Ascending ["age"] df
+        let sorted = DF.sortBy [DF.Asc "age"] df
         
         -- Derive columns
         let withAgeGroup = DF.derive "age_group"

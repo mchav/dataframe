@@ -17,44 +17,36 @@ module DataFrame.Functions where
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (
     DataFrame (..),
-    columnAsDoubleVector,
     unsafeGetColumn,
  )
 import DataFrame.Internal.Expression (
     Expr (..),
     NamedExpr,
     UExpr (..),
-    eSize,
-    interpret,
-    replaceExpr,
  )
 import DataFrame.Internal.Statistics
-import qualified DataFrame.Operations.Statistics as Stats
-import DataFrame.Operations.Subset (exclude, select)
 
-import Control.Exception (throw)
 import Control.Monad
 import qualified Data.Char as Char
-import Data.Containers.ListUtils
 import Data.Function
+import Data.Functor
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, listToMaybe)
-import qualified Data.Set as S
+import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe)
 import qualified Data.Text as T
 import Data.Time
-import Data.Type.Equality
 import qualified Data.Vector as V
-import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
-import qualified DataFrame.Operations.Core as D
-import qualified DataFrame.Operations.Transformations as D
-import Debug.Trace (trace, traceShow)
+import Debug.Trace (trace)
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
 import Text.Regex.TDFA
-import Type.Reflection (typeRep)
-import Prelude hiding (maximum, minimum, sum)
+import Prelude hiding (maximum, minimum)
+import Prelude as P
+
+infix 4 .==, .<, .<=, .>=, .>
+infixr 3 .&&
+infixr 2 .||
 
 name :: (Show a) => Expr a -> T.Text
 name (Col n) = n
@@ -163,17 +155,33 @@ minimum expr = AggReduce expr "minimum" Prelude.min
 maximum :: (Columnable a, Ord a) => Expr a -> Expr a
 maximum expr = AggReduce expr "maximum" Prelude.max
 
-sum :: forall a. (Columnable a, Num a, VU.Unbox a) => Expr a -> Expr a
-sum expr = AggNumericVector expr "sum" VG.sum
+sum :: forall a. (Columnable a, Num a) => Expr a -> Expr a
+sum expr = AggReduce expr "sum" (+)
+
+sumMaybe :: forall a. (Columnable a, Num a) => Expr (Maybe a) -> Expr a
+sumMaybe expr = AggVector expr "sumMaybe" (P.sum . catMaybes . V.toList)
 
 mean :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 mean expr = AggNumericVector expr "mean" mean'
+
+meanMaybe :: forall a. (Columnable a, Real a) => Expr (Maybe a) -> Expr Double
+meanMaybe expr = AggVector expr "meanMaybe" (mean' . optionalToDoubleVector)
 
 variance :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 variance expr = AggNumericVector expr "variance" variance'
 
 median :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 median expr = AggNumericVector expr "median" median'
+
+medianMaybe :: (Columnable a, Real a) => Expr (Maybe a) -> Expr Double
+medianMaybe expr = AggVector expr "meanMaybe" (median' . optionalToDoubleVector)
+
+optionalToDoubleVector :: (Real a) => V.Vector (Maybe a) -> VU.Vector Double
+optionalToDoubleVector =
+    VU.fromList
+        . V.foldl'
+            (\acc e -> if isJust e then realToFrac (fromMaybe 0 e) : acc else acc)
+            []
 
 percentile :: Int -> Expr Double -> Expr Double
 percentile n expr =
@@ -184,6 +192,9 @@ percentile n expr =
 
 stddev :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 stddev expr = AggNumericVector expr "stddev" (sqrt . variance')
+
+stddevMaybe :: forall a. (Columnable a, Real a) => Expr (Maybe a) -> Expr Double
+stddevMaybe expr = AggVector expr "stddevMaybe" (sqrt . variance' . optionalToDoubleVector)
 
 zScore :: Expr Double -> Expr Double
 zScore c = (c - mean c) / stddev c
@@ -255,447 +266,6 @@ bind ::
     (Columnable a, Columnable (m a), Monad m, Columnable b, Columnable (m b)) =>
     (a -> m b) -> Expr (m a) -> Expr (m b)
 bind f = lift (>>= f)
-
-generateConditions ::
-    TypedColumn Double -> [Expr Bool] -> [Expr Double] -> DataFrame -> [Expr Bool]
-generateConditions labels conds ps df =
-    let
-        newConds =
-            [ p .<= q
-            | p <- ps
-            , q <- ps
-            , p /= q
-            ]
-                ++ [ DataFrame.Functions.not p
-                   | p <- conds
-                   ]
-        expandedConds =
-            conds
-                ++ newConds
-                ++ [p .&& q | p <- newConds, q <- conds, p /= q]
-                ++ [p .|| q | p <- newConds, q <- conds, p /= q]
-     in
-        pickTopNBool df labels (deduplicate df expandedConds)
-
-generatePrograms ::
-    Bool ->
-    [Expr Bool] ->
-    [Expr Double] ->
-    [Expr Double] ->
-    [Expr Double] ->
-    [Expr Double]
-generatePrograms _ _ vars' constants [] = vars' ++ constants
-generatePrograms includeConds conds vars constants ps =
-    let
-        existingPrograms = ps ++ vars ++ constants
-     in
-        existingPrograms
-            ++ [ transform p
-               | p <- ps ++ vars
-               , transform <-
-                    [ sqrt
-                    , abs
-                    , log . (+ Lit 1)
-                    , exp
-                    , sin
-                    , cos
-                    , relu
-                    , signum
-                    ]
-               ]
-            ++ [ pow i p
-               | p <- existingPrograms
-               , i <- [2 .. 6]
-               ]
-            ++ [ p + q
-               | (i, p) <- zip [0 ..] existingPrograms
-               , (j, q) <- zip [0 ..] existingPrograms
-               , Prelude.not (isLiteral p && isLiteral q)
-               , i >= j
-               ]
-            ++ ( if includeConds
-                    then
-                        [ DataFrame.Functions.min p q
-                        | (i, p) <- zip [0 ..] existingPrograms
-                        , (j, q) <- zip [0 ..] existingPrograms
-                        , Prelude.not (isLiteral p && isLiteral q)
-                        , p /= q
-                        , i > j
-                        ]
-                            ++ [ DataFrame.Functions.max p q
-                               | (i, p) <- zip [0 ..] existingPrograms
-                               , (j, q) <- zip [0 ..] existingPrograms
-                               , Prelude.not (isLiteral p && isLiteral q)
-                               , p /= q
-                               , i > j
-                               ]
-                            ++ [ ifThenElse cond r s
-                               | cond <- conds
-                               , r <- existingPrograms
-                               , s <- existingPrograms
-                               , r /= s
-                               ]
-                    else []
-               )
-            ++ [ p - q
-               | (i, p) <- zip [0 ..] existingPrograms
-               , (j, q) <- zip [0 ..] existingPrograms
-               , Prelude.not (isLiteral p && isLiteral q)
-               , i /= j
-               ]
-            ++ [ p * q
-               | (i, p) <- zip [0 ..] existingPrograms
-               , (j, q) <- zip [0 ..] existingPrograms
-               , Prelude.not (isLiteral p && isLiteral q)
-               , i >= j
-               ]
-            ++ [ p / q
-               | p <- existingPrograms
-               , q <- existingPrograms
-               , Prelude.not (isLiteral p && isLiteral q)
-               , p /= q
-               ]
-
-isLiteral :: Expr a -> Bool
-isLiteral (Lit _) = True
-isLiteral _ = False
-
-deduplicate ::
-    forall a.
-    (Columnable a) =>
-    DataFrame ->
-    [Expr a] ->
-    [(Expr a, TypedColumn a)]
-deduplicate df = go S.empty . nubOrd . L.sortBy (\e1 e2 -> compare (eSize e1) (eSize e2))
-  where
-    go _ [] = []
-    go seen (x : xs)
-        | hasInvalid = go seen xs
-        | S.member res seen = go seen xs
-        | otherwise = (x, res) : go (S.insert res seen) xs
-      where
-        res = case interpret @a df x of
-            Left e -> throw e
-            Right v -> v
-        hasInvalid = case res of
-            (TColumn (UnboxedColumn (col :: VU.Vector b))) -> case testEquality (typeRep @Double) (typeRep @b) of
-                Just Refl -> VU.any (\n -> isNaN n || isInfinite n) col
-                Nothing -> False
-            _ -> False
-
--- | Checks if two programs generate the same outputs given all the same inputs.
-equivalent :: DataFrame -> Expr Double -> Expr Double -> Bool
-equivalent df p1 p2 = case (==) <$> interpret df p1 <*> interpret df p2 of
-    Left e -> throw e
-    Right v -> v
-
-synthesizeFeatureExpr ::
-    -- | Target expression
-    T.Text ->
-    BeamConfig ->
-    DataFrame ->
-    Either String (Expr Double)
-synthesizeFeatureExpr target cfg df =
-    let
-        df' = exclude [target] df
-        t = case interpret df (Col target) of
-            Left e -> throw e
-            Right v -> v
-     in
-        case beamSearch
-            df'
-            cfg
-            t
-            (percentiles df')
-            []
-            [] of
-            Nothing -> Left "No programs found"
-            Just p -> Right p
-
-f1FromBinary :: VU.Vector Double -> VU.Vector Double -> Maybe Double
-f1FromBinary trues preds =
-    let (!tp, !fp, !fn) =
-            VU.foldl' step (0 :: Int, 0 :: Int, 0 :: Int) $
-                VU.zip (VU.map (> 0) preds) (VU.map (> 0) trues)
-     in f1FromCounts tp fp fn
-  where
-    step (!tp, !fp, !fn) (!p, !t) =
-        case (p, t) of
-            (True, True) -> (tp + 1, fp, fn)
-            (True, False) -> (tp, fp + 1, fn)
-            (False, True) -> (tp, fp, fn + 1)
-            (False, False) -> (tp, fp, fn)
-
-f1FromCounts :: Int -> Int -> Int -> Maybe Double
-f1FromCounts tp fp fn =
-    let tp' = fromIntegral tp
-        fp' = fromIntegral fp
-        fn' = fromIntegral fn
-        precision = if tp' + fp' == 0 then 0 else tp' / (tp' + fp')
-        recall = if tp' + fn' == 0 then 0 else tp' / (tp' + fn')
-     in if precision + recall == 0
-            then Nothing
-            else Just (2 * precision * recall / (precision + recall))
-
-fitClassifier ::
-    -- | Target expression
-    T.Text ->
-    -- | Depth of search (Roughly, how many terms in the final expression)
-    Int ->
-    -- | Beam size - the number of candidate expressions to consider at a time.
-    Int ->
-    DataFrame ->
-    Either String (Expr Int)
-fitClassifier target d b df =
-    let
-        df' = exclude [target] df
-        t = case interpret df (Col target) of
-            Left e -> throw e
-            Right v -> v
-     in
-        case beamSearch
-            df'
-            (BeamConfig d b F1 True)
-            t
-            (percentiles df' ++ [lit 1, lit 0, lit (-1)])
-            []
-            [] of
-            Nothing -> Left "No programs found"
-            Just p -> Right (ifThenElse (p .> 0) 1 0)
-
-percentiles :: DataFrame -> [Expr Double]
-percentiles df =
-    let
-        doubleColumns = map (either throw id . (`columnAsDoubleVector` df)) (D.columnNames df)
-     in
-        concatMap
-            (\c -> map (lit . roundTo2SigDigits . (`percentile'` c)) [1, 25, 75, 99])
-            doubleColumns
-            ++ map (lit . roundTo2SigDigits . variance') doubleColumns
-            ++ map (lit . roundTo2SigDigits . sqrt . variance') doubleColumns
-
-roundToSigDigits :: Int -> Double -> Double
-roundToSigDigits n x
-    | x == 0 = 0
-    | otherwise =
-        let magnitude = floor (logBase 10 (abs x))
-            scale = 10 ** fromIntegral (n - 1 - magnitude)
-         in fromIntegral (round (x * scale)) / scale
-
-roundTo2SigDigits :: Double -> Double
-roundTo2SigDigits = roundToSigDigits 2
-
-fitRegression ::
-    -- | Target expression
-    T.Text ->
-    -- | Depth of search (Roughly, how many terms in the final expression)
-    Int ->
-    -- | Beam size - the number of candidate expressions to consider at a time.
-    Int ->
-    DataFrame ->
-    Either String (Expr Double)
-fitRegression target d b df =
-    let
-        df' = exclude [target] df
-        targetMean = Stats.mean (Col @Double target) df
-        t = case interpret df (Col target) of
-            Left e -> throw e
-            Right v -> v
-     in
-        case beamSearch
-            df'
-            ( BeamConfig
-                d
-                b
-                MutualInformation
-                False
-            )
-            t
-            (percentiles df')
-            []
-            [] of
-            Nothing -> Left "No programs found"
-            Just p ->
-                trace (show p) $
-                    let
-                     in case beamSearch
-                            ( D.derive "_generated_regression_feature_" p df
-                                & select ["_generated_regression_feature_"]
-                            )
-                            (BeamConfig d b MeanSquaredError False)
-                            t
-                            (percentiles df' ++ [lit targetMean, lit 10])
-                            []
-                            [Col "_generated_regression_feature_"] of
-                            Nothing -> Left "Could not find coefficients"
-                            Just p' -> Right (replaceExpr p (Col @Double "_generated_regression_feature_") p')
-
-data LossFunction
-    = PearsonCorrelation
-    | MutualInformation
-    | MeanSquaredError
-    | F1
-
-getLossFunction ::
-    LossFunction -> (VU.Vector Double -> VU.Vector Double -> Maybe Double)
-getLossFunction f = case f of
-    MutualInformation ->
-        ( \l r ->
-            mutualInformationBinned
-                (Prelude.max 10 (ceiling (sqrt (fromIntegral (VU.length l)))))
-                l
-                r
-        )
-    PearsonCorrelation -> (\l r -> (^ 2) <$> correlation' l r)
-    MeanSquaredError -> (\l r -> fmap negate (meanSquaredError l r))
-    F1 -> f1FromBinary
-
-data BeamConfig = BeamConfig
-    { searchDepth :: Int
-    , beamLength :: Int
-    , lossFunction :: LossFunction
-    , includeConditionals :: Bool
-    }
-
-defaultBeamConfig :: BeamConfig
-defaultBeamConfig = BeamConfig 2 100 PearsonCorrelation False
-
-beamSearch ::
-    DataFrame ->
-    -- | Parameters of the beam search.
-    BeamConfig ->
-    -- | Examples
-    TypedColumn Double ->
-    -- | Constants
-    [Expr Double] ->
-    -- | Conditions
-    [Expr Bool] ->
-    -- | Programs
-    [Expr Double] ->
-    Maybe (Expr Double)
-beamSearch df cfg outputs constants conds programs
-    | searchDepth cfg == 0 = case ps of
-        [] -> Nothing
-        (x : _) -> Just x
-    | otherwise =
-        beamSearch
-            df
-            (cfg{searchDepth = searchDepth cfg - 1})
-            outputs
-            constants
-            conditions
-            (generatePrograms (includeConditionals cfg) conditions vars constants ps)
-  where
-    vars = map col names
-    conditions = generateConditions outputs conds (vars ++ constants ++ ps) df
-    ps = pickTopN df outputs cfg $ deduplicate df programs
-    names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
-
-pickTopN ::
-    DataFrame ->
-    TypedColumn Double ->
-    BeamConfig ->
-    [(Expr Double, TypedColumn a)] ->
-    [Expr Double]
-pickTopN _ _ _ [] = []
-pickTopN df (TColumn col) cfg ps =
-    let
-        l = case toVector @Double @VU.Vector col of
-            Left e -> throw e
-            Right v -> v
-        ordered =
-            Prelude.take
-                (beamLength cfg)
-                ( map fst $
-                    L.sortBy
-                        ( \(_, c2) (_, c1) ->
-                            if maybe False isInfinite c1
-                                || maybe False isInfinite c2
-                                || maybe False isNaN c1
-                                || maybe False isNaN c2
-                                then LT
-                                else compare c1 c2
-                        )
-                        ( map
-                            (\(e, res) -> (e, getLossFunction (lossFunction cfg) l (asDoubleVector res)))
-                            ps
-                        )
-                )
-        asDoubleVector c =
-            let
-                (TColumn col') = c
-             in
-                case toVector @Double @VU.Vector col' of
-                    Left e -> throw e
-                    Right v -> VU.convert v
-        interpretDoubleVector e =
-            let
-                (TColumn col') = case interpret df e of
-                    Left e -> throw e
-                    Right v -> v
-             in
-                case toVector @Double @VU.Vector col' of
-                    Left e -> throw e
-                    Right v -> VU.convert v
-     in
-        trace
-            ( "Best loss: "
-                ++ show
-                    ( getLossFunction (lossFunction cfg) l . interpretDoubleVector
-                        <$> listToMaybe ordered
-                    )
-                ++ " "
-                ++ (if null ordered then "empty" else show (listToMaybe ordered))
-            )
-            ordered
-
-pickTopNBool ::
-    DataFrame ->
-    TypedColumn Double ->
-    [(Expr Bool, TypedColumn Bool)] ->
-    [Expr Bool]
-pickTopNBool _ _ [] = []
-pickTopNBool df (TColumn col) ps =
-    let
-        l = case toVector @Double @VU.Vector col of
-            Left e -> throw e
-            Right v -> v
-        ordered =
-            Prelude.take
-                10
-                ( map fst $
-                    L.sortBy
-                        ( \(_, c2) (_, c1) ->
-                            if maybe False isInfinite c1
-                                || maybe False isInfinite c2
-                                || maybe False isNaN c1
-                                || maybe False isNaN c2
-                                then LT
-                                else compare c1 c2
-                        )
-                        ( map
-                            (\(e, res) -> (e, getLossFunction MutualInformation l (asDoubleVector res)))
-                            ps
-                        )
-                )
-        asDoubleVector c =
-            let
-                (TColumn col') = c
-             in
-                case toVector @Bool @VU.Vector col' of
-                    Left e -> throw e
-                    Right v -> VU.map (fromIntegral @Int @Double . fromEnum) v
-     in
-        ordered
-
-satisfiesExamples :: DataFrame -> TypedColumn Double -> Expr Double -> Bool
-satisfiesExamples df col expr =
-    let
-        result = case interpret df expr of
-            Left e -> throw e
-            Right v -> v
-     in
-        result == col
 
 -- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
 isReservedId :: T.Text -> Bool
@@ -770,7 +340,10 @@ typeFromString [t] = do
     maybeType <- lookupTypeName t
     case maybeType of
         Just name -> return (ConT name)
-        Nothing -> fail $ "Unsupported type: " ++ t
+        Nothing ->
+            if take 1 t == "["
+                then typeFromString [dropFirstAndLast t] <&> AppT ListT
+                else fail $ "Unsupported type: " ++ t
 typeFromString [tycon, t1] = do
     outer <- typeFromString [tycon]
     inner <- typeFromString [t1]
@@ -782,6 +355,9 @@ typeFromString [tycon, t1, t2] = do
     return (AppT (AppT outer lhs) rhs)
 typeFromString s = fail $ "Unsupported types: " ++ unwords s
 
+dropFirstAndLast :: [a] -> [a]
+dropFirstAndLast = reverse . drop 1 . reverse . drop 1
+
 declareColumns :: DataFrame -> DecsQ
 declareColumns df =
     let
@@ -791,7 +367,7 @@ declareColumns df =
      in
         fmap concat $ forM specs $ \(raw, nm, tyStr) -> do
             ty <- typeFromString (words tyStr)
-            traceShow (nm <> " :: Expr " <> T.pack tyStr) (pure ())
+            trace (T.unpack (nm <> " :: Expr " <> T.pack tyStr)) pure ()
             let n = mkName (T.unpack nm)
             sig <- sigD n [t|Expr $(pure ty)|]
             val <- valD (varP n) (normalB [|col $(TH.lift raw)|]) []

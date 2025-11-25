@@ -10,11 +10,14 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 import Data.Maybe (fromMaybe)
+import qualified Data.Proxy as P
 import Data.Time
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import DataFrame.Internal.Column (Column (..), fromVector)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
+import DataFrame.Internal.Schema
+import Text.Read
 import Type.Reflection (typeRep)
 
 type DateFormat = String
@@ -186,3 +189,20 @@ data ParsingAssumption
     | DateAssumption
     | NoAssumption
     | TextAssumption
+
+parseWithTypes :: [SchemaType] -> DataFrame -> DataFrame
+parseWithTypes ts df = df{columns = go 0 ts (columns df)}
+  where
+    go :: Int -> [SchemaType] -> V.Vector Column -> V.Vector Column
+    go n [] xs = xs
+    go n (t : rest) xs
+        | n >= V.length xs = xs
+        | otherwise =
+            go (n + 1) rest (V.update xs (V.fromList [(n, asType t (xs V.! n))]))
+    asType :: SchemaType -> Column -> Column
+    asType (SType (_ :: P.Proxy a)) c@(BoxedColumn (col :: V.Vector b)) = case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> c
+        Nothing -> case testEquality (typeRep @T.Text) (typeRep @b) of
+            Just Refl -> fromVector (V.map ((readMaybe @a) . T.unpack) col)
+            Nothing -> fromVector (V.map ((readMaybe @a) . show) col)
+    asType _ c = c
