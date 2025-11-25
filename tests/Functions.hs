@@ -5,9 +5,9 @@ module Functions where
 
 import DataFrame.Functions (
     col,
-    generatePrograms,
     sanitize,
  )
+import DataFrame.Synthesis (generatePrograms)
 import Test.HUnit
 
 -- Test cases for the sanitize function

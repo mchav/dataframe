@@ -44,6 +44,7 @@ library
     exposed-modules: DataFrame,
                     DataFrame.Lazy,
                     DataFrame.Functions,
+                    DataFrame.Synthesis,
                     DataFrame.Display.Web.Plot,
                     DataFrame.Internal.Types,
                     DataFrame.Internal.Expression,
