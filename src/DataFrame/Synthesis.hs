@@ -12,6 +12,7 @@
 
 module DataFrame.Synthesis where
 
+import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (
     DataFrame (..),
@@ -26,7 +27,6 @@ import DataFrame.Internal.Expression (
 import DataFrame.Internal.Statistics
 import qualified DataFrame.Operations.Statistics as Stats
 import DataFrame.Operations.Subset (exclude, select)
-import qualified DataFrame.Functions as F
 
 import Control.Exception (throw)
 import Data.Containers.ListUtils
@@ -38,11 +38,11 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Type.Equality
 import qualified Data.Vector.Unboxed as VU
+import DataFrame.Functions ((.&&), (.<=), (.>), (.||))
 import qualified DataFrame.Operations.Core as D
 import qualified DataFrame.Operations.Transformations as D
 import Debug.Trace (trace)
 import Type.Reflection (typeRep)
-import DataFrame.Functions ((.>), (.||), (.&&), (.<=))
 
 generateConditions ::
     TypedColumn Double -> [Expr Bool] -> [Expr Double] -> DataFrame -> [Expr Bool]
