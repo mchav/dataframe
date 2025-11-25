@@ -25,6 +25,7 @@ import qualified Data.Vector.Unboxed.Mutable as VUM
 import Data.Csv.Streaming (Records (..))
 import qualified Data.Csv.Streaming as CsvStream
 
+import Control.DeepSeq
 import Control.Monad
 import Data.Char
 import qualified Data.Csv as Csv
@@ -268,17 +269,18 @@ readSeparated !sep !opts !path = do
                 (numRows, V.length frozenCols)
 
     return $
-        if shouldInferFromSample (typeSpec opts)
-            then
-                parseDefaults
-                    (typeInferenceSampleSize (typeSpec opts))
-                    (safeRead opts)
-                    (dateFormat opts)
-                    df
-            else
-                if not (null (schemaTypes (typeSpec opts)))
-                    then parseWithTypes (schemaTypes (typeSpec opts)) df
-                    else df
+        force $
+            if shouldInferFromSample (typeSpec opts)
+                then
+                    parseDefaults
+                        (typeInferenceSampleSize (typeSpec opts))
+                        (safeRead opts)
+                        (dateFormat opts)
+                        df
+                else
+                    if not (null (schemaTypes (typeSpec opts)))
+                        then parseWithTypes (schemaTypes (typeSpec opts)) df
+                        else df
 
 initializeColumns :: [BL.ByteString] -> ReadOptions -> IO [BuilderColumn]
 initializeColumns row opts = case typeSpec opts of

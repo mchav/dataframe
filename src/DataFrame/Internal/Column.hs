@@ -26,6 +26,7 @@ import qualified Data.Vector.Mutable as VBM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
+import Control.DeepSeq
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
 import Data.Maybe
@@ -60,6 +61,11 @@ instance (Eq a) => Eq (TypedColumn a) where
 
 instance (Ord a) => Ord (TypedColumn a) where
     compare (TColumn a) (TColumn b) = compare a b
+
+instance NFData Column where
+    rnf (BoxedColumn xs) = rnf xs
+    rnf (OptionalColumn xs) = rnf xs
+    rnf (UnboxedColumn xs) = rnf xs
 
 -- | Gets the underlying value from a TypedColumn.
 unwrapTypedColumn :: TypedColumn a -> Column

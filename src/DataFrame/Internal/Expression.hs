@@ -16,6 +16,7 @@
 module DataFrame.Internal.Expression where
 
 import Control.Monad.ST (runST)
+import Data.List
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
 import Data.String
@@ -481,32 +482,19 @@ mkReducedColumnUnboxed ::
     forall a.
     (VU.Unbox a) =>
     VU.Vector a ->
-    VU.Vector Int ->
-    VU.Vector Int ->
+    V.Vector [Int] ->
     (a -> a -> a) ->
     VU.Vector a
-mkReducedColumnUnboxed col os indices f = runST $ do
-    let len = VU.length os - 1
-    mvec <- VUM.unsafeNew len
-
-    let loopOut i
-            | i == len = return ()
-            | otherwise = do
-                let start = os `VU.unsafeIndex` i
-                let end = os `VU.unsafeIndex` (i + 1)
-                let initVal = col `VU.unsafeIndex` (indices `VU.unsafeIndex` start)
-
-                let loopIn !acc idx
-                        | idx == end = acc
-                        | otherwise =
-                            let val = col `VU.unsafeIndex` (indices `VU.unsafeIndex` idx)
-                             in loopIn (f acc val) (idx + 1)
-                let !finalVal = loopIn initVal (start + 1)
-                VUM.unsafeWrite mvec i finalVal
-                loopOut (i + 1)
-
-    loopOut 0
-    VU.unsafeFreeze mvec
+mkReducedColumnUnboxed col ixs f =
+    let
+        ixs' = V.filter (not . Prelude.null) ixs
+        go i =
+            let
+                (h : rest) = ixs' V.! i
+             in
+                foldl' (\acc j -> f acc (col VU.! j)) (col VU.! h) rest
+     in
+        VU.generate (V.length ixs') go
 {-# INLINE mkReducedColumnUnboxed #-}
 
 mkReducedColumnBoxed ::
@@ -571,12 +559,15 @@ interpretAggregation gdf (Lit value) =
             TColumn $
                 fromVector $
                     V.replicate (VG.length (offsets gdf) - 1) value
-interpretAggregation gdf@(Grouped df names indices os) (Col name) = case getColumn name df of
+interpretAggregation gdf@(Grouped df names indices os ixs) (Col name) = case getColumn name df of
     Nothing -> Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just (BoxedColumn col) -> Right $ UnAggregated $ fromVector $ mkUnaggregatedColumnBoxed col os indices
     Just (OptionalColumn col) -> Right $ UnAggregated $ fromVector $ mkUnaggregatedColumnBoxed col os indices
     Just (UnboxedColumn col) ->
-        Right $ UnAggregated $ fromVector $ mkUnaggregatedColumnUnboxed col os indices
+        Right $
+            UnAggregated $
+                fromVector $
+                    mkUnaggregatedColumnUnboxed col os indices
 interpretAggregation gdf expression@(UnaryOp _ (f :: c -> d) expr) =
     case interpretAggregation @c gdf expr of
         Left (TypeMismatchException context) ->
@@ -783,7 +774,7 @@ interpretAggregation gdf expression@(If cond l r) =
                         }
                     )
         (_, _, Left e) -> Left e
-interpretAggregation gdf@(Grouped df names indices os) expression@(AggVector expr op (f :: v b -> c)) =
+interpretAggregation gdf@(Grouped df names indices os ixs) expression@(AggVector expr op (f :: v b -> c)) =
     case interpretAggregation @b gdf expr of
         Right (UnAggregated (BoxedColumn (col :: V.Vector d))) -> case testEquality (typeRep @(v b)) (typeRep @d) of
             Nothing -> Left $ nestedTypeException @d @b (show expr)
@@ -842,7 +833,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggVector exp
                         }
                     )
         (Left e) -> Left e
-interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVector (Col name) op (f :: VU.Vector b -> c)) =
+interpretAggregation gdf@(Grouped df names indices os ixs) expression@(AggNumericVector (Col name) op (f :: VU.Vector b -> c)) =
     case getColumn name df of
         -- TODO(mchavinda): Fix the compedium of type errors here
         -- This is mostly done help with the benchmarking.
@@ -859,7 +850,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVec
                                     mkAggregatedColumnUnboxed col os indices f
                 Nothing -> error "Type mismatch"
             Nothing -> error "Type mismatch"
-interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVector expr op (f :: VU.Vector b -> c)) =
+interpretAggregation gdf@(Grouped df names indices os ixs) expression@(AggNumericVector expr op (f :: VU.Vector b -> c)) =
     case interpretAggregation @b gdf expr of
         (Left (TypeMismatchException context)) ->
             Left $
@@ -927,7 +918,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVec
                             , errorColumnName = Just (show expr)
                             }
                         )
-interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce (Col name) op (f :: a -> a -> a)) =
+interpretAggregation gdf@(Grouped df names indices os ixs) expression@(AggReduce (Col name) op (f :: a -> a -> a)) =
     case getColumn name df of
         Nothing -> Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
         Just (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @a) (typeRep @d) of
@@ -952,9 +943,9 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce (Co
                     Aggregated $
                         TColumn $
                             fromUnboxedVector $
-                                mkReducedColumnUnboxed col os indices f
+                                mkReducedColumnUnboxed col ixs f
             Nothing -> error "Type mismatch"
-interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce expr op (f :: a -> a -> a)) =
+interpretAggregation gdf@(Grouped df names indices os ixs) expression@(AggReduce expr op (f :: a -> a -> a)) =
     case interpretAggregation @a gdf expr of
         (Left (TypeMismatchException context)) ->
             Left $
@@ -988,7 +979,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce exp
             Right h -> case ifoldlColumn (\acc _ v -> f acc v) h column of
                 Left e -> Left e
                 Right value -> interpretAggregation @a gdf (Lit value)
-interpretAggregation gdf@(Grouped df names indices os) expression@(AggFold expr op s (f :: (a -> b -> a))) =
+interpretAggregation gdf@(Grouped df names indices os ixs) expression@(AggFold expr op s (f :: (a -> b -> a))) =
     case interpretAggregation @b gdf expr of
         (Left (TypeMismatchException context)) ->
             Left $

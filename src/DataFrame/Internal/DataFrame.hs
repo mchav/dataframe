@@ -14,6 +14,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 
+import Control.DeepSeq
 import Control.Exception (throw)
 import Data.Function (on)
 import Data.List (sortBy, transpose, (\\))
@@ -35,6 +36,12 @@ data DataFrame = DataFrame
     -- ^ (rows, columns)
     }
 
+instance NFData DataFrame where
+    rnf (DataFrame cols idx dims) =
+        rnf cols `seq`
+            rnf idx `seq`
+                rnf dims
+
 {- | A record that contains information about how and what
 rows are grouped in the dataframe. This can only be used with
 `aggregate`.
@@ -44,17 +51,18 @@ data GroupedDataFrame = Grouped
     , groupedColumns :: [T.Text]
     , valueIndices :: VU.Vector Int
     , offsets :: VU.Vector Int
+    , groupings :: V.Vector [Int]
     }
 
 instance Show GroupedDataFrame where
-    show (Grouped df cols indices os) =
+    show (Grouped df cols indices os ixs) =
         printf
             "{ keyColumns: %s groupedColumns: %s }"
             (show cols)
             (show (M.keys (columnIndices df) \\ cols))
 
 instance Eq GroupedDataFrame where
-    (==) (Grouped df cols indices os) (Grouped df' cols' indices' os') = (df == df') && (cols == cols')
+    (==) (Grouped df cols indices os ixs) (Grouped df' cols' indices' os' ixs') = (df == df') && (cols == cols')
 
 instance Eq DataFrame where
     (==) :: DataFrame -> DataFrame -> Bool

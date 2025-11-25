@@ -13,7 +13,9 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Algorithms.Merge as VA
+import qualified Data.Vector.Mutable as VM
+
+-- import qualified Data.Vector.Algorithms.Merge as VA
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
@@ -54,16 +56,46 @@ groupBy names df
         Grouped
             df
             names
-            (VG.map fst valueIndices)
-            (VU.fromList (reverse (changingPoints valueIndices)))
+            VU.empty
+            VU.empty
+            (boundedLinearMap rowRepresentations)
   where
     indicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` names) (columnIndices df)
     rowRepresentations = computeRowHashes indicesToGroup df
 
-    valueIndices = runST $ do
-        withIndexes <- VG.thaw $ VG.indexed rowRepresentations
-        VA.sortBy (\(a, b) (a', b') -> compare b' b) withIndexes
-        VG.unsafeFreeze withIndexes
+-- valueIndices = runST $ do
+--     withIndexes <- VG.thaw $ VG.indexed rowRepresentations
+--     VA.sortBy (\(a, b) (a', b') -> compare b' b) withIndexes
+--     VG.unsafeFreeze withIndexes
+
+type IndexMap = V.Vector [Int]
+
+boundedLinearMap :: VU.Vector Int -> IndexMap
+boundedLinearMap input
+    | VU.null input = V.empty
+    | otherwise = runST $ do
+        -- 1. Find the bounds to determine the size of our scratchpad array
+        --    O(n) scan
+        let maxVal = VU.maximum input
+
+        -- 2. Allocate a mutable vector of empty lists.
+        --    Size is maxVal + 1 to accommodate 0-based indexing up to maxVal.
+        --    O(M) allocation
+        buckets <- VM.replicate (maxVal + 1) []
+
+        -- 3. Iterate through the unboxed input vector.
+        --    For each value 'v' at index 'i', prepend 'i' to buckets[v].
+        --    O(n) traversal
+        VU.imapM_
+            ( \i val -> do
+                existingIndices <- VM.read buckets val
+                VM.write buckets val (i : existingIndices)
+            )
+            input
+
+        -- 4. Freeze the mutable vector into an immutable one to return safely.
+        --    O(M) copy/freeze
+        V.freeze buckets
 
 changingPoints :: (Eq a, VU.Unbox a) => VU.Vector (Int, a) -> [Int]
 changingPoints vs = VG.length vs : fst (VU.ifoldl findChangePoints initialState vs)
@@ -74,6 +106,25 @@ changingPoints vs = VG.length vs : fst (VU.ifoldl findChangePoints initialState 
         | otherwise = (index : offsets, newVal)
 
 computeRowHashes :: [Int] -> DataFrame -> VU.Vector Int
+computeRowHashes [i] df = case columns df V.! i of
+    UnboxedColumn (v :: VU.Vector a) ->
+        case testEquality (typeRep @a) (typeRep @Int) of
+            Just Refl -> v
+            Nothing ->
+                case testEquality (typeRep @a) (typeRep @Double) of
+                    Just Refl -> VU.map doubleToInt v
+                    Nothing ->
+                        case sIntegral @a of
+                            STrue -> VU.map fromIntegral v
+                            SFalse ->
+                                case sFloating @a of
+                                    STrue -> VU.map (doubleToInt . realToFrac) v
+                                    SFalse -> VU.map (hash . show) v
+    BoxedColumn (v :: V.Vector a) ->
+        case testEquality (typeRep @a) (typeRep @T.Text) of
+            Just Refl -> VU.generate (V.length v) ((`mod` 100000) . abs . hash . (v V.!))
+            Nothing -> VU.generate (V.length v) ((`mod` 100000) . abs . hash . show . (v V.!))
+    OptionalColumn v -> VU.generate (V.length v) ((`mod` 100000) . abs . hash . show . (v V.!))
 computeRowHashes indices df = runST $ do
     let n = fst (dimensions df)
     mv <- VUM.new n
@@ -156,19 +207,19 @@ computeRowHashes indices df = runST $ do
                 v
 
     VU.unsafeFreeze mv
-  where
-    doubleToInt :: Double -> Int
-    doubleToInt = floor . (* 1000)
+
+doubleToInt :: Double -> Int
+doubleToInt = floor . (* 1000)
 
 {- | Aggregate a grouped dataframe using the expressions given.
 All ungrouped columns will be dropped.
 -}
 aggregate :: [NamedExpr] -> GroupedDataFrame -> DataFrame
-aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
+aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets ixs) =
     let
         df' =
             selectIndices
-                (VG.map (valueIndices VG.!) (VG.init offsets))
+                (V.convert (VG.map head (VG.filter (not . null) ixs)))
                 (select groupingColumns df)
 
         f (name, Wrap (expr :: Expr a)) d =
@@ -193,4 +244,4 @@ selectIndices xs df =
 distinct :: DataFrame -> DataFrame
 distinct df = selectIndices (VG.map (indices VG.!) (VG.init os)) df
   where
-    (Grouped _ _ indices os) = groupBy (columnNames df) df
+    (Grouped _ _ indices os _) = groupBy (columnNames df) df

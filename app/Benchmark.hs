@@ -1,38 +1,38 @@
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-import Data.Time
-import qualified Data.Vector.Unboxed as VU
+import Data.Text (Text)
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
-import System.Random.Stateful
+
+import DataFrame ((|>))
 
 main :: IO ()
 main = do
-    let n = 100_000_000
-    g <- newIOGenM =<< newStdGen
-    let range = (0 :: Double, 1 :: Double)
-    startGeneration <- getCurrentTime
-    ns <- VU.replicateM n (uniformRM range g)
-    xs <- VU.replicateM n (uniformRM range g)
-    ys <- VU.replicateM n (uniformRM range g)
-    let df = D.fromUnnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
+    df <-
+        D.readCsvWithOpts
+            ( D.defaultReadOptions
+                { D.typeSpec =
+                    D.SpecifyTypes
+                        [ D.schemaType @Text
+                        , D.schemaType @Text
+                        , D.schemaType @Text
+                        , D.schemaType @Int
+                        , D.schemaType @Int
+                        , D.schemaType @Int
+                        , D.schemaType @Int
+                        , D.schemaType @Int
+                        , D.schemaType @Double
+                        ]
+                }
+            )
+            "../db-benchmark/data/G1_1e7_1e2_0_0.csv"
     print df
-    endGeneration <- getCurrentTime
-    let generationTime = diffUTCTime endGeneration startGeneration
-    putStrLn $ "Data generation Time: " ++ show generationTime
-    startCalculation <- getCurrentTime
-    print $ D.mean (F.col @Double "0") df
-    print $ D.variance (F.col @Double "1") df
-    print $ D.correlation "1" "2" df
-    endCalculation <- getCurrentTime
-    let calculationTime = diffUTCTime endCalculation startCalculation
-    putStrLn $ "Calculation Time: " ++ show calculationTime
-    startFilter <- getCurrentTime
-    print $ D.filter (F.col @Double "0") (> 0.971) df D.|> D.take 10
-    endFilter <- getCurrentTime
-    let filterTime = diffUTCTime endFilter startFilter
-    putStrLn $ "Filter Time: " ++ show filterTime
-    let totalTime = diffUTCTime endFilter startGeneration
-    putStrLn $ "Total Time: " ++ show totalTime
+    start <- getCurrentTime
+    print $
+        df
+            |> D.groupBy ["id1"]
+            |> D.aggregate [F.sum (F.col @Int "v1") `F.as` "v1_sum"]
+    end <- getCurrentTime
+    let computeTime = diffUTCTime end start
+    putStrLn $ "Compute Time: " ++ show computeTime

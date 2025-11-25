@@ -3,6 +3,7 @@
 module Operations.GroupBy where
 
 import qualified Data.Text as T
+import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
 import qualified DataFrame.Internal.Column as DI
@@ -28,7 +29,7 @@ groupBySingleRowWAI =
         ( assertEqual
             "Groups by single column"
             -- We don't yet compare offsets and indices
-            (D.Grouped testData ["test1"] VU.empty VU.empty)
+            (D.Grouped testData ["test1"] VU.empty VU.empty V.empty)
             (D.groupBy ["test1"] testData)
         )
 
@@ -38,7 +39,7 @@ groupByMultipleRowsWAI =
         ( assertEqual
             "Groups by single column"
             -- We don't yet compare offsets and indices
-            (D.Grouped testData ["test1", "test2"] VU.empty VU.empty)
+            (D.Grouped testData ["test1", "test2"] VU.empty VU.empty V.empty)
             (D.groupBy ["test1", "test2"] testData)
         )
 
