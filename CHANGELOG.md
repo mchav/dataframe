@@ -1,5 +1,10 @@
 # Revision history for dataframe
 
+## 0.3.4.1
+* Faster sum operation (now does a reduction instead of collecting the vector and aggregating)
+* Update the fixity of comparison operations. Before `(x + y) .<= 10`. Now: `x + y ,<= 10`.
+* Revert sort for groupby back to mergesort.
+
 ## 0.3.4.0
 * Fix right join - previously erased some values in the key.
 * Change sort API so we can sort on different rows.
