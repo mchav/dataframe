@@ -122,6 +122,26 @@ executable dataframe-benchmark-example
     default-language: Haskell2010
     ghc-options: -rtsopts -threaded -with-rtsopts=-N
 
+executable perf-explore
+    import: warnings
+    main-is: perf-explore.hs
+    build-depends:    base >= 4 && < 5,
+                      dataframe ^>= 0.3,
+                      random >= 1 && < 2,
+                      time >= 1.12 && < 2,
+                      vector ^>= 0.13,
+                      containers >=0.6 && <0.9,
+                      deepseq >=1.4.4 && <1.6,
+                      mtl >=2.2.2 && <2.4,
+                      optics-core >=0.4.1 && <0.5,
+                      optparse-applicative >=0.17 && <0.20,
+                      perf,
+                      text >=1.2 && <2.2,
+                      chart-svg,
+
+    hs-source-dirs:   app
+    default-language: Haskell2010
+    ghc-options: -rtsopts -threaded -with-rtsopts=-N
 
 executable dataframe
     import: warnings
