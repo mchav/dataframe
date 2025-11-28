@@ -100,6 +100,9 @@ data Expr a where
 data UExpr where
     Wrap :: (Columnable a) => Expr a -> UExpr
 
+instance Show UExpr where
+    show (Wrap expr) = show expr
+
 type NamedExpr = (T.Text, UExpr)
 
 interpret ::

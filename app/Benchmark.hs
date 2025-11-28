@@ -2,14 +2,23 @@
 {-# LANGUAGE TypeApplications #-}
 
 import Data.Text (Text)
+import Data.Time
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
+import qualified DataFrame.Lazy as LD
 
 import DataFrame ((|>))
 
 main :: IO ()
 main = do
-    df <-
+    let df = LD.scanCsv "../1brc/measurements.txt"
+    res <- df |> LD.groupByAggregate ["names"]
+                        [ F.minimum (F.col @Double "temperature") `F.as` "min"
+                        , F.mean (F.col @Double "temperature") `F.as` "mean"
+                        , F.maximum (F.col @Double "temperature") `F.as` "max"]
+              |> LD.runDataFrame
+    print res
+    {- df <-
         D.readCsvWithOpts
             ( D.defaultReadOptions
                 { D.typeSpec =
@@ -35,4 +44,4 @@ main = do
             |> D.aggregate [F.sum (F.col @Int "v1") `F.as` "v1_sum"]
     end <- getCurrentTime
     let computeTime = diffUTCTime end start
-    putStrLn $ "Compute Time: " ++ show computeTime
+    putStrLn $ "Compute Time: " ++ show computeTime -}
