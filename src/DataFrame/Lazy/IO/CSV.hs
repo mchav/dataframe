@@ -8,6 +8,7 @@
 
 module DataFrame.Lazy.IO.CSV where
 
+import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -19,13 +20,15 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Applicative (many, (<|>))
-import Control.Monad (forM_, unless, when, zipWithM_)
+import Control.Monad (forM_, replicateM, unless, when, zipWithM_)
+import qualified Data.Attoparsec.ByteString.Char8 as C
 import Data.Attoparsec.Text
 import Data.Char
 import Data.Foldable (fold)
 import Data.Function (on)
 import Data.IORef
 import Data.Maybe
+import Data.Ord (clamp)
 import Data.Type.Equality (TestEquality (testEquality))
 import DataFrame.Internal.Column (
     Column (..),
@@ -36,7 +39,10 @@ import DataFrame.Internal.Column (
  )
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Parsing
+import System.Directory
+import System.FilePath
 import System.IO
+import System.Random (randomRIO)
 import Type.Reflection
 import Prelude hiding (concat, takeWhile)
 
@@ -326,6 +332,120 @@ countRows c path = withFile path ReadMode $! go 0 ""
                     Done (unconsumed :: T.Text) _ ->
                         go (n + 1) unconsumed h
 {-# INLINE countRows #-}
+
+data ShardState = ShardState
+    { rowCount :: !Int
+    , shardFiles :: ![FilePath]
+    , unconsumed :: !BS.ByteString
+    , rowBuffer :: ![BS.ByteString]
+    , batchNumber :: !Int
+    }
+
+initialState :: ShardState
+initialState =
+    ShardState
+        { rowCount = 1
+        , shardFiles = []
+        , unconsumed = ""
+        , rowBuffer = []
+        , batchNumber = 1
+        }
+
+bufferSize :: Int
+bufferSize = 512000
+
+shardCsv :: Int -> FilePath -> IO (Int, [FilePath])
+shardCsv shardSize path = do
+    cacheDir <- getXdgDirectory XdgCache "dataframe"
+    createDirectoryIfMissing True cacheDir
+    withFile path ReadMode $ \handle -> do
+        header <- BS.hGetLine handle
+        processRows cacheDir shardSize header handle initialState
+
+processRows ::
+    FilePath -> Int -> BS.ByteString -> Handle -> ShardState -> IO (Int, [FilePath])
+processRows cacheDir shardSize header handle state = do
+    isEOF <- hIsEOF handle
+    if isEOF && BS.null (unconsumed state)
+        then finalizeShard cacheDir header state
+        else parseNextRow cacheDir shardSize header handle state
+
+finalizeShard :: FilePath -> BS.ByteString -> ShardState -> IO (Int, [FilePath])
+finalizeShard cacheDir header state = do
+    file <- writeShard cacheDir header (batchNumber state) (rowBuffer state)
+    pure (rowCount state, file : shardFiles state)
+
+parseNextRow ::
+    FilePath -> Int -> BS.ByteString -> Handle -> ShardState -> IO (Int, [FilePath])
+parseNextRow cacheDir shardSize header handle state = do
+    result <-
+        C.parseWith
+            (BS.hGetSome handle bufferSize)
+            rowParser
+            (unconsumed state)
+    case result of
+        Fail remaining ctx err ->
+            fail $ "CSV parse error: " ++ err ++ " (context: " ++ show ctx ++ ")"
+        Partial _ ->
+            fail "Unexpected partial result after EOF"
+        Done remaining row ->
+            handleParsedRow cacheDir shardSize header handle state remaining row
+
+rowParser :: C.Parser BS.ByteString
+rowParser =
+    C.takeTill (C.isEndOfLine . fromIntegral . ord)
+        <* (C.endOfLine <|> C.endOfInput)
+
+handleParsedRow ::
+    FilePath ->
+    Int ->
+    BS.ByteString ->
+    Handle ->
+    ShardState ->
+    BS.ByteString ->
+    BS.ByteString ->
+    IO (Int, [FilePath])
+handleParsedRow cacheDir shardSize header handle state remaining row
+    | rowCount state >= shardSize = do
+        file <- writeShard cacheDir header (batchNumber state) (rowBuffer state)
+        let newState =
+                state
+                    { rowCount = 1
+                    , shardFiles = file : shardFiles state
+                    , unconsumed = remaining
+                    , rowBuffer = [row]
+                    , batchNumber = batchNumber state + 1
+                    }
+        processRows cacheDir shardSize header handle newState
+    | otherwise = do
+        let newState =
+                state
+                    { rowCount = rowCount state + 1
+                    , unconsumed = remaining
+                    , rowBuffer = row : rowBuffer state
+                    }
+        processRows cacheDir shardSize header handle newState
+
+writeShard :: FilePath -> BS.ByteString -> Int -> [BS.ByteString] -> IO FilePath
+writeShard cacheDir header batchNum rows = do
+    filename <- (cacheDir </>) <$> generateRandomFilename 10 (Just "csv")
+    putStrLn $ "Writing batch " ++ show batchNum ++ " to shard."
+    BS.writeFile filename $ BS.unlines (header : reverse rows)
+    pure filename
+
+randomString :: Int -> IO String
+randomString len = replicateM len randomAlphanumeric
+  where
+    randomAlphanumeric = do
+        isLetter <- randomRIO (False, True)
+        if isLetter
+            then randomRIO ('a', 'z')
+            else randomRIO ('0', '9')
+
+generateRandomFilename :: Int -> Maybe String -> IO FilePath
+generateRandomFilename len maybeExt = do
+    name <- randomString (clamp (1, 255) len)
+    pure $ maybe name ((name ++ ".") ++) maybeExt
 
 writeCsv :: FilePath -> DataFrame -> IO ()
 writeCsv = writeSeparated ','

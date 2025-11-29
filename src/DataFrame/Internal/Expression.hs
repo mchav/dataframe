@@ -99,6 +99,9 @@ data Expr a where
 data UExpr where
     Wrap :: (Columnable a) => Expr a -> UExpr
 
+instance Show UExpr where
+    show (Wrap expr) = show expr
+
 type NamedExpr = (T.Text, UExpr)
 
 interpret ::
@@ -931,7 +934,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce (Co
     case getColumn name df of
         Nothing -> Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
         Just (BoxedColumn (col :: V.Vector d)) -> case testEquality (typeRep @a) (typeRep @d) of
-            Nothing -> error "Type mismatch"
+            Nothing -> error (show expression ++ "\n" ++ show df)
             Just Refl ->
                 Right $
                     Aggregated $
@@ -1238,6 +1241,31 @@ exprComp :: (Columnable b, Columnable c) => Expr b -> Expr c -> Ordering
 exprComp e1 e2 = case testEquality (typeOf e1) (typeOf e2) of
     Just Refl -> e1 `compare` e2
     Nothing -> LT
+
+renameColumn :: T.Text -> T.Text -> Expr a -> Expr a
+renameColumn new old (Col cName)
+    | cName == old = Col new
+    | otherwise = Col cName
+renameColumn new old expr@(Lit _) = expr
+renameColumn new old (If cond l r) =
+    If (renameColumn new old cond) (renameColumn new old l) (renameColumn new old r)
+renameColumn new old (UnaryOp name f value) = UnaryOp name f (renameColumn new old value)
+renameColumn new old (BinaryOp name f l r) = BinaryOp name f (renameColumn new old l) (renameColumn new old r)
+renameColumn new old (AggNumericVector expr op f) = AggNumericVector (renameColumn new old expr) op f
+renameColumn new old (AggVector expr op f) = AggVector (renameColumn new old expr) op f
+renameColumn new old (AggReduce expr op f) = AggReduce (renameColumn new old expr) op f
+renameColumn new old (AggFold expr op acc f) = AggFold (renameColumn new old expr) op acc f
+
+getColumns :: Expr a -> [T.Text]
+getColumns (Col cName) = [cName]
+getColumns expr@(Lit _) = []
+getColumns (If cond l r) = getColumns cond <> getColumns l <> getColumns r
+getColumns (UnaryOp name f value) = getColumns value
+getColumns (BinaryOp name f l r) = getColumns l <> getColumns r
+getColumns (AggNumericVector expr op f) = getColumns expr
+getColumns (AggVector expr op f) = getColumns expr
+getColumns (AggReduce expr op f) = getColumns expr
+getColumns (AggFold expr op acc f) = getColumns expr
 
 replaceExpr ::
     forall a b c.
