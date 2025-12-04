@@ -16,6 +16,7 @@
 module DataFrame.Internal.Expression where
 
 import Control.Monad.ST (runST)
+import Data.Bifunctor
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe, isJust)
 import Data.String
@@ -35,12 +36,6 @@ import Type.Reflection (TypeRep, Typeable, typeOf, typeRep, pattern App)
 data Expr a where
     Col :: (Columnable a) => T.Text -> Expr a
     Lit :: (Columnable a) => a -> Expr a
-    If ::
-        (Columnable a) =>
-        Expr Bool ->
-        Expr a ->
-        Expr a ->
-        Expr a
     UnaryOp ::
         ( Columnable a
         , Columnable b
@@ -59,6 +54,12 @@ data Expr a where
         Expr c ->
         Expr b ->
         Expr a
+    If ::
+        (Columnable a) =>
+        Expr Bool ->
+        Expr a ->
+        Expr a ->
+        Expr a
     AggVector ::
         ( VG.Vector v b
         , Typeable v
@@ -75,6 +76,7 @@ data Expr a where
         T.Text -> -- Operation name
         (a -> a -> a) ->
         Expr a
+    -- TODO(mchav): Numeric reduce might be superfluous since expressions are already type checked.
     AggNumericVector ::
         ( Columnable a
         , Columnable b
@@ -105,195 +107,57 @@ interpret ::
     forall a.
     (Columnable a) =>
     DataFrame -> Expr a -> Either DataFrameException (TypedColumn a)
-interpret df (Lit value) =
-    pure $ TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
-interpret df (Col name) = case getColumn name df of
-    Nothing -> Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
-    Just col -> pure $ TColumn col
-interpret df expr@(If cond l r) = case interpret @Bool df cond of
-    Left (TypeMismatchException context) ->
-        Left $
+interpret df (Lit value) = case sUnbox @a of
+    -- Specialize the creation of unboxed columns to avoid an extra allocation.
+    STrue -> pure $ TColumn $ fromUnboxedVector $ VU.replicate (numRows df) value
+    SFalse -> pure $ TColumn $ fromVector $ V.replicate (numRows df) value
+interpret df (Col name) = maybe columnNotFound (pure . TColumn) (getColumn name df)
+  where
+    columnNotFound = Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
+-- Conditionals
+interpret df expr@(If cond l r) = first (handleInterpretException (show expr)) $ do
+    (TColumn conditions) <- interpret @Bool df cond
+    (TColumn left) <- interpret @a df l
+    (TColumn right) <- interpret @a df r
+    let branch (c :: Bool) (l' :: a, r' :: a) = if c then l' else r'
+    fmap TColumn (zipWithColumns branch conditions (zipColumns left right))
+-- Unary operations.
+interpret df expr@(UnaryOp _ (f :: c -> d) value) = first (handleInterpretException (show expr)) $ do
+    (TColumn value') <- interpret @c df value
+    fmap TColumn (mapColumn f value')
+-- Variations of binary operations.
+interpret df expr@(BinaryOp _ (f :: c -> d -> e) (Lit left) (Lit right)) = interpret df (Lit (f left right))
+interpret df expr@(BinaryOp _ (f :: c -> d -> e) (Lit left) right) = first (handleInterpretException (show expr)) $ do
+    (TColumn value') <- interpret @d df right
+    fmap TColumn (mapColumn (f left) value')
+interpret df expr@(BinaryOp _ (f :: c -> d -> e) left (Lit right)) = first (handleInterpretException (show expr)) $ do
+    (TColumn value') <- interpret @c df left
+    fmap TColumn (mapColumn (`f` right) value')
+interpret df expr@(BinaryOp _ (f :: c -> d -> e) left right) = first (handleInterpretException (show expr)) $ do
+    (TColumn left') <- interpret @c df left
+    (TColumn right') <- interpret @d df right
+    fmap TColumn (zipWithColumns f left' right')
+interpret df expression@(AggVector expr op (f :: v b -> c)) = do
+    (TColumn column) <- interpret @b df expr
+    -- Helper for errors. Should probably find a way of throwing this
+    -- without leaking the fact that we use `Vector` to users.
+    let aggTypeError expected =
             TypeMismatchException
-                ( context
-                    { callingFunctionName = Just "interpret"
-                    , errorColumnName = Just (show cond)
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @(v b))
+                    , expectedType = Left expected :: Either String (TypeRep ())
+                    , callingFunctionName = Just "interpret"
+                    , errorColumnName = Nothing
                     }
                 )
-    Left e -> Left e
-    Right (TColumn conditions) -> case interpret @a df l of
-        Left (TypeMismatchException context) ->
-            Left $
-                TypeMismatchException
-                    (context{callingFunctionName = Just "interpret", errorColumnName = Just (show l)})
-        Left e -> Left e
-        Right (TColumn left) -> case interpret @a df r of
-            Left (TypeMismatchException context) ->
-                Left $
-                    TypeMismatchException
-                        (context{callingFunctionName = Just "interpret", errorColumnName = Just (show r)})
-            Left e -> Left e
-            Right (TColumn right) -> case zipWithColumns
-                (\(c :: Bool) (l' :: a, r' :: a) -> if c then l' else r')
-                conditions
-                (zipColumns left right) of
-                Left (TypeMismatchException context) ->
-                    Left $
-                        TypeMismatchException
-                            ( context
-                                { callingFunctionName = Just "interpret"
-                                , errorColumnName = Just (show expr)
-                                }
-                            )
-                Left e -> Left e
-                Right res -> pure $ TColumn res
-interpret df expr@(UnaryOp _ (f :: c -> d) value) = case interpret @c df value of
-    Left (TypeMismatchException context) ->
-        Left $
-            TypeMismatchException
-                ( context
-                    { callingFunctionName = Just "interpret"
-                    , errorColumnName = Just (show value)
-                    }
-                )
-    Left e -> Left e
-    Right (TColumn value') -> case mapColumn f value' of
-        Left (TypeMismatchException context) ->
-            Left $
-                TypeMismatchException
-                    ( context
-                        { callingFunctionName = Just "interpret"
-                        , errorColumnName = Just (show expr)
-                        }
-                    )
-        Left e -> Left e
-        Right res -> pure $ TColumn res
-interpret df expr@(BinaryOp _ (f :: c -> d -> e) (Lit left) (Lit right)) =
-    pure $
-        TColumn $
-            fromVector $
-                V.replicate (fst $ dataframeDimensions df) (f left right)
-interpret df expr@(BinaryOp _ (f :: c -> d -> e) (Lit left) right) = case interpret @d df right of
-    Left (TypeMismatchException context) ->
-        Left $
-            TypeMismatchException
-                ( context
-                    { callingFunctionName = Just "interpret"
-                    , errorColumnName = Just (show right)
-                    }
-                )
-    Left e -> Left e
-    Right (TColumn right') -> case mapColumn (f left) right' of
-        Left (TypeMismatchException context) ->
-            Left $
-                TypeMismatchException
-                    ( context
-                        { callingFunctionName = Just "interpret"
-                        , errorColumnName = Just (show expr)
-                        }
-                    )
-        Left e -> Left e
-        Right res -> pure $ TColumn res
-interpret df expr@(BinaryOp _ (f :: c -> d -> e) left (Lit right)) = case interpret @c df left of
-    Left (TypeMismatchException context) ->
-        Left $
-            TypeMismatchException
-                ( context
-                    { callingFunctionName = Just "interpret"
-                    , errorColumnName = Just (show left)
-                    }
-                )
-    Left e -> Left e
-    Right (TColumn left') -> case mapColumn (`f` right) left' of
-        Left (TypeMismatchException context) ->
-            Left $
-                TypeMismatchException
-                    ( context
-                        { callingFunctionName = Just "interpret"
-                        , errorColumnName = Just (show expr)
-                        }
-                    )
-        Left e -> Left e
-        Right res -> pure $ TColumn res
-interpret df expr@(BinaryOp _ (f :: c -> d -> e) left right) = case interpret @c df left of
-    Left (TypeMismatchException context) ->
-        Left $
-            TypeMismatchException
-                ( context
-                    { callingFunctionName = Just "interpret"
-                    , errorColumnName = Just (show left)
-                    }
-                )
-    Left e -> Left e
-    Right (TColumn left') -> case interpret @d df right of
-        Left (TypeMismatchException context) ->
-            Left $
-                TypeMismatchException
-                    ( context
-                        { callingFunctionName = Just "interpret"
-                        , errorColumnName = Just (show right)
-                        }
-                    )
-        Left e -> Left e
-        Right (TColumn right') -> case zipWithColumns f left' right' of
-            Left (TypeMismatchException context) ->
-                Left $
-                    TypeMismatchException
-                        ( context
-                            { callingFunctionName = Just "interpret"
-                            , errorColumnName = Just (show expr)
-                            }
-                        )
-            Left e -> Left e
-            Right res -> pure $ TColumn res
-interpret df expression@(AggVector expr op (f :: v b -> c)) = case interpret @b df expr of
-    Left (TypeMismatchException context) ->
-        Left $
-            TypeMismatchException
-                ( context
-                    { callingFunctionName = Just "interpret"
-                    , errorColumnName = Just (show expr)
-                    }
-                )
-    Left e -> Left e
-    Right (TColumn column) -> case column of
-        (BoxedColumn col) -> case testEquality (typeRep @(v b)) (typeOf col) of
+    let processColumn :: (Columnable d) => d -> Either DataFrameException (TypedColumn a)
+        processColumn col = case testEquality (typeRep @(v b)) (typeOf col) of
             Just Refl -> interpret @c df (Lit (f col))
-            Nothing ->
-                Left $
-                    TypeMismatchException
-                        ( MkTypeErrorContext
-                            { userType = Right (typeRep @(v b))
-                            , expectedType = Right (typeOf col)
-                            , callingFunctionName = Just "interpret"
-                            , errorColumnName = Nothing
-                            }
-                        )
-        (OptionalColumn col) -> case testEquality (typeRep @(v b)) (typeOf col) of
-            Just Refl -> interpret @c df (Lit (f col))
-            Nothing ->
-                Left $
-                    TypeMismatchException
-                        ( MkTypeErrorContext
-                            { userType = Right (typeRep @(v b))
-                            , expectedType = Right (typeOf col)
-                            , callingFunctionName = Just "interpret"
-                            , errorColumnName = Nothing
-                            }
-                        )
-        (UnboxedColumn (col :: VU.Vector d)) -> case testEquality (typeRep @(v b)) (typeOf col) of
-            Just Refl -> interpret @c df (Lit (f col))
-            Nothing -> case testEquality (typeRep @b) (typeRep @d) of
-                Just Refl -> interpret @c df (Lit (f (V.convert col)))
-                Nothing ->
-                    Left $
-                        TypeMismatchException
-                            ( MkTypeErrorContext
-                                { userType = Right (typeRep @(v b))
-                                , expectedType = Right (typeOf col)
-                                , callingFunctionName = Just "interpret"
-                                , errorColumnName = Nothing
-                                }
-                            )
+            Nothing -> Left $ aggTypeError (show (typeOf col))
+    case column of
+        (BoxedColumn col) -> processColumn col
+        (OptionalColumn col) -> processColumn col
+        (UnboxedColumn col) -> processColumn col
 interpret df expression@(AggReduce expr op (f :: a -> a -> a)) = case interpret @a df expr of
     Left (TypeMismatchException context) ->
         Left $
@@ -1271,3 +1135,22 @@ eSize (AggNumericVector expr op _) = eSize expr + 1
 eSize (AggVector expr op _) = eSize expr + 1
 eSize (AggReduce expr op _) = eSize expr + 1
 eSize (AggFold expr op _ _) = eSize expr + 1
+
+-- Helpers
+mkTypeMismatchException ::
+    (Typeable a, Typeable b) =>
+    Maybe String -> Maybe String -> TypeErrorContext a b -> DataFrameException
+mkTypeMismatchException callPoint errorLocation context =
+    TypeMismatchException
+        ( context
+            { callingFunctionName = callPoint
+            , errorColumnName = errorLocation
+            }
+        )
+
+handleInterpretException :: String -> DataFrameException -> DataFrameException
+handleInterpretException errorLocation (TypeMismatchException context) = mkTypeMismatchException (Just "interpret") (Just errorLocation) context
+handleInterpretException _ e = e
+
+numRows :: DataFrame -> Int
+numRows df = fst (dataframeDimensions df)
