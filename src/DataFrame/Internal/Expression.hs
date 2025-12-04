@@ -150,7 +150,8 @@ interpret df expression@(AggVector expr op (f :: v b -> c)) = do
                     , errorColumnName = Nothing
                     }
                 )
-    let processColumn :: (Columnable d) => d -> Either DataFrameException (TypedColumn a)
+    let processColumn ::
+            (Columnable d) => d -> Either DataFrameException (TypedColumn a)
         processColumn col = case testEquality (typeRep @(v b)) (typeOf col) of
             Just Refl -> interpret @c df (Lit (f col))
             Nothing -> Left $ aggTypeError (show (typeOf col))
