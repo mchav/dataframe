@@ -114,6 +114,28 @@ interpret df (Lit value) = case sUnbox @a of
 interpret df (Col name) = maybe columnNotFound (pure . TColumn) (getColumn name df)
   where
     columnNotFound = Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
+-- Unary operations.
+interpret df expr@(UnaryOp _ (f :: c -> d) value) = first (handleInterpretException (show expr)) $ do
+    (TColumn value') <- interpret @c df value
+    fmap TColumn (mapColumn f value')
+-- Variations of binary operations.
+interpret df expr@(BinaryOp _ (f :: c -> d -> e) left right) = first (handleInterpretException (show expr)) $ case (left, right) of
+    (Lit left, Lit right) -> interpret df (Lit (f left right))
+    (Lit left, right) -> do
+        -- If we have a literal then we don't have to materialise
+        -- the column.
+        (TColumn value') <- interpret @d df right
+        fmap TColumn (mapColumn (f left) value')
+    (left, Lit right) -> do
+        -- Same as the above except the right side is the
+        -- literl.
+        (TColumn value') <- interpret @c df left
+        fmap TColumn (mapColumn (`f` right) value')
+    (_, _) -> do
+        -- In the general case we interpret and zip.
+        (TColumn left') <- interpret @c df left
+        (TColumn right') <- interpret @d df right
+        fmap TColumn (zipWithColumns f left' right')
 -- Conditionals
 interpret df expr@(If cond l r) = first (handleInterpretException (show expr)) $ do
     (TColumn conditions) <- interpret @Bool df cond
@@ -121,22 +143,6 @@ interpret df expr@(If cond l r) = first (handleInterpretException (show expr)) $
     (TColumn right) <- interpret @a df r
     let branch (c :: Bool) (l' :: a, r' :: a) = if c then l' else r'
     fmap TColumn (zipWithColumns branch conditions (zipColumns left right))
--- Unary operations.
-interpret df expr@(UnaryOp _ (f :: c -> d) value) = first (handleInterpretException (show expr)) $ do
-    (TColumn value') <- interpret @c df value
-    fmap TColumn (mapColumn f value')
--- Variations of binary operations.
-interpret df expr@(BinaryOp _ (f :: c -> d -> e) (Lit left) (Lit right)) = interpret df (Lit (f left right))
-interpret df expr@(BinaryOp _ (f :: c -> d -> e) (Lit left) right) = first (handleInterpretException (show expr)) $ do
-    (TColumn value') <- interpret @d df right
-    fmap TColumn (mapColumn (f left) value')
-interpret df expr@(BinaryOp _ (f :: c -> d -> e) left (Lit right)) = first (handleInterpretException (show expr)) $ do
-    (TColumn value') <- interpret @c df left
-    fmap TColumn (mapColumn (`f` right) value')
-interpret df expr@(BinaryOp _ (f :: c -> d -> e) left right) = first (handleInterpretException (show expr)) $ do
-    (TColumn left') <- interpret @c df left
-    (TColumn right') <- interpret @d df right
-    fmap TColumn (zipWithColumns f left' right')
 interpret df expression@(AggVector expr op (f :: v b -> c)) = do
     (TColumn column) <- interpret @b df expr
     -- Helper for errors. Should probably find a way of throwing this
