@@ -120,7 +120,7 @@ static uint64_t find_character_in_chunk(uint8_t *in, uint8_t c) {
 // Let's go ahead and assume `in` will only ever get 64 bytes
 // initial_quoted will be either all_ones ~0ULL or all_zeros 0ULL
 #ifdef HAS_SIMD_CSV
-static uint64_t parse_chunk(uint8_t *in, uint64_t *initial_quoted) {
+static uint64_t parse_chunk(uint8_t *in, uint8_t separator, uint64_t *initial_quoted) {
   uint64_t quotebits = find_character_in_chunk(in, QUOTE_CHAR);
   // See https://wunkolo.github.io/post/2020/05/pclmulqdq-tricks/
   // Also, section 3.1.1 of Parsing Gigabytes of JSON per Second,
@@ -141,7 +141,7 @@ static uint64_t parse_chunk(uint8_t *in, uint64_t *initial_quoted) {
   // at the last bit
   (*initial_quoted) = (uint64_t)((int64_t)quotemask >> 63);
 
-  uint64_t commabits = find_character_in_chunk(in, COMMA_CHAR);
+  uint64_t commabits = find_character_in_chunk(in, separator);
   uint64_t newlinebits = find_character_in_chunk(in, NEWLINE_CHAR);
 
   uint64_t delimiter_bits = (commabits | newlinebits) & ~quotemask;
@@ -170,7 +170,7 @@ static size_t find_one_indices(size_t start_index, uint64_t bits, size_t *indice
 }
 #endif
 
-size_t get_delimiter_indices(uint8_t *buf, size_t len, size_t *indices) {
+size_t get_delimiter_indices(uint8_t *buf, size_t len, uint8_t separator, size_t *indices) {
   // Recall we padded our file with 64 empty bytes.
   // So if, for example, we had a file of 187 bytes
   // We pad it with zeros and so we have 251 bytes
@@ -185,7 +185,7 @@ size_t get_delimiter_indices(uint8_t *buf, size_t len, size_t *indices) {
   size_t base = 0;
   for (size_t i = 0; i < unpaddedLen; i += 64) {
     uint8_t *in = buf + i;
-    uint64_t delimiter_bits = parse_chunk(in, &initial_quoted);
+    uint64_t delimiter_bits = parse_chunk(in, separator, &initial_quoted);
     find_one_indices(i, delimiter_bits, indices, &base);
   }
   return base;
