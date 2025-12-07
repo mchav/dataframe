@@ -62,13 +62,27 @@ safeApply f columnName d = case getColumn columnName d of
         column' <- mapColumn f column
         pure $ insertColumn columnName column' d
 
-{- | O(k) Apply a function to a combination of columns in a dataframe and
+{- | O(k) Apply a function to an expression in a dataframe and
 add the result into `alias` column.
 -}
 derive :: forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> DataFrame
 derive name expr df = case interpret @a df (normalize expr) of
     Left e -> throw e
     Right (TColumn value) -> insertColumn name value df
+
+{- | O(k) Apply a function to an expression in a dataframe and
+add the result into `alias` column but
+
+==== __Examples__
+
+>>> (df', z) = deriveWithExpr "z" (F.col @Int "x" + F.col "y") df
+>>> filterWhere (z .>= 50)
+-}
+deriveWithExpr ::
+    forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> (DataFrame, Expr a)
+deriveWithExpr name expr df = case interpret @a df (normalize expr) of
+    Left e -> throw e
+    Right (TColumn value) -> (insertColumn name value df, Col name)
 
 deriveMany :: [NamedExpr] -> DataFrame -> DataFrame
 deriveMany exprs df =

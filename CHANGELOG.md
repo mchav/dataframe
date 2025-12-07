@@ -1,5 +1,26 @@
 # Revision history for dataframe
 
+## 0.3.4.2
+* Add a `deriveWithExpr` that returns an expression that you can use in a subsequent expressions.
+* Add `declareColumnsFromCsvFile` which can create the expressions up front for use in scripts.
+    ```haskell
+    import qualified DataFrame as D
+    import qualified DataFrame.Functions as F
+
+    import Data.Text (Text)
+    import DataFrame.Functions ((.==), (.>=))
+
+    $(F.declareColumnsFromCsvFile "./data/housing.csv")
+
+    main :: IO ()
+    main = do
+        df <- D.readCsv "./data/housing.csv"
+        let (df', test) = D.deriveWithExpr "test" (median_house_value .>= 500000) df
+        print (D.filterWhere test df')
+    ```
+* Fix bounds on random.
+
+
 ## 0.3.4.1
 * Faster sum operation (now does a reduction instead of collecting the vector and aggregating)
 * Update the fixity of comparison operations. Before `(x + y) .<= 10`. Now: `x + y ,<= 10`.

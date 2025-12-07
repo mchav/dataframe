@@ -27,6 +27,7 @@ import DataFrame.Internal.Expression (
 import DataFrame.Internal.Statistics
 
 import Control.Monad
+import Control.Monad.IO.Class
 import qualified Data.Char as Char
 import Data.Function
 import Data.Functor
@@ -37,6 +38,7 @@ import qualified Data.Text as T
 import Data.Time
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
+import qualified DataFrame.IO.CSV as CSV
 import Debug.Trace (trace)
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -357,6 +359,11 @@ typeFromString s = fail $ "Unsupported types: " ++ unwords s
 
 dropFirstAndLast :: [a] -> [a]
 dropFirstAndLast = reverse . drop 1 . reverse . drop 1
+
+declareColumnsFromCsvFile :: String -> DecsQ
+declareColumnsFromCsvFile path = do
+    df <- liftIO (CSV.readCsv path)
+    declareColumns df
 
 declareColumns :: DataFrame -> DecsQ
 declareColumns df =
