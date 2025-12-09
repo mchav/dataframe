@@ -158,7 +158,7 @@ maximum :: (Columnable a, Ord a) => Expr a -> Expr a
 maximum expr = AggReduce expr "maximum" Prelude.max
 
 sum :: forall a. (Columnable a, Num a) => Expr a -> Expr a
-sum expr = AggReduce expr "sum" (+)
+sum expr = AggFold expr "sum" 0 (+)
 
 sumMaybe :: forall a. (Columnable a, Num a) => Expr (Maybe a) -> Expr a
 sumMaybe expr = AggVector expr "sumMaybe" (P.sum . catMaybes . V.toList)
