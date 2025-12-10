@@ -16,7 +16,6 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
-import Data.Typeable (Typeable)
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
