@@ -312,7 +312,6 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                         then readVarIntFromBuffer @Int metaDataBuf bufferPos
                         else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
 
-                print listSize
                 -- TODO actually check elemType agrees (also for all the other underscored _elemType in this module)
                 let _elemType = toTType sizeAndType
                 rowGroups <-
