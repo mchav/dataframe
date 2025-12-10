@@ -56,6 +56,8 @@ data TType
     | I16
     | I32
     | I64
+    | I96
+    | FLOAT
     | DOUBLE
     | STRING
     | LIST
@@ -238,7 +240,7 @@ skipFieldData fieldType buf pos = case fieldType of
     STRING -> void (readByteString buf pos)
     LIST -> skipList buf pos
     STRUCT -> skipToStructEnd buf pos
-    _ -> return ()
+    _ -> error $ "Unknown field type" ++ show fieldType
 
 skipList :: BS.ByteString -> IORef Int -> IO ()
 skipList buf pos = do
@@ -310,6 +312,7 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                         then readVarIntFromBuffer @Int metaDataBuf bufferPos
                         else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
 
+                print listSize
                 -- TODO actually check elemType agrees (also for all the other underscored _elemType in this module)
                 let _elemType = toTType sizeAndType
                 rowGroups <-
@@ -469,9 +472,7 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                     pos
                     identifier
                     fieldStack
-            _ -> do
-                skipFieldData elemType buf pos
-                readSchemaElement schemaElement buf pos identifier fieldStack
+            _ -> error "Uknown schema element"
 
 readRowGroup ::
     RowGroup -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO RowGroup
@@ -482,10 +483,13 @@ readRowGroup r buf pos lastFieldId fieldStack = do
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 sizeAndType <- readAndAdvance pos buf
-                let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
+                listSize <-
+                    if (sizeAndType `shiftR` 4) .&. 0x0f == 15
+                        then readVarIntFromBuffer @Int buf pos
+                        else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
                 let _elemType = toTType sizeAndType
                 columnChunks <-
-                    replicateM sizeOnly (readColumnChunk emptyColumnChunk buf pos 0 [])
+                    replicateM listSize (readColumnChunk emptyColumnChunk buf pos 0 [])
                 readRowGroup (r{rowGroupColumns = columnChunks}) buf pos identifier fieldStack
             2 -> do
                 totalBytes <- readIntFromBuffer @Int64 buf pos
@@ -575,7 +579,7 @@ readColumnChunk c buf pos lastFieldId fieldStack = do
                     pos
                     identifier
                     fieldStack
-            _ -> return c
+            _ -> error "Unknown column chunk"
 
 readColumnMetadata ::
     ColumnMetaData ->
@@ -712,7 +716,7 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
                     identifier
                     fieldStack
             17 -> return $ error "UNIMPLEMENTED"
-            _ -> return cm
+            _ -> error $ "Unknown column metadata " ++ show identifier
 
 readEncryptionAlgorithm ::
     BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
@@ -838,7 +842,7 @@ readKeyValue kv buf pos lastFieldId fieldStack = do
             2 -> do
                 v <- readString buf pos
                 readKeyValue (kv{value = v}) buf pos identifier fieldStack
-            _ -> return kv
+            _ -> error "Unknown kv"
 
 readPageEncodingStats ::
     PageEncodingStats ->
@@ -866,7 +870,7 @@ readPageEncodingStats pes buf pos lastFieldId fieldStack = do
                     pos
                     identifier
                     []
-            _ -> pure pes
+            _ -> error "Unknown page encoding stats"
 
 readParquetEncoding ::
     BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ParquetEncoding
@@ -923,7 +927,7 @@ readStatistics cs buf pos lastFieldId fieldStack = do
                     pos
                     identifier
                     fieldStack
-            _ -> pure cs
+            _ -> error "Unknown statistics"
 
 readSizeStatistics ::
     SizeStatistics ->
@@ -969,18 +973,22 @@ readSizeStatistics ss buf pos lastFieldId fieldStack = do
                     pos
                     identifier
                     fieldStack
-            _ -> pure ss
+            _ -> error "Unknown size statistics"
 
 footerSize :: Int
 footerSize = 8
 
 toIntegralType :: Int32 -> TType
 toIntegralType n
+    | n == 0 = BOOL
     | n == 1 = I32
     | n == 2 = I64
+    | n == 3 = I96
     | n == 4 = DOUBLE
+    | n == 5 = DOUBLE
     | n == 6 = STRING
-    | otherwise = STRING
+    | n == 7 = STRING
+    | otherwise = error ("Unknown type in schema: " ++ show n)
 
 readLogicalType ::
     BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
