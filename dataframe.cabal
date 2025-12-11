@@ -83,7 +83,8 @@ library
                     DataFrame.IO.Parquet.Time,
                     DataFrame.IO.Parquet.Types,
                     DataFrame.Lazy.IO.CSV,
-                    DataFrame.Lazy.Internal.DataFrame
+                    DataFrame.Lazy.Internal.DataFrame,
+                    DataFrame.Monad
     build-depends:    base >= 4 && <5,
                       aeson >= 0.11.0.0 && < 3,
                       array >= 0.5.4.0 && < 0.6,
