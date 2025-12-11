@@ -552,7 +552,7 @@ main = do
     
     print $ df_csv
           |> D.derive "birth_year" (F.lift year (F.col @Day "birthdate"))
-          |> D.derive "bmi" (F.col @Double "weight" / (F.pow 2 (F.col @Double "height")))
+          |> D.derive "bmi" (F.col @Double "weight" / (F.pow (F.col @Double "height") 2))
           |> D.select ["name", "birth_year", "bmi"]
 ```
 
@@ -576,7 +576,7 @@ main = do
    - `F.lift` adapts a regular Haskell function to work with columns
    - `F.col @Day "birthdate"` references the birthdate column with explicit type
 2. `derive "bmi"` creates another column with the BMI formula
-   - `F.pow 2` squares the height
+   - `F.pow <col> 2` squares the height
    - Division works directly on column expressions
 3. `select` keeps only the columns we want
 
@@ -959,7 +959,7 @@ For predicate-based selection like `ends_with()`, we use `selectBy`:
 
 ```haskell
 starwars 
-  |> D.selectBy (\colName -> colName == "name" || T.isSuffixOf "color" colName)
+  |> D.selectBy [D.byName "name", D.byNameProperty (T.isSuffixOf "color")]
   |> D.take 5
 ```
 
@@ -997,7 +997,27 @@ starwars
   -- Remove the maybes.
   |> D.filterJust "mass"
   |> D.filterJust "height"
-  |> D.derive "bmi" (F.col @Double "mass" / F.pow 2 (F.col @Double "height" / F.lit 100))
+  |> D.derive "bmi" (F.col @Double "mass" / F.pow (F.col @Double "height" / F.lit 100) 2)
+  |> D.select ["name", "height", "mass", "bmi"]
+  |> D.take 5
+```
+
+We can enable non-started evaluation by one of three methods:
+* In a terminal, calling the `:exposeColumns` macro on the dataframe.
+* In a notebook calling the function `declareColumns`
+* In a script adding `$(declareColumnsFromCsv)` after the imports section.
+
+Once we do this we can rewrite our expressions as (in this case in a notebook):
+
+```haskell
+let cleaned = starwars
+  -- Remove the maybes.
+  |> D.filterAllJust
+
+F.declareColumns cleaned
+
+cleaned
+  |> D.derive "bmi" (mass / F.pow height 2 / 100)
   |> D.select ["name", "height", "mass", "bmi"]
   |> D.take 5
 ```
@@ -1079,8 +1099,8 @@ starwars %>%
 starwars 
   |> D.select ["species", "mass"]
   |> D.groupBy ["species"]
-  |> D.aggregate [ F.mean (F.col @Double "mass") `F.as` "mean_mass"
-                 , F.count (F.col @Double "mass") `F.as` "count"
+  |> D.aggregate [ F.mean mass `F.as` "mean_mass"
+                 , F.count mass `F.as` "count"
                  ]
   |> D.filterWhere ((F.col @Int "count" .> 1) .&& (F.col @Double "mean_mass" .> 50))
 ```
@@ -1138,14 +1158,14 @@ df |> D.select ["col1", "col2"]
 
 **Creating Derived Columns:**
 ```haskell
-df |> D.derive "new_col" (F.col @Double "old_col" * 2)
+df |> D.derive "new_col" (old_col * 2)
 ```
 
 **Grouping and Aggregating:**
 ```haskell
 df |> D.groupBy ["group_col"]
-   |> D.aggregate [ F.mean (F.col @Double "val") `F.as` "avg_val"
-                  , F.count (F.col @Double "val") `F.as` "n"
+   |> D.aggregate [ F.mean val `F.as` "avg_val"
+                  , F.count val `F.as` "n"
                   ]
 ```
 

@@ -162,7 +162,7 @@ dataframe> :exposeColumns withDeviation
 "median_house_value :: Expr Double"
 "deviation :: Expr Double"
 dataframe> import Data.Maybe
-dataframe> sumOfSqureDifferences = withDeviation |> D.derive "deviation^2" (F.pow 2 deviation) |> D.sum @Double "deviation^2" |> fromMaybe 0
+dataframe> sumOfSqureDifferences = withDeviation |> D.derive "deviation^2" (F.pow deviation 2) |> D.sum @Double "deviation^2" |> fromMaybe 0
 dataframe> n = fromIntegral (fst (D.dimensions df) - 1)
 dataframe> sqrt (sumOfSqureDifferences / n)
 115395.6158744

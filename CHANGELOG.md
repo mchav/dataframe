@@ -47,7 +47,7 @@
             luxury <- deriveM "luxury" (is_expensive .&& median_income .>= 8)
             filterWhereM luxury
     ```
-
+* Change order of exponentiation to putting the exponent second. It was initially first cause of some internal efficiency detail but that's silly.
 
 ## 0.3.4.1
 * Faster sum operation (now does a reduction instead of collecting the vector and aggregating)

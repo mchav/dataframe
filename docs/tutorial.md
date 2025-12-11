@@ -155,7 +155,7 @@ let ratio = sl / sw
 let area  = pl * pw
 let wide  = D.ifThenElse (sw .> 3.0) True False -- or just (sw .> 3.0)
 let z_pl  = D.zScore pl
-let pw4   = D.pow 4 pw
+let pw4   = D.pow pw 2
 
 -- mutate/add
 let df' = df

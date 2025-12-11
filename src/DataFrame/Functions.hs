@@ -201,10 +201,10 @@ stddevMaybe expr = AggVector expr "stddevMaybe" (sqrt . variance' . optionalToDo
 zScore :: Expr Double -> Expr Double
 zScore c = (c - mean c) / stddev c
 
-pow :: (Columnable a, Num a) => Int -> Expr a -> Expr a
-pow 0 _ = Lit 1
-pow 1 expr = expr
-pow i expr = UnaryOp ("pow " <> T.pack (show i)) (^ i) expr
+pow :: (Columnable a, Num a) => Expr a -> Int -> Expr a
+pow _ 0 = Lit 1
+pow expr 1 = expr
+pow expr i = UnaryOp ("pow " <> T.pack (show i)) (^ i) expr
 
 relu :: (Columnable a, Num a) => Expr a -> Expr a
 relu = UnaryOp "relu" (Prelude.max 0)

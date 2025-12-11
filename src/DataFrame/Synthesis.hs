@@ -91,7 +91,7 @@ generatePrograms includeConds conds vars constants ps =
                     , signum
                     ]
                ]
-            ++ [ F.pow i p
+            ++ [ F.pow p i
                | p <- existingPrograms
                , i <- [2 .. 6]
                ]
