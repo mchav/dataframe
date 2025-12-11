@@ -75,14 +75,14 @@ add the result into `alias` column but
 
 ==== __Examples__
 
->>> (df', z) = deriveWithExpr "z" (F.col @Int "x" + F.col "y") df
+>>> (z, df') = deriveWithExpr "z" (F.col @Int "x" + F.col "y") df
 >>> filterWhere (z .>= 50)
 -}
 deriveWithExpr ::
-    forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> (DataFrame, Expr a)
+    forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> (Expr a, DataFrame)
 deriveWithExpr name expr df = case interpret @a df (normalize expr) of
     Left e -> throw e
-    Right (TColumn value) -> (insertColumn name value df, Col name)
+    Right (TColumn value) -> (Col name, insertColumn name value df)
 
 deriveMany :: [NamedExpr] -> DataFrame -> DataFrame
 deriveMany exprs df =
