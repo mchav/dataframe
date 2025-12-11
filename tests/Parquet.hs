@@ -534,7 +534,7 @@ mtCars =
         ( assertEqual
             "mt_cars"
             mtCarsDataset
-            (unsafePerformIO (D.readParquet "./data/mtcars.parquet"))
+            (unsafePerformIO (D.readParquet "./tests/data/mtcars.parquet"))
         )
 
 -- Uncomment to run parquet tests.
