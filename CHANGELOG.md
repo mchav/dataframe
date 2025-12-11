@@ -19,6 +19,8 @@
         print (D.filterWhere test df')
     ```
 * Fix bounds on random.
+* Parquet Column chunks weren't reading properly because we didn't correctly calculate the list size.
+* Sum function had a bug where the first number was summed twice.
 
 
 ## 0.3.4.1

@@ -540,4 +540,4 @@ mtCars =
 -- Uncomment to run parquet tests.
 -- Currently commented because they don't run with github CI
 tests :: [Test]
-tests = [] -- [allTypesPlain, allTypesPlainSnappy, allTypesDictionary, mtCars]
+tests = [allTypesPlain, allTypesPlainSnappy, allTypesDictionary, mtCars]
