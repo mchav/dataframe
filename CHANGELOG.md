@@ -21,6 +21,32 @@
 * Fix bounds on random.
 * Parquet Column chunks weren't reading properly because we didn't correctly calculate the list size.
 * Sum function had a bug where the first number was summed twice.
+* Add monadic interface for building dataframe expressions that makes schema evolution nice.
+    ```haskell
+    {-# LANGUAGE OverloadedStrings #-}
+    {-# LANGUAGE TemplateHaskell #-}
+
+    module Main where
+
+    import qualified DataFrame as D
+    import qualified DataFrame.Functions as F
+
+    import DataFrame.Monad
+
+    import Data.Text (Text)
+    import DataFrame.Functions ((.&&), (.>=))
+
+    $(F.declareColumnsFromCsvFile "./data/housing.csv")
+
+    main :: IO ()
+    main = do
+        df <- D.readCsv "./data/housing.csv"
+        print $ runFrameM df $ do
+            is_expensive <- deriveM "is_expensive" (median_house_value .>= 500000)
+            filterWhereM is_expensive
+            luxury <- deriveM "luxury" (is_expensive .&& median_income .>= 8)
+            filterWhereM luxury
+    ```
 
 
 ## 0.3.4.1
