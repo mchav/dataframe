@@ -48,6 +48,7 @@
             filterWhereM luxury
     ```
 * Change order of exponentiation to putting the exponent second. It was initially first cause of some internal efficiency detail but that's silly.
+* Fix bug where we didn't concat columns from row groups.
 
 ## 0.3.4.1
 * Faster sum operation (now does a reduction instead of collecting the vector and aggregating)
