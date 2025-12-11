@@ -1,6 +1,6 @@
 # Revision history for dataframe
 
-## 0.3.4.2
+## 0.3.5.0
 * Add a `deriveWithExpr` that returns an expression that you can use in a subsequent expressions.
 * Add `declareColumnsFromCsvFile` which can create the expressions up front for use in scripts.
     ```haskell
