@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module DataFrame.Monad where
 
@@ -20,18 +21,21 @@ import qualified Data.Text as T
 newtype FrameM a = FrameM {runFrameM_ :: DataFrame -> (DataFrame, a)}
 
 instance Functor FrameM where
+    fmap :: (a -> b) -> FrameM a -> FrameM b
     fmap f (FrameM g) = FrameM $ \df ->
         let (df', x) = g df
          in (df', f x)
 
 instance Applicative FrameM where
     pure x = FrameM (,x)
+    (<*>) :: FrameM (a -> b) -> FrameM a -> FrameM b
     FrameM ff <*> FrameM fx = FrameM $ \df ->
         let (df1, f) = ff df
             (df2, x) = fx df1
          in (df2, f x)
 
 instance Monad FrameM where
+    (>>=) :: FrameM a -> (a -> FrameM b) -> FrameM b
     FrameM g >>= f = FrameM $ \df ->
         let (df1, x) = g df
             FrameM h = f x
@@ -40,7 +44,7 @@ instance Monad FrameM where
 deriveM :: (Columnable a) => T.Text -> Expr a -> FrameM (Expr a)
 deriveM name expr = FrameM $ \df ->
     let df' = D.derive name expr df
-     in (df', expr) -- or (df', F.col @a name)
+     in (df', expr)
 
 filterWhereM :: Expr Bool -> FrameM ()
 filterWhereM p = FrameM $ \df ->

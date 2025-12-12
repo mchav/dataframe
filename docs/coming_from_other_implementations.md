@@ -59,7 +59,7 @@ ghci> D.fromList [Just (1 :: Double), Just 3, Just 5, Nothing, Just 6, Just 8]
 [Just 1.0, Just 3.0, Just 5.0, Nothing, Just 6.0, Just 8.0]
 ```
 
-This approach is superior because:
+This approach is better because:
 - The type system forces you to handle missing values explicitly
 - You can't accidentally treat `Nothing` as a number
 - Pattern matching ensures you consider all cases
@@ -598,10 +598,10 @@ Example:
 
 ```haskell
 -- Using lift for a unary function
-D.derive "doubled" (F.lift (*2) (F.col @Double "weight"))
+D.derive "doubled" (F.lift (*2) weight)
 
 -- Using lift2 for a binary function
-D.derive "weight_per_height" (F.lift2 (/) (F.col @Double "weight") (F.col @Double "height"))
+D.derive "weight_per_height" (F.lift2 (/) weight height)
 ```
 
 #### Column Expansion
@@ -620,8 +620,10 @@ We don't provide built-in column expansion, so you write multiple explicit opera
 
 ```haskell
 df_csv
-    |> D.derive "weight-5%" ((F.col @Double "weight") * (F.lit 0.95))
-    |> D.derive "height-5%" ((F.col @Double "height") * (F.lit 0.95))
+    |> D.deriveMany
+          [ "weight-5%" .=  weight * 0.95
+          , "height-5%" .= height * 0.95
+          ]
     |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
@@ -749,7 +751,6 @@ let decade d = let (y, _, _) = toGregorian d
 
 df_csv
     |> D.derive "decade" (F.lift decade (F.col @Day "birthdate"))
-    |> D.select ["decade"]
     |> D.groupBy ["decade"]
     |> D.aggregate [F.count (F.col @Day "decade") `F.as` "Count"]
 ```

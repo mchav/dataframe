@@ -48,7 +48,7 @@ ghci>  df
 You can see the dimensions of this data frame by typing:
 
 ```haskell
-ghci> D.dimension arbuthnot
+ghci> D.dimensions arbuthnot
 
 ```
 
