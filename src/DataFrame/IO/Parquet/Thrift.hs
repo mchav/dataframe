@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeApplications #-}
 
 module DataFrame.IO.Parquet.Thrift where
@@ -202,8 +203,8 @@ toTType t =
                 ]
 
 readField ::
-    BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO (Maybe (TType, Int16))
-readField buf pos lastFieldId fieldStack = do
+    BS.ByteString -> IORef Int -> Int16 -> IO (Maybe (TType, Int16))
+readField buf pos lastFieldId = do
     t <- readAndAdvance pos buf
     if t .&. 0x0f == 0
         then return Nothing
@@ -256,19 +257,17 @@ readMetadata contents size = do
             BS.pack $
                 map (BS.index contents) [metadataStartPos .. (metadataStartPos + size - 1)]
     let lastFieldId = 0
-    let fieldStack = []
     bufferPos <- newIORef (0 :: Int)
-    readFileMetaData defaultMetadata metadataBytes bufferPos lastFieldId fieldStack
+    readFileMetaData defaultMetadata metadataBytes bufferPos lastFieldId
 
 readFileMetaData ::
     FileMetadata ->
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO FileMetadata
-readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
-    fieldContents <- readField metaDataBuf bufferPos lastFieldId fieldStack
+readFileMetaData metadata metaDataBuf bufferPos lastFieldId = do
+    fieldContents <- readField metaDataBuf bufferPos lastFieldId
     case fieldContents of
         Nothing -> return metadata
         Just (elemType, identifier) -> case identifier of
@@ -279,7 +278,6 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                     metaDataBuf
                     bufferPos
                     identifier
-                    fieldStack
             2 -> do
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
                 listSize <-
@@ -290,13 +288,12 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                 schemaElements <-
                     replicateM
                         listSize
-                        (readSchemaElement defaultSchemaElement metaDataBuf bufferPos 0 [])
+                        (readSchemaElement defaultSchemaElement metaDataBuf bufferPos 0)
                 readFileMetaData
                     (metadata{schema = schemaElements})
                     metaDataBuf
                     bufferPos
                     identifier
-                    fieldStack
             3 -> do
                 numRows <- readIntFromBuffer @Int64 metaDataBuf bufferPos
                 readFileMetaData
@@ -304,7 +301,6 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                     metaDataBuf
                     bufferPos
                     identifier
-                    fieldStack
             4 -> do
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
                 listSize <-
@@ -315,13 +311,12 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                 -- TODO actually check elemType agrees (also for all the other underscored _elemType in this module)
                 let _elemType = toTType sizeAndType
                 rowGroups <-
-                    replicateM listSize (readRowGroup emptyRowGroup metaDataBuf bufferPos 0 [])
+                    replicateM listSize (readRowGroup emptyRowGroup metaDataBuf bufferPos 0)
                 readFileMetaData
                     (metadata{rowGroups = rowGroups})
                     metaDataBuf
                     bufferPos
                     identifier
-                    fieldStack
             5 -> do
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
                 listSize <-
@@ -331,13 +326,12 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
 
                 let _elemType = toTType sizeAndType
                 keyValueMetadata <-
-                    replicateM listSize (readKeyValue emptyKeyValue metaDataBuf bufferPos 0 [])
+                    replicateM listSize (readKeyValue emptyKeyValue metaDataBuf bufferPos 0)
                 readFileMetaData
                     (metadata{keyValueMetadata = keyValueMetadata})
                     metaDataBuf
                     bufferPos
                     identifier
-                    fieldStack
             6 -> do
                 createdBy <- readString metaDataBuf bufferPos
                 readFileMetaData
@@ -345,7 +339,6 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                     metaDataBuf
                     bufferPos
                     identifier
-                    fieldStack
             7 -> do
                 sizeAndType <- readAndAdvance bufferPos metaDataBuf
                 listSize <-
@@ -354,21 +347,19 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                         else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
 
                 let _elemType = toTType sizeAndType
-                columnOrders <- replicateM listSize (readColumnOrder metaDataBuf bufferPos 0 [])
+                columnOrders <- replicateM listSize (readColumnOrder metaDataBuf bufferPos 0)
                 readFileMetaData
                     (metadata{columnOrders = columnOrders})
                     metaDataBuf
                     bufferPos
                     identifier
-                    fieldStack
             8 -> do
-                encryptionAlgorithm <- readEncryptionAlgorithm metaDataBuf bufferPos 0 []
+                encryptionAlgorithm <- readEncryptionAlgorithm metaDataBuf bufferPos 0
                 readFileMetaData
                     (metadata{encryptionAlgorithm = encryptionAlgorithm})
                     metaDataBuf
                     bufferPos
                     identifier
-                    fieldStack
             9 -> do
                 footerSigningKeyMetadata <- readByteString metaDataBuf bufferPos
                 readFileMetaData
@@ -376,7 +367,6 @@ readFileMetaData metadata metaDataBuf bufferPos lastFieldId fieldStack = do
                     metaDataBuf
                     bufferPos
                     identifier
-                    fieldStack
             n -> return $ error $ "UNIMPLEMENTED " ++ show n
 
 readSchemaElement ::
@@ -384,10 +374,9 @@ readSchemaElement ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO SchemaElement
-readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readSchemaElement schemaElement buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return schemaElement
         Just (STOP, _) -> return schemaElement
@@ -399,7 +388,6 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             2 -> do
                 typeLength <- readInt32FromBuffer buf pos
                 readSchemaElement
@@ -407,7 +395,6 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             3 -> do
                 fieldRepetitionType <- readInt32FromBuffer buf pos
                 readSchemaElement
@@ -415,11 +402,10 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             4 -> do
                 nameSize <- readVarIntFromBuffer @Int buf pos
                 if nameSize <= 0
-                    then readSchemaElement schemaElement buf pos identifier fieldStack
+                    then readSchemaElement schemaElement buf pos identifier
                     else do
                         contents <- replicateM nameSize (readAndAdvance pos buf)
                         readSchemaElement
@@ -427,7 +413,6 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                             buf
                             pos
                             identifier
-                            fieldStack
             5 -> do
                 numChildren <- readInt32FromBuffer buf pos
                 readSchemaElement
@@ -435,7 +420,6 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             6 -> do
                 convertedType <- readInt32FromBuffer buf pos
                 readSchemaElement
@@ -443,10 +427,9 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             7 -> do
                 scale <- readInt32FromBuffer buf pos
-                readSchemaElement (schemaElement{scale = scale}) buf pos identifier fieldStack
+                readSchemaElement (schemaElement{scale = scale}) buf pos identifier
             8 -> do
                 precision <- readInt32FromBuffer buf pos
                 readSchemaElement
@@ -454,7 +437,6 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             9 -> do
                 fieldId <- readInt32FromBuffer buf pos
                 readSchemaElement
@@ -462,21 +444,19 @@ readSchemaElement schemaElement buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             10 -> do
-                logicalType <- readLogicalType buf pos 0 []
+                logicalType <- readLogicalType buf pos 0
                 readSchemaElement
                     (schemaElement{logicalType = logicalType})
                     buf
                     pos
                     identifier
-                    fieldStack
             _ -> error "Uknown schema element"
 
 readRowGroup ::
-    RowGroup -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO RowGroup
-readRowGroup r buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+    RowGroup -> BS.ByteString -> IORef Int -> Int16 -> IO RowGroup
+readRowGroup r buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return r
         Just (elemType, identifier) -> case identifier of
@@ -488,18 +468,18 @@ readRowGroup r buf pos lastFieldId fieldStack = do
                         else return $ fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f)
                 let _elemType = toTType sizeAndType
                 columnChunks <-
-                    replicateM listSize (readColumnChunk emptyColumnChunk buf pos 0 [])
-                readRowGroup (r{rowGroupColumns = columnChunks}) buf pos identifier fieldStack
+                    replicateM listSize (readColumnChunk emptyColumnChunk buf pos 0)
+                readRowGroup (r{rowGroupColumns = columnChunks}) buf pos identifier
             2 -> do
                 totalBytes <- readIntFromBuffer @Int64 buf pos
-                readRowGroup (r{totalByteSize = totalBytes}) buf pos identifier fieldStack
+                readRowGroup (r{totalByteSize = totalBytes}) buf pos identifier
             3 -> do
                 nRows <- readIntFromBuffer @Int64 buf pos
-                readRowGroup (r{rowGroupNumRows = nRows}) buf pos identifier fieldStack
+                readRowGroup (r{rowGroupNumRows = nRows}) buf pos identifier
             4 -> return r
             5 -> do
                 offset <- readIntFromBuffer @Int64 buf pos
-                readRowGroup (r{fileOffset = offset}) buf pos identifier fieldStack
+                readRowGroup (r{fileOffset = offset}) buf pos identifier
             6 -> do
                 compressedSize <- readIntFromBuffer @Int64 buf pos
                 readRowGroup
@@ -507,16 +487,15 @@ readRowGroup r buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             7 -> do
                 ordinal <- readIntFromBuffer @Int16 buf pos
-                readRowGroup (r{ordinal = ordinal}) buf pos identifier fieldStack
+                readRowGroup (r{ordinal = ordinal}) buf pos identifier
             _ -> error $ "Unknown row group field: " ++ show identifier
 
 readColumnChunk ::
-    ColumnChunk -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnChunk
-readColumnChunk c buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+    ColumnChunk -> BS.ByteString -> IORef Int -> Int16 -> IO ColumnChunk
+readColumnChunk c buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return c
         Just (elemType, identifier) -> case identifier of
@@ -529,7 +508,6 @@ readColumnChunk c buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             2 -> do
                 columnChunkMetadataFileOffset <- readIntFromBuffer @Int64 buf pos
                 readColumnChunk
@@ -537,15 +515,13 @@ readColumnChunk c buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             3 -> do
-                columnMetadata <- readColumnMetadata emptyColumnMetadata buf pos 0 []
+                columnMetadata <- readColumnMetadata emptyColumnMetadata buf pos 0
                 readColumnChunk
                     (c{columnMetaData = columnMetadata})
                     buf
                     pos
                     identifier
-                    fieldStack
             4 -> do
                 columnOffsetIndexOffset <- readIntFromBuffer @Int64 buf pos
                 readColumnChunk
@@ -553,7 +529,6 @@ readColumnChunk c buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             5 -> do
                 columnOffsetIndexLength <- readInt32FromBuffer buf pos
                 readColumnChunk
@@ -561,7 +536,6 @@ readColumnChunk c buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             6 -> do
                 columnChunkColumnIndexOffset <- readIntFromBuffer @Int64 buf pos
                 readColumnChunk
@@ -569,7 +543,6 @@ readColumnChunk c buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             7 -> do
                 columnChunkColumnIndexLength <- readInt32FromBuffer buf pos
                 readColumnChunk
@@ -577,7 +550,6 @@ readColumnChunk c buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             _ -> error "Unknown column chunk"
 
 readColumnMetadata ::
@@ -585,27 +557,25 @@ readColumnMetadata ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO ColumnMetaData
-readColumnMetadata cm buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readColumnMetadata cm buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return cm
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 cType <- parquetTypeFromInt <$> readInt32FromBuffer buf pos
-                readColumnMetadata (cm{columnType = cType}) buf pos identifier []
+                readColumnMetadata (cm{columnType = cType}) buf pos identifier
             2 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
                 let _elemType = toTType sizeAndType
-                encodings <- replicateM sizeOnly (readParquetEncoding buf pos 0 [])
+                encodings <- replicateM sizeOnly (readParquetEncoding buf pos 0)
                 readColumnMetadata
                     (cm{columnEncodings = encodings})
                     buf
                     pos
                     identifier
-                    fieldStack
             3 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
@@ -616,13 +586,12 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             4 -> do
                 cType <- compressionCodecFromInt <$> readInt32FromBuffer buf pos
-                readColumnMetadata (cm{columnCodec = cType}) buf pos identifier []
+                readColumnMetadata (cm{columnCodec = cType}) buf pos identifier
             5 -> do
                 numValues <- readIntFromBuffer @Int64 buf pos
-                readColumnMetadata (cm{columnNumValues = numValues}) buf pos identifier []
+                readColumnMetadata (cm{columnNumValues = numValues}) buf pos identifier
             6 -> do
                 columnTotalUncompressedSize <- readIntFromBuffer @Int64 buf pos
                 readColumnMetadata
@@ -630,7 +599,6 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    []
             7 -> do
                 columnTotalCompressedSize <- readIntFromBuffer @Int64 buf pos
                 readColumnMetadata
@@ -638,19 +606,17 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    []
             8 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
                 let _elemType = toTType sizeAndType
                 columnKeyValueMetadata <-
-                    replicateM sizeOnly (readKeyValue emptyKeyValue buf pos 0 [])
+                    replicateM sizeOnly (readKeyValue emptyKeyValue buf pos 0)
                 readColumnMetadata
                     (cm{columnKeyValueMetadata = columnKeyValueMetadata})
                     buf
                     pos
                     identifier
-                    fieldStack
             9 -> do
                 columnDataPageOffset <- readIntFromBuffer @Int64 buf pos
                 readColumnMetadata
@@ -658,7 +624,6 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    []
             10 -> do
                 columnIndexPageOffset <- readIntFromBuffer @Int64 buf pos
                 readColumnMetadata
@@ -666,7 +631,6 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    []
             11 -> do
                 columnDictionaryPageOffset <- readIntFromBuffer @Int64 buf pos
                 readColumnMetadata
@@ -674,22 +638,20 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    []
             12 -> do
-                stats <- readStatistics emptyColumnStatistics buf pos 0 []
-                readColumnMetadata (cm{columnStatistics = stats}) buf pos identifier fieldStack
+                stats <- readStatistics emptyColumnStatistics buf pos 0
+                readColumnMetadata (cm{columnStatistics = stats}) buf pos identifier
             13 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
                 let _elemType = toTType sizeAndType
                 pageEncodingStats <-
-                    replicateM sizeOnly (readPageEncodingStats emptyPageEncodingStats buf pos 0 [])
+                    replicateM sizeOnly (readPageEncodingStats emptyPageEncodingStats buf pos 0)
                 readColumnMetadata
                     (cm{columnEncodingStats = pageEncodingStats})
                     buf
                     pos
                     identifier
-                    fieldStack
             14 -> do
                 bloomFilterOffset <- readIntFromBuffer @Int64 buf pos
                 readColumnMetadata
@@ -697,7 +659,6 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    []
             15 -> do
                 bloomFilterLength <- readInt32FromBuffer buf pos
                 readColumnMetadata
@@ -705,22 +666,20 @@ readColumnMetadata cm buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    []
             16 -> do
-                stats <- readSizeStatistics emptySizeStatistics buf pos 0 []
+                stats <- readSizeStatistics emptySizeStatistics buf pos 0
                 readColumnMetadata
                     (cm{columnSizeStatistics = stats})
                     buf
                     pos
                     identifier
-                    fieldStack
             17 -> return $ error "UNIMPLEMENTED"
             _ -> error $ "Unknown column metadata " ++ show identifier
 
 readEncryptionAlgorithm ::
-    BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO EncryptionAlgorithm
-readEncryptionAlgorithm buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+    BS.ByteString -> IORef Int -> Int16 -> IO EncryptionAlgorithm
+readEncryptionAlgorithm buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return ENCRYPTION_ALGORITHM_UNKNOWN
         Just (elemType, identifier) -> case identifier of
@@ -730,25 +689,23 @@ readEncryptionAlgorithm buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     0
-                    []
             2 -> do
                 readAesGcmCtrV1
                     (AesGcmCtrV1{aadPrefix = [], aadFileUnique = [], supplyAadPrefix = False})
                     buf
                     pos
                     0
-                    []
             n -> return ENCRYPTION_ALGORITHM_UNKNOWN
 
 readColumnOrder ::
-    BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnOrder
-readColumnOrder buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+    BS.ByteString -> IORef Int -> Int16 -> IO ColumnOrder
+readColumnOrder buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return COLUMN_ORDER_UNKNOWN
         Just (elemType, identifier) -> case identifier of
             1 -> do
-                replicateM_ 2 (readTypeOrder buf pos 0 [])
+                replicateM_ 2 (readTypeOrder buf pos 0)
                 return TYPE_ORDER
             _ -> return COLUMN_ORDER_UNKNOWN
 
@@ -757,16 +714,15 @@ readAesGcmCtrV1 ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO EncryptionAlgorithm
-readAesGcmCtrV1 v@(AesGcmCtrV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readAesGcmCtrV1 v@(AesGcmCtrV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return v
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 aadPrefix <- readByteString buf pos
-                readAesGcmCtrV1 (v{aadPrefix = aadPrefix}) buf pos lastFieldId fieldStack
+                readAesGcmCtrV1 (v{aadPrefix = aadPrefix}) buf pos lastFieldId
             2 -> do
                 aadFileUnique <- readByteString buf pos
                 readAesGcmCtrV1
@@ -774,7 +730,6 @@ readAesGcmCtrV1 v@(AesGcmCtrV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos 
                     buf
                     pos
                     lastFieldId
-                    fieldStack
             3 -> do
                 supplyAadPrefix <- readAndAdvance pos buf
                 readAesGcmCtrV1
@@ -782,9 +737,8 @@ readAesGcmCtrV1 v@(AesGcmCtrV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos 
                     buf
                     pos
                     lastFieldId
-                    fieldStack
             _ -> return ENCRYPTION_ALGORITHM_UNKNOWN
-readAesGcmCtrV1 _ _ _ _ _ =
+readAesGcmCtrV1 _ _ _ _ =
     error "readAesGcmCtrV1 called with non AesGcmCtrV1"
 
 readAesGcmV1 ::
@@ -792,19 +746,18 @@ readAesGcmV1 ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO EncryptionAlgorithm
-readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return v
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 aadPrefix <- readByteString buf pos
-                readAesGcmV1 (v{aadPrefix = aadPrefix}) buf pos lastFieldId fieldStack
+                readAesGcmV1 (v{aadPrefix = aadPrefix}) buf pos lastFieldId
             2 -> do
                 aadFileUnique <- readByteString buf pos
-                readAesGcmV1 (v{aadFileUnique = aadFileUnique}) buf pos lastFieldId fieldStack
+                readAesGcmV1 (v{aadFileUnique = aadFileUnique}) buf pos lastFieldId
             3 -> do
                 supplyAadPrefix <- readAndAdvance pos buf
                 readAesGcmV1
@@ -812,35 +765,34 @@ readAesGcmV1 v@(AesGcmV1 aadPrefix aadFileUnique supplyAadPrefix) buf pos lastFi
                     buf
                     pos
                     lastFieldId
-                    fieldStack
             _ -> return ENCRYPTION_ALGORITHM_UNKNOWN
-readAesGcmV1 _ _ _ _ _ =
+readAesGcmV1 _ _ _ _ =
     error "readAesGcmV1 called with non AesGcmV1"
 
 readTypeOrder ::
-    BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ColumnOrder
-readTypeOrder buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+    BS.ByteString -> IORef Int -> Int16 -> IO ColumnOrder
+readTypeOrder buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return TYPE_ORDER
         Just (elemType, identifier) ->
             if elemType == STOP
                 then return TYPE_ORDER
-                else readTypeOrder buf pos identifier fieldStack
+                else readTypeOrder buf pos identifier
 
 readKeyValue ::
-    KeyValue -> BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO KeyValue
-readKeyValue kv buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+    KeyValue -> BS.ByteString -> IORef Int -> Int16 -> IO KeyValue
+readKeyValue kv buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return kv
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 k <- readString buf pos
-                readKeyValue (kv{key = k}) buf pos identifier fieldStack
+                readKeyValue (kv{key = k}) buf pos identifier
             2 -> do
                 v <- readString buf pos
-                readKeyValue (kv{value = v}) buf pos identifier fieldStack
+                readKeyValue (kv{value = v}) buf pos identifier
             _ -> error "Unknown kv"
 
 readPageEncodingStats ::
@@ -848,19 +800,18 @@ readPageEncodingStats ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO PageEncodingStats
-readPageEncodingStats pes buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readPageEncodingStats pes buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return pes
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 pType <- pageTypeFromInt <$> readInt32FromBuffer buf pos
-                readPageEncodingStats (pes{pageEncodingPageType = pType}) buf pos identifier []
+                readPageEncodingStats (pes{pageEncodingPageType = pType}) buf pos identifier
             2 -> do
                 pEnc <- parquetEncodingFromInt <$> readInt32FromBuffer buf pos
-                readPageEncodingStats (pes{pageEncoding = pEnc}) buf pos identifier []
+                readPageEncodingStats (pes{pageEncoding = pEnc}) buf pos identifier
             3 -> do
                 encodedCount <- readInt32FromBuffer buf pos
                 readPageEncodingStats
@@ -868,34 +819,32 @@ readPageEncodingStats pes buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    []
             _ -> error "Unknown page encoding stats"
 
 readParquetEncoding ::
-    BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO ParquetEncoding
-readParquetEncoding buf pos lastFieldId fieldStack = parquetEncodingFromInt <$> readInt32FromBuffer buf pos
+    BS.ByteString -> IORef Int -> Int16 -> IO ParquetEncoding
+readParquetEncoding buf pos lastFieldId = parquetEncodingFromInt <$> readInt32FromBuffer buf pos
 
 readStatistics ::
     ColumnStatistics ->
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO ColumnStatistics
-readStatistics cs buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readStatistics cs buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return cs
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 maxInBytes <- readByteString buf pos
-                readStatistics (cs{columnMax = maxInBytes}) buf pos identifier fieldStack
+                readStatistics (cs{columnMax = maxInBytes}) buf pos identifier
             2 -> do
                 minInBytes <- readByteString buf pos
-                readStatistics (cs{columnMin = minInBytes}) buf pos identifier fieldStack
+                readStatistics (cs{columnMin = minInBytes}) buf pos identifier
             3 -> do
                 nullCount <- readIntFromBuffer @Int64 buf pos
-                readStatistics (cs{columnNullCount = nullCount}) buf pos identifier fieldStack
+                readStatistics (cs{columnNullCount = nullCount}) buf pos identifier
             4 -> do
                 distinctCount <- readIntFromBuffer @Int64 buf pos
                 readStatistics
@@ -903,13 +852,12 @@ readStatistics cs buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             5 -> do
                 maxInBytes <- readByteString buf pos
-                readStatistics (cs{columnMaxValue = maxInBytes}) buf pos identifier fieldStack
+                readStatistics (cs{columnMaxValue = maxInBytes}) buf pos identifier
             6 -> do
                 minInBytes <- readByteString buf pos
-                readStatistics (cs{columnMinValue = minInBytes}) buf pos identifier fieldStack
+                readStatistics (cs{columnMinValue = minInBytes}) buf pos identifier
             7 -> do
                 isMaxValueExact <- readAndAdvance pos buf
                 readStatistics
@@ -917,7 +865,6 @@ readStatistics cs buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             8 -> do
                 isMinValueExact <- readAndAdvance pos buf
                 readStatistics
@@ -925,7 +872,6 @@ readStatistics cs buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             _ -> error "Unknown statistics"
 
 readSizeStatistics ::
@@ -933,10 +879,9 @@ readSizeStatistics ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO SizeStatistics
-readSizeStatistics ss buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readSizeStatistics ss buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return ss
         Just (elemType, identifier) -> case identifier of
@@ -947,7 +892,6 @@ readSizeStatistics ss buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             2 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
@@ -959,7 +903,6 @@ readSizeStatistics ss buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             3 -> do
                 sizeAndType <- readAndAdvance pos buf
                 let sizeOnly = fromIntegral ((sizeAndType `shiftR` 4) .&. 0x0f) :: Int
@@ -971,7 +914,6 @@ readSizeStatistics ss buf pos lastFieldId fieldStack = do
                     buf
                     pos
                     identifier
-                    fieldStack
             _ -> error "Unknown size statistics"
 
 footerSize :: Int
@@ -990,8 +932,8 @@ toIntegralType n
     | otherwise = error ("Unknown type in schema: " ++ show n)
 
 readLogicalType ::
-    BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO LogicalType
-readLogicalType buf pos lastFieldId fieldStack = do
+    BS.ByteString -> IORef Int -> Int16 -> IO LogicalType
+readLogicalType buf pos lastFieldId = do
     t <- readAndAdvance pos buf
     if t .&. 0x0f == 0
         then return LOGICAL_TYPE_UNKNOWN
@@ -1004,46 +946,46 @@ readLogicalType buf pos lastFieldId fieldStack = do
             let _elemType = toTType (t .&. 0x0f)
             case identifier of
                 1 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return STRING_TYPE
                 2 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return MAP_TYPE
                 3 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return LIST_TYPE
                 4 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return ENUM_TYPE
                 5 -> do
-                    readDecimalType 0 0 buf pos 0 []
+                    readDecimalType 0 0 buf pos 0
                 6 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return DATE_TYPE
                 7 -> do
-                    readTimeType False MILLISECONDS buf pos 0 []
+                    readTimeType False MILLISECONDS buf pos 0
                 8 -> do
-                    readTimestampType False MILLISECONDS buf pos 0 []
+                    readTimestampType False MILLISECONDS buf pos 0
                 -- Apparently reserved for interval types
                 9 -> return LOGICAL_TYPE_UNKNOWN
                 10 -> do
-                    intType <- readIntType 0 False buf pos 0 []
-                    _ <- readField buf pos 0 []
+                    intType <- readIntType 0 False buf pos 0
+                    _ <- readField buf pos 0
                     pure intType
                 11 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return LOGICAL_TYPE_UNKNOWN
                 12 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return JSON_TYPE
                 13 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return BSON_TYPE
                 14 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return UUID_TYPE
                 15 -> do
-                    replicateM_ 2 (readField buf pos 0 [])
+                    replicateM_ 2 (readField buf pos 0)
                     return FLOAT16_TYPE
                 16 -> do
                     return VariantType{specificationVersion = 1}
@@ -1059,9 +1001,8 @@ readIntType ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO LogicalType
-readIntType bitWidth intIsSigned buf pos lastFieldId fieldStack = do
+readIntType bitWidth intIsSigned buf pos lastFieldId = do
     t <- readAndAdvance pos buf
     if t .&. 0x0f == 0
         then return (IntType bitWidth intIsSigned)
@@ -1075,10 +1016,10 @@ readIntType bitWidth intIsSigned buf pos lastFieldId fieldStack = do
             case identifier of
                 1 -> do
                     bitWidth' <- readAndAdvance pos buf
-                    readIntType (fromIntegral bitWidth') intIsSigned buf pos identifier fieldStack
+                    readIntType (fromIntegral bitWidth') intIsSigned buf pos identifier
                 2 -> do
                     let intIsSigned' = (t .&. 0x0f) == compactBooleanTrue
-                    readIntType bitWidth intIsSigned' buf pos identifier fieldStack
+                    readIntType bitWidth intIsSigned' buf pos identifier
                 _ -> error $ "UNKNOWN field ID for IntType: " ++ show identifier
 
 readDecimalType ::
@@ -1087,19 +1028,18 @@ readDecimalType ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO LogicalType
-readDecimalType precision scale buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readDecimalType precision scale buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return (DecimalType precision scale)
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 scale' <- readInt32FromBuffer buf pos
-                readDecimalType precision scale' buf pos lastFieldId fieldStack
+                readDecimalType precision scale' buf pos lastFieldId
             2 -> do
                 precision' <- readInt32FromBuffer buf pos
-                readDecimalType precision' scale buf pos lastFieldId fieldStack
+                readDecimalType precision' scale buf pos lastFieldId
             _ -> error $ "UNKNOWN field ID for DecimalType" ++ show identifier
 
 readTimeType ::
@@ -1108,20 +1048,19 @@ readTimeType ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO LogicalType
-readTimeType isAdjustedToUTC unit buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readTimeType isAdjustedToUTC unit buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return (TimeType isAdjustedToUTC unit)
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 -- TODO: Check for empty
                 isAdjustedToUTC' <- (== compactBooleanTrue) <$> readAndAdvance pos buf
-                readTimeType isAdjustedToUTC' unit buf pos lastFieldId fieldStack
+                readTimeType isAdjustedToUTC' unit buf pos lastFieldId
             2 -> do
-                unit' <- readUnit buf pos 0 []
-                readTimeType isAdjustedToUTC unit' buf pos lastFieldId fieldStack
+                unit' <- readUnit buf pos 0
+                readTimeType isAdjustedToUTC unit' buf pos lastFieldId
             _ -> error $ "UNKNOWN field ID for TimeType" ++ show identifier
 
 readTimestampType ::
@@ -1130,35 +1069,34 @@ readTimestampType ::
     BS.ByteString ->
     IORef Int ->
     Int16 ->
-    [Int16] ->
     IO LogicalType
-readTimestampType isAdjustedToUTC unit buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readTimestampType isAdjustedToUTC unit buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return (TimestampType isAdjustedToUTC unit)
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 -- TODO: Check for empty
                 isAdjustedToUTC' <- (== compactBooleanTrue) <$> readAndAdvance pos buf
-                readTimestampType isAdjustedToUTC' unit buf pos lastFieldId fieldStack
+                readTimestampType isAdjustedToUTC' unit buf pos lastFieldId
             2 -> do
-                unit' <- readUnit buf pos 0 []
-                readTimestampType isAdjustedToUTC unit' buf pos lastFieldId fieldStack
+                unit' <- readUnit buf pos 0
+                readTimestampType isAdjustedToUTC unit' buf pos lastFieldId
             _ -> error $ "UNKNOWN field ID for TimestampType" ++ show identifier
 
-readUnit :: BS.ByteString -> IORef Int -> Int16 -> [Int16] -> IO TimeUnit
-readUnit buf pos lastFieldId fieldStack = do
-    fieldContents <- readField buf pos lastFieldId fieldStack
+readUnit :: BS.ByteString -> IORef Int -> Int16 -> IO TimeUnit
+readUnit buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return TIME_UNIT_UNKNOWN
         Just (elemType, identifier) -> case identifier of
             1 -> do
-                _ <- readField buf pos 0 []
+                _ <- readField buf pos 0
                 return MILLISECONDS
             2 -> do
-                _ <- readField buf pos 0 []
+                _ <- readField buf pos 0
                 return MICROSECONDS
             3 -> do
-                _ <- readField buf pos 0 []
+                _ <- readField buf pos 0
                 return NANOSECONDS
             _ -> return TIME_UNIT_UNKNOWN
