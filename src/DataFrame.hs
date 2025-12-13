@@ -317,6 +317,7 @@ import DataFrame.Operations.Statistics as Statistics (
     imputeWith,
     interQuartileRange,
     mean,
+    meanMaybe,
     median,
     skewness,
     standardDeviation,

@@ -11,7 +11,7 @@ module DataFrame.Monad where
 import DataFrame (DataFrame)
 import qualified DataFrame as D
 import DataFrame.Internal.Column (Columnable)
-import DataFrame.Internal.Expression (Expr)
+import DataFrame.Internal.Expression (Expr (..))
 
 import qualified Data.Text as T
 
@@ -41,14 +41,40 @@ instance Monad FrameM where
             FrameM h = f x
          in h df1
 
+modifyM :: (DataFrame -> DataFrame) -> FrameM ()
+modifyM f = FrameM $ \df -> (f df, ())
+
+inspectM :: (DataFrame -> b) -> FrameM b
+inspectM f = FrameM $ \df -> (df, f df)
+
 deriveM :: (Columnable a) => T.Text -> Expr a -> FrameM (Expr a)
 deriveM name expr = FrameM $ \df ->
     let df' = D.derive name expr df
-     in (df', expr)
+     in (df', Col name)
 
 filterWhereM :: Expr Bool -> FrameM ()
-filterWhereM p = FrameM $ \df ->
-    (D.filterWhere p df, ())
+filterWhereM p = modifyM (D.filterWhere p)
 
-runFrameM :: DataFrame -> FrameM a -> DataFrame
-runFrameM df action = fst (runFrameM_ action df)
+filterJustM :: (Columnable a) => Expr (Maybe a) -> FrameM (Expr a)
+filterJustM (Col name) = FrameM $ \df ->
+    let df' = D.filterJust name df
+     in (df', Col name)
+filterJustM expr =
+    error $ "Cannot filter on compound expression: " ++ show expr
+
+imputeM :: (Columnable a) => Expr (Maybe a) -> a -> FrameM (Expr a)
+imputeM expr@(Col name) value = FrameM $ \df ->
+    let df' = D.impute expr value df
+     in (df', Col name)
+imputeM expr _ = error $ "Cannot impute on compound expression: " ++ show expr
+
+runFrameM :: DataFrame -> FrameM a -> (a, DataFrame)
+runFrameM df (FrameM action) =
+    let (df', a) = action df
+     in (a, df')
+
+evalFrameM :: DataFrame -> FrameM a -> a
+evalFrameM df m = fst (runFrameM df m)
+
+execFrameM :: DataFrame -> FrameM a -> DataFrame
+execFrameM df m = snd (runFrameM df m)

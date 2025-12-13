@@ -1,5 +1,33 @@
 # Revision history for dataframe
 
+## 0.3.5.1
+* Add more monadic functions to make previously tricky transformations easier to write:
+    ```haskell
+    {-# LANGUAGE OverloadedStrings #-}
+    {-# LANGUAGE TemplateHaskell #-}
+
+    module Main where
+
+    import qualified DataFrame as D
+    import qualified DataFrame.Functions as F
+
+    import DataFrame.Monad
+
+    import Data.Text (Text)
+    import DataFrame.Functions ((.&&), (.>=))
+
+    $(F.declareColumnsFromCsvFile "./data/housing.csv")
+
+    main :: IO ()
+    main = do
+        df <- D.readCsv "./data/housing.csv"
+        print $ execFrameM df $ do
+            is_expensive <- deriveM "is_expensive" (median_house_value .>= 500000)
+            meanBedrooms <- inspectM (D.meanMaybe total_bedrooms)
+            totalBedrooms <- imputeM total_bedrooms meanBedrooms
+            filterWhereM (totalBedrooms .>= 200 .&& is_expensive)
+    ```
+
 ## 0.3.5.0
 * Add a `deriveWithExpr` that returns an expression that you can use in a subsequent expressions.
 * Add `declareColumnsFromCsvFile` which can create the expressions up front for use in scripts.
