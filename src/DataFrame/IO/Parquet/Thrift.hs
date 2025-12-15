@@ -379,7 +379,6 @@ readSchemaElement schemaElement buf pos lastFieldId = do
     fieldContents <- readField buf pos lastFieldId
     case fieldContents of
         Nothing -> return schemaElement
-        Just (STOP, _) -> return schemaElement
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 schemaElemType <- toIntegralType <$> readInt32FromBuffer buf pos
@@ -445,13 +444,13 @@ readSchemaElement schemaElement buf pos lastFieldId = do
                     pos
                     identifier
             10 -> do
-                logicalType <- readLogicalType buf pos 0
+                logicalType <- readLogicalType LOGICAL_TYPE_UNKNOWN buf pos 0
                 readSchemaElement
                     (schemaElement{logicalType = logicalType})
                     buf
                     pos
                     identifier
-            _ -> error "Uknown schema element"
+            n -> error ("Uknown schema element: " ++ show n)
 
 readRowGroup ::
     RowGroup -> BS.ByteString -> IORef Int -> Int16 -> IO RowGroup
@@ -705,6 +704,7 @@ readColumnOrder buf pos lastFieldId = do
         Nothing -> return COLUMN_ORDER_UNKNOWN
         Just (elemType, identifier) -> case identifier of
             1 -> do
+                -- Read begin struct and stop since this an empty struct.
                 replicateM_ 2 (readTypeOrder buf pos 0)
                 return TYPE_ORDER
             _ -> return COLUMN_ORDER_UNKNOWN
@@ -932,68 +932,63 @@ toIntegralType n
     | otherwise = error ("Unknown type in schema: " ++ show n)
 
 readLogicalType ::
-    BS.ByteString -> IORef Int -> Int16 -> IO LogicalType
-readLogicalType buf pos lastFieldId = do
-    t <- readAndAdvance pos buf
-    if t .&. 0x0f == 0
-        then return LOGICAL_TYPE_UNKNOWN
-        else do
-            let modifier = fromIntegral ((t .&. 0xf0) `shiftR` 4) :: Int16
-            identifier <-
-                if modifier == 0
-                    then readIntFromBuffer @Int16 buf pos
-                    else return (lastFieldId + modifier)
-            let _elemType = toTType (t .&. 0x0f)
-            case identifier of
-                1 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return STRING_TYPE
-                2 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return MAP_TYPE
-                3 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return LIST_TYPE
-                4 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return ENUM_TYPE
-                5 -> do
-                    readDecimalType 0 0 buf pos 0
-                6 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return DATE_TYPE
-                7 -> do
-                    readTimeType False MILLISECONDS buf pos 0
-                8 -> do
-                    readTimestampType False MILLISECONDS buf pos 0
-                -- Apparently reserved for interval types
-                9 -> return LOGICAL_TYPE_UNKNOWN
-                10 -> do
-                    intType <- readIntType 0 False buf pos 0
-                    _ <- readField buf pos 0
-                    pure intType
-                11 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return LOGICAL_TYPE_UNKNOWN
-                12 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return JSON_TYPE
-                13 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return BSON_TYPE
-                14 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return UUID_TYPE
-                15 -> do
-                    replicateM_ 2 (readField buf pos 0)
-                    return FLOAT16_TYPE
-                16 -> do
-                    return VariantType{specificationVersion = 1}
-                17 -> do
-                    return GeometryType{crs = ""}
-                18 -> do
-                    return GeographyType{crs = "", algorithm = SPHERICAL}
-                _ -> return LOGICAL_TYPE_UNKNOWN
+    LogicalType -> BS.ByteString -> IORef Int -> Int16 -> IO LogicalType
+readLogicalType logicalType buf pos lastFieldId = do
+    fieldContents <- readField buf pos lastFieldId
+    case fieldContents of
+        Nothing -> pure logicalType
+        Just (elemType, identifier) -> case identifier of
+            1 -> do
+                -- This is an empty enum and is read as a field.
+                _ <- readField buf pos 0
+                readLogicalType STRING_TYPE buf pos identifier
+            2 -> do
+                _ <- readField buf pos 0
+                readLogicalType MAP_TYPE buf pos identifier
+            3 -> do
+                _ <- readField buf pos 0
+                readLogicalType LIST_TYPE buf pos identifier
+            4 -> do
+                _ <- readField buf pos 0
+                readLogicalType ENUM_TYPE buf pos identifier
+            5 -> do
+                decimal <- readDecimalType 0 0 buf pos 0
+                readLogicalType decimal buf pos identifier
+            6 -> do
+                _ <- readField buf pos 0
+                readLogicalType DATE_TYPE buf pos identifier
+            7 -> do
+                time <- readTimeType False MILLISECONDS buf pos 0
+                readLogicalType time buf pos identifier
+            8 -> do
+                timestamp <- readTimestampType False MILLISECONDS buf pos 0
+                readLogicalType timestamp buf pos identifier
+            -- Apparently reserved for interval types
+            9 -> do
+                _ <- readField buf pos 0
+                readLogicalType LOGICAL_TYPE_UNKNOWN buf pos identifier
+            10 -> do
+                intType <- readIntType 0 False buf pos 0
+                readLogicalType intType buf pos identifier
+            11 -> do
+                _ <- readField buf pos 0
+                readLogicalType LOGICAL_TYPE_UNKNOWN buf pos identifier
+            12 -> do
+                _ <- readField buf pos 0
+                readLogicalType JSON_TYPE buf pos identifier
+            13 -> do
+                _ <- readField buf pos 0
+                readLogicalType BSON_TYPE buf pos identifier
+            14 -> do
+                _ <- readField buf pos 0
+                readLogicalType UUID_TYPE buf pos identifier
+            15 -> do
+                _ <- readField buf pos 0
+                readLogicalType FLOAT16_TYPE buf pos identifier
+            16 -> error "Variant fields are unsupported"
+            17 -> error "Geometry fields are unsupported"
+            18 -> error "Geography fields are unsupported"
+            n -> error $ "Unknown logical type field: " ++ show n
 
 readIntType ::
     Int8 ->
@@ -1059,7 +1054,7 @@ readTimeType isAdjustedToUTC unit buf pos lastFieldId = do
                 isAdjustedToUTC' <- (== compactBooleanTrue) <$> readAndAdvance pos buf
                 readTimeType isAdjustedToUTC' unit buf pos lastFieldId
             2 -> do
-                unit' <- readUnit buf pos 0
+                unit' <- readUnit TIME_UNIT_UNKNOWN buf pos 0
                 readTimeType isAdjustedToUTC unit' buf pos lastFieldId
             _ -> error $ "UNKNOWN field ID for TimeType" ++ show identifier
 
@@ -1077,26 +1072,24 @@ readTimestampType isAdjustedToUTC unit buf pos lastFieldId = do
         Just (elemType, identifier) -> case identifier of
             1 -> do
                 -- TODO: Check for empty
-                isAdjustedToUTC' <- (== compactBooleanTrue) <$> readAndAdvance pos buf
-                readTimestampType isAdjustedToUTC' unit buf pos lastFieldId
+                isAdjustedToUTC' <- (== compactBooleanTrue) <$> readNoAdvance pos buf
+                readTimestampType False unit buf pos lastFieldId
             2 -> do
-                unit' <- readUnit buf pos 0
+                _ <- readField buf pos identifier
+                unit' <- readUnit TIME_UNIT_UNKNOWN buf pos 0
                 readTimestampType isAdjustedToUTC unit' buf pos lastFieldId
             _ -> error $ "UNKNOWN field ID for TimestampType" ++ show identifier
 
-readUnit :: BS.ByteString -> IORef Int -> Int16 -> IO TimeUnit
-readUnit buf pos lastFieldId = do
+readUnit :: TimeUnit -> BS.ByteString -> IORef Int -> Int16 -> IO TimeUnit
+readUnit unit buf pos lastFieldId = do
     fieldContents <- readField buf pos lastFieldId
     case fieldContents of
-        Nothing -> return TIME_UNIT_UNKNOWN
+        Nothing -> return unit
         Just (elemType, identifier) -> case identifier of
             1 -> do
-                _ <- readField buf pos 0
-                return MILLISECONDS
+                readUnit MILLISECONDS buf pos identifier
             2 -> do
-                _ <- readField buf pos 0
-                return MICROSECONDS
+                readUnit MICROSECONDS buf pos identifier
             3 -> do
-                _ <- readField buf pos 0
-                return NANOSECONDS
-            _ -> return TIME_UNIT_UNKNOWN
+                readUnit NANOSECONDS buf pos identifier
+            n -> error $ "Unknown time unit: " ++ show n
