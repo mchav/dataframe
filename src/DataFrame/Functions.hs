@@ -46,7 +46,7 @@ import Text.Regex.TDFA
 import Prelude hiding (maximum, minimum)
 import Prelude as P
 
-infix 4 .==, .<, .<=, .>=, .>
+infix 4 .==, .<, .<=, .>=, .>, ./=
 infixr 3 .&&
 infixr 2 .||
 
@@ -91,6 +91,9 @@ mod = BinaryOp "mod" Prelude.mod
 
 (.==) :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
 (.==) = BinaryOp "eq" (==)
+
+(./=) :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
+(./=) = BinaryOp "eq" (/=)
 
 eq :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
 eq = BinaryOp "eq" (==)
