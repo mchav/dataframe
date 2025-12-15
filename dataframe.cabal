@@ -125,7 +125,6 @@ executable dataframe-benchmark-example
                       dataframe ^>= 0.3,
                       random >= 1 && < 2,
                       time >= 1.12 && < 2,
-                      text,
                       vector ^>= 0.13,
     hs-source-dirs:   app
     default-language: Haskell2010
