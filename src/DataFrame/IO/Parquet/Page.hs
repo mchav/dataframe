@@ -3,9 +3,11 @@
 
 module DataFrame.IO.Parquet.Page where
 
+import qualified Codec.Compression.GZip as GZip
 import Codec.Compression.Zstd.Streaming
 import Data.Bits
 import qualified Data.ByteString as BSO
+import qualified Data.ByteString.Lazy as LB
 import Data.Int
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Word
@@ -42,6 +44,7 @@ readPage c columnBytes = do
             Left e -> error (show e)
             Right res -> pure res
         UNCOMPRESSED -> pure (BSO.pack compressed)
+        GZIP -> pure (LB.toStrict (GZip.decompress (LB.pack compressed)))
         other -> error ("Unsupported compression type: " ++ show other)
     pure
         ( Just $ Page hdr (BSO.unpack fullData)

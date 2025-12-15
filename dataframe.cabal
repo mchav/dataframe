@@ -107,6 +107,7 @@ library
                       unordered-containers >= 0.1 && < 1,
                       vector ^>= 0.13,
                       vector-algorithms ^>= 0.9,
+                      zlib >= 0.5 && < 1,
                       zstd >= 0.1.2.0 && < 0.2,
                       mmap >= 0.5.8 && <= 0.5.9,
                       parallel >= 3.2.2.0 && < 5
@@ -124,6 +125,7 @@ executable dataframe-benchmark-example
                       dataframe ^>= 0.3,
                       random >= 1 && < 2,
                       time >= 1.12 && < 2,
+                      text,
                       vector ^>= 0.13,
     hs-source-dirs:   app
     default-language: Haskell2010
