@@ -27,8 +27,7 @@ import DataFrame.Functions ((.&&), (.>=))
 $(F.declareColumnsFromCsvFile "./data/housing.csv")
 ```
 
-`declareColumnsFromCsvFile` runs at compile time and generates top‑level, typed bindings for each column in the CSV header in snake case. In practice you get values like `median_house_value :: Expr Double` and `ocean_proximity :: Expr Text`.
-In your scripts you write median_house_value .>= 500000 instead of F.col @Double "median_house_value" .>= 500000. This removes the possibility of misspelling column names or misspecifying the type!
+`declareColumnsFromCsvFile` runs at compile time and generates top‑level, typed bindings for each column in the CSV header in snake case. In practice you get values like `median_house_value :: Expr Double` and `ocean_proximity :: Expr Text`. In your scripts you write `median_house_value .>= 500000` instead of `F.col @Double "median_house_value" .>= 500000`. This removes the possibility of misspelling column names or misspecifying the type!
 
 Because Template Haskell reads the file at compile time, make sure ./data/housing.csv exists relative to the project root when building, and list it under extra-source-files or data-files in your Cabal file so CI builds can find it.
 
