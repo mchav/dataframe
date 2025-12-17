@@ -60,6 +60,8 @@ import DataFrame.IO.Persistent
 import DataFrame.IO.Persistent.TH
 import qualified Data.Vector as V
 
+import DataFrame.Functions ((.<))
+
 -- Define your entities
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 TestUser
@@ -92,8 +94,9 @@ main = runSqlite "example.db" $ do
     liftIO $ putStrLn $ "Active users: " ++ show (nRows activeUsersDF)
     
     -- Process with DataFrame operations
-    let youngUsers = DF.filter @Int "age" (< 30) allUsersDF
-        ages = V.toList $ DF.columnAsVector @Int "age" youngUsers
+    let age = F.col @Int "age"
+    let youngUsers = DF.filterWhere (age .< 30) allUsersDF
+        ages = V.toList $ DF.columnAsVector age youngUsers
     liftIO $ putStrLn $ "Young user ages: " ++ show ages
     
     -- Custom configuration
@@ -141,9 +144,12 @@ let user = TestUser "Alice" 25 True
 
 ```haskell
 -- Extract specific column data
-let names = V.toList $ DF.columnAsVector @Text "name" df
-    ages = V.toList $ DF.columnAsVector @Int "age" df
-    activeFlags = V.toList $ DF.columnAsVector @Bool "active" df
+let name = F.col @Text name
+    age = F.col @Int "age"
+    activeFlag = F.col @Bool "active"
+let names = V.toList $ DF.columnAsVector name df
+    ages = V.toList $ DF.columnAsVector age df
+    activeFlags = V.toList $ DF.columnAsVector active df
 ```
 
 ## Examples

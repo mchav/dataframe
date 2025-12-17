@@ -25,8 +25,6 @@ import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (
     DataFrame (..),
-    columnAsUnboxedVector,
-    columnAsVector,
     empty,
     getColumn,
  )
@@ -89,7 +87,7 @@ frequencies name df =
 -- | Calculates the mean of a given column as a standalone value.
 mean ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-mean (Col name) df = case columnAsUnboxedVector @a name df of
+mean (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> mean' xs
     Left e -> throw e
 mean expr df = case interpret df expr of
@@ -100,7 +98,7 @@ mean expr df = case interpret df expr of
 
 meanMaybe ::
     forall a. (Columnable a, Real a) => Expr (Maybe a) -> DataFrame -> Double
-meanMaybe (Col name) df = (mean' . optionalToDoubleVector) (columnAsVector @(Maybe a) name df)
+meanMaybe (Col name) df = (mean' . optionalToDoubleVector) (columnAsVector (Col @(Maybe a) name) df)
 meanMaybe expr df = case interpret @(Maybe a) df expr of
     Left e -> throw e
     Right (TColumn col) -> case toVector @(Maybe a) col of
@@ -110,7 +108,7 @@ meanMaybe expr df = case interpret @(Maybe a) df expr of
 -- | Calculates the median of a given column as a standalone value.
 median ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-median (Col name) df = case columnAsUnboxedVector @a name df of
+median (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> median' xs
     Left e -> throw e
 median expr df = case interpret df expr of
@@ -122,7 +120,7 @@ median expr df = case interpret df expr of
 -- | Calculates the standard deviation of a given column as a standalone value.
 standardDeviation ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-standardDeviation (Col name) df = case columnAsUnboxedVector @a name df of
+standardDeviation (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> (sqrt . variance') xs
     Left e -> throw e
 standardDeviation expr df = case interpret df expr of
@@ -134,7 +132,7 @@ standardDeviation expr df = case interpret df expr of
 -- | Calculates the skewness of a given column as a standalone value.
 skewness ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-skewness (Col name) df = case columnAsUnboxedVector @a name df of
+skewness (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> skewness' xs
     Left e -> throw e
 skewness expr df = case interpret df expr of
@@ -146,7 +144,7 @@ skewness expr df = case interpret df expr of
 -- | Calculates the variance of a given column as a standalone value.
 variance ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-variance (Col name) df = case columnAsUnboxedVector @a name df of
+variance (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> variance' xs
     Left e -> throw e
 variance expr df = case interpret df expr of
@@ -158,7 +156,7 @@ variance expr df = case interpret df expr of
 -- | Calculates the inter-quartile range of a given column as a standalone value.
 interQuartileRange ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-interQuartileRange (Col name) df = case columnAsUnboxedVector @a name df of
+interQuartileRange (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> interQuartileRange' xs
     Left e -> throw e
 interQuartileRange expr df = case interpret df expr of

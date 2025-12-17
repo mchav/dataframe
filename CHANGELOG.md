@@ -1,6 +1,7 @@
 # Revision history for dataframe
 
-## 0.3.5.1
+## 0.4.0.0
+* Column conversion functions now take expressions instead of strings.
 * Add more monadic functions to make previously tricky transformations easier to write:
     ```haskell
     {-# LANGUAGE OverloadedStrings #-}

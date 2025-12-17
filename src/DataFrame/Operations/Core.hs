@@ -31,8 +31,17 @@ import DataFrame.Internal.Column (
     expandColumn,
     fromList,
     fromVector,
+    toDoubleVector,
+    toFloatVector,
+    toIntVector,
+    toUnboxedVector,
  )
-import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
+import DataFrame.Internal.DataFrame (
+    DataFrame (..),
+    empty,
+    getColumn,
+    unsafeGetColumn,
+ )
 import DataFrame.Internal.Expression
 import DataFrame.Internal.Parsing (isNullish)
 import DataFrame.Internal.Row (Any, mkColumnFromRow)
@@ -749,3 +758,169 @@ This makes it easier to chain operations.
 -}
 fold :: (a -> DataFrame -> DataFrame) -> [a] -> DataFrame -> DataFrame
 fold f xs acc = L.foldl' (flip f) acc xs
+
+{- | Returns a dataframe as a two dimensional vector of floats.
+
+Converts all columns in the dataframe to float vectors and transposes them
+into a row-major matrix representation.
+
+This is useful for handing data over into ML systems.
+
+Returns 'Left' with an error if any column cannot be converted to floats.
+-}
+toFloatMatrix ::
+    DataFrame -> Either DataFrameException (V.Vector (VU.Vector Float))
+toFloatMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> toFloatVector c)
+    (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Float)))
+    (columns df) of
+    Left e -> Left e
+    Right m ->
+        pure $
+            V.generate
+                (fst (dataframeDimensions df))
+                ( \i ->
+                    foldl
+                        (\acc j -> acc `VU.snoc` ((m VG.! j) VG.! i))
+                        VU.empty
+                        [0 .. (V.length m - 1)]
+                )
+
+{- | Returns a dataframe as a two dimensional vector of doubles.
+
+Converts all columns in the dataframe to double vectors and transposes them
+into a row-major matrix representation.
+
+This is useful for handing data over into ML systems.
+
+Returns 'Left' with an error if any column cannot be converted to doubles.
+-}
+toDoubleMatrix ::
+    DataFrame -> Either DataFrameException (V.Vector (VU.Vector Double))
+toDoubleMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> toDoubleVector c)
+    (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Double)))
+    (columns df) of
+    Left e -> Left e
+    Right m ->
+        pure $
+            V.generate
+                (fst (dataframeDimensions df))
+                ( \i ->
+                    foldl
+                        (\acc j -> acc `VU.snoc` ((m VG.! j) VG.! i))
+                        VU.empty
+                        [0 .. (V.length m - 1)]
+                )
+
+{- | Returns a dataframe as a two dimensional vector of ints.
+
+Converts all columns in the dataframe to int vectors and transposes them
+into a row-major matrix representation.
+
+This is useful for handing data over into ML systems.
+
+Returns 'Left' with an error if any column cannot be converted to ints.
+-}
+toIntMatrix :: DataFrame -> Either DataFrameException (V.Vector (VU.Vector Int))
+toIntMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> toIntVector c)
+    (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Int)))
+    (columns df) of
+    Left e -> Left e
+    Right m ->
+        pure $
+            V.generate
+                (fst (dataframeDimensions df))
+                ( \i ->
+                    foldl
+                        (\acc j -> acc `VU.snoc` ((m VG.! j) VG.! i))
+                        VU.empty
+                        [0 .. (V.length m - 1)]
+                )
+
+{- | Get a specific column as a vector.
+
+You must specify the type via type applications.
+
+==== __Examples__
+
+>>> columnAsVector @Int "age" df
+[25, 30, 35, ...]
+
+>>> columnAsVector @Text "name" df
+["Alice", "Bob", "Charlie", ...]
+
+==== __Throws__
+
+* 'error' - if the column type doesn't match the requested type
+-}
+columnAsVector :: forall a. (Columnable a) => Expr a -> DataFrame -> V.Vector a
+columnAsVector (Col name) df = case unsafeGetColumn name df of
+    (BoxedColumn (col :: V.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
+        Nothing -> error "Type error"
+        Just Refl -> col
+    (OptionalColumn (col :: V.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
+        Nothing -> error "Type error"
+        Just Refl -> col
+    (UnboxedColumn (col :: VU.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
+        Nothing -> error "Type error"
+        Just Refl -> VG.convert col
+columnAsVector _ _ = error "UNIMPLEMENTED"
+
+{- | Retrieves a column as an unboxed vector of 'Int' values.
+
+Returns 'Left' with a 'DataFrameException' if the column cannot be converted to ints.
+This may occur if the column contains non-numeric data or values outside the 'Int' range.
+-}
+columnAsIntVector ::
+    Expr Int -> DataFrame -> Either DataFrameException (VU.Vector Int)
+columnAsIntVector (Col name) df = toIntVector (unsafeGetColumn name df)
+columnAsIntVector _ _ = error "UNIMPLEMENTED"
+
+{- | Retrieves a column as an unboxed vector of 'Double' values.
+
+Returns 'Left' with a 'DataFrameException' if the column cannot be converted to doubles.
+This may occur if the column contains non-numeric data.
+-}
+columnAsDoubleVector ::
+    Expr Double -> DataFrame -> Either DataFrameException (VU.Vector Double)
+columnAsDoubleVector (Col name) df = toDoubleVector (unsafeGetColumn name df)
+columnAsDoubleVector _ _ = error "UNIMPLEMENTED"
+
+{- | Retrieves a column as an unboxed vector of 'Float' values.
+
+Returns 'Left' with a 'DataFrameException' if the column cannot be converted to floats.
+This may occur if the column contains non-numeric data.
+-}
+columnAsFloatVector ::
+    Expr Float -> DataFrame -> Either DataFrameException (VU.Vector Float)
+columnAsFloatVector (Col name) df = toFloatVector (unsafeGetColumn name df)
+columnAsFloatVector _ _ = error "UNIMPLEMENTED"
+
+columnAsUnboxedVector ::
+    forall a.
+    (Columnable a, VU.Unbox a) =>
+    Expr a -> DataFrame -> Either DataFrameException (VU.Vector a)
+columnAsUnboxedVector (Col name) df = toUnboxedVector @a (unsafeGetColumn name df)
+columnAsUnboxedVector _ _ = error "UNIMPLEMENTED"
+
+{- | Get a specific column as a list.
+
+You must specify the type via type applications.
+
+==== __Examples__
+
+>>> columnAsList @Int "age" df
+[25, 30, 35, ...]
+
+>>> columnAsList @Text "name" df
+["Alice", "Bob", "Charlie", ...]
+
+==== __Throws__
+
+* 'error' - if the column type doesn't match the requested type
+-}
+columnAsList :: forall a. (Columnable a) => Expr a -> DataFrame -> [a]
+columnAsList expr@(Col name) df = V.toList (columnAsVector expr df)
+columnAsList _ _ = error "UNIMPLEMENTED"

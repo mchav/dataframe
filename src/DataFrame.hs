@@ -270,16 +270,8 @@ import DataFrame.Internal.Column as Column (
 import DataFrame.Internal.DataFrame as Dataframe (
     DataFrame,
     GroupedDataFrame,
-    columnAsDoubleVector,
-    columnAsFloatVector,
-    columnAsIntVector,
-    columnAsList,
-    columnAsVector,
     empty,
     null,
-    toDoubleMatrix,
-    toFloatMatrix,
-    toIntMatrix,
     toMarkdownTable,
  )
 import DataFrame.Internal.Expression as Expression (Expr)
