@@ -29,7 +29,7 @@ $(F.declareColumnsFromCsvFile "./data/housing.csv")
 
 `declareColumnsFromCsvFile` runs at compile time and generates top‑level, typed bindings for each column in the CSV header in snake case. In practice you get values like `median_house_value :: Expr Double` and `ocean_proximity :: Expr Text`. In your scripts you write `median_house_value .>= 500000` instead of `F.col @Double "median_house_value" .>= 500000`. This removes the possibility of misspelling column names or misspecifying the type!
 
-Because Template Haskell reads the file at compile time, make sure ./data/housing.csv exists relative to the project root when building, and list it under extra-source-files or data-files in your Cabal file so CI builds can find it.
+Because Template Haskell reads the file at compile time, make sure `./data/housing.csv` exists relative to the project root when building, and list it under extra-source-files or data-files in your Cabal file so CI builds can find it.
 
 ## The FrameM monad
 This isn't another monad tutorial. In fact, I don't think you have to know what they are to use them well. We use them in scripts because they help us keep the code compact. Suppose we wanted to:
@@ -58,7 +58,7 @@ Because our dataframe is immutable and we return a new modified dataframe after 
 ```haskell
 let df' = execFrameM df $ do
             isExpensive   <- deriveM "is_expensive" (median_house_value .>= 500000)
-            roomsPerHousehold <- "rooms_per_household" (total_rooms / households)
+            roomsPerHousehold <- deriveM "rooms_per_household" (total_rooms / households)
             meanBedrooms   <- inspectM (D.meanMaybe total_bedrooms)
             totalBedrooms  <- imputeM total_bedrooms meanBedrooms
             filterWhereM (isExpensive .&& roomsPerHousehold .>= 7 .&& totalBedrooms .>= 200)
