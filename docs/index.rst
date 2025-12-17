@@ -37,6 +37,7 @@ Tutorials
 
    quick_start
    tutorial
+   using_dataframe_in_a_standalone_script
    exploratory_data_analysis_primer
    intro_to_probability_and_data
 
@@ -48,6 +49,7 @@ How-to Guides
    :maxdepth: 1
 
    cookbook
+   coming_from_other_implementations
 
 Explanation
 -----------
@@ -58,7 +60,6 @@ Explanation
 
    dataframes_in_haskell
    haskell_for_data_analysis
-   coming_from_other_implementations
 
 Reference
 ---------
