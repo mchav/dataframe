@@ -80,6 +80,7 @@ generatePrograms includeConds conds vars constants ps =
         existingPrograms
             ++ [ transform p
                | p <- ps ++ vars
+               , Prelude.not (isConditional p)
                , transform <-
                     [ sqrt
                     , abs
@@ -93,13 +94,22 @@ generatePrograms includeConds conds vars constants ps =
                ]
             ++ [ F.pow p i
                | p <- existingPrograms
+               , Prelude.not (isConditional p)
                , i <- [2 .. 6]
                ]
             ++ [ p + q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
                , Prelude.not (isLiteral p && isLiteral q)
+               , Prelude.not (isConditional p || isConditional q)
                , i >= j
+               ]
+            ++ [ p - q
+               | (i, p) <- zip [0 ..] existingPrograms
+               , (j, q) <- zip [0 ..] existingPrograms
+               , Prelude.not (isLiteral p && isLiteral q)
+               , Prelude.not (isConditional p || isConditional q)
+               , i /= j
                ]
             ++ ( if includeConds
                     then
@@ -107,6 +117,7 @@ generatePrograms includeConds conds vars constants ps =
                         | (i, p) <- zip [0 ..] existingPrograms
                         , (j, q) <- zip [0 ..] existingPrograms
                         , Prelude.not (isLiteral p && isLiteral q)
+                        , Prelude.not (isConditional p || isConditional q)
                         , p /= q
                         , i > j
                         ]
@@ -114,6 +125,7 @@ generatePrograms includeConds conds vars constants ps =
                                | (i, p) <- zip [0 ..] existingPrograms
                                , (j, q) <- zip [0 ..] existingPrograms
                                , Prelude.not (isLiteral p && isLiteral q)
+                               , Prelude.not (isConditional p || isConditional q)
                                , p /= q
                                , i > j
                                ]
@@ -121,32 +133,33 @@ generatePrograms includeConds conds vars constants ps =
                                | cond <- conds
                                , r <- existingPrograms
                                , s <- existingPrograms
+                               , Prelude.not (isConditional r || isConditional s)
                                , r /= s
                                ]
                     else []
                )
-            ++ [ p - q
-               | (i, p) <- zip [0 ..] existingPrograms
-               , (j, q) <- zip [0 ..] existingPrograms
-               , Prelude.not (isLiteral p && isLiteral q)
-               , i /= j
-               ]
             ++ [ p * q
                | (i, p) <- zip [0 ..] existingPrograms
                , (j, q) <- zip [0 ..] existingPrograms
                , Prelude.not (isLiteral p && isLiteral q)
+               , Prelude.not (isConditional p || isConditional q)
                , i >= j
                ]
             ++ [ p / q
                | p <- existingPrograms
                , q <- existingPrograms
                , Prelude.not (isLiteral p && isLiteral q)
+               , Prelude.not (isConditional p || isConditional q)
                , p /= q
                ]
 
 isLiteral :: Expr a -> Bool
 isLiteral (Lit _) = True
 isLiteral _ = False
+
+isConditional :: Expr a -> Bool
+isConditional (If{}) = True
+isConditional _ = False
 
 deduplicate ::
     forall a.
@@ -289,34 +302,12 @@ fitRegression target d b df =
         t = case interpret df (Col target) of
             Left e -> throw e
             Right v -> v
+        cfg = BeamConfig d b MeanSquaredError True
+        constants = percentiles df' ++ [Lit 10, Lit 1, Lit 0.1, targetMean]
      in
-        case beamSearch
-            df'
-            ( BeamConfig
-                d
-                b
-                MutualInformation
-                False
-            )
-            t
-            (percentiles df')
-            []
-            [] of
+        case beamSearch df' cfg t constants [] [] of
             Nothing -> Left "No programs found"
-            Just p ->
-                trace (show p) $
-                    let
-                     in case beamSearch
-                            ( D.derive "_generated_regression_feature_" p df
-                                & select ["_generated_regression_feature_"]
-                            )
-                            (BeamConfig d b MeanSquaredError False)
-                            t
-                            (percentiles df' ++ [Lit targetMean, Lit 10])
-                            []
-                            [Col "_generated_regression_feature_"] of
-                            Nothing -> Left "Could not find coefficients"
-                            Just p' -> Right (replaceExpr p (Col @Double "_generated_regression_feature_") p')
+            Just p -> p
 
 data LossFunction
     = PearsonCorrelation
@@ -375,7 +366,7 @@ beamSearch df cfg outputs constants conds programs
             (generatePrograms (includeConditionals cfg) conditions vars constants ps)
   where
     vars = map Col names
-    conditions = generateConditions outputs conds (vars ++ constants ++ ps) df
+    conditions = generateConditions outputs conds vars df
     ps = pickTopN df outputs cfg $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
 
