@@ -48,7 +48,7 @@ generateConditions labels conds ps df =
     let
         newConds =
             [ p .<= q
-            | p <- ps
+            | p <- filter (not . isLiteral) ps
             , q <- ps
             , p /= q
             ]
@@ -301,7 +301,13 @@ fitRegression target d b df =
             Left e -> throw e
             Right v -> v
         cfg = BeamConfig d b MeanSquaredError True
-        constants = percentiles df' ++ [Lit 10, Lit 1, Lit 0.1, Lit targetMean]
+        constants =
+            percentiles df'
+                ++ [Lit targetMean]
+                ++ [ F.pow p i
+                   | i <- [1 .. 6]
+                   , p <- [Lit 10, Lit 1, Lit 0.1]
+                   ]
      in
         case beamSearch df' cfg t constants [] [] of
             Nothing -> Left "No programs found"
@@ -364,7 +370,7 @@ beamSearch df cfg outputs constants conds programs
             (generatePrograms (includeConditionals cfg) conditions vars constants ps)
   where
     vars = map Col names
-    conditions = generateConditions outputs conds vars df
+    conditions = generateConditions outputs conds (vars ++ constants) df
     ps = pickTopN df outputs cfg $ deduplicate df programs
     names = (map fst . L.sortBy (compare `on` snd) . M.toList . columnIndices) df
 
