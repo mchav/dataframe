@@ -39,6 +39,7 @@ import Data.Time
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame.IO.CSV as CSV
+import qualified DataFrame.IO.Parquet as Parquet
 import Debug.Trace (trace)
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -104,11 +105,15 @@ eq = BinaryOp "eq" (==)
 lt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
 lt = BinaryOp "lt" (<)
 
+-- TODO: Generalize this pattern for other equality functions.
 (.>) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-(.>) = BinaryOp "gt" (>)
+(.>) (Lit l) (Lit r) = Lit (l > r)
+(.>) (Lit l) expr = UnaryOp ("gt " <> T.pack (show l)) (l >) expr
+(.>) expr (Lit r) = UnaryOp ("leq " <> T.pack (show r)) (r <=) expr
+(.>) l r = BinaryOp "gt" (>) l r
 
 gt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-gt = BinaryOp "gt" (>)
+gt = (.>)
 
 (.<=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
 (.<=) = BinaryOp "leq" (<=)
@@ -366,6 +371,17 @@ dropFirstAndLast = reverse . drop 1 . reverse . drop 1
 declareColumnsFromCsvFile :: String -> DecsQ
 declareColumnsFromCsvFile path = do
     df <- liftIO (CSV.readCsv path)
+    declareColumns df
+
+-- TODO: We don't have to read the whole file, we can just read the schema.
+declareColumnsFromParquetFile :: String -> DecsQ
+declareColumnsFromParquetFile path = do
+    df <- liftIO (Parquet.readParquet path)
+    declareColumns df
+
+declareColumnsFromCsvWithOpts :: CSV.ReadOptions -> String -> DecsQ
+declareColumnsFromCsvWithOpts opts path = do
+    df <- liftIO (CSV.readSeparated opts path)
     declareColumns df
 
 declareColumns :: DataFrame -> DecsQ
