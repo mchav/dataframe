@@ -116,10 +116,13 @@ gt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
 gt = (.>)
 
 (.<=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-(.<=) = BinaryOp "leq" (<=)
+(.<=) (Lit l) (Lit r) = Lit (l <= r)
+(.<=) (Lit l) expr = UnaryOp ("leq " <> T.pack (show l)) (l <=) expr
+(.<=) expr (Lit r) = UnaryOp ("gt " <> T.pack (show r)) (r >) expr
+(.<=) l r = BinaryOp "leq" (<=) l r
 
 leq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-leq = BinaryOp "leq" (<=)
+leq = (.<=)
 
 (.>=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
 (.>=) = BinaryOp "geq" (>=)
