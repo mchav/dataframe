@@ -1,6 +1,9 @@
 # Revision history for dataframe
 
 ## 0.4.0.0
+* `readSeparated` no longer takes the separator as an argument. This is not placed into readOptions.
+* Some improvements to the synthesis demo
+* Add a `declareColumnsParquetFile` function. 
 * Column conversion functions now take expressions instead of strings.
 * Add more monadic functions to make previously tricky transformations easier to write:
     ```haskell
