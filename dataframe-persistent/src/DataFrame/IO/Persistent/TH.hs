@@ -19,13 +19,17 @@ import Data.List (foldl')
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Vector as V
+import DataFrame.Functions (col)
 import DataFrame.IO.Persistent
 import qualified DataFrame.Internal.Column as DFCol
+import DataFrame.Internal.Expression
 import Database.Persist
 import Database.Persist.Sql (fromSqlKey)
 import Database.Persist.TH
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax (Lift, lift)
+
+import Debug.Trace (trace)
 
 -- | Derive EntityToDataFrame instance using Template Haskell
 deriveEntityToDataFrame :: Name -> Q [Dec]
@@ -64,8 +68,16 @@ deriveEntityToDataFrame entityName = do
                         []
                         (AppT (ConT ''EntityToDataFrame) (ConT entityName))
                         [colNamesMethod, entityDataMethod]
+            dataframeExprs <- forM fields $ \(raw, _, ty) -> do
+                let nm = camelToSnake (nameBase raw)
+                let colName = camelToSnake (drop (length entityNameStr) (nameBase raw))
+                trace ((nm <> " :: Expr " <> (show ty))) pure ()
+                let n = mkName nm
+                sig <- sigD n [t|Expr $(pure ty)|]
+                val <- valD (varP n) (normalB [|col $(lift colName)|]) []
+                pure [sig, val]
 
-            return [instanceDec]
+            return ([instanceDec] ++ concat dataframeExprs)
         _ ->
             fail $
                 "deriveEntityToDataFrame: " ++ show entityName ++ " must be a record type"

@@ -36,6 +36,8 @@ import System.IO.Temp (withSystemTempFile)
 import Test.HUnit
 import UnliftIO.Resource (ResourceT)
 
+import DataFrame.Functions ((.<))
+
 -- Define test entities
 share
     [mkPersist sqlSettings, mkMigrate "migrateAll"]
@@ -107,7 +109,7 @@ testFromPersistent = TestCase $ withTestDb $ do
         assertBool "Has active column" ("active" `elem` cols)
 
         -- Check data values
-        let names = V.toList (DF.columnAsVector (F.col @Text "name") df)
+        let names = V.toList (DF.columnAsVector test_user_name df)
 
         assertEqual "Names match" ["Alice", "Bob", "Charlie", "Diana"] names
 
@@ -123,7 +125,7 @@ testChinookFromPersistent = TestCase $ do
             print cols
             assertBool "Has id column" ("id" `elem` cols)
             assertBool "Has name column" ("name" `elem` cols)
-            let names = V.toList (DF.columnAsVector (F.col @Text "name") (DF.take 5 df))
+            let names = V.toList (DF.columnAsVector artist_name (DF.take 5 df))
 
             assertEqual
                 "Names match"
@@ -142,7 +144,7 @@ testFromPersistentWithFilters = TestCase $ withTestDb $ do
         assertEqual "Active users count" 3 (nRows df)
 
         -- Check all loaded users are active
-        let activeFlags = V.toList $ DF.columnAsVector (F.col @Bool "active") df
+        let activeFlags = V.toList $ DF.columnAsVector test_user_active df
         assertBool "All active" (and activeFlags)
 
 -- Test custom configuration
@@ -190,23 +192,19 @@ testDataFrameOperations = TestCase $ withTestDb $ do
     df <- fromPersistent @TestUser []
     liftIO $ do
         -- Filter operation
-        let youngUsers = DF.filter @Int "age" (< 30) df
+        let youngUsers = DF.filter test_user_age (< 30) df
         assertEqual "Young users count" 2 (nRows youngUsers)
 
         -- Sort operation
         let sorted = DF.sortBy [DF.Asc "age"] df
-        let ages = V.toList $ DF.columnAsVector (F.col @Int "age") sorted
+        let ages = V.toList $ DF.columnAsVector test_user_age sorted
         assertEqual "Ages sorted" [25, 28, 30, 35] ages
 
         -- Derive column
         let withAgeGroup =
-                DF.derive
+                DF.derive @Text
                     "age_group"
-                    ( F.ifThenElse
-                        (F.col @Int "age" `F.lt` F.lit 30)
-                        (F.lit @Text "young")
-                        (F.lit @Text "adult")
-                    )
+                    (F.ifThenElse (test_user_age .< 30) "young" "adult")
                     df
         assertEqual "Has age_group column" 5 (length $ DF.columnNames withAgeGroup)
 

@@ -17,7 +17,7 @@ Add to your `package.yaml`:
 
 ```yaml
 dependencies:
-- dataframe ^>= 0.3
+- dataframe ^>= 0.4
 - dataframe-persistent ^>= 0.1
 - persistent >= 2.14
 - persistent-sqlite >= 2.13  # or your preferred backend
@@ -27,7 +27,7 @@ Or to your `.cabal` file:
 
 ```cabal
 build-depends:
-  dataframe ^>= 0.3,
+  dataframe ^>= 0.4,
   dataframe-persistent ^>= 0.1,
   persistent >= 2.14,
   persistent-sqlite >= 2.13
@@ -94,9 +94,9 @@ main = runSqlite "example.db" $ do
     liftIO $ putStrLn $ "Active users: " ++ show (nRows activeUsersDF)
     
     -- Process with DataFrame operations
-    let age = F.col @Int "age"
-    let youngUsers = DF.filterWhere (age .< 30) allUsersDF
-        ages = V.toList $ DF.columnAsVector age youngUsers
+    -- Expressions are automaticaly generated.
+    let youngUsers = DF.filterWhere (test_user_age .< 30) allUsersDF
+        ages = V.toList $ DF.columnAsVector test_user_age youngUsers
     liftIO $ putStrLn $ "Young user ages: " ++ show ages
     
     -- Custom configuration
@@ -114,6 +114,7 @@ main = runSqlite "example.db" $ do
 - **Template Haskell support** for automatic instance generation
 - **Configurable loading** with batch size and column selection
 - **Column name cleaning** - removes table prefixes automatically (e.g., `test_user_name` → `name`)
+- **Automatically generate typed expressions** - creates expressions in snake case prefixed by table name (e.g `test_user_name`).
 - **Type preservation** - maintains proper types for Text, Int, Bool, Day, etc.
 - **Empty DataFrame support** - preserves column structure even with no data
 - **Support for all Persistent backends** (SQLite, PostgreSQL, MySQL, etc.)
@@ -144,12 +145,9 @@ let user = TestUser "Alice" 25 True
 
 ```haskell
 -- Extract specific column data
-let name = F.col @Text name
-    age = F.col @Int "age"
-    activeFlag = F.col @Bool "active"
-let names = V.toList $ DF.columnAsVector name df
-    ages = V.toList $ DF.columnAsVector age df
-    activeFlags = V.toList $ DF.columnAsVector active df
+let names = V.toList $ DF.columnAsVector test_user_name df
+    ages = V.toList $ DF.columnAsVector test_user_age df
+    activeFlags = V.toList $ DF.columnAsVector test_user_active df
 ```
 
 ## Examples
