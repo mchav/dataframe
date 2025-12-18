@@ -22,11 +22,10 @@ import DataFrame.Internal.Expression (
     Expr (..),
     eSize,
     interpret,
-    replaceExpr,
  )
 import DataFrame.Internal.Statistics
 import qualified DataFrame.Operations.Statistics as Stats
-import DataFrame.Operations.Subset (exclude, select)
+import DataFrame.Operations.Subset (exclude)
 
 import Control.Exception (throw)
 import Data.Containers.ListUtils
@@ -40,7 +39,6 @@ import Data.Type.Equality
 import qualified Data.Vector.Unboxed as VU
 import DataFrame.Functions ((.&&), (.<=), (.>), (.||))
 import qualified DataFrame.Operations.Core as D
-import qualified DataFrame.Operations.Transformations as D
 import Debug.Trace (trace)
 import Type.Reflection (typeRep)
 
@@ -303,7 +301,7 @@ fitRegression target d b df =
             Left e -> throw e
             Right v -> v
         cfg = BeamConfig d b MeanSquaredError True
-        constants = percentiles df' ++ [Lit 10, Lit 1, Lit 0.1, targetMean]
+        constants = percentiles df' ++ [Lit 10, Lit 1, Lit 0.1, Lit targetMean]
      in
         case beamSearch df' cfg t constants [] [] of
             Nothing -> Left "No programs found"
