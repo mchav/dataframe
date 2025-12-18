@@ -307,7 +307,7 @@ fitRegression target d b df =
      in
         case beamSearch df' cfg t constants [] [] of
             Nothing -> Left "No programs found"
-            Just p -> p
+            Just p -> Right p
 
 data LossFunction
     = PearsonCorrelation
