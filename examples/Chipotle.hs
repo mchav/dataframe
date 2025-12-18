@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Main where
@@ -9,7 +10,15 @@ import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 import Text.Read (readMaybe)
 
+import Data.Text (Text)
 import DataFrame ((|>))
+import DataFrame.Functions ((.&&), (.=), (.==))
+import DataFrame.Monad
+
+$( F.declareColumnsFromCsvWithOpts
+    (D.defaultReadOptions{D.columnSeparator = '\t'})
+    "../data/chipotle.tsv"
+ )
 
 main :: IO ()
 main = do
@@ -21,78 +30,40 @@ main = do
 
     -- Transform the data from a raw string into
     -- respective types (throws error on failure)
-    let df =
-            raw
-                -- Change a specfic order ID
-                |> D.derive
-                    "quantity"
-                    ( F.ifThenElse
-                        (F.col @Int "order_id" F.== F.lit 1)
-                        (F.col @Int "quantity" + F.lit 2)
-                        (F.col @Int "quantity")
-                    )
-                -- Custom parsing: drop dollar sign and parse price as double
-                |> D.derive
+    let df = execFrameM raw $ do
+            _ <- deriveM "quantity" (F.ifThenElse (order_id .== 1) (quantity + 2) quantity)
+            -- Custom parsing: drop dollar sign and parse price as double
+            itemPrice <-
+                deriveM
                     "item_price"
-                    (F.lift (readMaybe @Double . T.unpack . T.drop 1) (F.col "item_price"))
+                    (F.lift (readMaybe @Double . T.unpack . T.drop 1) item_price)
+            totalPrice <-
+                deriveM
+                    "total_price"
+                    (F.whenBothPresent (*) itemPrice (F.lift (Just . fromIntegral) quantity))
+            pure ()
 
     -- sample the dataframe.
     print $ D.take 10 df
 
-    -- Create a total_price column that is quantity * item_price
-    let withTotalPrice =
-            D.derive
-                "total_price"
-                ( F.lift2
-                    (\l r -> fmap (* l) r)
-                    (F.lift fromIntegral (F.col @Int "quantity"))
-                    (F.col @(Maybe Double) "item_price")
-                )
-                df
-
-    -- sample a filtered subset of the dataframe
-    putStrLn "Sample dataframe"
-    print $
-        withTotalPrice
-            |> D.select ["quantity", "item_name", "item_price", "total_price"]
-            |> D.filterWhere
-                (F.lift (fromMaybe False . fmap (> 100)) (F.col @(Maybe Double) "total_price"))
-            |> D.take 10
-
-    -- Check how many chicken burritos were ordered.
-    -- There are two ways to checking how many chicken burritos
-    -- were ordered.
-    let searchTerm = "Chicken Burrito" :: T.Text
-
     print $
         df
-            |> D.select ["item_name", "quantity"]
+            |> D.select [F.name item_name, F.name quantity]
             -- It's more efficient to filter before grouping.
-            |> D.filterWhere (F.col "item_name" F.== F.lit searchTerm)
-            |> D.groupBy ["item_name"]
+            |> D.filterWhere (item_name .== "Chicken Burrito")
+            |> D.groupBy [F.name item_name]
             |> D.aggregate
-                [ F.sum (F.col @Int "quantity") `F.as` "sum"
-                , F.maximum (F.col @Int "quantity") `F.as` "max"
-                , F.mean (F.col @Int "quantity") `F.as` "mean"
+                [ "sum" .= F.sum quantity
+                , "max" .= F.maximum quantity
+                , "mean" .= F.mean quantity
                 ]
             |> D.sortBy [D.Desc "sum"]
 
-    print $
-        df
-            |> D.select ["item_name", "quantity"]
-            |> D.groupBy ["item_name"]
-            |> D.aggregate
-                [ F.sum (F.col @Int "quantity") `F.as` "sum"
-                , F.maximum (F.col @Int "quantity") `F.as` "maximum"
-                , F.mean (F.col @Int "quantity") `F.as` "mean"
-                ]
-            |> D.take 10
-
     let firstOrder =
-            withTotalPrice
+            df
                 |> D.filterWhere
-                    ( (F.lift (maybe False (T.isInfixOf "Guacamole")) (F.col "choice_description"))
-                        `F.and` (F.col @T.Text "item_name" F.== F.lit "Chicken Bowl")
+                    ( (F.lift (maybe False (T.isInfixOf "Guacamole")) choice_description)
+                        .&& (item_name .== "Chicken Bowl")
                     )
 
     print $ D.take 10 firstOrder

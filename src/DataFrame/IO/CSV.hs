@@ -163,6 +163,8 @@ data ReadOptions = ReadOptions
     Just 2010-03-04
     @
     -}
+    , columnSeparator :: Char
+    -- ^ Character that separates column values.
     }
 
 shouldInferFromSample :: TypeSpec -> Bool
@@ -184,6 +186,7 @@ defaultReadOptions =
         , typeSpec = InferFromSample 100
         , safeRead = True
         , dateFormat = "%Y-%m-%d"
+        , columnSeparator = ','
         }
 
 {- | Read CSV file from path and load it into a dataframe.
@@ -195,7 +198,7 @@ ghci> D.readCsv ".\/data\/taxi.csv"
 @
 -}
 readCsv :: FilePath -> IO DataFrame
-readCsv = readSeparated ',' defaultReadOptions
+readCsv = readSeparated defaultReadOptions
 
 {- | Read CSV file from path and load it into a dataframe.
 
@@ -206,7 +209,7 @@ ghci> D.readCsvWithOpts ".\/data\/taxi.csv" (D.defaultReadOptions { dateFormat =
 @
 -}
 readCsvWithOpts :: ReadOptions -> FilePath -> IO DataFrame
-readCsvWithOpts = readSeparated ','
+readCsvWithOpts = readSeparated
 
 {- | Read TSV (tab separated) file from path and load it into a dataframe.
 
@@ -217,18 +220,19 @@ ghci> D.readTsv ".\/data\/taxi.tsv"
 @
 -}
 readTsv :: FilePath -> IO DataFrame
-readTsv = readSeparated '\t' defaultReadOptions
+readTsv = readSeparated (defaultReadOptions{columnSeparator = '\t'})
 
 {- | Read text file with specified delimiter into a dataframe.
 
 ==== __Example__
 @
-ghci> D.readSeparated ';' D.defaultReadOptions ".\/data\/taxi.txt"
+ghci> D.readSeparated (D.defaultReadOptions { columnSeparator = ';' }) ".\/data\/taxi.txt"
 
 @
 -}
-readSeparated :: Char -> ReadOptions -> FilePath -> IO DataFrame
-readSeparated !sep !opts !path = do
+readSeparated :: ReadOptions -> FilePath -> IO DataFrame
+readSeparated !opts !path = do
+    let sep = columnSeparator opts
     csvData <- BL.readFile path
     let decodeOpts = Csv.defaultDecodeOptions{Csv.decDelimiter = fromIntegral (ord sep)}
     let stream = CsvStream.decodeWith decodeOpts Csv.NoHeader csvData
