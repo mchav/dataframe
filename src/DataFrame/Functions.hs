@@ -211,6 +211,7 @@ zScore c = (c - mean c) / stddev c
 
 pow :: (Columnable a, Num a) => Expr a -> Int -> Expr a
 pow _ 0 = Lit 1
+pow (Lit n) i = Lit (n ^ i)
 pow expr 1 = expr
 pow expr i = UnaryOp ("pow " <> T.pack (show i)) (^ i) expr
 
