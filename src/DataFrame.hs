@@ -276,8 +276,8 @@ import DataFrame.Internal.DataFrame as Dataframe (
  )
 import DataFrame.Internal.Expression as Expression (Expr)
 import DataFrame.Internal.Row as Row (
-    Row,
     Any,
+    Row,
     fromAny,
     toAny,
     toRowList,
