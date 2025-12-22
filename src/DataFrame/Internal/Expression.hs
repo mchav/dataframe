@@ -37,66 +37,22 @@ data Expr a where
     Col :: (Columnable a) => T.Text -> Expr a
     Lit :: (Columnable a) => a -> Expr a
     UnaryOp ::
-        ( Columnable a
-        , Columnable b
-        ) =>
-        T.Text -> -- Operation name
-        (b -> a) ->
-        Expr b ->
-        Expr a
+        (Columnable a, Columnable b) => T.Text -> (b -> a) -> Expr b -> Expr a
     BinaryOp ::
-        ( Columnable c
-        , Columnable b
-        , Columnable a
-        ) =>
-        T.Text -> -- operation name
-        (c -> b -> a) ->
-        Expr c ->
-        Expr b ->
-        Expr a
-    If ::
-        (Columnable a) =>
-        Expr Bool ->
-        Expr a ->
-        Expr a ->
-        Expr a
+        (Columnable c, Columnable b, Columnable a) =>
+        T.Text -> (c -> b -> a) -> Expr c -> Expr b -> Expr a
+    If :: (Columnable a) => Expr Bool -> Expr a -> Expr a -> Expr a
     AggVector ::
-        ( VG.Vector v b
-        , Typeable v
-        , Columnable a
-        , Columnable b
-        ) =>
-        Expr b ->
-        T.Text -> -- Operation name
-        (v b -> a) ->
-        Expr a
-    AggReduce ::
-        (Columnable a) =>
-        Expr a ->
-        T.Text -> -- Operation name
-        (a -> a -> a) ->
-        Expr a
+        (VG.Vector v b, Typeable v, Columnable a, Columnable b) =>
+        Expr b -> T.Text -> (v b -> a) -> Expr a
+    AggReduce :: (Columnable a) => Expr a -> T.Text -> (a -> a -> a) -> Expr a
     -- TODO(mchav): Numeric reduce might be superfluous since expressions are already type checked.
     AggNumericVector ::
-        ( Columnable a
-        , Columnable b
-        , VU.Unbox a
-        , VU.Unbox b
-        , Num a
-        , Num b
-        ) =>
-        Expr b ->
-        T.Text -> -- Operation name
-        (VU.Vector b -> a) ->
-        Expr a
+        (Columnable a, Columnable b, VU.Unbox a, VU.Unbox b, Num a, Num b) =>
+        Expr b -> T.Text -> (VU.Vector b -> a) -> Expr a
     AggFold ::
         forall a b.
-        (Columnable a, Columnable b) =>
-        Expr b ->
-        T.Text -> -- Operation name
-        a ->
-        (a -> b -> a) ->
-        Expr a
+        (Columnable a, Columnable b) => Expr b -> T.Text -> a -> (a -> b -> a) -> Expr a
 
 data UExpr where
     Wrap :: (Columnable a) => Expr a -> UExpr
@@ -165,50 +121,14 @@ interpret df expression@(AggVector expr op (f :: v b -> c)) = do
         (BoxedColumn col) -> processColumn col
         (OptionalColumn col) -> processColumn col
         (UnboxedColumn col) -> processColumn col
-interpret df expression@(AggReduce expr op (f :: a -> a -> a)) = case interpret @a df expr of
-    Left (TypeMismatchException context) ->
-        Left $
-            TypeMismatchException
-                ( context
-                    { callingFunctionName = Just "interpret"
-                    , errorColumnName = Just (show expr)
-                    }
-                )
-    Left e -> Left e
-    Right (TColumn column) -> case headColumn @a column of
-        Left (TypeMismatchException context) ->
-            Left $
-                TypeMismatchException
-                    ( context
-                        { callingFunctionName = Just "interpret"
-                        , errorColumnName = Just (show expr)
-                        }
-                    )
-        Left (EmptyDataSetException loc) -> Left (EmptyDataSetException (T.pack $ show expr))
-        Left e -> Left e
-        Right h -> case ifoldlColumn (\acc _ v -> f acc v) h column of
-            Left (TypeMismatchException context) ->
-                Left $
-                    TypeMismatchException
-                        ( context
-                            { callingFunctionName = Just "interpret"
-                            , errorColumnName = Just (show expression)
-                            }
-                        )
-            Left e -> Left e
-            Right value ->
-                pure $ TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
-interpret df expression@(AggNumericVector expr op (f :: VU.Vector b -> c)) = case interpret @b df expr of
-    Left (TypeMismatchException context) ->
-        Left $
-            TypeMismatchException
-                ( context
-                    { callingFunctionName = Just "interpret"
-                    , errorColumnName = Just (show expr)
-                    }
-                )
-    Left e -> Left e
-    Right (TColumn column) -> case column of
+interpret df expression@(AggReduce expr op (f :: a -> a -> a)) = first (handleInterpretException (show expr)) $ do
+    (TColumn column) <- interpret @a df expr
+    h <- headColumn @a column
+    value <- ifoldlColumn (\acc _ v -> f acc v) h column
+    pure $ TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
+interpret df expression@(AggNumericVector expr op (f :: VU.Vector b -> c)) = first (handleInterpretException (show expression)) $ do
+    (TColumn column) <- interpret @b df expr
+    case column of
         (UnboxedColumn (v :: VU.Vector d)) -> case testEquality (typeRep @d) (typeRep @b) of
             Just Refl ->
                 pure $ TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) (f v)
@@ -216,221 +136,20 @@ interpret df expression@(AggNumericVector expr op (f :: VU.Vector b -> c)) = cas
                 Left $
                     TypeMismatchException
                         ( MkTypeErrorContext
-                            { userType = Right (typeRep @b)
-                            , expectedType = Right (typeRep @d)
-                            , callingFunctionName = Just "interpret"
-                            , errorColumnName = Just (show expression)
-                            }
+                            (Right (typeRep @b))
+                            (Right (typeRep @d))
+                            (Just "interpret")
+                            (Just (show expression))
                         )
-        (BoxedColumn (v :: V.Vector d)) -> case testEquality (typeRep @d) (typeRep @Integer) of
-            Just Refl ->
-                Right $
-                    TColumn $
-                        fromVector $
-                            V.replicate
-                                (fst $ dataframeDimensions df)
-                                (f (VU.convert $ V.map fromInteger v))
-            Nothing ->
-                Left $
-                    TypeMismatchException
-                        ( MkTypeErrorContext
-                            { userType = Right (typeRep @Integer)
-                            , expectedType = Right (typeRep @d)
-                            , callingFunctionName = Just "interpret"
-                            , errorColumnName = Just (show expression)
-                            }
-                        )
-        (OptionalColumn (v :: V.Vector (Maybe d))) -> case sNumeric @d of
-            STrue -> case testEquality (typeRep @d) (typeRep @b) of
-                Nothing ->
-                    Left $
-                        TypeMismatchException
-                            ( MkTypeErrorContext
-                                { userType = Right (typeRep @b)
-                                , expectedType = Right (typeRep @d)
-                                , callingFunctionName = Just "interpret"
-                                , errorColumnName = Just (show expression)
-                                }
-                            )
-                Just Refl ->
-                    pure $
-                        TColumn $
-                            fromVector $
-                                V.replicate
-                                    (fst $ dataframeDimensions df)
-                                    (f (VU.convert $ V.map (fromMaybe 0) $ V.filter isJust v))
-            SFalse ->
-                Left $
-                    TypeMismatchException
-                        ( MkTypeErrorContext
-                            { userType = Right (typeRep @d)
-                            , expectedType = Right (typeRep @b)
-                            , callingFunctionName = Just "interpret"
-                            , errorColumnName = Just (show expression)
-                            }
-                        )
-interpret df expression@(AggFold expr op start (f :: (a -> b -> a))) = case interpret @b df expr of
-    Left (TypeMismatchException context) ->
-        Left $
-            TypeMismatchException
-                ( context
-                    { callingFunctionName = Just "interpret"
-                    , errorColumnName = Just (show expr)
-                    }
-                )
-    Left e -> Left e
-    Right (TColumn column) -> case ifoldlColumn (\acc _ v -> f acc v) start column of
-        Left (TypeMismatchException context) ->
-            Left $
-                TypeMismatchException
-                    ( context
-                        { callingFunctionName = Just "interpret"
-                        , errorColumnName = Just (show expression)
-                        }
-                    )
-        Left e -> Left e
-        Right value ->
-            pure $ TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
+        _ -> error "Trying to apply numeric computation to non-numeric column"
+interpret df expression@(AggFold expr op start (f :: (a -> b -> a))) = first (handleInterpretException (show expression)) $ do
+    (TColumn column) <- interpret @b df expr
+    value <- ifoldlColumn (\acc _ v -> f acc v) start column
+    pure $ TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
 
 data AggregationResult a
     = UnAggregated Column
     | Aggregated (TypedColumn a)
-
-mkUnaggregatedColumnBoxed ::
-    forall a.
-    (Columnable a) =>
-    V.Vector a -> VU.Vector Int -> VU.Vector Int -> V.Vector (V.Vector a)
-mkUnaggregatedColumnBoxed col os indices =
-    let
-        sorted = V.unsafeBackpermute col (V.convert indices)
-        n i = os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i)
-        start i = os `VG.unsafeIndex` i
-     in
-        V.generate
-            (VU.length os - 1)
-            ( \i ->
-                V.unsafeSlice (start i) (n i) sorted
-            )
-
-mkUnaggregatedColumnUnboxed ::
-    forall a.
-    (Columnable a, VU.Unbox a) =>
-    VU.Vector a -> VU.Vector Int -> VU.Vector Int -> V.Vector (VU.Vector a)
-mkUnaggregatedColumnUnboxed col os indices =
-    let
-        sorted = VU.unsafeBackpermute col indices
-        n i = os `VU.unsafeIndex` (i + 1) - (os `VU.unsafeIndex` i)
-        start i = os `VG.unsafeIndex` i
-     in
-        V.generate
-            (VU.length os - 1)
-            ( \i ->
-                VU.unsafeSlice (start i) (n i) sorted
-            )
-
-mkAggregatedColumnUnboxed ::
-    forall a b.
-    (Columnable a, VU.Unbox a, Columnable b, VU.Unbox b) =>
-    VU.Vector a ->
-    VU.Vector Int ->
-    VU.Vector Int ->
-    (VU.Vector a -> b) ->
-    VU.Vector b
-mkAggregatedColumnUnboxed col os indices f =
-    let
-        sorted = VU.unsafeBackpermute col indices
-        n i = os `VU.unsafeIndex` (i + 1) - (os `VU.unsafeIndex` i)
-        start i = os `VG.unsafeIndex` i
-     in
-        VU.generate
-            (VU.length os - 1)
-            ( \i ->
-                f (VU.unsafeSlice (start i) (n i) sorted)
-            )
-
-mkReducedColumnUnboxed ::
-    forall a.
-    (VU.Unbox a) =>
-    VU.Vector a ->
-    VU.Vector Int ->
-    VU.Vector Int ->
-    (a -> a -> a) ->
-    VU.Vector a
-mkReducedColumnUnboxed col os indices f = runST $ do
-    let len = VU.length os - 1
-    mvec <- VUM.unsafeNew len
-
-    let loopOut i
-            | i == len = return ()
-            | otherwise = do
-                let start = os `VU.unsafeIndex` i
-                let end = os `VU.unsafeIndex` (i + 1)
-                let initVal = col `VU.unsafeIndex` (indices `VU.unsafeIndex` start)
-
-                let loopIn !acc idx
-                        | idx == end = acc
-                        | otherwise =
-                            let val = col `VU.unsafeIndex` (indices `VU.unsafeIndex` idx)
-                             in loopIn (f acc val) (idx + 1)
-                let !finalVal = loopIn initVal (start + 1)
-                VUM.unsafeWrite mvec i finalVal
-                loopOut (i + 1)
-
-    loopOut 0
-    VU.unsafeFreeze mvec
-{-# INLINE mkReducedColumnUnboxed #-}
-
-mkReducedColumnBoxed ::
-    V.Vector a ->
-    VU.Vector Int ->
-    VU.Vector Int ->
-    (a -> a -> a) ->
-    V.Vector a
-mkReducedColumnBoxed col os indices f = runST $ do
-    let len = VU.length os - 1
-    mvec <- VM.unsafeNew len
-
-    let loopOut i
-            | i == len = return ()
-            | otherwise = do
-                let start = os `VU.unsafeIndex` i
-                let end = os `VU.unsafeIndex` (i + 1)
-                let initVal = col `V.unsafeIndex` (indices `VU.unsafeIndex` start)
-
-                let loopIn !acc idx
-                        | idx == end = acc
-                        | otherwise =
-                            let val = col `V.unsafeIndex` (indices `VU.unsafeIndex` idx)
-                             in loopIn (f acc val) (idx + 1)
-                let !finalVal = loopIn initVal (start + 1)
-                VM.unsafeWrite mvec i finalVal
-                loopOut (i + 1)
-
-    loopOut 0
-    V.unsafeFreeze mvec
-{-# INLINE mkReducedColumnBoxed #-}
-
-nestedTypeException ::
-    forall a b. (Typeable a, Typeable b) => String -> DataFrameException
-nestedTypeException expression = case typeRep @a of
-    App t1 t2 ->
-        TypeMismatchException
-            ( MkTypeErrorContext
-                { userType = Left (show (typeRep @b)) :: Either String (TypeRep ())
-                , expectedType = Left (show (typeRep @a)) :: Either String (TypeRep ())
-                , callingFunctionName = Just "interpretAggregation"
-                , errorColumnName = Just expression
-                }
-            )
-    t ->
-        TypeMismatchException
-            ( MkTypeErrorContext
-                { userType = Right (typeRep @(VU.Vector b))
-                , expectedType = Right (typeRep @b)
-                , callingFunctionName = Just "interpretAggregation"
-                , errorColumnName = Just expression
-                }
-            )
 
 interpretAggregation ::
     forall a.
@@ -472,6 +191,30 @@ interpretAggregation gdf expression@(UnaryOp _ (f :: c -> d) expr) =
         Right (Aggregated (TColumn aggregated)) -> case mapColumn f aggregated of
             Left e -> Left e
             Right col -> Right $ Aggregated $ TColumn col
+interpretAggregation gdf expression@(BinaryOp name (f :: c -> d -> e) left (Lit (right :: g))) = case testEquality (typeRep @g) (typeRep @d) of
+    Just Refl -> interpretAggregation gdf (UnaryOp name (`f` right) left)
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @g)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "interpretAggregation"
+                    , errorColumnName = Just (show expression)
+                    }
+                )
+interpretAggregation gdf expression@(BinaryOp name (f :: c -> d -> e) (Lit (left :: g)) right) = case testEquality (typeRep @g) (typeRep @c) of
+    Just Refl -> interpretAggregation gdf (UnaryOp name (f left) right)
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @g)
+                    , expectedType = Right (typeRep @c)
+                    , callingFunctionName = Just "interpretAggregation"
+                    , errorColumnName = Just (show expression)
+                    }
+                )
 interpretAggregation gdf expression@(BinaryOp _ (f :: c -> d -> e) left right) =
     case (interpretAggregation @c gdf left, interpretAggregation @d gdf right) of
         (Right (Aggregated (TColumn left')), Right (Aggregated (TColumn right'))) -> case zipWithColumns f left' right' of
@@ -550,6 +293,162 @@ interpretAggregation gdf expression@(BinaryOp _ (f :: c -> d -> e) left right) =
                     ( context
                         { callingFunctionName = Just "interpretAggregation"
                         , errorColumnName = Just (show right)
+                        }
+                    )
+        (_, Left e) -> Left e
+interpretAggregation gdf expression@(If cond (Lit l) r) =
+    case ( interpretAggregation @Bool gdf cond
+         , interpretAggregation @a gdf r
+         ) of
+        ( Right (Aggregated (TColumn conditions))
+            , Right (Aggregated (TColumn right))
+            ) -> case zipWithColumns
+                (\(c :: Bool) (r' :: a) -> if c then l else r')
+                conditions
+                right of
+                Left e -> Left e
+                Right v -> Right $ Aggregated (TColumn v)
+        ( Right (UnAggregated conditions)
+            , Right (UnAggregated right@(BoxedColumn (right' :: V.Vector c)))
+            ) -> case testEquality (typeRep @(V.Vector a)) (typeRep @c) of
+                Just Refl -> case zipWithColumns
+                    ( \(c :: VU.Vector Bool) (r' :: V.Vector a) ->
+                        V.zipWith
+                            (\c' r'' -> if c' then l else r'')
+                            (V.convert c)
+                            r'
+                    )
+                    conditions
+                    right of
+                    Left (TypeMismatchException context) ->
+                        Left $
+                            TypeMismatchException
+                                ( context
+                                    { callingFunctionName = Just "interpretAggregation"
+                                    , errorColumnName = Just (show expression)
+                                    }
+                                )
+                    Left e -> Left e
+                    Right v -> Right $ UnAggregated v
+                Nothing -> case testEquality (typeRep @(VU.Vector a)) (typeRep @c) of
+                    Nothing -> Left $ nestedTypeException @c @a (show expression)
+                    Just Refl -> case sUnbox @a of
+                        SFalse -> Left $ InternalException "Boxed type in unboxed column"
+                        STrue -> case zipWithColumns
+                            ( \(c :: VU.Vector Bool) (r' :: VU.Vector a) ->
+                                VU.zipWith
+                                    (\c' r'' -> if c' then l else r'')
+                                    c
+                                    r'
+                            )
+                            conditions
+                            right of
+                            Left (TypeMismatchException context) ->
+                                Left $
+                                    TypeMismatchException
+                                        ( context
+                                            { callingFunctionName = Just "interpretAggregation"
+                                            , errorColumnName = Just (show expression)
+                                            }
+                                        )
+                            Left e -> Left e
+                            Right v -> Right $ UnAggregated v
+        (Right _, Right _) ->
+            Left $
+                AggregatedAndNonAggregatedException (T.pack $ show l) (T.pack $ show r)
+        (Left (TypeMismatchException context), _) ->
+            Left $
+                TypeMismatchException
+                    ( context
+                        { callingFunctionName = Just "interpretAggregation"
+                        , errorColumnName = Just (show cond)
+                        }
+                    )
+        (Left e, _) -> Left e
+        (_, Left (TypeMismatchException context)) ->
+            Left $
+                TypeMismatchException
+                    ( context
+                        { callingFunctionName = Just "interpretAggregation"
+                        , errorColumnName = Just (show r)
+                        }
+                    )
+        (_, Left e) -> Left e
+interpretAggregation gdf expression@(If cond l (Lit r)) =
+    case ( interpretAggregation @Bool gdf cond
+         , interpretAggregation @a gdf l
+         ) of
+        ( Right (Aggregated (TColumn conditions))
+            , Right (Aggregated (TColumn left))
+            ) -> case zipWithColumns
+                (\(c :: Bool) (l' :: a) -> if c then l' else r)
+                conditions
+                left of
+                Left e -> Left e
+                Right v -> Right $ Aggregated (TColumn v)
+        ( Right (UnAggregated conditions)
+            , Right (UnAggregated left@(BoxedColumn (left' :: V.Vector c)))
+            ) -> case testEquality (typeRep @(V.Vector a)) (typeRep @c) of
+                Just Refl -> case zipWithColumns
+                    ( \(c :: VU.Vector Bool) (l' :: V.Vector a) ->
+                        V.zipWith
+                            (\c' l'' -> if c' then l'' else r)
+                            (V.convert c)
+                            l'
+                    )
+                    conditions
+                    left of
+                    Left (TypeMismatchException context) ->
+                        Left $
+                            TypeMismatchException
+                                ( context
+                                    { callingFunctionName = Just "interpretAggregation"
+                                    , errorColumnName = Just (show expression)
+                                    }
+                                )
+                    Left e -> Left e
+                    Right v -> Right $ UnAggregated v
+                Nothing -> case testEquality (typeRep @(VU.Vector a)) (typeRep @c) of
+                    Nothing -> Left $ nestedTypeException @c @a (show expression)
+                    Just Refl -> case sUnbox @a of
+                        SFalse -> Left $ InternalException "Boxed type in unboxed column"
+                        STrue -> case zipWithColumns
+                            ( \(c :: VU.Vector Bool) (l' :: VU.Vector a) ->
+                                VU.zipWith
+                                    (\c' l'' -> if c' then l'' else r)
+                                    c
+                                    l'
+                            )
+                            conditions
+                            left of
+                            Left (TypeMismatchException context) ->
+                                Left $
+                                    TypeMismatchException
+                                        ( context
+                                            { callingFunctionName = Just "interpretAggregation"
+                                            , errorColumnName = Just (show expression)
+                                            }
+                                        )
+                            Left e -> Left e
+                            Right v -> Right $ UnAggregated v
+        (Right _, Right _) ->
+            Left $
+                AggregatedAndNonAggregatedException (T.pack $ show l) (T.pack $ show r)
+        (Left (TypeMismatchException context), _) ->
+            Left $
+                TypeMismatchException
+                    ( context
+                        { callingFunctionName = Just "interpretAggregation"
+                        , errorColumnName = Just (show cond)
+                        }
+                    )
+        (Left e, _) -> Left e
+        (_, Left (TypeMismatchException context)) ->
+            Left $
+                TypeMismatchException
+                    ( context
+                        { callingFunctionName = Just "interpretAggregation"
+                        , errorColumnName = Just (show r)
                         }
                     )
         (_, Left e) -> Left e
@@ -886,10 +785,8 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggFold expr 
 instance (Num a, Columnable a) => Num (Expr a) where
     (+) :: Expr a -> Expr a -> Expr a
     (+) (Lit x) (Lit y) = Lit (x + y)
-    (+) (Lit x) expr = UnaryOp ("add " <> (T.pack . show) (Lit x)) (+ x) expr
-    (+) expr (Lit x) = UnaryOp ("add " <> (T.pack . show) (Lit x)) (+ x) expr
     (+) e1 e2
-        | e1 == e2 = UnaryOp ("mult " <> (T.pack . show) (Lit @a 2)) (* 2) e1
+        | e1 == e2 = BinaryOp "mult" (*) e1 (Lit 2)
         | otherwise = BinaryOp "add" (+) e1 e2
 
     (-) :: Expr a -> Expr a -> Expr a
@@ -902,8 +799,6 @@ instance (Num a, Columnable a) => Num (Expr a) where
     (*) (Lit 1) e = e
     (*) e (Lit 1) = e
     (*) (Lit x) (Lit y) = Lit (x * y)
-    (*) (Lit x) expr = UnaryOp ("mult " <> (T.pack . show) (Lit x)) (* x) expr
-    (*) expr (Lit x) = UnaryOp ("mult " <> (T.pack . show) (Lit x)) (* x) expr
     (*) e1 e2
         | e1 == e2 = UnaryOp "pow 2" (^ 2) e1
         | otherwise = BinaryOp "mult" (*) e1 e2
@@ -913,18 +808,11 @@ instance (Num a, Columnable a) => Num (Expr a) where
 
     negate :: Expr a -> Expr a
     negate (Lit n) = Lit (negate n)
-    negate expr = case expr of
-        (UnaryOp "negate" negate e) -> case testEquality (typeOf e) (typeOf expr) of
-            Nothing -> expr -- This case is impossible.
-            Just Refl -> e
-        _ -> UnaryOp "negate" negate expr
+    negate expr = UnaryOp "negate" negate expr
 
     abs :: (Num a) => Expr a -> Expr a
-    abs expr = case expr of
-        (UnaryOp "abs" abs e) -> case testEquality (typeOf e) (typeOf expr) of
-            Nothing -> expr -- This case is impossible.
-            Just Refl -> e
-        _ -> UnaryOp "abs" abs expr
+    abs (Lit n) = Lit (abs n)
+    abs expr = UnaryOp "abs" abs expr
 
     signum :: (Num a) => Expr a -> Expr a
     signum (Lit n) = Lit (signum n)
@@ -944,7 +832,8 @@ instance (Fractional a, Columnable a) => Fractional (Expr a) where
     fromRational = Lit . fromRational
 
     (/) :: (Fractional a, Columnable a) => Expr a -> Expr a -> Expr a
-    (/) = BinaryOp "divide" (/)
+    (/) (Lit l1) (Lit l2) = Lit (l1 / l2)
+    (/) e1 e2 = BinaryOp "divide" (/) e1 e2
 
 divide :: (Fractional a, Columnable a) => Expr a -> Expr a -> Expr a
 divide = (/)
@@ -1161,3 +1050,139 @@ handleInterpretException _ e = e
 
 numRows :: DataFrame -> Int
 numRows df = fst (dataframeDimensions df)
+
+mkUnaggregatedColumnBoxed ::
+    forall a.
+    (Columnable a) =>
+    V.Vector a -> VU.Vector Int -> VU.Vector Int -> V.Vector (V.Vector a)
+mkUnaggregatedColumnBoxed col os indices =
+    let
+        sorted = V.unsafeBackpermute col (V.convert indices)
+        n i = os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i)
+        start i = os `VG.unsafeIndex` i
+     in
+        V.generate
+            (VU.length os - 1)
+            ( \i ->
+                V.unsafeSlice (start i) (n i) sorted
+            )
+
+mkUnaggregatedColumnUnboxed ::
+    forall a.
+    (Columnable a, VU.Unbox a) =>
+    VU.Vector a -> VU.Vector Int -> VU.Vector Int -> V.Vector (VU.Vector a)
+mkUnaggregatedColumnUnboxed col os indices =
+    let
+        sorted = VU.unsafeBackpermute col indices
+        n i = os `VU.unsafeIndex` (i + 1) - (os `VU.unsafeIndex` i)
+        start i = os `VG.unsafeIndex` i
+     in
+        V.generate
+            (VU.length os - 1)
+            ( \i ->
+                VU.unsafeSlice (start i) (n i) sorted
+            )
+
+mkAggregatedColumnUnboxed ::
+    forall a b.
+    (Columnable a, VU.Unbox a, Columnable b, VU.Unbox b) =>
+    VU.Vector a ->
+    VU.Vector Int ->
+    VU.Vector Int ->
+    (VU.Vector a -> b) ->
+    VU.Vector b
+mkAggregatedColumnUnboxed col os indices f =
+    let
+        sorted = VU.unsafeBackpermute col indices
+        n i = os `VU.unsafeIndex` (i + 1) - (os `VU.unsafeIndex` i)
+        start i = os `VG.unsafeIndex` i
+     in
+        VU.generate
+            (VU.length os - 1)
+            ( \i ->
+                f (VU.unsafeSlice (start i) (n i) sorted)
+            )
+
+mkReducedColumnUnboxed ::
+    forall a.
+    (VU.Unbox a) =>
+    VU.Vector a ->
+    VU.Vector Int ->
+    VU.Vector Int ->
+    (a -> a -> a) ->
+    VU.Vector a
+mkReducedColumnUnboxed col os indices f = runST $ do
+    let len = VU.length os - 1
+    mvec <- VUM.unsafeNew len
+
+    let loopOut i
+            | i == len = return ()
+            | otherwise = do
+                let start = os `VU.unsafeIndex` i
+                let end = os `VU.unsafeIndex` (i + 1)
+                let initVal = col `VU.unsafeIndex` (indices `VU.unsafeIndex` start)
+
+                let loopIn !acc idx
+                        | idx == end = acc
+                        | otherwise =
+                            let val = col `VU.unsafeIndex` (indices `VU.unsafeIndex` idx)
+                             in loopIn (f acc val) (idx + 1)
+                let !finalVal = loopIn initVal (start + 1)
+                VUM.unsafeWrite mvec i finalVal
+                loopOut (i + 1)
+
+    loopOut 0
+    VU.unsafeFreeze mvec
+{-# INLINE mkReducedColumnUnboxed #-}
+
+mkReducedColumnBoxed ::
+    V.Vector a ->
+    VU.Vector Int ->
+    VU.Vector Int ->
+    (a -> a -> a) ->
+    V.Vector a
+mkReducedColumnBoxed col os indices f = runST $ do
+    let len = VU.length os - 1
+    mvec <- VM.unsafeNew len
+
+    let loopOut i
+            | i == len = return ()
+            | otherwise = do
+                let start = os `VU.unsafeIndex` i
+                let end = os `VU.unsafeIndex` (i + 1)
+                let initVal = col `V.unsafeIndex` (indices `VU.unsafeIndex` start)
+
+                let loopIn !acc idx
+                        | idx == end = acc
+                        | otherwise =
+                            let val = col `V.unsafeIndex` (indices `VU.unsafeIndex` idx)
+                             in loopIn (f acc val) (idx + 1)
+                let !finalVal = loopIn initVal (start + 1)
+                VM.unsafeWrite mvec i finalVal
+                loopOut (i + 1)
+
+    loopOut 0
+    V.unsafeFreeze mvec
+{-# INLINE mkReducedColumnBoxed #-}
+
+nestedTypeException ::
+    forall a b. (Typeable a, Typeable b) => String -> DataFrameException
+nestedTypeException expression = case typeRep @a of
+    App t1 t2 ->
+        TypeMismatchException
+            ( MkTypeErrorContext
+                { userType = Left (show (typeRep @b)) :: Either String (TypeRep ())
+                , expectedType = Left (show (typeRep @a)) :: Either String (TypeRep ())
+                , callingFunctionName = Just "interpretAggregation"
+                , errorColumnName = Just expression
+                }
+            )
+    t ->
+        TypeMismatchException
+            ( MkTypeErrorContext
+                { userType = Right (typeRep @(VU.Vector b))
+                , expectedType = Right (typeRep @b)
+                , callingFunctionName = Just "interpretAggregation"
+                , errorColumnName = Just expression
+                }
+            )
