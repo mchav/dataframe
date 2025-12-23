@@ -26,6 +26,7 @@ import DataFrame.Errors
 import DataFrame.Internal.Column (
     Column (..),
     Columnable,
+    TypedColumn (..),
     columnLength,
     columnTypeString,
     expandColumn,
@@ -35,12 +36,13 @@ import DataFrame.Internal.Column (
     toFloatVector,
     toIntVector,
     toUnboxedVector,
+    toVector,
  )
 import DataFrame.Internal.DataFrame (
     DataFrame (..),
+    columnIndices,
     empty,
     getColumn,
-    unsafeGetColumn,
  )
 import DataFrame.Internal.Expression
 import DataFrame.Internal.Parsing (isNullish)
@@ -676,83 +678,74 @@ fromRows names rows =
 @
 -}
 valueCounts :: forall a. (Columnable a) => Expr a -> DataFrame -> [(a, Int)]
-valueCounts (Col columnName) df = case getColumn columnName df of
-    Nothing ->
-        throw $
-            ColumnNotFoundException columnName "valueCounts" (M.keys $ columnIndices df)
-    Just (BoxedColumn (column' :: V.Vector c)) ->
+valueCounts expr df = case columnAsVector expr df of
+    Left e -> throw e
+    Right column' ->
         let
             column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
          in
-            case (typeRep @a) `testEquality` (typeRep @c) of
-                Nothing ->
-                    throw $
-                        TypeMismatchException
-                            ( MkTypeErrorContext
-                                { userType = Right $ typeRep @a
-                                , expectedType = Right $ typeRep @c
-                                , errorColumnName = Just (T.unpack columnName)
-                                , callingFunctionName = Just "valueCounts"
-                                }
-                            )
-                Just Refl -> M.toAscList column
-    Just (OptionalColumn (column' :: V.Vector c)) ->
+            M.toAscList column
+
+{- | O (k * n) Shows the proportions of each value in a given column.
+
+==== __Example__
+@
+>>> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
+
+>>> D.valueCounts @Int "0" df
+
+[(1,0.1),(2,0.1),(3,0.1),(4,0.1),(5,0.1),(6,0.1),(7,0.1),(8,0.1),(9,0.1),(10,0.1)]
+
+@
+-}
+valueProportions ::
+    forall a. (Columnable a) => Expr a -> DataFrame -> [(a, Double)]
+valueProportions expr df = case columnAsVector expr df of
+    Left e -> throw e
+    Right column' ->
         let
-            column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
+            counts =
+                M.toAscList
+                    (V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column')
+            total = fromIntegral (sum (map snd counts))
          in
-            case (typeRep @a) `testEquality` (typeRep @c) of
-                Nothing ->
-                    throw $
-                        TypeMismatchException
-                            ( MkTypeErrorContext
-                                { userType = Right $ typeRep @a
-                                , expectedType = Right $ typeRep @c
-                                , errorColumnName = Just (T.unpack columnName)
-                                , callingFunctionName = Just "valueCounts"
-                                }
-                            )
-                Just Refl -> M.toAscList column
-    Just (UnboxedColumn (column' :: VU.Vector c)) ->
-        let
-            column =
-                V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty (V.convert column')
-         in
-            case (typeRep @a) `testEquality` (typeRep @c) of
-                Nothing ->
-                    throw $
-                        TypeMismatchException
-                            ( MkTypeErrorContext
-                                { userType = Right $ typeRep @a
-                                , expectedType = Right $ typeRep @c
-                                , errorColumnName = Just (T.unpack columnName)
-                                , callingFunctionName = Just "valueCounts"
-                                }
-                            )
-                Just Refl -> M.toAscList column
-valueCounts _ _ = error "Cannot call value counts on non-column reference"
+            map (fmap ((/ total) . fromIntegral)) counts
 
 {- | A left fold for dataframes that takes the dataframe as the last object.
 This makes it easier to chain operations.
 
 ==== __Example__
 @
->>> D.fold (const id) [1..5] df
+>>> df = D.fromNamedColumns [("x", D.fromList [1..100]), ("y", D.fromList [11..110])]
+>>> D.fold D.dropLast [1..5] df
 
-----------
-  0  |  1
------|----
- Int | Int
------|----
- 1   | 11
- 2   | 12
- 3   | 13
- 4   | 14
- 5   | 15
- 6   | 16
- 7   | 17
- 8   | 18
- 9   | 19
- 10  | 20
+---------
+ x  |  y
+----|----
+Int | Int
+----|----
+1   | 11
+2   | 12
+3   | 13
+4   | 14
+5   | 15
+6   | 16
+7   | 17
+8   | 18
+9   | 19
+10  | 20
+11  | 21
+12  | 22
+13  | 23
+14  | 24
+15  | 25
+16  | 26
+17  | 27
+18  | 28
+19  | 29
+20  | 30
+
+Showing 20 rows out of 85
 
 @
 -}
@@ -845,28 +838,22 @@ You must specify the type via type applications.
 
 ==== __Examples__
 
->>> columnAsVector @Int "age" df
-[25, 30, 35, ...]
+>>> columnAsVector (F.col @Int "age") df
+Right [25, 30, 35, ...]
 
->>> columnAsVector @Text "name" df
-["Alice", "Bob", "Charlie", ...]
-
-==== __Throws__
-
-* 'error' - if the column type doesn't match the requested type
+>>> columnAsVector (F.col @Text "name") df
+Right ["Alice", "Bob", "Charlie", ...]
 -}
-columnAsVector :: forall a. (Columnable a) => Expr a -> DataFrame -> V.Vector a
-columnAsVector (Col name) df = case unsafeGetColumn name df of
-    (BoxedColumn (col :: V.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
-        Nothing -> error "Type error"
-        Just Refl -> col
-    (OptionalColumn (col :: V.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
-        Nothing -> error "Type error"
-        Just Refl -> col
-    (UnboxedColumn (col :: VU.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
-        Nothing -> error "Type error"
-        Just Refl -> VG.convert col
-columnAsVector _ _ = error "UNIMPLEMENTED"
+columnAsVector ::
+    forall a.
+    (Columnable a) => Expr a -> DataFrame -> Either DataFrameException (V.Vector a)
+columnAsVector (Col name) df = case getColumn name df of
+    Just col -> toVector col
+    Nothing ->
+        Left $ ColumnNotFoundException name "columnAsVector" (M.keys $ columnIndices df)
+columnAsVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toVector col
 
 {- | Retrieves a column as an unboxed vector of 'Int' values.
 
@@ -875,8 +862,14 @@ This may occur if the column contains non-numeric data or values outside the 'In
 -}
 columnAsIntVector ::
     Expr Int -> DataFrame -> Either DataFrameException (VU.Vector Int)
-columnAsIntVector (Col name) df = toIntVector (unsafeGetColumn name df)
-columnAsIntVector _ _ = error "UNIMPLEMENTED"
+columnAsIntVector (Col name) df = case getColumn name df of
+    Just col -> toIntVector col
+    Nothing ->
+        Left $
+            ColumnNotFoundException name "columnAsIntVector" (M.keys $ columnIndices df)
+columnAsIntVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toIntVector col
 
 {- | Retrieves a column as an unboxed vector of 'Double' values.
 
@@ -885,8 +878,14 @@ This may occur if the column contains non-numeric data.
 -}
 columnAsDoubleVector ::
     Expr Double -> DataFrame -> Either DataFrameException (VU.Vector Double)
-columnAsDoubleVector (Col name) df = toDoubleVector (unsafeGetColumn name df)
-columnAsDoubleVector _ _ = error "UNIMPLEMENTED"
+columnAsDoubleVector (Col name) df = case getColumn name df of
+    Just col -> toDoubleVector col
+    Nothing ->
+        Left $
+            ColumnNotFoundException name "columnAsDoubleVector" (M.keys $ columnIndices df)
+columnAsDoubleVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toDoubleVector col
 
 {- | Retrieves a column as an unboxed vector of 'Float' values.
 
@@ -895,15 +894,27 @@ This may occur if the column contains non-numeric data.
 -}
 columnAsFloatVector ::
     Expr Float -> DataFrame -> Either DataFrameException (VU.Vector Float)
-columnAsFloatVector (Col name) df = toFloatVector (unsafeGetColumn name df)
-columnAsFloatVector _ _ = error "UNIMPLEMENTED"
+columnAsFloatVector (Col name) df = case getColumn name df of
+    Just col -> toFloatVector col
+    Nothing ->
+        Left $
+            ColumnNotFoundException name "columnAsFloatVector" (M.keys $ columnIndices df)
+columnAsFloatVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toFloatVector col
 
 columnAsUnboxedVector ::
     forall a.
     (Columnable a, VU.Unbox a) =>
     Expr a -> DataFrame -> Either DataFrameException (VU.Vector a)
-columnAsUnboxedVector (Col name) df = toUnboxedVector @a (unsafeGetColumn name df)
-columnAsUnboxedVector _ _ = error "UNIMPLEMENTED"
+columnAsUnboxedVector (Col name) df = case getColumn name df of
+    Just col -> toUnboxedVector col
+    Nothing ->
+        Left $
+            ColumnNotFoundException name "columnAsFloatVector" (M.keys $ columnIndices df)
+columnAsUnboxedVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toUnboxedVector col
 
 {- | Get a specific column as a list.
 
@@ -922,5 +933,4 @@ You must specify the type via type applications.
 * 'error' - if the column type doesn't match the requested type
 -}
 columnAsList :: forall a. (Columnable a) => Expr a -> DataFrame -> [a]
-columnAsList expr@(Col name) df = V.toList (columnAsVector expr df)
-columnAsList _ _ = error "UNIMPLEMENTED"
+columnAsList expr df = either throw V.toList (columnAsVector expr df)

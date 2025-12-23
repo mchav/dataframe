@@ -803,7 +803,7 @@ freezeColumn' nulls (MBoxedColumn col)
             . VB.imap
                 ( \i v ->
                     if i `elem` map fst nulls
-                        then Left (fromMaybe (error "") (lookup i nulls))
+                        then Left (fromMaybe (error "UNEXPECTED ERROR DURING FREEZE") (lookup i nulls))
                         else Right v
                 )
             <$> VB.unsafeFreeze col
@@ -824,7 +824,7 @@ freezeColumn' nulls (MUnboxedColumn col)
                         (VU.length c)
                         ( \i ->
                             if i `elem` map fst nulls
-                                then Left (fromMaybe (error "") (lookup i nulls))
+                                then Left (fromMaybe (error "UNEXPECTED ERROR DURING FREEZE") (lookup i nulls))
                                 else Right (c VU.! i)
                         )
 {-# INLINE freezeColumn' #-}

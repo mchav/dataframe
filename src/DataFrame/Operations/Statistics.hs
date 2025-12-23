@@ -98,7 +98,9 @@ mean expr df = case interpret df expr of
 
 meanMaybe ::
     forall a. (Columnable a, Real a) => Expr (Maybe a) -> DataFrame -> Double
-meanMaybe (Col name) df = (mean' . optionalToDoubleVector) (columnAsVector (Col @(Maybe a) name) df)
+meanMaybe (Col name) df =
+    (mean' . optionalToDoubleVector)
+        (either throw id (columnAsVector (Col @(Maybe a) name) df))
 meanMaybe expr df = case interpret @(Maybe a) df expr of
     Left e -> throw e
     Right (TColumn col) -> case toVector @(Maybe a) col of
