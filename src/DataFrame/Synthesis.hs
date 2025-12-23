@@ -16,7 +16,6 @@ import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (
     DataFrame (..),
-    columnAsDoubleVector,
  )
 import DataFrame.Internal.Expression (
     Expr (..),
@@ -24,6 +23,7 @@ import DataFrame.Internal.Expression (
     interpret,
  )
 import DataFrame.Internal.Statistics
+import DataFrame.Operations.Core (columnAsDoubleVector)
 import qualified DataFrame.Operations.Statistics as Stats
 import DataFrame.Operations.Subset (exclude)
 
@@ -265,7 +265,8 @@ fitClassifier target d b df =
 percentiles :: DataFrame -> [Expr Double]
 percentiles df =
     let
-        doubleColumns = map (either throw id . (`columnAsDoubleVector` df)) (D.columnNames df)
+        doubleColumns =
+            map (either throw id . ((`columnAsDoubleVector` df) . Col)) (D.columnNames df)
      in
         concatMap
             (\c -> map (Lit . roundTo2SigDigits . (`percentile'` c)) [1, 25, 75, 99])
