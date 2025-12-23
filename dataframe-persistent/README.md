@@ -96,7 +96,7 @@ main = runSqlite "example.db" $ do
     -- Process with DataFrame operations
     -- Expressions are automaticaly generated.
     let youngUsers = DF.filterWhere (test_user_age .< 30) allUsersDF
-        ages = V.toList $ DF.columnAsVector test_user_age youngUsers
+        ages = DF.columnAsList test_user_age youngUsers
     liftIO $ putStrLn $ "Young user ages: " ++ show ages
     
     -- Custom configuration
@@ -145,9 +145,9 @@ let user = TestUser "Alice" 25 True
 
 ```haskell
 -- Extract specific column data
-let names = V.toList $ DF.columnAsVector test_user_name df
-    ages = V.toList $ DF.columnAsVector test_user_age df
-    activeFlags = V.toList $ DF.columnAsVector test_user_active df
+let names = DF.columnAsList test_user_name df
+    ages = DF.columnAsList test_user_age df
+    activeFlags = DF.columnAsList test_user_active df
 ```
 
 ## Examples

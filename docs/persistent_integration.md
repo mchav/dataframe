@@ -117,7 +117,7 @@ analyzeUsers = runSqlite "test.db" $ do
                 df
         
         -- Get column values
-        let ages = V.toList $ DF.columnAsVector @Int "age" sorted
+        let ages = DF.columnAsList (F.col @Int "age") sorted
         print ages  -- [25, 28, 30, 35]
 ```
 

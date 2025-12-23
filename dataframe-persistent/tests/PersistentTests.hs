@@ -109,7 +109,7 @@ testFromPersistent = TestCase $ withTestDb $ do
         assertBool "Has active column" ("active" `elem` cols)
 
         -- Check data values
-        let names = V.toList (DF.columnAsVector test_user_name df)
+        let names = DF.columnAsList test_user_name df
 
         assertEqual "Names match" ["Alice", "Bob", "Charlie", "Diana"] names
 
@@ -125,7 +125,7 @@ testChinookFromPersistent = TestCase $ do
             print cols
             assertBool "Has id column" ("id" `elem` cols)
             assertBool "Has name column" ("name" `elem` cols)
-            let names = V.toList (DF.columnAsVector artist_name (DF.take 5 df))
+            let names = DF.columnAsList artist_name (DF.take 5 df)
 
             assertEqual
                 "Names match"
@@ -144,7 +144,7 @@ testFromPersistentWithFilters = TestCase $ withTestDb $ do
         assertEqual "Active users count" 3 (nRows df)
 
         -- Check all loaded users are active
-        let activeFlags = V.toList $ DF.columnAsVector test_user_active df
+        let activeFlags = DF.columnAsList test_user_active df
         assertBool "All active" (and activeFlags)
 
 -- Test custom configuration
@@ -197,7 +197,7 @@ testDataFrameOperations = TestCase $ withTestDb $ do
 
         -- Sort operation
         let sorted = DF.sortBy [DF.Asc "age"] df
-        let ages = V.toList $ DF.columnAsVector test_user_age sorted
+        let ages = DF.columnAsList test_user_age sorted
         assertEqual "Ages sorted" [25, 28, 30, 35] ages
 
         -- Derive column
