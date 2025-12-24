@@ -592,7 +592,6 @@ The `lift` family of functions is central to our expression system:
 
 - `lift`: Apply a unary function to one column
 - `lift2`: Apply a binary function to two columns  
-- `lift3`, `lift4`, etc.: Apply functions with more arguments
 
 Example:
 
