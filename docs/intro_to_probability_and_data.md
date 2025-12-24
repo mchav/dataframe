@@ -7,7 +7,7 @@ Complete all **Exercises**, and submit answers to **Questions** on the Coursera
 platform.
 </div>
 
-After opening the Haskell interpreter you should see `ghci>` on your terminal. It will appear in
+After opening the Haskell interpreter you should see `dataframe>` on your terminal. It will appear in
 all subsequent expressions to indicate we are in the interpreter. This is not meant to be typed in manually.
 
 You can also compare the to the [R version of this assignment](https://rstudio-pubs-static.s3.amazonaws.com/344813_acea062c212a430ab9cf6b83cf26b170.html). 
@@ -19,7 +19,7 @@ To get you started, run the following command to load the data. We will store
 Arbuthnot's data in a kind of spreadsheet or table called a *data frame*.
 
 ```haskell
-ghci> :script dataframe.ghci
+dataframe> :script dataframe.ghci
 ========================================
               📦Dataframe
 ========================================
@@ -32,7 +32,7 @@ ghci> :script dataframe.ghci
         ● E.g. F.sum (F.col @Int "value")
 
 ✅ Ready.
-ghci> df <- D.readCsv "./data/arbuthnot.csv"
+dataframe> df <- D.readCsv "./data/arbuthnot.csv"
 ```
 
 The Arbuthnot data set refers to Dr. John Arbuthnot, an 18<sup>th</sup> century 
@@ -42,13 +42,13 @@ London for every year from 1629 to 1710. We can take a look at the data by
 typing its name into the console.
 
 ```haskell
-ghci>  df
+dataframe>  df
 ```
 
 You can see the dimensions of this data frame by typing:
 
 ```haskell
-ghci> D.dimensions arbuthnot
+dataframe> D.dimensions arbuthnot
 
 ```
 
@@ -56,7 +56,7 @@ This command should output `(82, 3)`, indicating that there are 82 rows and 3
 columns. You can see the names of these columns (or variables) by typing:
 
 ```haskell
-ghci> D.columnNames df
+dataframe> D.columnNames df
 ```
 
 You should see that the data frame contains the columns `year`,  `boys`, and 
@@ -74,7 +74,7 @@ You should see that the data frame contains the columns `year`,  `boys`, and
 We can get a quick run-down of the data's numeric variables by using `D.summarize`.
 
 ```haskell
-ghci> D.summarize df
+dataframe> D.summarize df
 ----------------------------------------
  Statistic |  year   |  boys   |  girls
 -----------|---------|---------|--------
@@ -102,7 +102,7 @@ Let's start to examine the data a little more closely. We can access the data in
 a single column of a data frame separately using a command like
 
 ```haskell
-ghci> D.select ["boys"] df
+dataframe> D.select ["boys"] df
 ```
 
 This command will only show the number of boys baptized each year. The `select` function
@@ -121,7 +121,7 @@ We can create a simple plot
 of the number of girls baptized per year with the command
 
 ```haskell
-ghci> D.plotScatter "year" "girls" df
+dataframe> D.plotScatter "year" "girls" df
 8031.9│
       │                                                ⠁⠄ ⡐⠂⠈ ⠢
       │                                        ⡀  ⠠⠂⠌ ⢀ ⠈    ⠂ ⠂⡀
@@ -151,7 +151,7 @@ ghci> D.plotScatter "year" "girls" df
 Or if you prefer to see it in an interactive browser chart:
 
 ```haskell
-ghci> P.plotScatter "year" "girls" df >>= P.showInDefaultBrowser
+dataframe> P.plotScatter "year" "girls" df >>= P.showInDefaultBrowser
 Saving plot to: ~/plot-chart_ACzzzidiLidnydNLE32ZmgMH114vwdH87VQwxANWcezbIZ.html
 ```
 
@@ -171,7 +171,7 @@ could use the fact that Haskell is really just a big calculator. We can type in
 mathematical expressions like
 
 ```haskell
-ghci> 5218 + 4683
+dataframe> 5218 + 4683
 ```
 
 to see the total number of baptisms in 1629. We could repeat this once for each 
@@ -179,9 +179,9 @@ year, but there is a faster way. If we add the vector for baptisms for boys to
 that of girls, Haskell will compute all sums simultaneously.
 
 ```haskell
-ghci> bs = D.columnAsList @Int "boys" df
-ghci> gs = D.columnAsList @Int "girls" df
-ghci> zipWith (+) bs gs
+dataframe> bs = D.columnAsList @Int "boys" df
+dataframe> gs = D.columnAsList @Int "girls" df
+dataframe> zipWith (+) bs gs
 ```
 
 What you will see are 82 numbers each one representing the sum we are after. Take a
@@ -193,8 +193,8 @@ We'll be using this new vector to generate some plots, so we'll want to save it
 as a permanent column in our data frame.
 
 ```haskell
-ghci> withTotal = df |> D.derive "total" (F.col @Int "boys" + F.col @Int "girls")
-ghci> D.take 10 withTotal
+dataframe> withTotal = df |> D.derive "total" (F.col @Int "boys" + F.col @Int "girls")
+dataframe> D.take 10 withTotal
 ```
 
 
@@ -217,7 +217,7 @@ total.
 The `F.col @Int "boys" + F.col @Int "girls"` part is how we right expressions for our dataframe. Read left to right, this expression says take the `Int` called boys and add it to the `Int` column called girls. This saves us the work of having to work with vectors directly. But having to remember the name and type of each column is tedious and error prone. We can ask Haskell to expose correct references to these columns by using `:exposeColumns`.
 
 ```haskell
-ghci> :exposeColumns df
+dataframe> :exposeColumns df
 "year :: Expr Int"
 "boys :: Expr Int"
 "girls :: Expr Int"
@@ -226,7 +226,7 @@ ghci> :exposeColumns df
 We have created as many expressions for us as there are columns in the dataset. Now we can rewrite out `withTotal` data frame.
 
 ```haskell
-ghci> withTotal = D.derive "total" (boys + girls) df
+dataframe> withTotal = D.derive "total" (boys + girls) df
 ```
 
 </div>
@@ -234,7 +234,7 @@ ghci> withTotal = D.derive "total" (boys + girls) df
 We can make a plot of the total number of baptisms per year with the following command.
 
 ```haskell
-ghci> D.plotScatter "year" "total" withTotal
+dataframe> D.plotScatter "year" "total" withTotal
 ```
 
 We can use expressions to compute the proportion of boys each year. To do this we have to learn about three functions:
@@ -245,7 +245,7 @@ We can use expressions to compute the proportion of boys each year. To do this w
 Trying to divide `boys` and `total` will result in the following type error:
 
 ```haskell
-ghci> withTotal |> D.derive "percentage_boys" (boys / total) |> D.take 10
+dataframe> withTotal |> D.derive "percentage_boys" (boys / total) |> D.take 10
 <interactive>:45:47: error: [GHC-39999]
     • No instance for ‘Fractional Int’ arising from a use of ‘/’
     • In the second argument of ‘derive’, namely ‘(boys / total)’
@@ -260,7 +260,7 @@ This means that the function (/) doesn't work on integers. So we'll need to do s
 Trying to use it on our column references will fail:
 
 ```haskell
-ghci> withTotal |> D.derive "percentage_boys" ((fromIntegral boys) / (fromIntegral total)) |> D.take 10
+dataframe> withTotal |> D.derive "percentage_boys" ((fromIntegral boys) / (fromIntegral total)) |> D.take 10
 <interactive>:46:43: error: [GHC-39999]
     • No instance for ‘Integral (Expr Int)’
         arising from a use of ‘fromIntegral’
@@ -275,7 +275,7 @@ ghci> withTotal |> D.derive "percentage_boys" ((fromIntegral boys) / (fromIntegr
 The compiler tells us that `boys` isn't an `Int`- it's an `Expr Int`. It's an integer hidden inside an expression. We have to take the integer out of this expression, convert it, then re-wrap it in the expression again so we can continue to do other things to the expression. The `lift` function does just that. It says, take a function and make it reach into the `Expr` container to change the object inside.
 
 ```haskell
-ghci> withTotal |> D.derive "percentage_boys" (F.lift fromIntegral boys / (F.lift fromIntegral total)) |> D.take 10
+dataframe> withTotal |> D.derive "percentage_boys" (F.lift fromIntegral boys / (F.lift fromIntegral total)) |> D.take 10
 -------------------------------------------------
  year | boys | girls | total |  percentage_boys
 ------|------|-------|-------|-------------------
@@ -307,7 +307,7 @@ division, you can ask R to make comparisons like greater than, `.>`, less than,
 year with the expression
 
 ```haskell
-ghci> withTotal |> D.derive "more_boys" (boys .> girls)
+dataframe> withTotal |> D.derive "more_boys" (boys .> girls)
 ----------------------------------------
  year | boys | girls | total | more_boys
 ------|------|-------|-------|----------
@@ -343,7 +343,7 @@ but for present day birth records in the United States. Load up the
 present day data with the following command.
 
 ```haskell
-ghci> :script dataframe.ghci
+dataframe> :script dataframe.ghci
 ========================================
               📦Dataframe
 ========================================
@@ -356,7 +356,7 @@ ghci> :script dataframe.ghci
         ● E.g. F.sum (F.col @Int "value")
 
 ✅ Ready.
-ghci> df <- D.readCsv "./data/present.csv"
+dataframe> df <- D.readCsv "./data/present.csv"
 ```
 
 4. How many variables are included in this data set?

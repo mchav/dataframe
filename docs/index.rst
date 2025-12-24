@@ -1,9 +1,9 @@
 dataframe
 =========
 
-A fast, safe, and intuitive DataFrame library for Haskell.
+A practical DataFrame library for Haskell, focused on type-safe data wrangling and analysis.
 
-**dataframe** brings the power of type-safe, functional data manipulation to your analytics workflow. Built on Haskell's strong type system, it catches errors at compile time while delivering the performance and expressiveness you need for real-world data analysis.
+**dataframe** lets you load tabular data and transform it with a functional, composable API. It leans on Haskell’s type system to help you catch common mistakes early (like mixing types or referencing missing columns), while still aiming to stay pleasant to use for everyday analysis.
 
 *******************************
 Why use this DataFrame library?
@@ -13,11 +13,10 @@ Why use this DataFrame library?
 
 * **Catch bugs before runtime**: Statically typed expressions makes code easier to reason about and catches many bugs at compile time—before your code ever runs.
 * **Expressive and composable**: Encourages concise, declarative, and composable data pipelines that read like the logic you're thinking.
-* **Performance without compromise**: Delivers high performance thanks to Haskell's optimizing compiler and efficient memory model.
 
 **Designed for Productivity**
 
-* **Interactive-first design**: Expressive syntax, helpful error messages, and sensible defaults make exploration a joy.
+* **Interactive-first design**: Expressive syntax, helpful error messages, and sensible defaults make safe exploration a joy.
 * **Works everywhere**: Works seamlessly in both command-line and notebook environments—great for exploration and scripting alike.
 * **Familiar operations**: If you've used pandas, dplyr, or polars, you'll feel right at home.
 

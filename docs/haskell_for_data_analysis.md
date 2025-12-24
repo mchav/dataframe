@@ -51,8 +51,8 @@ We will show how to do both in dataframes.
 I live in Seattle where the weather is a legitimate, non-small-talk topic of conversation for most of the year. At any given point in time I care about what the weather is and what it will be. I'd like to do some simple computation on a week's worth of high and low temperatures. A week of data is small enough that I can enter it myself so I'll do just that.
 
 ```haskell
-ghci> let df = D.fromNamedColumns [("Day", D.fromList ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]), ("High Temperature (Celcius)", D.fromList [24, 20, 22, 23, 25, 26, 26]), ("Low Temperature (Celcius)", D.fromList [14, 13, 13, 13, 14, 15, 15])]
-ghci> df
+dataframe> let df = D.fromNamedColumns [("Day", D.fromList ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]), ("High Temperature (Celcius)", D.fromList [24, 20, 22, 23, 25, 26, 26]), ("Low Temperature (Celcius)", D.fromList [14, 13, 13, 13, 14, 15, 15])]
+dataframe> df
 -------------------------------------------------------------------
     Day    | High Temperature (Celcius) | Low Temperature (Celcius)
 -----------|----------------------------|--------------------------
@@ -70,8 +70,8 @@ ghci> df
 We use the function `fromNamedColumns` to create a dataframe from manually entered data. The format of the function is `fromNamedColumns [(<name>, <column>), (<name>, <column>),...]`. It has an equivalent for data without column names called `fromUnnamedColumns`.
 
 ```haskell
-ghci> let df = D.fromUnnamedColumns [D.fromList ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], D.fromList [24, 20, 22, 23, 25, 26, 26], D.fromList [14, 13, 13, 13, 14, 15, 15]]
-ghci> df
+dataframe> let df = D.fromUnnamedColumns [D.fromList ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], D.fromList [24, 20, 22, 23, 25, 26, 26], D.fromList [14, 13, 13, 13, 14, 15, 15]]
+dataframe> df
 ------------------------------
      0     |    1    |    2   
 -----------|---------|--------
@@ -93,8 +93,8 @@ This function automatically names columns with numbers 0 to n. This is generally
 Most times you encouter data it is in a file (or spread amongst many files). Naturally, a tool for analysing data must support fast and easy file processing. Comma-separated-value (CSV) files are easily the most popular format for tabular data. Reading them is as simple as calling the function `readCsv`.
 
 ```haskell
-ghci> df <- D.readCsv "./data/housing.csv" 
-ghci> D.take 10 df
+dataframe> df <- D.readCsv "./data/housing.csv" 
+dataframe> D.take 10 df
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------
  longitude | latitude | housing_median_age | total_rooms | total_bedrooms | population | households |   median_income    | median_house_value | ocean_proximity
 -----------|----------|--------------------|-------------|----------------|------------|------------|--------------------|--------------------|----------------
@@ -123,9 +123,9 @@ When calling a function you always need to know:
 In your ghci session, you can inspect all the above using the `:t` macro.
 
 ```haskell
-ghci> :t df
+dataframe> :t df
 df :: DataFrame
-ghci> :t D.take
+dataframe> :t D.take
 D.take :: Int -> DataFrame -> DataFrame
 ```
 
@@ -182,9 +182,9 @@ We've already covered `take` in passing. The function takes a given number of ro
 `describeColumns` tells you what type of data is in each column, the number of unique values, the number of null rows and the rows where we couldn't automatically figure out the type.
 
 ```haskell
-ghci> :t D.describeColumns
+dataframe> :t D.describeColumns
 D.describeColumns :: DataFrame -> DataFrame
-ghci> D.describeColumns df
+dataframe> D.describeColumns df
 -------------------------------------------------------------------------------------------------------------
     Column Name     | # Non-null Values | # Null Values | # Partially parsed | # Unique Values |     Type    
 --------------------|-------------------|---------------|--------------------|-----------------|-------------
@@ -205,9 +205,9 @@ ghci> D.describeColumns df
 The second function tells us more about the distribution of our data.
 
 ```haskell
-ghci> :t D.summarize
+dataframe> :t D.summarize
 D.summarize :: DataFrame -> DataFrame
-ghci> D.summarize df
+dataframe> D.summarize df
 -----------------------------------------------------------------------------------------------------------------------------------
  Statistic | longitude | latitude | housing_median_age | total_rooms | population | households | median_income | median_house_value
 -----------|-----------|----------|--------------------|-------------|------------|------------|---------------|-------------------
@@ -232,7 +232,7 @@ Type errors are probably the most common type of error you'll encounter when wor
 Since Haskell's vocabulary for understanding your code is types some errors that don't even seem like type errors are interpreted as such. For example, suppose we forget to put a comma in the `fromUnnamedColumns` example.
 
 ```haskell
-ghci> let df = D.fromUnnamedColumns [D.fromList ["Monday" "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], D.fromList [24, 20, 22, 23, 25, 26, 26], D.fromList [14, 13, 13, 13, 14, 15, 15]]
+dataframe> let df = D.fromUnnamedColumns [D.fromList ["Monday" "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], D.fromList [24, 20, 22, 23, 25, 26, 26], D.fromList [14, 13, 13, 13, 14, 15, 15]]
 
 <interactive>:13:44: error: [GHC-39999]
     • No instance for ‘Data.String.IsString (Text -> Text)’
@@ -253,7 +253,7 @@ Granted, the user experience could be improved. But the view of everything as a 
 Let's look at a more useful/general case: calling `take` with a string instead of a number.
 
 ```haskell
-ghci> D.take '5' df
+dataframe> D.take '5' df
 
 <interactive>:20:8: error: [GHC-83865]
     • Couldn't match expected type ‘Int’ with actual type ‘Char’
@@ -273,9 +273,9 @@ Data in the wild doesn't always come in a form that's easy to work with. A data 
 Data is oftentimes incomplete. Sometimes because of legitimate reasons, often times because of errors. Handling missing data is a foundational tasks in data analysis. In Haskell, potentially missing values are represented by a "wrapper" type called [`Maybe`](https://en.wikibooks.org/wiki/Haskell/Understanding_monads/Maybe).
 
 ```haskell
-ghci> import qualified DataFrame as D
-ghci> let df = D.fromUnnamedColumns [D.fromList [Just 1, Just 1, Nothing, Nothing], D.fromList [Just 6.5, Nothing, Nothing, Just 6.5], D.fromList [Just 3.0, Nothing, Nothing, Just 3.0]]
-ghci> df
+dataframe> import qualified DataFrame as D
+dataframe> let df = D.fromUnnamedColumns [D.fromList [Just 1, Just 1, Nothing, Nothing], D.fromList [Just 6.5, Nothing, Nothing, Just 6.5], D.fromList [Just 3.0, Nothing, Nothing, Just 3.0]]
+dataframe> df
 --------------------------------------------
        0       |      1       |      2      
 ---------------|--------------|-------------
@@ -291,7 +291,7 @@ ghci> df
 If we'd like to drop all rows with missing values we can use the `filterJust` function.
 
 ```haskell
-ghci> D.filterJust "0" df
+dataframe> D.filterJust "0" df
 --------------------------------------
     0    |      1       |      2      
 ---------|--------------|-------------
@@ -304,7 +304,7 @@ ghci> D.filterJust "0" df
 The function filters out the non-`Nothing` values and "unwrap" the `Maybe` type. To filter all `Nothing` values we use the `filterAllJust` function.
 
 ```haskell
-ghci> D.filterAllJust df
+dataframe> D.filterAllJust df
 --------------------------
     0    |   1    |   2   
 ---------|--------|-------
@@ -318,7 +318,7 @@ On the other hand we might want to inspect all rows that have missing data rathe
 To fill in the missing values we the impute function which replaces all instances of `Nothing` with a given value.
 
 ```haskell
-ghci> D.impute (F.col @(Maybe Integer) "0") 0 df
+dataframe> D.impute (F.col @(Maybe Integer) "0") 0 df
 --------------------------------------
     0    |      1       |      2      
 ---------|--------------|-------------
@@ -333,7 +333,7 @@ ghci> D.impute (F.col @(Maybe Integer) "0") 0 df
 There is no general way to replace ALL nothing values with a default since the default depends on the type. In fact, trying to apply the wrong type to a function throws an error:
 
 ```haskell
-ghci> D.impute (F.col @(Maybe Double) "0") 0 df
+dataframe> D.impute (F.col @(Maybe Double) "0") 0 df
 *** Exception: 
 
 [Error]: Type Mismatch
@@ -347,8 +347,8 @@ We'll explain what `F.col` means shortly. For now we just need to know that it's
 Data often times contains duplicates that we want to clean out. A fair number of times duplicate entries are caused by data entry or process mistakes. We can use the `distinct` function to remove duplicates.
 
 ```haskell
-ghci> df = D.fromNamedColumns [("k1", D.fromList ((take 6 (cycle ["one", "two"])) ++ ["two"])), ("k2", D.fromList [1, 1, 2, 3, 3, 4, 4])]
-ghci> df
+dataframe> df = D.fromNamedColumns [("k1", D.fromList ((take 6 (cycle ["one", "two"])) ++ ["two"])), ("k2", D.fromList [1, 1, 2, 3, 3, 4, 4])]
+dataframe> df
 ----------
  k1  | k2
 -----|----
@@ -362,7 +362,7 @@ one  | 3
 two  | 4
 two  | 4
 
-ghci> D.distinct df
+dataframe> D.distinct df
 ----------
  k1  | k2
 -----|----
@@ -380,13 +380,13 @@ two  | 3
 Most datasets aren't given to you in a usable state. You have to change the contents of the dataset in some way to suit your needs. Take this hypothetical data about various kinds of meat:
 
 ```haskell
-ghci> :{
+dataframe> :{
 ghci| foodOptions = ["bacon", "pulled pork", "bacon", "pastrami", "corned beef", "bacon", "pastrami", "honey ham", "nova lox"]
 ghci| measurements = [4, 3, 12, 6, 7.5, 8, 3, 5, 6]
 ghci| df = D.fromNamedColumns [ ("food", D.fromList foodOptions)
 ghci|                         , ("ounces", D.fromList measurements)]
 ghci| :}
-ghci> df
+dataframe> df
 --------------------
    food     | ounces
 ------------|-------
@@ -408,7 +408,7 @@ Suppose you wanted to add a column that showed the weight in kilograms. 1 ounce 
 Let's use that in our dataframe to capture this conversion.
 
 ```haskell
-ghci> D.derive "kilograms" (F.col @Double "ounces" * 0.03) df
+dataframe> D.derive "kilograms" (F.col @Double "ounces" * 0.03) df
 ------------------------------------------
    food     | ounces |      kilograms
 ------------|--------|--------------------
@@ -435,10 +435,10 @@ So in the previous example we said: take the column "ounces" and multiply it by 
 You can imagine that writing `F.col` for everything becomes tedious after some time so we provide a useful tool that generates the column references of a dataframe.
 
 ```haskell
-ghci> :exposeColumns df
+dataframe> :exposeColumns df
 "food :: Expr Text"
 "ounces :: Expr Double"
-ghci> D.derive "kilograms" (ounces * 0.03) df
+dataframe> D.derive "kilograms" (ounces * 0.03) df
 ------------------------------------------
    food     | ounces |      kilograms
 ------------|--------|--------------------
@@ -480,8 +480,8 @@ And in the final case we say "anything else is unknown". Here "anything else" is
 We can now lift our expression and then apply the function.
 
 ```haskell
-ghci> import Data.Text (Text)
-ghci> D.derive "animal" (F.lift meatToAnimal food) df
+dataframe> import Data.Text (Text)
+dataframe> D.derive "animal" (F.lift meatToAnimal food) df
 -----------------------------
    food     | ounces | animal
 ------------|--------|-------
@@ -505,8 +505,8 @@ Why didn't we lift multiplication before? `dataframe` already defines what multi
 There's actually an easier way to do this using a function called `recode` inspired by R's dplyr.
 
 ```haskell
-ghci> mapping = [("bacon", "pig"), ("pulled pork", "pig"), ("pastrami", "cow"), ("corned beef", "cow"), ("honey ham", "pig"), ("nova lox", "salmon")]
-ghci> D.derive "animal" (F.recode mapping food)
+dataframe> mapping = [("bacon", "pig"), ("pulled pork", "pig"), ("pastrami", "cow"), ("corned beef", "cow"), ("honey ham", "pig"), ("nova lox", "salmon")]
+dataframe> D.derive "animal" (F.recode mapping food)
 ```
 
 ## Plotting
