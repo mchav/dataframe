@@ -1,5 +1,9 @@
 # Revision history for dataframe
 
+## 0.4.0.1
+* Fuse literals in binary expressions and conditionals: we can now express computations like: `df |> D.groupBy [F.name ocean_proximity] |> D.aggregate ["rand" .= F.sum (F.ifThenElse (ocean_proximity .== "ISLAND") 1 0)]`.
+* Unary aggregations do not mistakenly boxed unboxed instances.
+
 ## 0.4.0.0
 * `readSeparated` no longer takes the separator as an argument. This is not placed into readOptions.
 * Some improvements to the synthesis demo
