@@ -180,7 +180,13 @@ interpretAggregation gdf expression@(UnaryOp _ (f :: c -> d) expr) =
         Left e -> Left e
         Right (UnAggregated unaggregated) -> case unaggregated of
             BoxedColumn (col :: V.Vector b) -> case testEquality (typeRep @b) (typeRep @(V.Vector c)) of
-                Just Refl -> Right $ UnAggregated $ fromVector $ V.map (V.map f) col
+                Just Refl -> case sUnbox @d of
+                    SFalse -> Right $ UnAggregated $ fromVector $ V.map (V.map f) col
+                    STrue ->
+                        Right $
+                            UnAggregated $
+                                fromVector $
+                                    V.map (V.convert @V.Vector @d @VU.Vector . V.map f) col
                 Nothing -> case testEquality (typeRep @b) (typeRep @(VU.Vector c)) of
                     Nothing -> Left $ nestedTypeException @b @c (show expression)
                     Just Refl -> case (sUnbox @c, sUnbox @a) of
