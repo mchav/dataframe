@@ -302,6 +302,49 @@ interpretAggregation gdf expression@(BinaryOp _ (f :: c -> d -> e) left right) =
                         }
                     )
         (_, Left e) -> Left e
+interpretAggregation gdf expression@(If cond (Lit l) (Lit r)) =
+    case interpretAggregation @Bool gdf cond of
+        Right (Aggregated (TColumn conditions)) -> case mapColumn
+            (\(c :: Bool) -> if c then l else r)
+            conditions of
+            Left e -> Left e
+            Right v -> Right $ Aggregated (TColumn v)
+        Right (UnAggregated conditions) -> case sUnbox @a of
+            STrue -> case mapColumn
+                (\(c :: VU.Vector Bool) -> VU.map (\c' -> if c' then l else r) c)
+                conditions of
+                Left (TypeMismatchException context) ->
+                    Left $
+                        TypeMismatchException
+                            ( context
+                                { callingFunctionName = Just "interpretAggregation"
+                                , errorColumnName = Just (show expression)
+                                }
+                            )
+                Left e -> Left e
+                Right v -> Right $ UnAggregated v
+            SFalse -> case mapColumn
+                (\(c :: VU.Vector Bool) -> V.map (\c' -> if c' then l else r) (VU.convert c))
+                conditions of
+                Left (TypeMismatchException context) ->
+                    Left $
+                        TypeMismatchException
+                            ( context
+                                { callingFunctionName = Just "interpretAggregation"
+                                , errorColumnName = Just (show expression)
+                                }
+                            )
+                Left e -> Left e
+                Right v -> Right $ UnAggregated v
+        Left (TypeMismatchException context) ->
+            Left $
+                TypeMismatchException
+                    ( context
+                        { callingFunctionName = Just "interpretAggregation"
+                        , errorColumnName = Just (show cond)
+                        }
+                    )
+        Left e -> Left e
 interpretAggregation gdf expression@(If cond (Lit l) r) =
     case ( interpretAggregation @Bool gdf cond
          , interpretAggregation @a gdf r
