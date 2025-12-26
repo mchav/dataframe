@@ -606,6 +606,88 @@ ifoldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality
                     }
                 )
 
+foldlColumn ::
+    forall a b.
+    (Columnable a, Columnable b) =>
+    (b -> a -> b) -> b -> Column -> Either DataFrameException b
+foldlColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl' f acc column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldlColumn"
+                    , errorColumnName = Nothing
+                    }
+                )
+foldlColumn f acc c@(OptionalColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl' f acc column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldlColumn"
+                    , errorColumnName = Nothing
+                    }
+                )
+foldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl' f acc column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldlColumn"
+                    , errorColumnName = Nothing
+                    }
+                )
+
+foldl1Column ::
+    forall a.
+    (Columnable a) =>
+    (a -> a -> a) -> Column -> Either DataFrameException a
+foldl1Column f c@(BoxedColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl1' f column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldl1Column"
+                    , errorColumnName = Nothing
+                    }
+                )
+foldl1Column f c@(OptionalColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl1' f column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldl1Column"
+                    , errorColumnName = Nothing
+                    }
+                )
+foldl1Column f c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl1' f column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldl1Column"
+                    , errorColumnName = Nothing
+                    }
+                )
+
 headColumn :: forall a. (Columnable a) => Column -> Either DataFrameException a
 headColumn (BoxedColumn (col :: VB.Vector b)) = case testEquality (typeRep @a) (typeRep @b) of
     Just Refl ->

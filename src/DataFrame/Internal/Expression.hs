@@ -123,8 +123,7 @@ interpret df expression@(AggVector expr op (f :: v b -> c)) = do
         (UnboxedColumn col) -> processColumn col
 interpret df expression@(AggReduce expr op (f :: a -> a -> a)) = first (handleInterpretException (show expr)) $ do
     (TColumn column) <- interpret @a df expr
-    h <- headColumn @a column
-    value <- ifoldlColumn (\acc _ v -> f acc v) h column
+    value <- foldl1Column f column
     pure $ TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
 interpret df expression@(AggNumericVector expr op (f :: VU.Vector b -> c)) = first (handleInterpretException (show expression)) $ do
     (TColumn column) <- interpret @b df expr
@@ -144,7 +143,7 @@ interpret df expression@(AggNumericVector expr op (f :: VU.Vector b -> c)) = fir
         _ -> error "Trying to apply numeric computation to non-numeric column"
 interpret df expression@(AggFold expr op start (f :: (a -> b -> a))) = first (handleInterpretException (show expression)) $ do
     (TColumn column) <- interpret @b df expr
-    value <- ifoldlColumn (\acc _ v -> f acc v) start column
+    value <- foldlColumn f start column
     pure $ TColumn $ fromVector $ V.replicate (fst $ dataframeDimensions df) value
 
 data AggregationResult a
@@ -793,20 +792,18 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce exp
                             Aggregated $
                                 TColumn $
                                     fromVector $
-                                        V.map (\v -> VU.foldl' f (VG.head v) (VG.drop 1 v)) col
+                                        V.map (VU.foldl1' f) col
                     SFalse -> Left $ InternalException "Boxed type inside an unboxed column"
             Just Refl ->
                 Right $
                     Aggregated $
                         TColumn $
                             fromVector $
-                                V.map (\v -> VG.foldl' f (VG.head v) (VG.drop 1 v)) col
+                                V.map (VG.foldl1' f) col
         Right (UnAggregated _) -> Left $ InternalException "Aggregated into non-boxed column"
-        Right (Aggregated (TColumn column)) -> case headColumn @a column of
+        Right (Aggregated (TColumn column)) -> case foldl1Column f column of
             Left e -> Left e
-            Right h -> case ifoldlColumn (\acc _ v -> f acc v) h column of
-                Left e -> Left e
-                Right value -> interpretAggregation @a gdf (Lit value)
+            Right value -> interpretAggregation @a gdf (Lit value)
 interpretAggregation gdf@(Grouped df names indices os) expression@(AggFold expr op s (f :: (a -> b -> a))) =
     case interpretAggregation @b gdf expr of
         (Left (TypeMismatchException context)) ->
@@ -827,7 +824,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggFold expr 
                     SFalse -> Left $ InternalException "Boxed type inside an unboxed column"
                 Nothing -> Left $ nestedTypeException @d @b (show expr)
         Right (UnAggregated _) -> Left $ InternalException "Aggregated into non-boxed column"
-        Right (Aggregated (TColumn column)) -> case ifoldlColumn (\acc _ v -> f acc v) s column of
+        Right (Aggregated (TColumn column)) -> case foldlColumn f s column of
             Left e -> Left e
             Right value -> interpretAggregation @a gdf (Lit value)
 
