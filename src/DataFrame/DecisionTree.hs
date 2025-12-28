@@ -1,8 +1,8 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
 
 module DataFrame.DecisionTree where
 
@@ -11,117 +11,137 @@ import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
 import DataFrame.Internal.Expression (Expr (..), interpret)
 import DataFrame.Internal.Statistics (percentileOrd')
-import DataFrame.Operations.Subset (filterWhere, exclude)
-import DataFrame.Operations.Core (nRows, columnNames)
+import DataFrame.Operations.Core (columnNames, nRows)
+import DataFrame.Operations.Subset (exclude, filterWhere)
 
 import Control.Exception (throw)
-import Data.List (maximumBy, foldl')
 import Data.Function (on)
+import Data.List (foldl', maximumBy)
 import qualified Data.Map.Strict as M
+import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
-import qualified Data.Text as T
 import Type.Reflection (Typeable)
 
-import DataFrame.Functions ((.>=), (.<=))
+import DataFrame.Functions ((.<=), (.>=))
 
 data TreeConfig = TreeConfig
-    { maxDepth        :: Int
+    { maxDepth :: Int
     , minSamplesSplit :: Int
     }
 
-fitDecisionTree :: forall a. (Columnable a)
-                => TreeConfig
-                -> Expr a
-                -> DataFrame
-                -> Expr a
-fitDecisionTree cfg (Col target) df = 
+fitDecisionTree ::
+    forall a.
+    (Columnable a) =>
+    TreeConfig ->
+    Expr a ->
+    DataFrame ->
+    Expr a
+fitDecisionTree cfg (Col target) df =
     buildTree @a cfg (maxDepth cfg) target [] df
 fitDecisionTree _ expr _ = error $ "Cannot create tree for compound expression: " ++ show expr
 
-buildTree :: forall a. (Columnable a)
-          => TreeConfig
-          -> Int
-          -> T.Text
-          -> [Expr Bool]
-          -> DataFrame
-          -> Expr a
+buildTree ::
+    forall a.
+    (Columnable a) =>
+    TreeConfig ->
+    Int ->
+    T.Text ->
+    [Expr Bool] ->
+    DataFrame ->
+    Expr a
 buildTree cfg depth target conds df
-    | depth <= 0 || rowCount df <= minSamplesSplit cfg = 
+    | depth <= 0 || nRows df <= minSamplesSplit cfg =
         Lit (majorityValue @a target df)
     | otherwise =
         case findBestSplit @a target (generateConditions (exclude [target] df)) df of
             Nothing -> Lit (majorityValue @a target df)
             Just bestCond ->
                 let (dfTrue, dfFalse) = partitionDataFrame bestCond df
-                in if rowCount dfTrue == 0 || rowCount dfFalse == 0
-                   then Lit (majorityValue @a target df)
-                   else F.ifThenElse bestCond 
-                        (buildTree @a cfg (depth - 1) target conds dfTrue)
-                        (buildTree @a cfg (depth - 1) target conds dfFalse)
+                 in if nRows dfTrue == 0 || nRows dfFalse == 0
+                        then Lit (majorityValue @a target df)
+                        else
+                            F.ifThenElse
+                                bestCond
+                                (buildTree @a cfg (depth - 1) target conds dfTrue)
+                                (buildTree @a cfg (depth - 1) target conds dfFalse)
 
 generateConditions :: DataFrame -> [Expr Bool]
 generateConditions df =
     let
         genConds colName = case unsafeGetColumn colName df of
-            (BoxedColumn (col :: V.Vector a)) -> let
-                    percentiles = map (Lit  . (`percentileOrd'` col)) [1, 25, 75, 99]
-                in map (.>= Col @a colName) percentiles ++ map (.<= Col @a colName) percentiles
-            (OptionalColumn (col :: V.Vector a)) -> let
-                    percentiles = map (Lit  . (`percentileOrd'` col)) [1, 25, 75, 99]
-                in map (.>= Col @a colName) percentiles ++ map (.<= Col @a colName) percentiles 
-            (UnboxedColumn (col :: VU.Vector a)) -> let
-                    percentiles = map (Lit  . (`percentileOrd'` VU.convert col)) [1, 25, 75, 99]
-                in map (.>= Col @a colName) percentiles ++ map (.<= Col @a colName) percentiles
-     in concatMap genConds (columnNames df)
+            (BoxedColumn (col :: V.Vector a)) ->
+                let
+                    percentiles = map (Lit . (`percentileOrd'` col)) [1, 25, 75, 99]
+                 in
+                    map (.>= Col @a colName) percentiles ++ map (.<= Col @a colName) percentiles
+            (OptionalColumn (col :: V.Vector a)) ->
+                let
+                    percentiles = map (Lit . (`percentileOrd'` col)) [1, 25, 75, 99]
+                 in
+                    map (.>= Col @a colName) percentiles ++ map (.<= Col @a colName) percentiles
+            (UnboxedColumn (col :: VU.Vector a)) ->
+                let
+                    percentiles = map (Lit . (`percentileOrd'` VU.convert col)) [1, 25, 75, 99]
+                 in
+                    map (.>= Col @a colName) percentiles ++ map (.<= Col @a colName) percentiles
+     in
+        concatMap genConds (columnNames df)
 
 partitionDataFrame :: Expr Bool -> DataFrame -> (DataFrame, DataFrame)
 partitionDataFrame cond df = (filterWhere cond df, filterWhere (F.not cond) df)
 
-findBestSplit :: forall a . (Columnable a) 
-              => T.Text -> [Expr Bool] -> DataFrame -> Maybe (Expr Bool)
+findBestSplit ::
+    forall a.
+    (Columnable a) =>
+    T.Text -> [Expr Bool] -> DataFrame -> Maybe (Expr Bool)
 findBestSplit target conds df =
-    let 
+    let
         initialImpurity = calculateGini @a target df
         evalGain cond =
             let (t, f) = partitionDataFrame cond df
-                n = fromIntegral @Int @Double (rowCount df)
-                weightT = fromIntegral @Int @Double (rowCount t) / n
-                weightF = fromIntegral @Int @Double (rowCount f) / n
-                newImpurity = (weightT * calculateGini @a target t) 
-                            + (weightF * calculateGini @a target f)
-            in initialImpurity - newImpurity
-        
-        validConds = filter (\c -> rowCount (filterWhere c df) > 0) conds
-    in if null validConds 
-       then Nothing 
-       else Just $ maximumBy (compare `on` evalGain) validConds
+                n = fromIntegral @Int @Double (nRows df)
+                weightT = fromIntegral @Int @Double (nRows t) / n
+                weightF = fromIntegral @Int @Double (nRows f) / n
+                newImpurity =
+                    (weightT * calculateGini @a target t)
+                        + (weightF * calculateGini @a target f)
+             in initialImpurity - newImpurity
 
-calculateGini :: forall a. (Columnable a, Eq a, Typeable a) 
-              => T.Text -> DataFrame -> Double
+        validConds = filter (\c -> nRows (filterWhere c df) > 0) conds
+     in
+        if null validConds
+            then Nothing
+            else Just $ maximumBy (compare `on` evalGain) validConds
+
+calculateGini ::
+    forall a.
+    (Columnable a, Eq a, Typeable a) =>
+    T.Text -> DataFrame -> Double
 calculateGini target df =
-    let n = fromIntegral $ rowCount df
+    let n = fromIntegral $ nRows df
         counts = getCounts @a target df
         probs = map (\c -> fromIntegral c / n) (M.elems counts)
-    in if n == 0 then 0 else 1 - sum (map (^2) probs)
+     in if n == 0 then 0 else 1 - sum (map (^ 2) probs)
 
-majorityValue :: forall a. (Columnable a) 
-              => T.Text -> DataFrame -> a
+majorityValue ::
+    forall a.
+    (Columnable a) =>
+    T.Text -> DataFrame -> a
 majorityValue target df =
     let counts = getCounts @a target df
-    in if M.null counts 
-       then error "Empty DataFrame in leaf" 
-       else fst $ maximumBy (compare `on` snd) (M.toList counts)
+     in if M.null counts
+            then error "Empty DataFrame in leaf"
+            else fst $ maximumBy (compare `on` snd) (M.toList counts)
 
-getCounts :: forall a. (Columnable a) 
-          => T.Text -> DataFrame -> M.Map a Int
+getCounts ::
+    forall a.
+    (Columnable a) =>
+    T.Text -> DataFrame -> M.Map a Int
 getCounts target df =
     case interpret @a df (Col target) of
         Left e -> throw e
-        Right (TColumn col) -> 
+        Right (TColumn col) ->
             case toVector @a col of
                 Left e -> throw e
                 Right vals -> foldl' (\acc x -> M.insertWith (+) x 1 acc) M.empty (V.toList vals)
-
-rowCount :: DataFrame -> Int
-rowCount = nRows
