@@ -4,7 +4,9 @@
 
 module DataFrame.Internal.Statistics where
 
+import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Intro as VA
+import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
@@ -149,6 +151,31 @@ quantiles' qs q samp
 
 percentile' :: (VU.Unbox a, Num a, Real a) => Int -> VU.Vector a -> Double
 percentile' n = VU.head . quantiles' (VU.fromList [n]) 100
+
+quantilesOrd' ::
+    (Ord a, Eq a) =>
+    VU.Vector Int -> Int -> V.Vector a -> V.Vector a
+quantilesOrd' qs q samp
+    | V.null samp = throw $ EmptyDataSetException "quantiles"
+    | q < 2 = throw $ WrongQuantileNumberException q
+    | VU.any (\i -> i < 0 || i > q) qs = throw $ WrongQuantileIndexException qs q
+    | otherwise = runST $ do
+        let !n = V.length samp
+        mutableSamp <- V.thaw samp
+        VA.sort mutableSamp
+        V.mapM
+            ( \i -> do
+                let !p = fromIntegral i / fromIntegral q
+                    !position = p * fromIntegral (n - 1)
+                    !index = floor position
+                -- This is not exact for Ord instances.
+                -- Figure out how to make it so.
+                VM.read mutableSamp index
+            )
+            (V.convert qs)
+
+percentileOrd' :: (Ord a, Eq a) => Int -> V.Vector a -> a
+percentileOrd' n = V.head . quantilesOrd' (VU.fromList [n]) 100
 
 interQuartileRange' :: (VU.Unbox a, Num a, Real a) => VU.Vector a -> Double
 interQuartileRange' samp =

@@ -84,7 +84,8 @@ library
                     DataFrame.IO.Parquet.Types,
                     DataFrame.Lazy.IO.CSV,
                     DataFrame.Lazy.Internal.DataFrame,
-                    DataFrame.Monad
+                    DataFrame.Monad,
+                    DataFrame.DecisionTree
     build-depends:    base >= 4 && <5,
                       aeson >= 0.11.0.0 && < 3,
                       array >= 0.5.4.0 && < 0.6,
