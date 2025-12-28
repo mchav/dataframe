@@ -915,6 +915,10 @@ columnAsUnboxedVector (Col name) df = case getColumn name df of
 columnAsUnboxedVector expr df = case interpret df expr of
     Left e -> throw e
     Right (TColumn col) -> toUnboxedVector col
+{-# SPECIALIZE columnAsUnboxedVector ::
+    Expr Double -> DataFrame -> Either DataFrameException (VU.Vector Double)
+    #-}
+{-# INLINE columnAsUnboxedVector #-}
 
 {- | Get a specific column as a list.
 

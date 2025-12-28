@@ -280,7 +280,7 @@ mapColumn f = \case
         | Just Refl <- testEquality (typeRep @a) (typeRep @b) ->
             Right $ case sUnbox @c of
                 STrue -> UnboxedColumn (VU.map f col)
-                SFalse -> fromVector @c (VB.map f (VB.convert col))
+                SFalse -> fromVector @c (VB.generate (VU.length col) (f . VU.unsafeIndex col))
         | otherwise ->
             Left $
                 TypeMismatchException
@@ -291,6 +291,10 @@ mapColumn f = \case
                         , errorColumnName = Nothing
                         }
                     )
+{-# SPECIALIZE mapColumn ::
+    (Double -> Double) -> Column -> Either DataFrameException Column
+    #-}
+{-# INLINEABLE mapColumn #-}
 
 -- | O(1) Gets the number of elements in the column.
 columnLength :: Column -> Int
@@ -1347,7 +1351,7 @@ toUnboxedVector column =
                         ( MkTypeErrorContext
                             { userType = Right (typeRep @Int)
                             , expectedType = Right (typeRep @a)
-                            , callingFunctionName = Just "toIntVector"
+                            , callingFunctionName = Just "toUnboxedVector"
                             , errorColumnName = Nothing
                             }
                         )
@@ -1361,3 +1365,7 @@ toUnboxedVector column =
                         , errorColumnName = Nothing
                         }
                     )
+{-# SPECIALIZE toUnboxedVector ::
+    Column -> Either DataFrameException (VU.Vector Double)
+    #-}
+{-# INLINE toUnboxedVector #-}
