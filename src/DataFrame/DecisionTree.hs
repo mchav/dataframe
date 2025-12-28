@@ -69,6 +69,7 @@ buildTree cfg depth target conds df
 generateConditions :: DataFrame -> [Expr Bool]
 generateConditions df =
     let
+        genConds :: T.Text -> [Expr Bool]
         genConds colName = case unsafeGetColumn colName df of
             (BoxedColumn (col :: V.Vector a)) ->
                 let
