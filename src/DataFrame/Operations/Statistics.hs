@@ -87,9 +87,9 @@ frequencies name df =
 -- | Calculates the mean of a given column as a standalone value.
 mean ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-mean (Col name) df = case columnAsUnboxedVector (Col @a name) df of
-    Right xs -> mean' xs
-    Left e -> throw e
+mean (Col name) df = case _getColumnAsDouble name df of
+    Just xs -> meanDouble' xs
+    Nothing -> error "[INTERNAL ERROR] Column is non-numeric"
 mean expr df = case interpret df expr of
     Left e -> throw e
     Right (TColumn col) -> case toUnboxedVector @a col of
@@ -146,9 +146,9 @@ skewness expr df = case interpret df expr of
 -- | Calculates the variance of a given column as a standalone value.
 variance ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-variance (Col name) df = case columnAsUnboxedVector (Col @a name) df of
-    Right xs -> variance' xs
-    Left e -> throw e
+variance (Col name) df = case _getColumnAsDouble name df of
+    Just xs -> varianceDouble' xs
+    Nothing -> error "[INTERNAL ERROR] Column is non-numeric"
 variance expr df = case interpret df expr of
     Left e -> throw e
     Right (TColumn col) -> case toUnboxedVector @a col of
@@ -185,8 +185,8 @@ _getColumnAsDouble name df = case getColumn name df of
                 SFalse -> Nothing
     Nothing ->
         throw $
-            ColumnNotFoundException name "applyStatistic" (M.keys $ columnIndices df)
-    _ -> Nothing
+            ColumnNotFoundException name "_getColumnAsDouble" (M.keys $ columnIndices df)
+    _ -> Nothing -- Return a type mismatch error here.
 {-# INLINE _getColumnAsDouble #-}
 
 optionalToDoubleVector :: (Real a) => V.Vector (Maybe a) -> VU.Vector Double

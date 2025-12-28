@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module DataFrame.Internal.Statistics where
 
@@ -14,8 +15,14 @@ import DataFrame.Errors (DataFrameException (..))
 mean' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
 mean' samp
     | VU.null samp = throw $ EmptyDataSetException "mean"
-    | otherwise = VU.sum (VU.map realToFrac samp) / fromIntegral (VU.length samp)
+    | otherwise = rtf (VU.sum samp) / fromIntegral (VU.length samp)
 {-# INLINE mean' #-}
+
+meanDouble' :: VU.Vector Double -> Double
+meanDouble' samp
+    | VU.null samp = throw $ EmptyDataSetException "mean"
+    | otherwise = VU.sum samp / fromIntegral (VU.length samp)
+{-# INLINE meanDouble' #-}
 
 median' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
 median' samp
@@ -27,21 +34,23 @@ median' samp
             middleIndex = len `div` 2
         middleElement <- VUM.read mutableSamp middleIndex
         if odd len
-            then pure (realToFrac middleElement)
+            then pure (rtf middleElement)
             else do
                 prev <- VUM.read mutableSamp (middleIndex - 1)
-                pure (realToFrac (middleElement + prev) / 2)
+                pure (rtf (middleElement + prev) / 2)
 {-# INLINE median' #-}
 
 -- accumulator: count, mean, m2
-data VarAcc = VarAcc !Int !Double !Double deriving (Show)
+data VarAcc
+    = VarAcc {-# UNPACK #-} !Int {-# UNPACK #-} !Double {-# UNPACK #-} !Double
+    deriving (Show)
 
-varianceStep :: (Real a) => VarAcc -> a -> VarAcc
+varianceStep :: VarAcc -> Double -> VarAcc
 varianceStep (VarAcc !n !mean !m2) !x =
     let !n' = n + 1
-        !delta = realToFrac x - mean
+        !delta = x - mean
         !mean' = mean + delta / fromIntegral n'
-        !m2' = m2 + delta * (realToFrac x - mean')
+        !m2' = m2 + delta * (x - mean')
      in VarAcc n' mean' m2'
 {-# INLINE varianceStep #-}
 
@@ -52,8 +61,12 @@ computeVariance (VarAcc !n _ !m2)
 {-# INLINE computeVariance #-}
 
 variance' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
-variance' = computeVariance . VU.foldl' varianceStep (VarAcc 0 0 0)
+variance' = computeVariance . VU.foldl' varianceStep (VarAcc 0 0 0) . VU.map rtf
 {-# INLINE variance' #-}
+
+varianceDouble' :: VU.Vector Double -> Double
+varianceDouble' = computeVariance . VU.foldl' varianceStep (VarAcc 0 0 0)
+{-# INLINE varianceDouble' #-}
 
 -- accumulator: count, mean, m2, m3
 data SkewAcc = SkewAcc !Int !Double !Double !Double deriving (Show)
@@ -61,7 +74,7 @@ data SkewAcc = SkewAcc !Int !Double !Double !Double deriving (Show)
 skewnessStep :: (VU.Unbox a, Num a, Real a) => SkewAcc -> a -> SkewAcc
 skewnessStep (SkewAcc !n !mean !m2 !m3) !x' =
     let !n' = n + 1
-        x = realToFrac x'
+        x = rtf x'
         !k = fromIntegral n'
         !delta = x - mean
         !mean' = mean + delta / k
@@ -80,31 +93,31 @@ skewness' :: (VU.Unbox a, Real a, Num a) => VU.Vector a -> Double
 skewness' = computeSkewness . VU.foldl' skewnessStep (SkewAcc 0 0 0 0)
 {-# INLINE skewness' #-}
 
-correlation' ::
-    (Real a, VU.Unbox a, Real b, VU.Unbox b) =>
-    VU.Vector a -> VU.Vector b -> Maybe Double
+data CorrelationStats
+    = CorrelationStats
+        {-# UNPACK #-} !Double
+        {-# UNPACK #-} !Double
+        {-# UNPACK #-} !Double
+        {-# UNPACK #-} !Double
+        {-# UNPACK #-} !Double
+
+correlation' :: VU.Vector Double -> VU.Vector Double -> Maybe Double
 correlation' xs ys
+    | n < 2 = Nothing
     | VU.length xs /= VU.length ys = Nothing
-    | nI < 2 = Nothing
     | otherwise =
-        let !nf = fromIntegral nI
-            (!sumX, !sumY, !sumSquaredX, !sumSquaredY, !sumXY) = go 0 0 0 0 0 0
+        let nf = fromIntegral n
+            initial = CorrelationStats 0 0 0 0 0
+            (CorrelationStats sumX sumY sumXX sumYY sumXY) = VU.ifoldl' step initial xs
+
             !num = nf * sumXY - sumX * sumY
-            !den = sqrt ((nf * sumSquaredX - sumX * sumX) * (nf * sumSquaredY - sumY * sumY))
-         in pure (num / den)
+            !den = sqrt ((nf * sumXX - sumX * sumX) * (nf * sumYY - sumY * sumY))
+         in Just (num / den)
   where
-    !nI = VU.length xs
-    go !i !sumX !sumY !sumSquaredX !sumSquaredY !sumXY
-        | i < nI =
-            let !x = realToFrac (VU.unsafeIndex xs i)
-                !y = realToFrac (VU.unsafeIndex ys i)
-                !sumX' = sumX + x
-                !sumY' = sumY + y
-                !sumSquaredX' = sumSquaredX + x * x
-                !sumSquaredY' = sumSquaredY + y * y
-                !sumXY' = sumXY + x * y
-             in go (i + 1) sumX' sumY' sumSquaredX' sumSquaredY' sumXY'
-        | otherwise = (sumX, sumY, sumSquaredX, sumSquaredY, sumXY)
+    n = VU.length xs
+    step (CorrelationStats sx sy sxx syy sxy) i x =
+        let !y = VU.unsafeIndex ys i
+         in CorrelationStats (sx + x) (sy + y) (sxx + x * x) (syy + y * y) (sxy + x * y)
 {-# INLINE correlation' #-}
 
 quantiles' ::
@@ -124,11 +137,11 @@ quantiles' qs q samp
                     !position = p * fromIntegral (n - 1)
                     !index = floor position
                     !f = position - fromIntegral index
-                x <- fmap realToFrac (VUM.read mutableSamp index)
+                x <- fmap rtf (VUM.read mutableSamp index)
                 if f == 0
                     then return x
                     else do
-                        y <- fmap realToFrac (VUM.read mutableSamp (index + 1))
+                        y <- fmap rtf (VUM.read mutableSamp (index + 1))
                         return $ (1 - f) * x + f * y
             )
             qs
@@ -217,3 +230,11 @@ jointBincount k bx by = VU.create $ do
   where
     clamp z a b = max a (min b z)
 {-# INLINE jointBincount #-}
+
+rtf :: (Real a) => a -> Double
+rtf = realToFrac
+{-# NOINLINE [1] rtf #-}
+
+{-# RULES
+"rtf/Double" [2] forall (x :: Double). rtf x = x
+    #-}
