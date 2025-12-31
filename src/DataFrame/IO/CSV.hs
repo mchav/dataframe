@@ -379,7 +379,7 @@ writeSeparated ::
 writeSeparated c filepath df = withFile filepath WriteMode $ \handle -> do
     let (rows, _) = dataframeDimensions df
     let headers = map fst (L.sortBy (compare `on` snd) (M.toList (columnIndices df)))
-    TIO.hPutStrLn handle (T.intercalate ", " headers)
+    TIO.hPutStrLn handle (T.intercalate "," headers)
     forM_ [0 .. (rows - 1)] $ \i -> do
         let row = getRowAsText df i
         TIO.hPutStrLn handle (T.intercalate "," row)
