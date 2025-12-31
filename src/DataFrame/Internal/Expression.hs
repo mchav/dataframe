@@ -265,19 +265,17 @@ interpretAggregation gdf expression@(BinaryOp _ (f :: c -> d -> e) left right) =
                                             V.zipWith (\l' r' -> V.zipWith f l' (V.convert r')) l r
                             (_, _) -> Left $ InternalException "Unboxed vectors contain boxed types"
                         Nothing -> case testEquality (typeRep @n) (typeRep @(V.Vector d)) of
-                            Just Refl -> case sUnbox @c of
-                                STrue -> case sUnbox @e of
-                                    SFalse ->
-                                        Right $
-                                            UnAggregated $
-                                                fromVector $
-                                                    V.zipWith (V.zipWith f . V.convert) l r
-                                    STrue ->
-                                        Right $
-                                            UnAggregated $
-                                                fromVector $
-                                                    V.zipWith (\l' r' -> V.convert @V.Vector @e @VU.Vector $ V.zipWith f l' r') l r
-                                SFalse -> Left $ InternalException "Unboxed vectors contain boxed types"
+                            Just Refl -> case sUnbox @e of
+                                SFalse ->
+                                    Right $
+                                        UnAggregated $
+                                            fromVector $
+                                                V.zipWith (V.zipWith f . V.convert) l r
+                                STrue ->
+                                    Right $
+                                        UnAggregated $
+                                            fromVector $
+                                                V.zipWith (\l' r' -> V.convert @V.Vector @e @VU.Vector $ V.zipWith f l' r') l r
                             Nothing -> Left $ nestedTypeException @n @d (show right)
             _ -> Left $ InternalException "Aggregated into a non-boxed column"
         (Right _, Right _) ->
