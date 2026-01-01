@@ -1,5 +1,12 @@
 # Revision history for dataframe
 
+## 0.4.0.2
+* Improved performance for folds and reductions.
+* Improve standalone mean and correlation functions.
+* Remove buggy boxedness check in aggregations.
+* CSV files shouldn't have spaces in headers.
+* Small decision tree implementation (experimental).
+
 ## 0.4.0.1
 * Fuse literals in binary expressions and conditionals: we can now express computations like: `df |> D.groupBy [F.name ocean_proximity] |> D.aggregate ["rand" .= F.sum (F.ifThenElse (ocean_proximity .== "ISLAND") 1 0)]`.
 * Unary aggregations do not mistakenly boxed unboxed instances.
