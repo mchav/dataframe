@@ -71,13 +71,13 @@ deriveEntityToDataFrame entityName = do
             dataframeExprs <- forM fields $ \(raw, _, ty) -> do
                 let nm = camelToSnake (nameBase raw)
                 let colName = camelToSnake (drop (length entityNameStr) (nameBase raw))
-                trace ((nm <> " :: Expr " <> (show ty))) pure ()
+                trace (nm <> " :: Expr " <> show ty) pure ()
                 let n = mkName nm
                 sig <- sigD n [t|Expr $(pure ty)|]
                 val <- valD (varP n) (normalB [|col $(lift colName)|]) []
                 pure [sig, val]
 
-            return ([instanceDec] ++ concat dataframeExprs)
+            return (instanceDec : concat dataframeExprs)
         _ ->
             fail $
                 "deriveEntityToDataFrame: " ++ show entityName ++ " must be a record type"
@@ -190,5 +190,5 @@ camelToSnake (c : cs) = toLower c : go cs
     go (c : cs)
         | isUpper c = '_' : toLower c : go cs
         | otherwise = c : go cs
-    isUpper c = c >= 'A' && c <= 'Z'
+    isUpper = isAsciiUpper
     toLower c = if isUpper c then toEnum (fromEnum c + 32) else c

@@ -239,7 +239,7 @@ testEmptyResultSet = TestCase $ withTestDb $ do
         assertEqual "Empty DataFrame" 0 (nRows df)
         -- Should still have column names
         let cols = DF.columnNames df
-        assertBool "Has columns" (length cols > 0)
+        assertBool "Has columns" (not (null cols))
 
 -- Test persistFieldsToColumns function
 testPersistFieldsToColumns :: Test

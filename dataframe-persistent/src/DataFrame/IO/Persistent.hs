@@ -1,5 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE BangPatterns #-}
+
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -217,11 +217,10 @@ toPersistent ::
     ReaderT SqlBackend m [Key record]
 toPersistent df = do
     let rowCount = nRows df
-    keys <- forM [0 .. rowCount - 1] $ \i -> do
+    forM [0 .. rowCount - 1] $ \i -> do
         case rowToEntity i df of
             Left err -> error $ "Failed to convert row " <> show i <> ": " <> err
             Right entity -> insert (entityVal entity)
-    return keys
 
 -- | Convert entity fields to columns (helper for implementations)
 entityToColumns ::

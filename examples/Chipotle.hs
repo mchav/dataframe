@@ -62,7 +62,7 @@ main = do
     let firstOrder =
             df
                 |> D.filterWhere
-                    ( (F.lift (maybe False (T.isInfixOf "Guacamole")) choice_description)
+                    ( F.lift (maybe False (T.isInfixOf "Guacamole")) choice_description
                         .&& (item_name .== "Chicken Bowl")
                     )
 

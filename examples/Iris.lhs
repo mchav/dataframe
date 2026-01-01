@@ -331,8 +331,8 @@ Convert labels to one-hot encoding for neural network training:
 - 1 (Versicolor) → [0.0, 1.0, 0.0]
 - 2 (Virginica) → [0.0, 0.0, 1.0]
 
->     let trainLabelsTr = HT.toType HT.Float $ HT.oneHot 3 $ HT.asTensor $ trainLabels
->     let testLabelsTr = HT.toType HT.Float $ HT.oneHot 3 $ HT.asTensor $ testLabels
+>     let trainLabelsTr = HT.toType HT.Float $ HT.oneHot 3 $ HT.asTensor trainLabels
+>     let testLabelsTr = HT.toType HT.Float $ HT.oneHot 3 $ HT.asTensor testLabels
 
 Step 4: Initialize the neural network
 ======================================
