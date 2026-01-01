@@ -1,6 +1,6 @@
 # Revision history for dataframe
 
-## 0.4.0.2
+## 0.4.0.3
 * Improved performance for folds and reductions.
 * Improve standalone mean and correlation functions.
 * Remove buggy boxedness check in aggregations.
