@@ -216,6 +216,10 @@ jobs:
       - name: build w/o tests
         run: |
           $CABAL v2-build $ARG_COMPILER --disable-tests --disable-benchmarks all
+          cd ./examples
+          ./setup_torch.sh
+          $CABAL v2-build $ARG_COMPILER --disable-tests --disable-benchmarks all
+          cd ..
       - name: build
         run: |
           $CABAL v2-build $ARG_COMPILER $ARG_TESTS $ARG_BENCH all --write-ghc-environment-files=always
