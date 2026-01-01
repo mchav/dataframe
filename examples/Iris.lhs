@@ -323,8 +323,8 @@ Extract the four measurement columns as our features:
 
 Extract the labels (species) as integers:
 
->     let trainLabels = either throw id (D.columnAsIntVector "variety" trainDf)
->     let testLabels = either throw id (D.columnAsIntVector "variety" testDf)
+>     let trainLabels = either throw id (D.columnAsIntVector (F.col @Int "variety") trainDf)
+>     let testLabels = either throw id (D.columnAsIntVector (F.col @Int "variety") testDf)
 
 Convert labels to one-hot encoding for neural network training:
 - 0 (Setosa) → [1.0, 0.0, 0.0]
