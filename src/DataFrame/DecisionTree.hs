@@ -33,7 +33,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import Type.Reflection (typeRep)
 
-import DataFrame.Functions ((./=), (.<), (.<=), (.==), (.>), (.>=))
+import DataFrame.Functions ((.<), (.<=), (.==), (.>), (.>=))
 
 data TreeConfig = TreeConfig
     { maxTreeDepth :: Int
@@ -241,7 +241,8 @@ findBestSplit ::
     T.Text -> [Expr Bool] -> DataFrame -> Maybe (Expr Bool)
 findBestSplit target conds df =
     let
-        minLeafSize = 10
+        minLeafSize = 1
+        lambda = 0.05
         initialImpurity = calculateGini @a target df
         evalGain cond =
             let (t, f) = partitionDataFrame cond df
@@ -251,7 +252,7 @@ findBestSplit target conds df =
                 newImpurity =
                     (weightT * calculateGini @a target t)
                         + (weightF * calculateGini @a target f)
-             in ( round $ ((initialImpurity - newImpurity) * 1000) / fromIntegral (eSize cond)
+             in ( (initialImpurity - newImpurity) - lambda * fromIntegral (eSize cond)
                 , negate (eSize cond)
                 )
 
@@ -263,8 +264,8 @@ findBestSplit target conds df =
                      in
                         nRows t >= minLeafSize && nRows f >= minLeafSize
                 )
-                conds
-        sortedConditions = nubOrd (take 20 (sortBy (flip compare `on` evalGain) validConds))
+                (nubOrd conds)
+        sortedConditions = take 10 (sortBy (flip compare `on` evalGain) validConds)
      in
         if null validConds
             then Nothing
@@ -272,7 +273,7 @@ findBestSplit target conds df =
                 Just $
                     maximumBy
                         (compare `on` evalGain)
-                        (boolExprs df sortedConditions sortedConditions 0 2)
+                        (boolExprs df sortedConditions sortedConditions 0 3)
 
 calculateGini ::
     forall a.
@@ -281,7 +282,8 @@ calculateGini ::
 calculateGini target df =
     let n = fromIntegral $ nRows df
         counts = getCounts @a target df
-        probs = map (\c -> fromIntegral c / n) (M.elems counts)
+        numClasses = fromIntegral $ M.size counts
+        probs = map (\c -> (fromIntegral c + 1) / (n + numClasses)) (M.elems counts)
      in if n == 0 then 0 else 1 - sum (map (^ 2) probs)
 
 majorityValue ::
