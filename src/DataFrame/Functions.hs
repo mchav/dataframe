@@ -165,6 +165,7 @@ maximum expr = AggReduce expr "maximum" Prelude.max
 sum :: forall a. (Columnable a, Num a) => Expr a -> Expr a
 sum expr = AggReduce expr "sum" (+)
 {-# SPECIALIZE DataFrame.Functions.sum :: Expr Double -> Expr Double #-}
+{-# SPECIALIZE DataFrame.Functions.sum :: Expr Int -> Expr Int #-}
 {-# INLINEABLE DataFrame.Functions.sum #-}
 
 sumMaybe :: forall a. (Columnable a, Num a) => Expr (Maybe a) -> Expr a
@@ -173,6 +174,7 @@ sumMaybe expr = AggVector expr "sumMaybe" (P.sum . Maybe.catMaybes . V.toList)
 mean :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 mean expr = AggNumericVector expr "mean" mean'
 {-# SPECIALIZE DataFrame.Functions.mean :: Expr Double -> Expr Double #-}
+{-# SPECIALIZE DataFrame.Functions.mean :: Expr Int -> Expr Double #-}
 {-# INLINEABLE DataFrame.Functions.mean #-}
 
 meanMaybe :: forall a. (Columnable a, Real a) => Expr (Maybe a) -> Expr Double

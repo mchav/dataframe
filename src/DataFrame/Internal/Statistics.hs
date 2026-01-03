@@ -18,13 +18,28 @@ mean' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
 mean' samp
     | VU.null samp = throw $ EmptyDataSetException "mean"
     | otherwise = rtf (VU.sum samp) / fromIntegral (VU.length samp)
-{-# INLINE mean' #-}
+{-# INLINE [0] mean' #-}
 
 meanDouble' :: VU.Vector Double -> Double
 meanDouble' samp
     | VU.null samp = throw $ EmptyDataSetException "mean"
     | otherwise = VU.sum samp / fromIntegral (VU.length samp)
 {-# INLINE meanDouble' #-}
+
+meanInt' :: VU.Vector Int -> Double
+meanInt' samp
+    | VU.null samp = throw $ EmptyDataSetException "mean"
+    | otherwise = fromIntegral (VU.sum samp) / fromIntegral (VU.length samp)
+{-# INLINE meanInt' #-}
+
+{-# RULES
+"mean'/Double" [1] forall (xs :: VU.Vector Double).
+    mean' xs =
+        meanDouble' xs
+"mean'/Int" [1] forall (xs :: VU.Vector Int).
+    mean' xs =
+        meanInt' xs
+    #-}
 
 median' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
 median' samp

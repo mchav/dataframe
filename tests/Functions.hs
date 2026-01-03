@@ -9,7 +9,6 @@ import DataFrame.Functions (
  )
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
-import DataFrame.Internal.Expression
 import Test.HUnit
 
 -- Test cases for the sanitize function
