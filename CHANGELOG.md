@@ -1,5 +1,14 @@
 # Revision history for dataframe
 
+## 0.4.0.4
+* More robust synthesis based decision tree
+* Improved performance on sum and mean.
+* recodeWithCondition - to change a value given a condition
+* medianMaybe, genericPercentile, percentile - self explanatory
+* all the maybe functions as dataframe functions
+* Fix concatColumnsEither when types are the same.
+* Decision tree implementation is more robust now.
+
 ## 0.4.0.3
 * Improved performance for folds and reductions.
 * Improve standalone mean and correlation functions.
