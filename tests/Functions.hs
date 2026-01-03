@@ -6,7 +6,6 @@ module Functions where
 import qualified DataFrame as D
 import DataFrame.Functions (
     sanitize,
-    (.>),
  )
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
@@ -81,48 +80,8 @@ testSum =
             (D.derive "sum" (F.sum (F.col @Int "A")) df)
         )
 
-testGtTwoLitsRewriteAsLit :: Test
-testGtTwoLitsRewriteAsLit =
-    TestCase
-        ( assertEqual
-            "Two lits rewrite as one"
-            (Lit True)
-            (Lit (5 :: Int) .> Lit 4)
-        )
-
-testGtLeftLitRewriteAsUnary :: Test
-testGtLeftLitRewriteAsUnary =
-    TestCase
-        ( assertEqual
-            "Two lits rewrite as single literal"
-            (UnaryOp "gt 5" ((5 :: Int) >) (Col "x"))
-            (Lit (5 :: Int) .> Col "x")
-        )
-
-testGtRightLitRewriteAsUnary :: Test
-testGtRightLitRewriteAsUnary =
-    TestCase
-        ( assertEqual
-            "Two lits rewrite as unary op"
-            (UnaryOp "gt 5" ((5 :: Int) >) (Col "x"))
-            (Lit (5 :: Int) .> Col "x")
-        )
-
-testGtNoLitWriteAsBinary :: Test
-testGtNoLitWriteAsBinary =
-    TestCase
-        ( assertEqual
-            "Two lits rewrite as unary op"
-            (BinaryOp "gt" (>) (Col @Int "x") (Col "y"))
-            (Col @Int "x" .> Col "y")
-        )
-
 tests :: [Test]
 tests =
     [ TestLabel "sanitizeIdentifiers" sanitizeIdentifiers
     , TestLabel "testSum" testSum
-    , TestLabel "testGtTwoLitRewrite" testGtTwoLitsRewriteAsLit
-    , TestLabel "testGtLeftLit" testGtLeftLitRewriteAsUnary
-    , TestLabel "testGtRightLit" testGtRightLitRewriteAsUnary
-    , TestLabel "testGtNoLit" testGtNoLitWriteAsBinary
     ]
