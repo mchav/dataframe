@@ -1,7 +1,10 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -11,14 +14,18 @@ module DataFrame.DecisionTree where
 import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
-import DataFrame.Internal.Expression (Expr (..), interpret)
+import DataFrame.Internal.Expression (Expr (..), eSize, interpret)
 import DataFrame.Internal.Statistics (percentileOrd')
+import DataFrame.Internal.Types
 import DataFrame.Operations.Core (columnNames, nRows)
+import DataFrame.Operations.Statistics (percentile)
 import DataFrame.Operations.Subset (exclude, filterWhere)
 
 import Control.Exception (throw)
+import Control.Monad (guard)
+import Data.Containers.ListUtils (nubOrd)
 import Data.Function (on)
-import Data.List (foldl', maximumBy)
+import Data.List (foldl', maximumBy, sortBy)
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Data.Type.Equality
@@ -26,12 +33,39 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import Type.Reflection (typeRep)
 
-import DataFrame.Functions ((.<=), (.==))
+import DataFrame.Functions ((./=), (.<), (.<=), (.==), (.>), (.>=))
 
 data TreeConfig = TreeConfig
-    { maxDepth :: Int
+    { maxTreeDepth :: Int
     , minSamplesSplit :: Int
+    , synthConfig :: SynthConfig
     }
+
+data SynthConfig = SynthConfig
+    { maxExprDepth :: Int
+    , percentiles :: [Int]
+    , enableStringOps :: Bool
+    , enableCrossCols :: Bool
+    , enableArithOps :: Bool
+    }
+
+defaultSynthConfig :: SynthConfig
+defaultSynthConfig =
+    SynthConfig
+        { maxExprDepth = 2
+        , percentiles = [0, 10 .. 100]
+        , enableStringOps = True
+        , enableCrossCols = True
+        , enableArithOps = True
+        }
+
+defaultTreeConfig :: TreeConfig
+defaultTreeConfig =
+    TreeConfig
+        { maxTreeDepth = 10
+        , minSamplesSplit = 5
+        , synthConfig = defaultSynthConfig
+        }
 
 fitDecisionTree ::
     forall a.
@@ -43,9 +77,11 @@ fitDecisionTree ::
 fitDecisionTree cfg (Col target) df =
     buildTree @a
         cfg
-        (maxDepth cfg)
+        (maxTreeDepth cfg)
         target
-        (generateConditions (exclude [target] df))
+        ( numericConditions (synthConfig cfg) (exclude [target] df)
+            ++ generateConditionsOld (synthConfig cfg) (exclude [target] df)
+        )
         df
 fitDecisionTree _ expr _ = error $ "Cannot create tree for compound expression: " ++ show expr
 
@@ -87,6 +123,7 @@ pruneTree (If cond trueBranch falseBranch) =
             else case (t, f) of
                 -- Nested simplification: `if C1 then (if C1 then X else Y) else Z`
                 -- becomes:     if C1 then X else Z`
+                -- Generalize this with hegg later.
                 (If condInner tInner fInner, _) | cond == condInner -> If cond tInner f
                 (_, If condInner tInner fInner) | cond == condInner -> If cond t fInner
                 _ -> If cond t f
@@ -94,8 +131,75 @@ pruneTree (UnaryOp name op e) = UnaryOp name op (pruneTree e)
 pruneTree (BinaryOp name op l r) = BinaryOp name op (pruneTree l) (pruneTree r)
 pruneTree e = e
 
-generateConditions :: DataFrame -> [Expr Bool]
-generateConditions df =
+type CondGen = SynthConfig -> DataFrame -> [Expr Bool]
+
+numericConditions :: CondGen
+numericConditions = generateNumericConds
+
+generateNumericConds ::
+    SynthConfig -> DataFrame -> [Expr Bool]
+generateNumericConds cfg df = do
+    expr <- numericExprsWithTerms cfg df
+    let thresholds = map (\p -> percentile p expr df) (percentiles cfg)
+    threshold <- thresholds
+    [ expr .<= F.lit threshold
+        , expr .>= F.lit threshold
+        , expr .< F.lit threshold
+        , expr .> F.lit threshold
+        ]
+
+numericExprsWithTerms ::
+    SynthConfig -> DataFrame -> [Expr Double]
+numericExprsWithTerms cfg df =
+    concatMap (numericExprs cfg df [] 0) [0 .. maxExprDepth cfg]
+
+numericCols :: DataFrame -> [Expr Double]
+numericCols df = concatMap extract (columnNames df)
+  where
+    extract col = case unsafeGetColumn col df of
+        UnboxedColumn (_ :: VU.Vector b) ->
+            case testEquality (typeRep @b) (typeRep @Double) of
+                Just Refl -> [Col col]
+                Nothing -> case sIntegral @b of
+                    STrue -> [F.toDouble (Col @b col)]
+                    SFalse -> []
+        _ -> []
+
+numericExprs ::
+    SynthConfig -> DataFrame -> [Expr Double] -> Int -> Int -> [Expr Double]
+numericExprs cfg df prevExprs depth maxDepth
+    | depth == 0 = baseExprs ++ numericExprs cfg df baseExprs (depth + 1) maxDepth
+    | depth >= maxDepth = []
+    | otherwise =
+        combinedExprs ++ numericExprs cfg df combinedExprs (depth + 1) maxDepth
+  where
+    baseExprs = numericCols df
+
+    combinedExprs
+        | not (enableArithOps cfg) = []
+        | otherwise = do
+            e1 <- prevExprs
+            e2 <- baseExprs
+            guard (e1 /= e2)
+            [e1 + e2, e1 - e2, e1 * e2, F.ifThenElse (e2 .>= 0) (e1 / e2) 0]
+
+boolExprs ::
+    DataFrame -> [Expr Bool] -> [Expr Bool] -> Int -> Int -> [Expr Bool]
+boolExprs df baseExprs prevExprs depth maxDepth
+    | depth == 0 =
+        baseExprs ++ boolExprs df baseExprs prevExprs (depth + 1) maxDepth
+    | depth >= maxDepth = []
+    | otherwise =
+        combinedExprs ++ boolExprs df baseExprs combinedExprs (depth + 1) maxDepth
+  where
+    combinedExprs = do
+        e1 <- prevExprs
+        e2 <- baseExprs
+        guard (e1 /= e2)
+        [F.and e1 e2, F.or e1 e2]
+
+generateConditionsOld :: SynthConfig -> DataFrame -> [Expr Bool]
+generateConditionsOld cfg df =
     let
         genConds :: T.Text -> [Expr Bool]
         genConds colName = case unsafeGetColumn colName df of
@@ -103,32 +207,27 @@ generateConditions df =
                 let
                     percentiles = map (Lit . (`percentileOrd'` col)) [1, 25, 75, 99]
                  in
-                    map (Col @a colName .<=) percentiles
-                        ++ map (Col @a colName .==) percentiles
+                    map (Col @a colName .==) percentiles
             (OptionalColumn (col :: V.Vector a)) ->
                 let
                     percentiles = map (Lit . (`percentileOrd'` col)) [1, 25, 75, 99]
                  in
-                    map (Col @a colName .<=) percentiles
-                        ++ map (Col @a colName .==) percentiles
-            (UnboxedColumn (col :: VU.Vector a)) ->
-                let
-                    percentiles = map (Lit . (`percentileOrd'` VU.convert col)) [1, 25, 75, 99]
-                 in
-                    map (Col @a colName .<=) percentiles
-                        ++ map (Col @a colName .==) percentiles
+                    map (Col @a colName .==) percentiles
+            (UnboxedColumn (col :: VU.Vector a)) -> []
         columnConds = concatMap colConds [(l, r) | l <- columnNames df, r <- columnNames df]
           where
             colConds (!l, !r) = case (unsafeGetColumn l df, unsafeGetColumn r df) of
                 (BoxedColumn (col1 :: V.Vector a), BoxedColumn (col2 :: V.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
                     Nothing -> []
                     Just Refl -> [Col @a l .== Col @a r]
-                (UnboxedColumn (col1 :: VU.Vector a), UnboxedColumn (col2 :: VU.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
-                    Nothing -> []
-                    Just Refl -> [Col @a l .<= Col @a r, Col @a l .== Col @a r]
-                (OptionalColumn (col1 :: V.Vector a), OptionalColumn (col2 :: V.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
-                    Nothing -> []
-                    Just Refl -> [Col @a l .<= Col @a r, Col @a l .== Col @a r]
+                (UnboxedColumn (col1 :: VU.Vector a), UnboxedColumn (col2 :: VU.Vector b)) -> []
+                ( OptionalColumn (col1 :: V.Vector (Maybe a))
+                    , OptionalColumn (col2 :: V.Vector (Maybe b))
+                    ) -> case testEquality (typeRep @a) (typeRep @b) of
+                        Nothing -> []
+                        Just Refl -> case testEquality (typeRep @a) (typeRep @T.Text) of
+                            Nothing -> [Col @(Maybe a) l .<= Col r, Col @(Maybe a) l .== Col r]
+                            Just Refl -> [Col @(Maybe a) l .== Col r]
                 _ -> []
      in
         concatMap genConds (columnNames df) ++ columnConds
@@ -142,6 +241,7 @@ findBestSplit ::
     T.Text -> [Expr Bool] -> DataFrame -> Maybe (Expr Bool)
 findBestSplit target conds df =
     let
+        minLeafSize = 10
         initialImpurity = calculateGini @a target df
         evalGain cond =
             let (t, f) = partitionDataFrame cond df
@@ -151,13 +251,28 @@ findBestSplit target conds df =
                 newImpurity =
                     (weightT * calculateGini @a target t)
                         + (weightF * calculateGini @a target f)
-             in initialImpurity - newImpurity
+             in ( round $ ((initialImpurity - newImpurity) * 1000) / fromIntegral (eSize cond)
+                , negate (eSize cond)
+                )
 
-        validConds = filter (\c -> nRows (filterWhere c df) > 0) conds
+        validConds =
+            filter
+                ( \c ->
+                    let
+                        (t, f) = partitionDataFrame c df
+                     in
+                        nRows t >= minLeafSize && nRows f >= minLeafSize
+                )
+                conds
+        sortedConditions = nubOrd (take 20 (sortBy (flip compare `on` evalGain) validConds))
      in
         if null validConds
             then Nothing
-            else Just $ maximumBy (compare `on` evalGain) validConds
+            else
+                Just $
+                    maximumBy
+                        (compare `on` evalGain)
+                        (boolExprs df sortedConditions sortedConditions 0 2)
 
 calculateGini ::
     forall a.
