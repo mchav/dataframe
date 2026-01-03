@@ -1023,18 +1023,24 @@ concatColumnsEither (BoxedColumn left) (UnboxedColumn right) =
     BoxedColumn $ fmap Left left <> fmap Right (VG.convert right)
 concatColumnsEither (UnboxedColumn left) (BoxedColumn right) =
     BoxedColumn $ fmap Left (VG.convert left) <> fmap Right right
-concatColumnsEither (OptionalColumn left) (BoxedColumn right) =
-    OptionalColumn $
-        fmap (fmap Left) left <> fmap (Just . Right) (VG.convert right)
-concatColumnsEither (BoxedColumn left) (OptionalColumn right) =
-    OptionalColumn $
-        fmap (Just . Left) (VG.convert left) <> fmap (fmap Right) right
-concatColumnsEither (OptionalColumn left) (UnboxedColumn right) =
-    OptionalColumn $
-        fmap (fmap Left) left <> fmap (Just . Right) (VG.convert right)
-concatColumnsEither (UnboxedColumn left) (OptionalColumn right) =
-    OptionalColumn $
-        fmap (Just . Left) (VG.convert left) <> fmap (fmap Right) right
+concatColumnsEither (OptionalColumn (left :: VB.Vector (Maybe a))) (BoxedColumn (right :: VB.Vector b)) =
+    case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> OptionalColumn $ left <> fmap Just right
+        Nothing -> OptionalColumn $ fmap (fmap Left) left <> fmap (Just . Right) right
+concatColumnsEither (BoxedColumn (left :: VB.Vector a)) (OptionalColumn (right :: VB.Vector (Maybe b))) =
+    case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> OptionalColumn $ fmap Just left <> right
+        Nothing -> OptionalColumn $ fmap (Just . Left) left <> fmap (fmap Right) right
+concatColumnsEither (OptionalColumn (left :: VB.Vector (Maybe a))) (UnboxedColumn (right :: VU.Vector b)) =
+    case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> OptionalColumn $ left <> fmap Just (VG.convert right)
+        Nothing ->
+            OptionalColumn $ fmap (fmap Left) left <> fmap (Just . Right) (VG.convert right)
+concatColumnsEither (UnboxedColumn (left :: VU.Vector a)) (OptionalColumn (right :: VB.Vector (Maybe b))) =
+    case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> OptionalColumn $ fmap Just (VG.convert left) <> right
+        Nothing ->
+            OptionalColumn $ fmap (Just . Left) (VG.convert left) <> fmap (fmap Right) right
 
 {- | O(n) Converts a column to a list. Throws an exception if the wrong type is specified.
 
