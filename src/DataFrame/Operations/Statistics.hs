@@ -119,6 +119,44 @@ median expr df = case interpret df expr of
         Left e -> throw e
         Right xs -> median' xs
 
+-- | Calculates the median of a given column (containing optional values) as a standalone value.
+medianMaybe ::
+    forall a. (Columnable a, Real a) => Expr (Maybe a) -> DataFrame -> Double
+medianMaybe (Col name) df =
+    (median' . optionalToDoubleVector)
+        (either throw id (columnAsVector (Col @(Maybe a) name) df))
+medianMaybe expr df = case interpret @(Maybe a) df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toVector @(Maybe a) col of
+        Left e -> throw e
+        Right xs -> (median' . optionalToDoubleVector) xs
+
+-- | Calculates the nth percentile of a given column as a standalone value.
+percentile ::
+    forall a.
+    (Columnable a, Real a, VU.Unbox a) => Int -> Expr a -> DataFrame -> Double
+percentile n (Col name) df = case columnAsUnboxedVector (Col @a name) df of
+    Right xs -> percentile' n xs
+    Left e -> throw e
+percentile n expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toUnboxedVector @a col of
+        Left e -> throw e
+        Right xs -> percentile' n xs
+
+-- | Calculates the nth percentile of a given column as a standalone value.
+genericPercentile ::
+    forall a.
+    (Columnable a, Ord a) => Int -> Expr a -> DataFrame -> a
+genericPercentile n (Col name) df = case columnAsVector (Col @a name) df of
+    Right xs -> percentileOrd' n xs
+    Left e -> throw e
+genericPercentile n expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toVector @a col of
+        Left e -> throw e
+        Right xs -> percentileOrd' n xs
+
 -- | Calculates the standard deviation of a given column as a standalone value.
 standardDeviation ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double

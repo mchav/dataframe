@@ -33,7 +33,7 @@ import Data.Function
 import Data.Functor
 import qualified Data.List as L
 import qualified Data.Map as M
-import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe)
+import qualified Data.Maybe as Maybe
 import qualified Data.Text as T
 import Data.Time
 import qualified Data.Vector as V
@@ -107,19 +107,13 @@ lt = BinaryOp "lt" (<)
 
 -- TODO: Generalize this pattern for other equality functions.
 (.>) :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
-(.>) (Lit l) (Lit r) = Lit (l > r)
-(.>) (Lit l) expr = UnaryOp ("gt " <> T.pack (show l)) (l >) expr
-(.>) expr (Lit r) = UnaryOp ("leq " <> T.pack (show r)) (r <=) expr
-(.>) l r = BinaryOp "gt" (>) l r
+(.>) = BinaryOp "gt" (>)
 
 gt :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr Bool
 gt = (.>)
 
 (.<=) :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
-(.<=) (Lit l) (Lit r) = Lit (l <= r)
-(.<=) (Lit l) expr = UnaryOp ("leq " <> T.pack (show l)) (l <=) expr
-(.<=) expr (Lit r) = UnaryOp ("gt " <> T.pack (show r)) (r >) expr
-(.<=) l r = BinaryOp "leq" (<=) l r
+(.<=) = BinaryOp "leq" (<=)
 
 leq :: (Columnable a, Ord a, Eq a) => Expr a -> Expr a -> Expr Bool
 leq = (.<=)
@@ -170,12 +164,16 @@ maximum expr = AggReduce expr "maximum" Prelude.max
 
 sum :: forall a. (Columnable a, Num a) => Expr a -> Expr a
 sum expr = AggReduce expr "sum" (+)
+{-# SPECIALIZE DataFrame.Functions.sum :: Expr Double -> Expr Double #-}
+{-# INLINEABLE DataFrame.Functions.sum #-}
 
 sumMaybe :: forall a. (Columnable a, Num a) => Expr (Maybe a) -> Expr a
-sumMaybe expr = AggVector expr "sumMaybe" (P.sum . catMaybes . V.toList)
+sumMaybe expr = AggVector expr "sumMaybe" (P.sum . Maybe.catMaybes . V.toList)
 
 mean :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
 mean expr = AggNumericVector expr "mean" mean'
+{-# SPECIALIZE DataFrame.Functions.mean :: Expr Double -> Expr Double #-}
+{-# INLINEABLE DataFrame.Functions.mean #-}
 
 meanMaybe :: forall a. (Columnable a, Real a) => Expr (Maybe a) -> Expr Double
 meanMaybe expr = AggVector expr "meanMaybe" (mean' . optionalToDoubleVector)
@@ -193,7 +191,7 @@ optionalToDoubleVector :: (Real a) => V.Vector (Maybe a) -> VU.Vector Double
 optionalToDoubleVector =
     VU.fromList
         . V.foldl'
-            (\acc e -> if isJust e then realToFrac (fromMaybe 0 e) : acc else acc)
+            (\acc e -> if Maybe.isJust e then realToFrac (Maybe.fromMaybe 0 e) : acc else acc)
             []
 
 percentile :: Int -> Expr Double -> Expr Double
@@ -232,6 +230,21 @@ reduce ::
     (Columnable a, Columnable b) => Expr b -> a -> (a -> b -> a) -> Expr a
 reduce expr = AggFold expr "foldUdf"
 
+toMaybe :: (Columnable a) => Expr a -> Expr (Maybe a)
+toMaybe = UnaryOp "toMaybe" Just
+
+fromMaybe :: (Columnable a) => a -> Expr (Maybe a) -> Expr a
+fromMaybe d = UnaryOp ("fromMaybe " <> T.pack (show d)) (Maybe.fromMaybe d)
+
+isJust :: (Columnable a) => Expr (Maybe a) -> Expr Bool
+isJust = UnaryOp "isJust" Maybe.isJust
+
+isNothing :: (Columnable a) => Expr (Maybe a) -> Expr Bool
+isNothing = UnaryOp "isNothing" Maybe.isNothing
+
+fromJust :: (Columnable a) => Expr (Maybe a) -> Expr a
+fromJust = UnaryOp "fromJust" Maybe.fromJust
+
 whenPresent ::
     forall a b.
     (Columnable a, Columnable b) => (a -> b) -> Expr (Maybe a) -> Expr (Maybe b)
@@ -248,17 +261,26 @@ recode ::
     (Columnable a, Columnable b) => [(a, b)] -> Expr a -> Expr (Maybe b)
 recode mapping = UnaryOp (T.pack ("recode " ++ show mapping)) (`lookup` mapping)
 
+recodeWithCondition ::
+    forall a b.
+    (Columnable a, Columnable b) =>
+    Expr b -> [(Expr a -> Expr Bool, b)] -> Expr a -> Expr b
+recodeWithCondition fallback [] value = fallback
+recodeWithCondition fallback ((cond, value) : rest) expr = ifThenElse (cond expr) (lit value) (recodeWithCondition fallback rest expr)
+
 recodeWithDefault ::
     forall a b.
     (Columnable a, Columnable b) => b -> [(a, b)] -> Expr a -> Expr b
 recodeWithDefault d mapping =
-    UnaryOp (T.pack ("recode " ++ show mapping)) (fromMaybe d . (`lookup` mapping))
+    UnaryOp
+        (T.pack ("recode " ++ show mapping))
+        (Maybe.fromMaybe d . (`lookup` mapping))
 
 firstOrNothing :: (Columnable a) => Expr [a] -> Expr (Maybe a)
-firstOrNothing = lift listToMaybe
+firstOrNothing = lift Maybe.listToMaybe
 
 lastOrNothing :: (Columnable a) => Expr [a] -> Expr (Maybe a)
-lastOrNothing = lift (listToMaybe . reverse)
+lastOrNothing = lift (Maybe.listToMaybe . reverse)
 
 splitOn :: T.Text -> Expr T.Text -> Expr [T.Text]
 splitOn delim = lift (T.splitOn delim)
