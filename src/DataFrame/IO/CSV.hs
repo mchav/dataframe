@@ -87,7 +87,7 @@ appendPagedVector (PagedVector chunksRef activeRef countRef) !val = do
             VM.unsafeWrite active count val
             writeIORef countRef $! count + 1
         else do
-            frozen <- V.freeze active
+            frozen <- V.unsafeFreeze active
             modifyIORef' chunksRef (frozen :)
 
             newActive <- VM.unsafeNew chunkSize
@@ -107,7 +107,7 @@ appendPagedUnboxedVector (PagedUnboxedVector chunksRef activeRef countRef) !val 
             VUM.unsafeWrite active count val
             writeIORef countRef $! count + 1
         else do
-            frozen <- VU.freeze active
+            frozen <- VU.unsafeFreeze active
             modifyIORef' chunksRef (frozen :)
 
             newActive <- VUM.unsafeNew chunkSize
@@ -123,7 +123,7 @@ freezePagedVector (PagedVector chunksRef activeRef countRef) = do
     active <- readIORef activeRef
     chunks <- readIORef chunksRef
 
-    lastChunk <- V.freeze (VM.slice 0 count active)
+    lastChunk <- V.unsafeFreeze (VM.slice 0 count active)
 
     return $! V.concat (reverse (lastChunk : chunks))
 
@@ -134,7 +134,7 @@ freezePagedUnboxedVector (PagedUnboxedVector chunksRef activeRef countRef) = do
     active <- readIORef activeRef
     chunks <- readIORef chunksRef
 
-    lastChunk <- VU.freeze (VUM.slice 0 count active)
+    lastChunk <- VU.unsafeFreeze (VUM.slice 0 count active)
     return $! VU.concat (reverse (lastChunk : chunks))
 
 -- | STANDARD CONFIG TYPES
