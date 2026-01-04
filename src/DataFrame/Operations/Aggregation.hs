@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE Strict #-}
 
 module DataFrame.Operations.Aggregation where
 
@@ -15,7 +16,6 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Merge as VA
-import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
@@ -55,7 +55,7 @@ groupBy names df
         Grouped
             df
             names
-            (VG.map fst valueIndices)
+            (VU.map fst valueIndices)
             (changingPoints valueIndices)
   where
     indicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` names) (columnIndices df)
@@ -72,7 +72,7 @@ groupBy names df
                 case testEquality (typeRep @a) (typeRep @Int) of
                     Just Refl ->
                         VU.imapM_
-                            ( \i (x :: Int) -> do
+                            ( \i x -> do
                                 (_, !h) <- VUM.unsafeRead mv i
                                 VUM.unsafeWrite mv i (i, hashWithSalt h x)
                             )
@@ -81,7 +81,7 @@ groupBy names df
                         case testEquality (typeRep @a) (typeRep @Double) of
                             Just Refl ->
                                 VU.imapM_
-                                    ( \i (d :: Double) -> do
+                                    ( \i d -> do
                                         (_, !h) <- VUM.unsafeRead mv i
                                         VUM.unsafeWrite mv i (i, hashWithSalt h (doubleToInt d))
                                     )
@@ -120,7 +120,7 @@ groupBy names df
                 case testEquality (typeRep @a) (typeRep @T.Text) of
                     Just Refl ->
                         V.imapM_
-                            ( \i (t :: T.Text) -> do
+                            ( \i t -> do
                                 (_, !h) <- VUM.unsafeRead mv i
                                 VUM.unsafeWrite mv i (i, hashWithSalt h t)
                             )
@@ -142,13 +142,13 @@ groupBy names df
                     )
                     v
 
-        VA.sortBy (\(a, b) (a', b') -> compare b' b) mv
-        VG.unsafeFreeze mv
+        VA.sortBy (\(!a, !b) (!a', !b') -> compare b' b) mv
+        VU.unsafeFreeze mv
 
 changingPoints :: VU.Vector (Int, Int) -> VU.Vector Int
 changingPoints vs =
     VU.reverse
-        (VU.fromList (VG.length vs : fst (VU.ifoldl' findChangePoints initialState vs)))
+        (VU.fromList (VU.length vs : fst (VU.ifoldl' findChangePoints initialState vs)))
   where
     initialState = ([0], snd (VU.head vs))
     findChangePoints (!offsets, !currentVal) index (_, !newVal)
@@ -250,7 +250,7 @@ aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
     let
         df' =
             selectIndices
-                (VG.map (valueIndices VG.!) (VG.init offsets))
+                (VU.map (valueIndices VU.!) (VU.init offsets))
                 (select groupingColumns df)
 
         f (name, Wrap (expr :: Expr a)) d =
@@ -267,12 +267,12 @@ aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
 selectIndices :: VU.Vector Int -> DataFrame -> DataFrame
 selectIndices xs df =
     df
-        { columns = VG.map (atIndicesStable xs) (columns df)
-        , dataframeDimensions = (VG.length xs, VG.length (columns df))
+        { columns = V.map (atIndicesStable xs) (columns df)
+        , dataframeDimensions = (VU.length xs, V.length (columns df))
         }
 
 -- | Filter out all non-unique values in a dataframe.
 distinct :: DataFrame -> DataFrame
-distinct df = selectIndices (VG.map (indices VG.!) (VG.init os)) df
+distinct df = selectIndices (VU.map (indices VU.!) (VU.init os)) df
   where
     (Grouped _ _ indices os) = groupBy (columnNames df) df

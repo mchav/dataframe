@@ -159,7 +159,7 @@ interpretAggregation gdf (Lit value) =
         Aggregated $
             TColumn $
                 fromVector $
-                    V.replicate (VG.length (offsets gdf) - 1) value
+                    V.replicate (VU.length (offsets gdf) - 1) value
 interpretAggregation gdf@(Grouped df names indices os) (Col name) = case getColumn name df of
     Nothing -> Left $ ColumnNotFoundException name "" (M.keys $ columnIndices df)
     Just (BoxedColumn col) -> Right $ UnAggregated $ fromVector $ mkUnaggregatedColumnBoxed col os indices
@@ -701,7 +701,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggNumericVec
                         Aggregated $
                             TColumn $
                                 fromVector $
-                                    V.map f (VG.map (VG.map fromIntegral) col)
+                                    V.map f (V.map (VU.map fromIntegral) col)
             Just Refl -> Right $ Aggregated $ TColumn $ fromVector $ V.map f col
         Right (UnAggregated _) -> Left $ InternalException "Aggregated into non-boxed column"
         Right (Aggregated (TColumn (BoxedColumn (col :: V.Vector d)))) -> case testEquality (typeRep @Integer) (typeRep @d) of
@@ -797,7 +797,7 @@ interpretAggregation gdf@(Grouped df names indices os) expression@(AggReduce exp
                     Aggregated $
                         TColumn $
                             fromVector $
-                                V.map (VG.foldl1' f) col
+                                V.map (V.foldl1' f) col
         Right (UnAggregated _) -> Left $ InternalException "Aggregated into non-boxed column"
         Right (Aggregated (TColumn column)) -> case foldl1Column f column of
             Left e -> Left e
@@ -1102,8 +1102,8 @@ mkUnaggregatedColumnBoxed ::
 mkUnaggregatedColumnBoxed col os indices =
     let
         sorted = V.unsafeBackpermute col (V.convert indices)
-        n i = os `VG.unsafeIndex` (i + 1) - (os `VG.unsafeIndex` i)
-        start i = os `VG.unsafeIndex` i
+        n i = os `VU.unsafeIndex` (i + 1) - (os `VU.unsafeIndex` i)
+        start i = os `VU.unsafeIndex` i
      in
         V.generate
             (VU.length os - 1)
@@ -1119,7 +1119,7 @@ mkUnaggregatedColumnUnboxed col os indices =
     let
         sorted = VU.unsafeBackpermute col indices
         n i = os `VU.unsafeIndex` (i + 1) - (os `VU.unsafeIndex` i)
-        start i = os `VG.unsafeIndex` i
+        start i = os `VU.unsafeIndex` i
      in
         V.generate
             (VU.length os - 1)
@@ -1139,7 +1139,7 @@ mkAggregatedColumnUnboxed col os indices f =
     let
         sorted = VU.unsafeBackpermute col indices
         n i = os `VU.unsafeIndex` (i + 1) - (os `VU.unsafeIndex` i)
-        start i = os `VG.unsafeIndex` i
+        start i = os `VU.unsafeIndex` i
      in
         VU.generate
             (VU.length os - 1)
@@ -1162,11 +1162,11 @@ mkReducedColumnUnboxed col os indices f = runST $ do
     let loopOut i
             | i == len = return ()
             | otherwise = do
-                let start = os `VU.unsafeIndex` i
-                let end = os `VU.unsafeIndex` (i + 1)
-                let initVal = col `VU.unsafeIndex` (indices `VU.unsafeIndex` start)
+                let !start = os `VU.unsafeIndex` i
+                let !end = os `VU.unsafeIndex` (i + 1)
+                let !initVal = col `VU.unsafeIndex` (indices `VU.unsafeIndex` start)
 
-                let loopIn !acc idx
+                let loopIn !acc !idx
                         | idx == end = acc
                         | otherwise =
                             let val = col `VU.unsafeIndex` (indices `VU.unsafeIndex` idx)
