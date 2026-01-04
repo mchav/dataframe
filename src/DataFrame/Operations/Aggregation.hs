@@ -6,8 +6,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE Strict #-}
+{-# LANGUAGE TypeApplications #-}
 
 module DataFrame.Operations.Aggregation where
 
