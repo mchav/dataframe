@@ -43,6 +43,7 @@ data TreeConfig = TreeConfig
 
 data SynthConfig = SynthConfig
     { maxExprDepth :: Int
+    , boolExpansion :: Int
     , percentiles :: [Int]
     , enableStringOps :: Bool
     , enableCrossCols :: Bool
@@ -53,6 +54,7 @@ defaultSynthConfig :: SynthConfig
 defaultSynthConfig =
     SynthConfig
         { maxExprDepth = 2
+        , boolExpansion = 2
         , percentiles = [0, 10 .. 100]
         , enableStringOps = True
         , enableCrossCols = True
@@ -98,7 +100,7 @@ buildTree cfg depth target conds df
     | depth <= 0 || nRows df <= minSamplesSplit cfg =
         Lit (majorityValue @a target df)
     | otherwise =
-        case findBestSplit @a target conds df of
+        case findBestSplit @a (synthConfig cfg) target conds df of
             Nothing -> Lit (majorityValue @a target df)
             Just bestCond ->
                 let (dfTrue, dfFalse) = partitionDataFrame bestCond df
@@ -238,8 +240,8 @@ partitionDataFrame cond df = (filterWhere cond df, filterWhere (F.not cond) df)
 findBestSplit ::
     forall a.
     (Columnable a) =>
-    T.Text -> [Expr Bool] -> DataFrame -> Maybe (Expr Bool)
-findBestSplit target conds df =
+    SynthConfig -> T.Text -> [Expr Bool] -> DataFrame -> Maybe (Expr Bool)
+findBestSplit cfg target conds df =
     let
         minLeafSize = 1
         lambda = 0.05
@@ -273,7 +275,7 @@ findBestSplit target conds df =
                 Just $
                     maximumBy
                         (compare `on` evalGain)
-                        (boolExprs df sortedConditions sortedConditions 0 3)
+                        (boolExprs df sortedConditions sortedConditions 0 (boolExpansion cfg))
 
 calculateGini ::
     forall a.
