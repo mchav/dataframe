@@ -398,7 +398,9 @@ dropFirstAndLast = reverse . drop 1 . reverse . drop 1
 
 declareColumnsFromCsvFile :: String -> DecsQ
 declareColumnsFromCsvFile path = do
-    df <- liftIO (CSV.readCsv path)
+    df <-
+        liftIO
+            (CSV.readSeparated (CSV.defaultReadOptions{CSV.numColumns = Just 100}) path)
     declareColumns df
 
 -- TODO: We don't have to read the whole file, we can just read the schema.

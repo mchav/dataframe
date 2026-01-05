@@ -165,6 +165,8 @@ data ReadOptions = ReadOptions
     -}
     , columnSeparator :: Char
     -- ^ Character that separates column values.
+    , numColumns :: Maybe Int
+    -- ^ Number of columns to read.
     }
 
 shouldInferFromSample :: TypeSpec -> Bool
@@ -187,6 +189,7 @@ defaultReadOptions =
         , safeRead = True
         , dateFormat = "%Y-%m-%d"
         , columnSeparator = ','
+        , numColumns = Nothing
         }
 
 {- | Read CSV file from path and load it into a dataframe.
@@ -260,7 +263,7 @@ readSeparated !opts !path = do
 
     (sampleRow, _) <- peekStream rowsToProcess
     builderCols <- initializeColumns (V.toList sampleRow) opts
-    processStream rowsToProcess builderCols
+    processStream rowsToProcess builderCols (numColumns opts)
 
     frozenCols <- V.fromList <$> mapM freezeBuilderColumn builderCols
     let numRows = maybe 0 columnLength (frozenCols V.!? 0)
@@ -302,10 +305,14 @@ initializeColumns row opts = case typeSpec opts of
                     Nothing -> BuilderText <$> newPagedVector <*> pure validityRef
 
 processStream ::
-    CsvStream.Records (V.Vector BL.ByteString) -> [BuilderColumn] -> IO ()
-processStream (Cons (Right row) rest) cols = processRow row cols >> processStream rest cols
-processStream (Cons (Left err) _) _ = error ("CSV Parse Error: " ++ err)
-processStream (Nil _ _) _ = return ()
+    CsvStream.Records (V.Vector BL.ByteString) ->
+    [BuilderColumn] ->
+    Maybe Int ->
+    IO ()
+processStream _ _ (Just 0) = return ()
+processStream (Cons (Right row) rest) cols n = processRow row cols >> processStream rest cols (fmap (flip (-) 1) n)
+processStream (Cons (Left err) _) _ _ = error ("CSV Parse Error: " ++ err)
+processStream (Nil _ _) _ _ = return ()
 
 processRow :: V.Vector BL.ByteString -> [BuilderColumn] -> IO ()
 processRow !vals !cols = V.zipWithM_ processValue vals (V.fromList cols)
