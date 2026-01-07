@@ -38,6 +38,7 @@ import DataFrame.Functions ((.<), (.<=), (.==), (.>), (.>=))
 data TreeConfig = TreeConfig
     { maxTreeDepth :: Int
     , minSamplesSplit :: Int
+    , minLeafSize :: Int
     , synthConfig :: SynthConfig
     }
 
@@ -45,6 +46,7 @@ data SynthConfig = SynthConfig
     { maxExprDepth :: Int
     , boolExpansion :: Int
     , percentiles :: [Int]
+    , complexityPenalty :: Double
     , enableStringOps :: Bool
     , enableCrossCols :: Bool
     , enableArithOps :: Bool
@@ -56,6 +58,7 @@ defaultSynthConfig =
         { maxExprDepth = 2
         , boolExpansion = 2
         , percentiles = [0, 10 .. 100]
+        , complexityPenalty = 0.05
         , enableStringOps = True
         , enableCrossCols = True
         , enableArithOps = True
@@ -66,6 +69,7 @@ defaultTreeConfig =
     TreeConfig
         { maxTreeDepth = 10
         , minSamplesSplit = 5
+        , minLeafSize = 1
         , synthConfig = defaultSynthConfig
         }
 
@@ -100,7 +104,7 @@ buildTree cfg depth target conds df
     | depth <= 0 || nRows df <= minSamplesSplit cfg =
         Lit (majorityValue @a target df)
     | otherwise =
-        case findBestSplit @a (synthConfig cfg) target conds df of
+        case findBestSplit @a cfg target conds df of
             Nothing -> Lit (majorityValue @a target df)
             Just bestCond ->
                 let (dfTrue, dfFalse) = partitionDataFrame bestCond df
@@ -240,11 +244,9 @@ partitionDataFrame cond df = (filterWhere cond df, filterWhere (F.not cond) df)
 findBestSplit ::
     forall a.
     (Columnable a) =>
-    SynthConfig -> T.Text -> [Expr Bool] -> DataFrame -> Maybe (Expr Bool)
+    TreeConfig -> T.Text -> [Expr Bool] -> DataFrame -> Maybe (Expr Bool)
 findBestSplit cfg target conds df =
     let
-        minLeafSize = 1
-        lambda = 0.05
         initialImpurity = calculateGini @a target df
         evalGain cond =
             let (t, f) = partitionDataFrame cond df
@@ -254,7 +256,8 @@ findBestSplit cfg target conds df =
                 newImpurity =
                     (weightT * calculateGini @a target t)
                         + (weightF * calculateGini @a target f)
-             in ( (initialImpurity - newImpurity) - lambda * fromIntegral (eSize cond)
+             in ( (initialImpurity - newImpurity)
+                    - complexityPenalty (synthConfig cfg) * fromIntegral (eSize cond)
                 , negate (eSize cond)
                 )
 
@@ -264,7 +267,7 @@ findBestSplit cfg target conds df =
                     let
                         (t, f) = partitionDataFrame c df
                      in
-                        nRows t >= minLeafSize && nRows f >= minLeafSize
+                        nRows t >= minLeafSize cfg && nRows f >= minLeafSiz cfg
                 )
                 (nubOrd conds)
         sortedConditions = take 10 (sortBy (flip compare `on` evalGain) validConds)
@@ -275,7 +278,13 @@ findBestSplit cfg target conds df =
                 Just $
                     maximumBy
                         (compare `on` evalGain)
-                        (boolExprs df sortedConditions sortedConditions 0 (boolExpansion cfg))
+                        ( boolExprs
+                            df
+                            sortedConditions
+                            sortedConditions
+                            0
+                            (boolExpansion (synthConfig cfg))
+                        )
 
 calculateGini ::
     forall a.
