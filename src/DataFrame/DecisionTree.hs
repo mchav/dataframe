@@ -267,7 +267,7 @@ findBestSplit cfg target conds df =
                     let
                         (t, f) = partitionDataFrame c df
                      in
-                        nRows t >= minLeafSize cfg && nRows f >= minLeafSiz cfg
+                        nRows t >= minLeafSize cfg && nRows f >= minLeafSize cfg
                 )
                 (nubOrd conds)
         sortedConditions = take 10 (sortBy (flip compare `on` evalGain) validConds)
