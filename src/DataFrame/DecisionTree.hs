@@ -15,7 +15,7 @@ import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
 import DataFrame.Internal.Expression (Expr (..), eSize, interpret)
-import DataFrame.Internal.Statistics (percentileOrd')
+import DataFrame.Internal.Statistics (percentile', percentileOrd')
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core (columnNames, nRows)
 import DataFrame.Operations.Statistics (percentile)
@@ -27,6 +27,7 @@ import Data.Containers.ListUtils (nubOrd)
 import Data.Function (on)
 import Data.List (foldl', maximumBy, sortBy)
 import qualified Data.Map.Strict as M
+import Data.Maybe
 import qualified Data.Text as T
 import Data.Type.Equality
 import qualified Data.Vector as V
@@ -214,11 +215,54 @@ generateConditionsOld cfg df =
                     percentiles = map (Lit . (`percentileOrd'` col)) [1, 25, 75, 99]
                  in
                     map (Col @a colName .==) percentiles
-            (OptionalColumn (col :: V.Vector a)) ->
-                let
-                    percentiles = map (Lit . (`percentileOrd'` col)) [1, 25, 75, 99]
-                 in
-                    map (Col @a colName .==) percentiles
+            (OptionalColumn (col :: V.Vector (Maybe a))) -> case sFloating @a of
+                STrue ->
+                    let
+                        doubleCol =
+                            VU.convert
+                                (V.map fromJust (V.filter isJust (V.map (fmap (realToFrac @a @Double)) col)))
+                     in
+                        zipWith
+                            ($)
+                            [ (Col @(Maybe a) colName .==)
+                            , (Col @(Maybe a) colName .<=)
+                            , (Col @(Maybe a) colName .>=)
+                            ]
+                            ( Lit Nothing
+                                : map
+                                    ( Lit
+                                        . Just
+                                        . realToFrac
+                                        . (`percentile'` doubleCol)
+                                    )
+                                    (percentiles cfg)
+                            )
+                SFalse -> case sIntegral @a of
+                    STrue ->
+                        let
+                            doubleCol =
+                                VU.convert
+                                    (V.map fromJust (V.filter isJust (V.map (fmap (fromIntegral @a @Double)) col)))
+                         in
+                            zipWith
+                                ($)
+                                [ (Col @(Maybe a) colName .==)
+                                , (Col @(Maybe a) colName .<=)
+                                , (Col @(Maybe a) colName .>=)
+                                ]
+                                ( Lit Nothing
+                                    : map
+                                        ( Lit
+                                            . Just
+                                            . round
+                                            . (`percentile'` doubleCol)
+                                        )
+                                        (percentiles cfg)
+                                )
+                    SFalse ->
+                        map
+                            ((Col @(Maybe a) colName .==) . Lit . (`percentileOrd'` col))
+                            [1, 25, 75, 99]
             (UnboxedColumn (col :: VU.Vector a)) -> []
         columnConds = concatMap colConds [(l, r) | l <- columnNames df, r <- columnNames df]
           where
@@ -270,7 +314,7 @@ findBestSplit cfg target conds df =
                         nRows t >= minLeafSize cfg && nRows f >= minLeafSize cfg
                 )
                 (nubOrd conds)
-        sortedConditions = take 10 (sortBy (flip compare `on` evalGain) validConds)
+        sortedConditions = take 30 (sortBy (flip compare `on` evalGain) validConds)
      in
         if null validConds
             then Nothing
