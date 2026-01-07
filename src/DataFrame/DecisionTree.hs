@@ -314,7 +314,7 @@ findBestSplit cfg target conds df =
                         nRows t >= minLeafSize cfg && nRows f >= minLeafSize cfg
                 )
                 (nubOrd conds)
-        sortedConditions = take 30 (sortBy (flip compare `on` evalGain) validConds)
+        sortedConditions = take 10 (sortBy (flip compare `on` evalGain) validConds)
      in
         if null validConds
             then Nothing
