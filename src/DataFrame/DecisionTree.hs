@@ -38,13 +38,12 @@ import DataFrame.Functions ((.<), (.<=), (.==), (.>), (.>=))
 
 data TreeConfig
     = TreeConfig
-        { maxTreeDepth :: Int
-        , minSamplesSplit :: Int
-        , minLeafSize :: Int
-        , synthConfig :: SynthConfig
-        }
-        derivng
-        (Eq, Show)
+    { maxTreeDepth :: Int
+    , minSamplesSplit :: Int
+    , minLeafSize :: Int
+    , synthConfig :: SynthConfig
+    }
+    deriving (Eq, Show)
 
 data SynthConfig = SynthConfig
     { maxExprDepth :: Int
