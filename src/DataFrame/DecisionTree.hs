@@ -36,12 +36,15 @@ import Type.Reflection (typeRep)
 
 import DataFrame.Functions ((.<), (.<=), (.==), (.>), (.>=))
 
-data TreeConfig = TreeConfig
-    { maxTreeDepth :: Int
-    , minSamplesSplit :: Int
-    , minLeafSize :: Int
-    , synthConfig :: SynthConfig
-    }
+data TreeConfig
+    = TreeConfig
+        { maxTreeDepth :: Int
+        , minSamplesSplit :: Int
+        , minLeafSize :: Int
+        , synthConfig :: SynthConfig
+        }
+        derivng
+        (Eq, Show)
 
 data SynthConfig = SynthConfig
     { maxExprDepth :: Int
@@ -52,6 +55,7 @@ data SynthConfig = SynthConfig
     , enableCrossCols :: Bool
     , enableArithOps :: Bool
     }
+    deriving (Eq, Show)
 
 defaultSynthConfig :: SynthConfig
 defaultSynthConfig =
@@ -68,7 +72,7 @@ defaultSynthConfig =
 defaultTreeConfig :: TreeConfig
 defaultTreeConfig =
     TreeConfig
-        { maxTreeDepth = 10
+        { maxTreeDepth = 4
         , minSamplesSplit = 5
         , minLeafSize = 1
         , synthConfig = defaultSynthConfig
