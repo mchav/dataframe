@@ -1,0 +1,12 @@
+packages: .
+allow-newer: table-layout:*, haskeline:*, aeson:*
+
+source-repository-package
+    type: git
+    location: https://github.com/haskell/mwc-random
+    tag: 2cce257158befe52417433d1e7717f11ce718aec
+
+source-repository-package
+    type: git
+    location: https://github.com/folivetti/srtree
+    tag: e0663d9da630fc7d17fdeb08485a546a6a634afd
