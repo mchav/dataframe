@@ -24,6 +24,7 @@ import DataFrame.Errors (DataFrameException (..), TypeErrorContext (..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
 import DataFrame.Operations.Core
 import DataFrame.Operations.Transformations (apply)
 import System.Random
