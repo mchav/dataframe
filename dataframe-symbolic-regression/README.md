@@ -1,6 +1,6 @@
 # DataFrame.SymbolicRegression
 
-A Haskell library for symbolic regression on DataFrames. Automatically discover mathematical expressions that best fit your data using genetic programming with e-graph optimization.
+A Haskell library (based on [eggp](https://github.com/folivetti/eggp) which is in turn based on [srtree](https://github.com/folivetti/srtree)) for symbolic regression on DataFrames. Automatically discover mathematical expressions that best fit your data using genetic programming with e-graph optimization.
 
 ## Overview
 
