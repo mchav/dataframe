@@ -24,8 +24,6 @@ import Algorithm.EqSat.Queries
 import Algorithm.EqSat.Simplify hiding (myCost)
 import Algorithm.SRTree.Likelihoods
 import Algorithm.SRTree.ModelSelection (fractionalBayesFactor)
-import Algorithm.SRTree.NonlinearOpt
-import Algorithm.SRTree.Opt
 import Control.Lens (over)
 import Control.Monad (
     filterM,
@@ -53,16 +51,14 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust)
 import Data.SRTree
 import Data.SRTree.Datasets
-import Data.SRTree.Eval
 import qualified Data.SRTree.Internal as SI
 import Data.SRTree.Print
 import Data.SRTree.Random
 
 import Algorithm.EqSat (runEqSat)
 import Algorithm.EqSat.SearchSR
-import Text.ParseSR
-
 import Data.Time.Clock.POSIX
+import Text.ParseSR
 
 data RegressionConfig = RegressionConfig
     { generations :: Int
@@ -112,14 +108,16 @@ defaultRegressionConfig =
 
 fitSymbolicRegression ::
     RegressionConfig -> D.Expr Double -> D.DataFrame -> IO [D.Expr Double]
-fitSymbolicRegression cfg target df = do
+fitSymbolicRegression cfg targetColumn df = do
     g <- getStdGen
     let
         df' =
-            D.exclude [F.name target] (D.selectBy [D.byProperty (D.hasElemType @Double)] df)
+            D.exclude
+                [F.name targetColumn]
+                (D.selectBy [D.byProperty (D.hasElemType @Double)] df)
         matrix = either throw id (D.toDoubleMatrix df')
         features = fromLists' Seq (V.toList (V.map VU.toList matrix)) :: Array S Ix2 Double
-        target' = fromLists' Seq (D.columnAsList target df) :: Array S Ix1 Double
+        target' = fromLists' Seq (D.columnAsList targetColumn df) :: Array S Ix1 Double
         nonterminals =
             intercalate
                 ","
@@ -130,7 +128,10 @@ fitSymbolicRegression cfg target df = do
         varnames =
             intercalate
                 ","
-                (Prelude.map T.unpack (Prelude.filter (/= F.name target) (D.columnNames df)))
+                ( Prelude.map
+                    T.unpack
+                    (Prelude.filter (/= F.name targetColumn) (D.columnNames df))
+                )
         alg =
             evalStateT
                 ( egraphGP
@@ -172,20 +173,20 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
     unless (null (loadFrom cfg)) $
         io (BS.readFile (loadFrom cfg)) >>= \eg -> put (decode eg)
 
-    insertTerms
+    _ <- insertTerms
     evaluateUnevaluated fitFun
 
     t0 <- io getPOSIXTime
 
     pop <- replicateM (populationSize cfg) $ do
         ec <- insertRndExpr (maxExpressionSize cfg) rndTerm rndNonTerm >>= canonical
-        updateIfNothing fitFun ec
+        _ <- updateIfNothing fitFun ec
         pure ec
     pop' <- Prelude.mapM canonical pop
 
     output <-
         if showTrace cfg
-            then forM (Prelude.zip [0 ..] pop') $ uncurry printExpr
+            then forM (Prelude.zip [0 ..] pop') $ uncurry printExpr'
             else pure []
 
     let mTime =
@@ -195,7 +196,7 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
 
         out' <-
             if showTrace cfg
-                then forM (Prelude.zip [curIx ..] newPop') $ uncurry printExpr
+                then forM (Prelude.zip [curIx ..] newPop') $ uncurry printExpr'
                 else pure []
 
         totSz <- gets (Map.size . _eNodeToEClass)
@@ -229,7 +230,9 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
             (lossFunction cfg)
             dataTrainVals
     nonTerms = parseNonTerms nonterminals
-    (Sz2 _ nFeats) = MA.size (getX . fst . head $ dataTrainVals)
+    (Sz2 _ nFeats) = case dataTrainVals of
+        [] -> Sz2 0 0
+        (h : _) -> MA.size (getX . fst $ h)
     params =
         if numParams cfg == -1
             then [param 0]
@@ -259,8 +262,8 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
         exprs <- forM pareto getBestExpr
         put emptyGraph
         newIds <- fromTrees myCost $ Prelude.map relabel exprs
-        forM_ (Prelude.zip newIds (Prelude.reverse infos)) $ \(eId, info) ->
-            insertFitness eId (fromJust $ _fitness info) (_theta info)
+        forM_ (Prelude.zip newIds (Prelude.reverse infos)) $ \(eId, info') ->
+            insertFitness eId (fromJust $ _fitness info') (_theta info')
 
     rndTerm = do
         coin <- toss
@@ -293,12 +296,12 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
 
     evolve xs' = do
         xs <- Prelude.mapM canonical xs'
-        parents <- tournament xs
-        offspring <- combine parents
+        parents' <- tournament xs
+        offspring <- combine parents'
         if numParams cfg == 0
             then runEqSat myCost rewritesWithConstant 1 >> cleanDB >> refitChanged
             else runEqSat myCost rewritesParams 1 >> cleanDB >> refitChanged
-        canonical offspring >>= updateIfNothing fitFun
+        canonical offspring >>= updateIfNothing fitFun >> pure ()
         canonical offspring
 
     tournament xs = do
@@ -440,7 +443,7 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                         newToken <- rnd (randomFrom candidates)
                         pure . Fix $ replaceChildren (childrenOf tree) newToken
             else pure . Fix $ tree
-    mutAt pos sizeLeft parent p' = do
+    mutAt pos sizeLeft _ p' = do
         p <- canonical p'
         root <- getBestENode p >>= canonize
         case root of
@@ -467,8 +470,8 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                         r' <- getBestExpr r
                         pure . Fix $ Bin op l' r'
 
-    printExpr :: Int -> EClassId -> RndEGraph [String]
-    printExpr ix ec = do
+    printExpr' :: Int -> EClassId -> RndEGraph [String]
+    printExpr' ix ec = do
         thetas' <- gets (_theta . _info . (IM.! ec) . _eClass)
         bestExpr <-
             (if simplifyExpressions cfg then simplifyEqSatDefault else id)
@@ -485,23 +488,23 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                 else pure (1.0, thetas')
 
         maxLoss <- negate . fromJust <$> getFitness ec
-        forM (Data.List.zip4 [0 ..] dataTrainVals dataTests thetas) $ \(view, (dataTrain, dataVal), dataTest, theta) -> do
+        forM (Data.List.zip4 [(0 :: Int) ..] dataTrainVals dataTests thetas) $ \(view, (dataTrain, dataVal), dataTest, theta') -> do
             let (x, y, mYErr) = dataTrain
                 (x_val, y_val, mYErr_val) = dataVal
                 (x_te, y_te, mYErr_te) = dataTest
                 distribution = lossFunction cfg
 
-                expr = paramsToConst (MA.toList theta) best'
+                expr = paramsToConst (MA.toList theta') best'
                 showNA z = if isNaN z then "" else show z
-                r2_train = r2 x y best' theta
-                r2_val = r2 x_val y_val best' theta
-                r2_te = r2 x_te y_te best' theta
-                nll_train = nll distribution mYErr x y best' theta
-                nll_val = nll distribution mYErr_val x_val y_val best' theta
-                nll_te = nll distribution mYErr_te x_te y_te best' theta
-                mdl_train = fractionalBayesFactor distribution mYErr x y theta best'
-                mdl_val = fractionalBayesFactor distribution mYErr_val x_val y_val theta best'
-                mdl_te = fractionalBayesFactor distribution mYErr_te x_te y_te theta best'
+                r2_train = r2 x y best' theta'
+                r2_val = r2 x_val y_val best' theta'
+                r2_te = r2 x_te y_te best' theta'
+                nll_train = nll distribution mYErr x y best' theta'
+                nll_val = nll distribution mYErr_val x_val y_val best' theta'
+                nll_te = nll distribution mYErr_te x_te y_te best' theta'
+                mdl_train = fractionalBayesFactor distribution mYErr x y theta' best'
+                mdl_val = fractionalBayesFactor distribution mYErr_val x_val y_val theta' best'
+                mdl_te = fractionalBayesFactor distribution mYErr_te x_te y_te theta' best'
                 vals =
                     intercalate "," $
                         Prelude.map
@@ -517,7 +520,7 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                             , mdl_val
                             , mdl_te
                             ]
-                thetaStr = intercalate ";" $ Prelude.map show (MA.toList theta)
+                thetaStr = intercalate ";" $ Prelude.map show (MA.toList theta')
                 showExprFun = if null varnames then showExpr else showExprWithVars (splitOn "," varnames)
                 showLatexFun = if null varnames then showLatex else showLatexWithVars (splitOn "," varnames)
             pure $
@@ -535,13 +538,13 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                     <> "$$\","
                     <> thetaStr
                     <> ","
-                    <> show (countNodes $ convertProtectedOps expr)
+                    <> show @Int (countNodes $ convertProtectedOps expr)
                     <> ","
                     <> vals
 
     insertTerms = forM terms (fromTree myCost >=> canonical)
 
-    paretoFront' fitFun' maxSize' = go 1 (-(1.0 / 0.0))
+    paretoFront' _ maxSize' = go 1 (-(1.0 / 0.0))
       where
         go :: Int -> Double -> RndEGraph [Fix SRTree]
         go n f
@@ -550,7 +553,9 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                 ecList <- getBestExprWithSize n
                 if not (null ecList)
                     then do
-                        let (ec', mf) = head ecList
+                        let (ec', mf) = case ecList of
+                                [] -> (0, Nothing)
+                                (e : _) -> e
                             f' = fromJust mf
                             improved = f' >= f && not (isNaN f') && not (isInfinite f')
                         ec <- canonical ec'
@@ -560,7 +565,9 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                                 bestExpr <-
                                     relabelParams . (if simplifyExpressions cfg then simplifyEqSatDefault else id)
                                         <$> getBestExpr ec
-                                let t = paramsToConst (MA.toList (head thetas')) bestExpr
+                                let t = case thetas' of
+                                        [] -> Fix (Const 0) -- Not sure if this makes sense as a default.
+                                        (h : _) -> paramsToConst (MA.toList h) bestExpr
                                 ts <- go (n + 1) (max f f')
                                 pure (t : ts)
                             else go (n + 1) (max f f')
