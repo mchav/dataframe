@@ -16,6 +16,8 @@ import DataFrame.SymbolicRegression
 df <- D.readParquet "data/mtcars.parquet"
 
 -- Run symbolic regression to predict 'mpg'
+-- NOTE: ALL COLUMNS MUST BE CONVERTED TO DOUBLE FIRST
+-- e.g df' = D.derive "some_column" (F.toDouble (F.col @Int "some_column")) df
 exprs <- fitSymbolicRegression defaultRegressionConfig mpg df
 
 -- View discovered expressions (Pareto front from simplest to most complex)

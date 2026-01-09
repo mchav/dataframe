@@ -101,12 +101,7 @@ defaultRegressionConfig =
         , crossoverProbability = 0.95
         , mutationProbability = 0.3
         , unaryFunctions = []
-        , binaryFunctions =
-            [ BinaryOp "add" (+)
-            , BinaryOp "sub" (-)
-            , BinaryOp "mult" (*)
-            , BinaryOp "divide" (/)
-            ]
+        , binaryFunctions = [(+), (-), (*), (/)]
         , numParams = -1
         , generational = False
         , simplifyExpressions = True
@@ -129,7 +124,7 @@ fitSymbolicRegression cfg target df = do
             intercalate
                 ","
                 ( Prelude.map
-                    (toNonTerminal . (\f -> f (F.lit 0) (F.lit 0)))
+                    (toNonTerminal . (\f -> f (F.col "fake1") (F.col "fake2")))
                     (binaryFunctions cfg)
                 )
         varnames =
