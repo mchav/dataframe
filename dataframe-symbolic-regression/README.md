@@ -10,6 +10,7 @@ DataFrame.SymbolicRegression integrates symbolic regression capabilities into a 
 
 ```haskell
 import qualified DataFrame as D
+import DataFrame.Functions ((.=))
 import DataFrame.SymbolicRegression
 
 -- Load your data
@@ -26,8 +27,14 @@ exprs
 --  (divide (lit 57.33) (col @Double "wt")),
 --  (add (lit 10.75) (divide (lit 1557.67) (col @Double "disp")))]
 
--- Use an expression to create predictions
-D.derive "prediction" (exprs !! 2) df
+-- Create named expressions that we'll use in a dataframe.
+levels = zipWith (.=) ["level_1", "level_2", "level_3"] exprs
+
+-- Show the various predictions in our dataframe.
+D.deriveMany levels df
+
+-- Or pick the best one
+D.derive "prediction" (last exprs) df
 ```
 
 ## Configuration
