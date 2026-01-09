@@ -10,7 +10,7 @@ if [[ "${1:-}" == "--fix" ]]; then
     FIX_MODE=true
 fi
 
-DIRS=("src" "app" "tests" "benchmark" "examples" "dataframe-hasktorch" "dataframe-persistent")
+DIRS=("src" "app" "tests" "benchmark" "examples" "dataframe-hasktorch" "dataframe-persistent" "dataframe-symbolic-regression")
 
 echo "Running HLint on dataframe project..."
 
