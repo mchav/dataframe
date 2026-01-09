@@ -1,5 +1,11 @@
 # Revision history for dataframe
 
+## 0.4.0.5
+* Faster groupby: does less allocations by keeping everything in a mutable vector.
+* declareColumnsFromCsvFile now infers types from a sample rather than reading the whole dataframe.
+* Decision trees API is now more configurable.
+* Add annotation to show what expressions were used to derive a column.
+
 ## 0.4.0.4
 * More robust synthesis based decision tree
 * Improved performance on sum and mean.
