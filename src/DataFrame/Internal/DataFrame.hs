@@ -20,6 +20,7 @@ import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import DataFrame.Display.Terminal.PrettyPrint
 import DataFrame.Errors
 import DataFrame.Internal.Column
+import DataFrame.Internal.Expression
 import Text.Printf
 import Type.Reflection (typeRep)
 
@@ -32,6 +33,7 @@ data DataFrame = DataFrame
     -- ^ Keeps the column names in the order they were inserted in.
     , dataframeDimensions :: (Int, Int)
     -- ^ (rows, columns)
+    , derivingExpressions :: M.Map T.Text UExpr
     }
 
 {- | A record that contains information about how and what
@@ -121,6 +123,7 @@ empty =
         { columns = V.empty
         , columnIndices = M.empty
         , dataframeDimensions = (0, 0)
+        , derivingExpressions = M.empty
         }
 
 {- | Safely retrieves a column by name from the dataframe.

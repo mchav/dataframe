@@ -29,6 +29,7 @@ import DataFrame.Internal.DataFrame (
     getColumn,
  )
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
 import DataFrame.Internal.Row (showValue, toAny)
 import DataFrame.Internal.Statistics
 import DataFrame.Internal.Types

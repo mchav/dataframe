@@ -31,6 +31,7 @@ executable chipotle
                     DataFrame.Display.Web.Plot,
                     DataFrame.Internal.Types,
                     DataFrame.Internal.Expression,
+                    DataFrame.Internal.Interpreter
                     DataFrame.Internal.Parsing,
                     DataFrame.Internal.Column,
                     DataFrame.Internal.Statistics,
@@ -136,6 +137,7 @@ executable one_billion_row_challenge
                     DataFrame.Display.Web.Plot,
                     DataFrame.Internal.Types,
                     DataFrame.Internal.Expression,
+                    DataFrame.Internal.Interpreter
                     DataFrame.Internal.Parsing,
                     DataFrame.Internal.Column,
                     DataFrame.Internal.Statistics,

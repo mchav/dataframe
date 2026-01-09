@@ -26,6 +26,7 @@ import DataFrame.Internal.Column (
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
 import DataFrame.Operations.Core
 
 -- | O(k) Apply a function to a given column in a dataframe.
@@ -68,7 +69,10 @@ add the result into `alias` column.
 derive :: forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> DataFrame
 derive name expr df = case interpret @a df (normalize expr) of
     Left e -> throw e
-    Right (TColumn value) -> insertColumn name value df
+    Right (TColumn value) ->
+        (insertColumn name value df)
+            { derivingExpressions = M.insert name (Wrap expr) (derivingExpressions df)
+            }
 
 {- | O(k) Apply a function to an expression in a dataframe and
 add the result into `alias` column but

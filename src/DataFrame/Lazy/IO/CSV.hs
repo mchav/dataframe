@@ -136,6 +136,7 @@ readSeparated c opts path = do
                 { columns = cols
                 , columnIndices = M.fromList (zip columnNames [0 ..])
                 , dataframeDimensions = (maybe 0 columnLength (cols V.!? 0), V.length cols)
+                , derivingExpressions = M.empty -- TODO create base expressions.
                 }
             , (pos, unconsumed, r + 1)
             )

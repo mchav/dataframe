@@ -32,6 +32,7 @@ import DataFrame.Internal.Column (
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), GroupedDataFrame (..))
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import DataFrame.Operations.Subset

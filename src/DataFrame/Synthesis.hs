@@ -20,8 +20,8 @@ import DataFrame.Internal.DataFrame (
 import DataFrame.Internal.Expression (
     Expr (..),
     eSize,
-    interpret,
  )
+import DataFrame.Internal.Interpreter (interpret)
 import DataFrame.Internal.Statistics
 import DataFrame.Operations.Core (columnAsDoubleVector)
 import qualified DataFrame.Operations.Statistics as Stats

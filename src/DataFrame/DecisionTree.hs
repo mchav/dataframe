@@ -14,7 +14,8 @@ module DataFrame.DecisionTree where
 import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
-import DataFrame.Internal.Expression (Expr (..), eSize, interpret)
+import DataFrame.Internal.Expression (Expr (..), eSize)
+import DataFrame.Internal.Interpreter (interpret)
 import DataFrame.Internal.Statistics (percentile', percentileOrd')
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core (columnNames, nRows)

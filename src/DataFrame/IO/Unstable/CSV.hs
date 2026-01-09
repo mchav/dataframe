@@ -133,7 +133,7 @@ readCsvUnstable' opts delimiterIndices filePath = do
                 zip (Vector.toList columnNames) [0 ..]
         dataframeDimensions = (numRow, numCol)
     return $
-        DataFrame columns columnIndices dataframeDimensions
+        DataFrame columns columnIndices dataframeDimensions M.empty
 
 {-# INLINE extractField #-}
 extractField ::

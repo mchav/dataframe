@@ -273,7 +273,7 @@ readSeparated !opts !path = do
                 frozenCols
                 (M.fromList (zip columnNames [0 ..]))
                 (numRows, V.length frozenCols)
-
+                M.empty -- TODO give typed column references
     return $
         if shouldInferFromSample (typeSpec opts)
             then

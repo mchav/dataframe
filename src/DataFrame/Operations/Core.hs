@@ -45,6 +45,7 @@ import DataFrame.Internal.DataFrame (
     getColumn,
  )
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
 import DataFrame.Internal.Parsing (isNullish)
 import DataFrame.Internal.Row (Any, mkColumnFromRow)
 import Type.Reflection
@@ -350,11 +351,13 @@ insertColumn name column d =
                     (V.map (expandColumn n) (columns d V.// [(i, column)]))
                     (columnIndices d)
                     (n, c)
+                    M.empty
             Nothing ->
                 DataFrame
                     (V.map (expandColumn n) (columns d `V.snoc` column))
                     (M.insert name c (columnIndices d))
                     (n, c + 1)
+                    M.empty
 
 {- | /O(n)/ Clones a column and places it under a new name in the dataframe.
 

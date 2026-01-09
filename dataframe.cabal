@@ -48,6 +48,7 @@ library
                     DataFrame.Display.Web.Plot,
                     DataFrame.Internal.Types,
                     DataFrame.Internal.Expression,
+                    DataFrame.Internal.Interpreter,
                     DataFrame.Internal.Parsing,
                     DataFrame.Internal.Column,
                     DataFrame.Internal.Statistics,
