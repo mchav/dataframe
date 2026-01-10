@@ -20,6 +20,8 @@ extra-source-files: cbits/process_csv.h
                     tests/data/*.csv
                     tests/data/*.tsv
                     tests/data/*.parquet
+                    tests/data/unstable_csv/*.csv
+                    tests/data/unstable_csv/*.tsv
                     -- tests/data/*.md
                     -- tests/data/*.bin
                     -- tests/data/*.json
@@ -183,12 +185,14 @@ test-suite tests
                    Parquet
     build-depends:  base >= 4 && < 5,
                     dataframe ^>= 0.4,
+                    directory >= 1.3.0.0 && < 2,
                     HUnit ^>= 1.6,
                     random >= 1 && < 2,
                     random-shuffle >= 0.0.4 && < 1,
                     random >= 1 && < 2,
                     text >= 2.0 && < 3,
                     time >= 1.12 && < 2,
-                    vector ^>= 0.13
+                    vector ^>= 0.13,
+                    containers >= 0.6.7 && < 0.9
     hs-source-dirs: tests
     default-language: Haskell2010

@@ -1,80 +1,157 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+
+-- Test fixtures inspired by csv-spectrum (https://github.com/max-mapper/csv-spectrum)
 
 module Operations.ReadCsv where
 
+import qualified Data.List as L
+import qualified Data.Map as M
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
+import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
+
+import Data.Function (on)
+import Data.Maybe (fromMaybe)
+import Data.Type.Equality (testEquality, (:~:) (Refl))
+import DataFrame.Internal.Column (Column (..))
+import DataFrame.Internal.DataFrame (
+    DataFrame (..),
+    columnIndices,
+    columns,
+    dataframeDimensions,
+ )
+import System.Directory (removeFile)
+import System.IO (IOMode (..), withFile)
 import Test.HUnit
+import Type.Reflection (typeRep)
 
-testReadCsvFunctions :: FilePath -> Test
-testReadCsvFunctions csvPath = TestCase $ do
-    df1 <- D.readCsv csvPath
-    df2 <- D.readCsvUnstable csvPath
+fixtureDir :: FilePath
+fixtureDir = "./tests/data/unstable_csv/"
 
+tempDir :: FilePath
+tempDir = "./tests/data/unstable_csv/"
+
+--------------------------------------------------------------------------------
+-- Pretty-printer
+--------------------------------------------------------------------------------
+
+prettyPrintCsv :: FilePath -> DataFrame -> IO ()
+prettyPrintCsv = prettyPrintSeparated ','
+
+prettyPrintTsv :: FilePath -> DataFrame -> IO ()
+prettyPrintTsv = prettyPrintSeparated '\t'
+
+prettyPrintSeparated :: Char -> FilePath -> DataFrame -> IO ()
+prettyPrintSeparated sep filepath df = withFile filepath WriteMode $ \handle -> do
+    let (rows, _) = dataframeDimensions df
+    let headers = map fst (L.sortBy (compare `on` snd) (M.toList (columnIndices df)))
+    TIO.hPutStrLn
+        handle
+        (T.intercalate (T.singleton sep) (map (escapeField sep) headers))
+    -- Write data rows
+    mapM_
+        ( \i ->
+            TIO.hPutStrLn handle (T.intercalate (T.singleton sep) (getRowEscaped sep df i))
+        )
+        [0 .. rows - 1]
+
+-- Note: The unstable parser does not unescape doubled quotes (""  -> "),
+-- so we must not double-escape them here. We only wrap in quotes when needed.
+escapeField :: Char -> T.Text -> T.Text
+escapeField sep field
+    | needsQuoting = T.concat ["\"", field, "\""]
+    | otherwise = field
+  where
+    needsQuoting =
+        T.any (\c -> c == sep || c == '\n' || c == '\r' || c == '"') field
+
+-- | Get a row from the DataFrame with all fields escaped
+getRowEscaped :: Char -> DataFrame -> Int -> [T.Text]
+getRowEscaped sep df i = V.ifoldr go [] (columns df)
+  where
+    go _ (BoxedColumn (c :: V.Vector a)) acc = case c V.!? i of
+        Just e -> escapeField sep textRep : acc
+          where
+            textRep = case testEquality (typeRep @a) (typeRep @T.Text) of
+                Just Refl -> e
+                Nothing -> T.pack (show e)
+        Nothing -> acc
+    go _ (UnboxedColumn c) acc = case c VU.!? i of
+        Just e -> escapeField sep (T.pack (show e)) : acc
+        Nothing -> acc
+    go _ (OptionalColumn (c :: V.Vector (Maybe a))) acc = case c V.!? i of
+        Just e -> escapeField sep textRep : acc
+          where
+            textRep = case testEquality (typeRep @a) (typeRep @T.Text) of
+                Just Refl -> fromMaybe "" e
+                Nothing -> case e of
+                    Just val -> T.pack (show val)
+                    Nothing -> ""
+        Nothing -> acc
+
+testFastCsv :: String -> FilePath -> Test
+testFastCsv name csvPath = TestLabel ("fast_roundtrip_" <> name) $ TestCase $ do
+    dfOriginal <- D.fastReadCsvUnstable csvPath
+    let tempPath = tempDir <> "temp_fast_" <> name <> ".csv"
+    prettyPrintCsv tempPath dfOriginal
+    dfRoundtrip <- D.fastReadCsvUnstable tempPath
     assertEqual
-        ("readCsvUnstable should produce same result as readCsv for " <> csvPath)
-        df1
-        df2
-    df3 <- D.fastReadCsvUnstable csvPath
+        ("Fast round-trip should produce equivalent DataFrame for " <> name)
+        dfOriginal
+        dfRoundtrip
+    removeFile tempPath
+
+testTsv :: String -> FilePath -> Test
+testTsv name tsvPath = TestLabel ("roundtrip_tsv_" <> name) $ TestCase $ do
+    dfOriginal <- D.readTsvUnstable tsvPath
+    let tempPath = tempDir <> "temp_" <> name <> ".tsv"
+    prettyPrintTsv tempPath dfOriginal
+    dfRoundtrip <- D.readTsvUnstable tempPath
     assertEqual
-        ("fastReadCsvUnstable should produce same result as readCsv for " <> csvPath)
-        df1
-        df3
+        ("TSV round-trip should produce equivalent DataFrame for " <> name)
+        dfOriginal
+        dfRoundtrip
+    removeFile tempPath
 
-testReadTsvFunctions :: FilePath -> Test
-testReadTsvFunctions tsvPath = TestCase $ do
-    df1 <- D.readTsv tsvPath
-    df2 <- D.readTsvUnstable tsvPath
+-- Individual round-trip test cases for each fixture
 
-    assertEqual
-        ("readTsvUnstable should produce same result as readTsv for " <> tsvPath)
-        df1
-        df2
-    df3 <- D.fastReadTsvUnstable tsvPath
-    assertEqual
-        ("fastReadTsvUnstable should produce same result as readTsv for " <> tsvPath)
-        df1
-        df3
+testSimpleFast :: Test
+testSimpleFast = testFastCsv "simple" (fixtureDir <> "simple.csv")
 
-testArbuthnot :: Test
-testArbuthnot = testReadCsvFunctions "./tests/data/arbuthnot.csv"
+testCommaInQuotesFast :: Test
+testCommaInQuotesFast = testFastCsv "comma_in_quotes" (fixtureDir <> "comma_in_quotes.csv")
 
-testCity :: Test
-testCity = testReadCsvFunctions "./tests/data/city.csv"
+testEscapedQuotesFast :: Test
+testEscapedQuotesFast = testFastCsv "escaped_quotes" (fixtureDir <> "escaped_quotes.csv")
 
-testHousing :: Test
-testHousing = testReadCsvFunctions "./tests/data/housing.csv"
+testNewlinesFast :: Test
+testNewlinesFast = testFastCsv "newlines" (fixtureDir <> "newlines.csv")
 
-testPresent :: Test
-testPresent = testReadCsvFunctions "./tests/data/present.csv"
+testUtf8Fast :: Test
+testUtf8Fast = testFastCsv "utf8" (fixtureDir <> "utf8.csv")
 
-testStarwars :: Test
-testStarwars = testReadCsvFunctions "./tests/data/starwars.csv"
+testQuotesAndNewlinesFast :: Test
+testQuotesAndNewlinesFast = testFastCsv "quotes_and_newlines" (fixtureDir <> "quotes_and_newlines.csv")
 
-testStation :: Test
-testStation = testReadCsvFunctions "./tests/data/station.csv"
+testEmptyValuesFast :: Test
+testEmptyValuesFast = testFastCsv "empty_values" (fixtureDir <> "empty_values.csv")
 
-testNoNewline :: Test
-testNoNewline = testReadCsvFunctions "./tests/data/test_no_newline.csv"
+testJsonDataFast :: Test
+testJsonDataFast = testFastCsv "json_data" (fixtureDir <> "json_data.csv")
 
-testWithNewline :: Test
-testWithNewline = testReadCsvFunctions "./tests/data/test_with_newline.csv"
-
-testReadTsv :: Test
-testReadTsv = testReadTsvFunctions "./tests/data/chipotle.tsv"
-
--- Two tests are commented out because
--- there are slight differences in type
--- inference between the implementations
--- which must be addressed in the future
 tests :: [Test]
 tests =
-    [ TestLabel "readCsv_arbuthnot" testArbuthnot
-    , TestLabel "readCsv_city" testCity
-    , TestLabel "readCsv_housing" testHousing
-    , TestLabel "readCsv_present" testPresent
-    , TestLabel "readCsv_starwars" testStarwars
-    , TestLabel "readCsv_station" testStation
-    , TestLabel "readCsv_no_newline" testNoNewline
-    , TestLabel "readCsv_with_newline" testWithNewline
-    , TestLabel "readTsv" testReadTsv
+    [ testSimpleFast
+    , testCommaInQuotesFast
+    , testQuotesAndNewlinesFast
+    , testEscapedQuotesFast
+    , testNewlinesFast
+    , testUtf8Fast
+    , testQuotesAndNewlinesFast
+    , testEmptyValuesFast
+    , testJsonDataFast
     ]
