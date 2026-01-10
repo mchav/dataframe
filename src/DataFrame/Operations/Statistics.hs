@@ -25,12 +25,11 @@ import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (
     DataFrame (..),
-    columnAsUnboxedVector,
-    columnAsVector,
     empty,
     getColumn,
  )
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
 import DataFrame.Internal.Row (showValue, toAny)
 import DataFrame.Internal.Statistics
 import DataFrame.Internal.Types
@@ -89,9 +88,9 @@ frequencies name df =
 -- | Calculates the mean of a given column as a standalone value.
 mean ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-mean (Col name) df = case columnAsUnboxedVector @a name df of
-    Right xs -> mean' xs
-    Left e -> throw e
+mean (Col name) df = case _getColumnAsDouble name df of
+    Just xs -> meanDouble' xs
+    Nothing -> error "[INTERNAL ERROR] Column is non-numeric"
 mean expr df = case interpret df expr of
     Left e -> throw e
     Right (TColumn col) -> case toUnboxedVector @a col of
@@ -100,7 +99,9 @@ mean expr df = case interpret df expr of
 
 meanMaybe ::
     forall a. (Columnable a, Real a) => Expr (Maybe a) -> DataFrame -> Double
-meanMaybe (Col name) df = (mean' . optionalToDoubleVector) (columnAsVector @(Maybe a) name df)
+meanMaybe (Col name) df =
+    (mean' . optionalToDoubleVector)
+        (either throw id (columnAsVector (Col @(Maybe a) name) df))
 meanMaybe expr df = case interpret @(Maybe a) df expr of
     Left e -> throw e
     Right (TColumn col) -> case toVector @(Maybe a) col of
@@ -110,7 +111,7 @@ meanMaybe expr df = case interpret @(Maybe a) df expr of
 -- | Calculates the median of a given column as a standalone value.
 median ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-median (Col name) df = case columnAsUnboxedVector @a name df of
+median (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> median' xs
     Left e -> throw e
 median expr df = case interpret df expr of
@@ -119,10 +120,48 @@ median expr df = case interpret df expr of
         Left e -> throw e
         Right xs -> median' xs
 
+-- | Calculates the median of a given column (containing optional values) as a standalone value.
+medianMaybe ::
+    forall a. (Columnable a, Real a) => Expr (Maybe a) -> DataFrame -> Double
+medianMaybe (Col name) df =
+    (median' . optionalToDoubleVector)
+        (either throw id (columnAsVector (Col @(Maybe a) name) df))
+medianMaybe expr df = case interpret @(Maybe a) df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toVector @(Maybe a) col of
+        Left e -> throw e
+        Right xs -> (median' . optionalToDoubleVector) xs
+
+-- | Calculates the nth percentile of a given column as a standalone value.
+percentile ::
+    forall a.
+    (Columnable a, Real a, VU.Unbox a) => Int -> Expr a -> DataFrame -> Double
+percentile n (Col name) df = case columnAsUnboxedVector (Col @a name) df of
+    Right xs -> percentile' n xs
+    Left e -> throw e
+percentile n expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toUnboxedVector @a col of
+        Left e -> throw e
+        Right xs -> percentile' n xs
+
+-- | Calculates the nth percentile of a given column as a standalone value.
+genericPercentile ::
+    forall a.
+    (Columnable a, Ord a) => Int -> Expr a -> DataFrame -> a
+genericPercentile n (Col name) df = case columnAsVector (Col @a name) df of
+    Right xs -> percentileOrd' n xs
+    Left e -> throw e
+genericPercentile n expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> case toVector @a col of
+        Left e -> throw e
+        Right xs -> percentileOrd' n xs
+
 -- | Calculates the standard deviation of a given column as a standalone value.
 standardDeviation ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-standardDeviation (Col name) df = case columnAsUnboxedVector @a name df of
+standardDeviation (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> (sqrt . variance') xs
     Left e -> throw e
 standardDeviation expr df = case interpret df expr of
@@ -134,7 +173,7 @@ standardDeviation expr df = case interpret df expr of
 -- | Calculates the skewness of a given column as a standalone value.
 skewness ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-skewness (Col name) df = case columnAsUnboxedVector @a name df of
+skewness (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> skewness' xs
     Left e -> throw e
 skewness expr df = case interpret df expr of
@@ -146,9 +185,9 @@ skewness expr df = case interpret df expr of
 -- | Calculates the variance of a given column as a standalone value.
 variance ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-variance (Col name) df = case columnAsUnboxedVector @a name df of
-    Right xs -> variance' xs
-    Left e -> throw e
+variance (Col name) df = case _getColumnAsDouble name df of
+    Just xs -> varianceDouble' xs
+    Nothing -> error "[INTERNAL ERROR] Column is non-numeric"
 variance expr df = case interpret df expr of
     Left e -> throw e
     Right (TColumn col) -> case toUnboxedVector @a col of
@@ -158,7 +197,7 @@ variance expr df = case interpret df expr of
 -- | Calculates the inter-quartile range of a given column as a standalone value.
 interQuartileRange ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
-interQuartileRange (Col name) df = case columnAsUnboxedVector @a name df of
+interQuartileRange (Col name) df = case columnAsUnboxedVector (Col @a name) df of
     Right xs -> interQuartileRange' xs
     Left e -> throw e
 interQuartileRange expr df = case interpret df expr of
@@ -185,8 +224,8 @@ _getColumnAsDouble name df = case getColumn name df of
                 SFalse -> Nothing
     Nothing ->
         throw $
-            ColumnNotFoundException name "applyStatistic" (M.keys $ columnIndices df)
-    _ -> Nothing
+            ColumnNotFoundException name "_getColumnAsDouble" (M.keys $ columnIndices df)
+    _ -> Nothing -- Return a type mismatch error here.
 {-# INLINE _getColumnAsDouble #-}
 
 optionalToDoubleVector :: (Real a) => V.Vector (Maybe a) -> VU.Vector Double

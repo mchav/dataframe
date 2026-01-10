@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -14,14 +15,14 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
-import Data.Typeable (Typeable)
 import qualified Data.Vector as V
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
+import DataFrame.Internal.Types
 import GHC.Stack (HasCallStack)
 import Type.Reflection (typeRep)
 
-import DataFrame.Internal.Column (Column (..), isNumeric)
+import DataFrame.Internal.Column (Column (..), Columnable, isNumeric)
 import qualified DataFrame.Internal.Column as D
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Internal.Expression
@@ -379,28 +380,26 @@ extractNumericColumn colName df =
                     UnboxedColumn vec -> unboxedVectorToDoubles vec
                     _ -> []
 
-vectorToDoubles :: forall a. (Typeable a, Show a) => V.Vector a -> [Double]
+vectorToDoubles :: forall a. (Columnable a, Show a) => V.Vector a -> [Double]
 vectorToDoubles vec =
     case testEquality (typeRep @a) (typeRep @Double) of
         Just Refl -> V.toList vec
-        Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
-            Just Refl -> V.toList $ V.map fromIntegral vec
-            Nothing -> case testEquality (typeRep @a) (typeRep @Integer) of
-                Just Refl -> V.toList $ V.map fromIntegral vec
-                Nothing -> case testEquality (typeRep @a) (typeRep @Float) of
-                    Just Refl -> V.toList $ V.map realToFrac vec
-                    Nothing -> error $ "Column is not numeric (type: " ++ show (typeRep @a) ++ ")"
+        Nothing -> case sIntegral @a of
+            STrue -> V.toList $ V.map fromIntegral vec
+            SFalse -> case sFloating @a of
+                STrue -> V.toList $ V.map realToFrac vec
+                SFalse -> error $ "Column is not numeric (type: " ++ show (typeRep @a) ++ ")"
 
 unboxedVectorToDoubles ::
-    forall a. (Typeable a, VU.Unbox a, Show a) => VU.Vector a -> [Double]
+    forall a. (Columnable a, VU.Unbox a, Show a) => VU.Vector a -> [Double]
 unboxedVectorToDoubles vec =
     case testEquality (typeRep @a) (typeRep @Double) of
         Just Refl -> VU.toList vec
-        Nothing -> case testEquality (typeRep @a) (typeRep @Int) of
-            Just Refl -> VU.toList $ VU.map fromIntegral vec
-            Nothing -> case testEquality (typeRep @a) (typeRep @Float) of
-                Just Refl -> VU.toList $ VU.map realToFrac vec
-                Nothing -> error $ "Column is not numeric (type: " ++ show (typeRep @a) ++ ")"
+        Nothing -> case sIntegral @a of
+            STrue -> VU.toList $ VU.map fromIntegral vec
+            SFalse -> case sFloating @a of
+                STrue -> VU.toList $ VU.map realToFrac vec
+                SFalse -> error $ "Column is not numeric (type: " ++ show (typeRep @a) ++ ")"
 
 groupWithOther :: Int -> [(T.Text, Double)] -> [(T.Text, Double)]
 groupWithOther n items =

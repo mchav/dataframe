@@ -2,6 +2,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Main where
@@ -17,50 +18,54 @@ import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 import DataFrame.Hasktorch (toTensor)
+import System.Random
 import Torch
 
+import Data.Text (Text)
 import DataFrame ((|>))
+import DataFrame.Functions ((.=))
+
+$(F.declareColumnsFromCsvFile "../data/housing.csv")
 
 main :: IO ()
 main = do
     {- Feature ingestion and engineering -}
     df <- D.readCsv "../data/housing.csv"
 
-    let meanTotalBedrooms = df |> D.filterJust "total_bedrooms" |> D.mean
+    let meanTotalBedrooms = df |> D.meanMaybe total_bedrooms
     let cleaned =
             df
-                |> D.impute (F.col @(Maybe Double "total_bedrooms")) meanTotalBedrooms
-                |> D.exclude ["median_house_value"]
-                |> D.derive "ocean_proximity" (F.lift oceanProximity (F.col "ocean_proximity"))
-                |> D.derive
-                    "rooms_per_household"
-                    (F.col @Double "total_rooms" / F.col "households")
-                |> normalizeFeatures
+                |> D.impute total_bedrooms meanTotalBedrooms
+                |> D.deriveMany
+                    [ "ocean_proximity" .= F.lift oceanProximity ocean_proximity
+                    , "rooms_per_household" .= total_rooms / households
+                    ]
+        (train, test) = D.randomSplit (mkStdGen 42) 0.8 cleaned
 
         -- Convert to hasktorch tensor
-        features = toTensor cleaned
-        labels = toTensor (D.select ["median_house_value"] df)
+        trainFeatures =
+            toTensor (train |> D.exclude [F.name median_house_value] |> normalizeFeatures)
+        testFeatures = toTensor (test |> D.exclude [F.name median_house_value] |> normalizeFeatures)
+        trainLabels = toTensor (D.select [F.name median_house_value] train)
 
     {- Train the model -}
     putStrLn "Training linear regression model..."
     init <-
-        sample $ LinearSpec{in_features = snd (D.dimensions cleaned), out_features = 1}
+        sample $
+            LinearSpec{in_features = snd (D.dimensions train) - 1, out_features = 1}
     trained <- foldLoop init 100_000 $ \state i -> do
-        let labels' = model state features
-            loss = mseLoss labels labels'
+        let labels' = model state trainFeatures
+            loss = mseLoss trainLabels labels'
         when (i `mod` 10_000 == 0) $ do
             putStrLn $ "Iteration: " ++ show i ++ " | Loss: " ++ show loss
         (state', _) <- runStep state GD loss 0.1
         pure state'
 
     {- Show predictions -}
+    let predictionColumn = "predicted_house_value"
     let predictions =
-            D.insertUnboxedVector
-                "predicted_house_value"
-                (asValue @(VU.Vector Float) (model trained features))
-                df
-    print $
-        D.select ["median_house_value", "predicted_house_value"] predictions
+            D.insert predictionColumn (asValue @[Float] (model trained testFeatures)) test
+    print $ D.select [F.name median_house_value, predictionColumn] predictions
 
 normalizeFeatures :: D.DataFrame -> D.DataFrame
 normalizeFeatures df =

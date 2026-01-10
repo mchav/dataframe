@@ -272,20 +272,13 @@ import DataFrame.Internal.Column as Column (
 import DataFrame.Internal.DataFrame as Dataframe (
     DataFrame,
     GroupedDataFrame,
-    columnAsDoubleVector,
-    columnAsFloatVector,
-    columnAsIntVector,
-    columnAsList,
-    columnAsVector,
     empty,
     null,
-    toDoubleMatrix,
-    toFloatMatrix,
-    toIntMatrix,
     toMarkdownTable,
  )
 import DataFrame.Internal.Expression as Expression (Expr)
 import DataFrame.Internal.Row as Row (
+    Any,
     Row,
     fromAny,
     toAny,
@@ -316,10 +309,14 @@ import DataFrame.Operations.Permutation as Permutation (
 import DataFrame.Operations.Statistics as Statistics (
     correlation,
     frequencies,
+    genericPercentile,
     imputeWith,
     interQuartileRange,
     mean,
+    meanMaybe,
     median,
+    medianMaybe,
+    percentile,
     skewness,
     standardDeviation,
     sum,

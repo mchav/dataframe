@@ -87,7 +87,7 @@ appendPagedVector (PagedVector chunksRef activeRef countRef) !val = do
             VM.unsafeWrite active count val
             writeIORef countRef $! count + 1
         else do
-            frozen <- V.freeze active
+            frozen <- V.unsafeFreeze active
             modifyIORef' chunksRef (frozen :)
 
             newActive <- VM.unsafeNew chunkSize
@@ -107,7 +107,7 @@ appendPagedUnboxedVector (PagedUnboxedVector chunksRef activeRef countRef) !val 
             VUM.unsafeWrite active count val
             writeIORef countRef $! count + 1
         else do
-            frozen <- VU.freeze active
+            frozen <- VU.unsafeFreeze active
             modifyIORef' chunksRef (frozen :)
 
             newActive <- VUM.unsafeNew chunkSize
@@ -123,7 +123,7 @@ freezePagedVector (PagedVector chunksRef activeRef countRef) = do
     active <- readIORef activeRef
     chunks <- readIORef chunksRef
 
-    lastChunk <- V.freeze (VM.slice 0 count active)
+    lastChunk <- V.unsafeFreeze (VM.slice 0 count active)
 
     return $! V.concat (reverse (lastChunk : chunks))
 
@@ -134,7 +134,7 @@ freezePagedUnboxedVector (PagedUnboxedVector chunksRef activeRef countRef) = do
     active <- readIORef activeRef
     chunks <- readIORef chunksRef
 
-    lastChunk <- VU.freeze (VUM.slice 0 count active)
+    lastChunk <- VU.unsafeFreeze (VUM.slice 0 count active)
     return $! VU.concat (reverse (lastChunk : chunks))
 
 -- | STANDARD CONFIG TYPES
@@ -163,6 +163,10 @@ data ReadOptions = ReadOptions
     Just 2010-03-04
     @
     -}
+    , columnSeparator :: Char
+    -- ^ Character that separates column values.
+    , numColumns :: Maybe Int
+    -- ^ Number of columns to read.
     }
 
 shouldInferFromSample :: TypeSpec -> Bool
@@ -184,6 +188,8 @@ defaultReadOptions =
         , typeSpec = InferFromSample 100
         , safeRead = True
         , dateFormat = "%Y-%m-%d"
+        , columnSeparator = ','
+        , numColumns = Nothing
         }
 
 {- | Read CSV file from path and load it into a dataframe.
@@ -195,7 +201,7 @@ ghci> D.readCsv ".\/data\/taxi.csv"
 @
 -}
 readCsv :: FilePath -> IO DataFrame
-readCsv = readSeparated ',' defaultReadOptions
+readCsv = readSeparated defaultReadOptions
 
 {- | Read CSV file from path and load it into a dataframe.
 
@@ -206,7 +212,7 @@ ghci> D.readCsvWithOpts ".\/data\/taxi.csv" (D.defaultReadOptions { dateFormat =
 @
 -}
 readCsvWithOpts :: ReadOptions -> FilePath -> IO DataFrame
-readCsvWithOpts = readSeparated ','
+readCsvWithOpts = readSeparated
 
 {- | Read TSV (tab separated) file from path and load it into a dataframe.
 
@@ -217,18 +223,19 @@ ghci> D.readTsv ".\/data\/taxi.tsv"
 @
 -}
 readTsv :: FilePath -> IO DataFrame
-readTsv = readSeparated '\t' defaultReadOptions
+readTsv = readSeparated (defaultReadOptions{columnSeparator = '\t'})
 
 {- | Read text file with specified delimiter into a dataframe.
 
 ==== __Example__
 @
-ghci> D.readSeparated ';' D.defaultReadOptions ".\/data\/taxi.txt"
+ghci> D.readSeparated (D.defaultReadOptions { columnSeparator = ';' }) ".\/data\/taxi.txt"
 
 @
 -}
-readSeparated :: Char -> ReadOptions -> FilePath -> IO DataFrame
-readSeparated !sep !opts !path = do
+readSeparated :: ReadOptions -> FilePath -> IO DataFrame
+readSeparated !opts !path = do
+    let sep = columnSeparator opts
     csvData <- BL.readFile path
     let decodeOpts = Csv.defaultDecodeOptions{Csv.decDelimiter = fromIntegral (ord sep)}
     let stream = CsvStream.decodeWith decodeOpts Csv.NoHeader csvData
@@ -256,7 +263,7 @@ readSeparated !sep !opts !path = do
 
     (sampleRow, _) <- peekStream rowsToProcess
     builderCols <- initializeColumns (V.toList sampleRow) opts
-    processStream rowsToProcess builderCols
+    processStream rowsToProcess builderCols (numColumns opts)
 
     frozenCols <- V.fromList <$> mapM freezeBuilderColumn builderCols
     let numRows = maybe 0 columnLength (frozenCols V.!? 0)
@@ -266,7 +273,7 @@ readSeparated !sep !opts !path = do
                 frozenCols
                 (M.fromList (zip columnNames [0 ..]))
                 (numRows, V.length frozenCols)
-
+                M.empty -- TODO give typed column references
     return $
         if shouldInferFromSample (typeSpec opts)
             then
@@ -298,10 +305,14 @@ initializeColumns row opts = case typeSpec opts of
                     Nothing -> BuilderText <$> newPagedVector <*> pure validityRef
 
 processStream ::
-    CsvStream.Records (V.Vector BL.ByteString) -> [BuilderColumn] -> IO ()
-processStream (Cons (Right row) rest) cols = processRow row cols >> processStream rest cols
-processStream (Cons (Left err) _) _ = error ("CSV Parse Error: " ++ err)
-processStream (Nil _ _) _ = return ()
+    CsvStream.Records (V.Vector BL.ByteString) ->
+    [BuilderColumn] ->
+    Maybe Int ->
+    IO ()
+processStream _ _ (Just 0) = return ()
+processStream (Cons (Right row) rest) cols n = processRow row cols >> processStream rest cols (fmap (flip (-) 1) n)
+processStream (Cons (Left err) _) _ _ = error ("CSV Parse Error: " ++ err)
+processStream (Nil _ _) _ _ = return ()
 
 processRow :: V.Vector BL.ByteString -> [BuilderColumn] -> IO ()
 processRow !vals !cols = V.zipWithM_ processValue vals (V.fromList cols)
@@ -375,7 +386,7 @@ writeSeparated ::
 writeSeparated c filepath df = withFile filepath WriteMode $ \handle -> do
     let (rows, _) = dataframeDimensions df
     let headers = map fst (L.sortBy (compare `on` snd) (M.toList (columnIndices df)))
-    TIO.hPutStrLn handle (T.intercalate ", " headers)
+    TIO.hPutStrLn handle (T.intercalate "," headers)
     forM_ [0 .. (rows - 1)] $ \i -> do
         let row = getRowAsText df i
         TIO.hPutStrLn handle (T.intercalate "," row)

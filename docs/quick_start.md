@@ -26,6 +26,7 @@
 
 ### Example usage
 
+#### GHCi/Jupyter notebooks
 Looking through the structure of the columns.
 
 ```haskell    
@@ -114,3 +115,34 @@ Key features in example:
 * Create type-safe references to columns in a dataframe using :exposeColumns
 * Type-safe column transformations for faster and safer exploration.
 * Fluid, chaining API that makes code easy to reason about.
+
+#### Standalone scripts
+
+We provide a small, monadic DSL for scripts where you want relatively more type safety.
+
+```haskell
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+
+module Main where
+
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
+
+import DataFrame.Monad
+
+import Data.Text (Text)
+import DataFrame.Functions ((.&&), (.>=))
+
+$(F.declareColumnsFromCsvFile "./data/housing.csv")
+
+main :: IO ()
+main = do
+    df <- D.readCsv "./data/housing.csv"
+    print $ runFrameM df $ do
+        -- 1) Type safe reference to `median_house_value` and `median_income`
+        -- 2) creates a type safe reference to the newly created column.
+        is_expensive <- deriveM "is_expensive" (median_house_value .>= 500000)
+        luxury <- deriveM "luxury" (is_expensive .&& median_income .>= 8)
+        filterWhereM luxury
+```

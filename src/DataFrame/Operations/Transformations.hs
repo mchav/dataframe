@@ -26,6 +26,7 @@ import DataFrame.Internal.Column (
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), getColumn)
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
 import DataFrame.Operations.Core
 
 -- | O(k) Apply a function to a given column in a dataframe.
@@ -62,13 +63,30 @@ safeApply f columnName d = case getColumn columnName d of
         column' <- mapColumn f column
         pure $ insertColumn columnName column' d
 
-{- | O(k) Apply a function to a combination of columns in a dataframe and
+{- | O(k) Apply a function to an expression in a dataframe and
 add the result into `alias` column.
 -}
 derive :: forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> DataFrame
 derive name expr df = case interpret @a df (normalize expr) of
     Left e -> throw e
-    Right (TColumn value) -> insertColumn name value df
+    Right (TColumn value) ->
+        (insertColumn name value df)
+            { derivingExpressions = M.insert name (Wrap expr) (derivingExpressions df)
+            }
+
+{- | O(k) Apply a function to an expression in a dataframe and
+add the result into `alias` column but
+
+==== __Examples__
+
+>>> (z, df') = deriveWithExpr "z" (F.col @Int "x" + F.col "y") df
+>>> filterWhere (z .>= 50)
+-}
+deriveWithExpr ::
+    forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> (Expr a, DataFrame)
+deriveWithExpr name expr df = case interpret @a df (normalize expr) of
+    Left e -> throw e
+    Right (TColumn value) -> (Col name, insertColumn name value df)
 
 deriveMany :: [NamedExpr] -> DataFrame -> DataFrame
 deriveMany exprs df =

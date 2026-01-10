@@ -47,19 +47,19 @@ dtype: float64
 In our library, you can create a similar structure:
 
 ```haskell
-ghci> import qualified DataFrame as D
-ghci> D.fromList [1, 3, 5, read @Float "NaN", 6, 8]
+dataframe> import qualified DataFrame as D
+dataframe> D.fromList [1, 3, 5, read @Float "NaN", 6, 8]
 [1.0,3.0,5.0,NaN,6.0,8.0]
 ```
 
 **However**, this is considered an anti-pattern in Haskell. Using `NaN` mixes valid data with invalid data in an unsafe way. The idiomatic Haskell approach uses the `Maybe` type to explicitly represent missing values:
 
 ```haskell
-ghci> D.fromList [Just (1 :: Double), Just 3, Just 5, Nothing, Just 6, Just 8]
+dataframe> D.fromList [Just (1 :: Double), Just 3, Just 5, Nothing, Just 6, Just 8]
 [Just 1.0, Just 3.0, Just 5.0, Nothing, Just 6.0, Just 8.0]
 ```
 
-This approach is superior because:
+This approach is better because:
 - The type system forces you to handle missing values explicitly
 - You can't accidentally treat `Nothing` as a number
 - Pattern matching ensures you consider all cases
@@ -79,9 +79,9 @@ DatetimeIndex(['2013-01-01', '2013-01-02', '2013-01-03', '2013-01-04',
 In Haskell, we use the `Data.Time.Calendar` module and leverage lazy list generation:
 
 ```haskell
-ghci> import Data.Time.Calendar
-ghci> dates = D.fromList $ Prelude.take 6 $ [fromGregorian 2013 01 01..]
-ghci> dates
+dataframe> import Data.Time.Calendar
+dataframe> dates = D.fromList $ Prelude.take 6 $ [fromGregorian 2013 01 01..]
+dataframe> dates
 [2013-01-01,2013-01-02,2013-01-03,2013-01-04,2013-01-05,2013-01-06]
 ```
 
@@ -110,23 +110,23 @@ python> df
 In Haskell, we need to be more explicit, but we gain type safety:
 
 ```haskell
-ghci> import qualified Data.Vector as V
-ghci> import System.Random (randomRIO)
-ghci> import Control.Monad (replicateM)
-ghci> import Data.List (foldl')
-ghci> :set -XOverloadedStrings
+dataframe> import qualified Data.Vector as V
+dataframe> import System.Random (randomRIO)
+dataframe> import Control.Monad (replicateM)
+dataframe> import Data.List (foldl')
+dataframe> :set -XOverloadedStrings
 
 -- Start with a DataFrame containing just the date column
-ghci> initDf = D.fromNamedColumns [("date", dates)]
+dataframe> initDf = D.fromNamedColumns [("date", dates)]
 
 -- Generate 4 columns of 6 random numbers each
-ghci> ns <- replicateM 4 (replicateM 6 (randomRIO (-2.0, 2.0)))
+dataframe> ns <- replicateM 4 (replicateM 6 (randomRIO (-2.0, 2.0)))
 
 -- Add each column to the DataFrame
-ghci> df = foldl' (\d (name, col) -> D.insert name col d) 
+dataframe> df = foldl' (\d (name, col) -> D.insert name col d) 
                   initDf 
                   (zip ["A","B","C","D"] ns)
-ghci> df
+dataframe> df
 -----------------------------------------------------------------------------------------------------
     date    |          A          |          B           |          C           |          D         
 ------------|---------------------|----------------------|----------------------|--------------------
@@ -173,7 +173,7 @@ In Haskell, we achieve the same result with explicit types:
 -- All DataFrame types must be printable (Show) and orderable (Ord, Eq)
 data Transport = Test | Train deriving (Show, Ord, Eq)
 
-ghci> :{
+dataframe> :{
 ghci| df = D.fromNamedColumns [
 ghci|        ("A", D.fromList (replicate 4 1.0)),
 ghci|        ("B", D.fromList (replicate 4 (fromGregorian 2013 01 02))),
@@ -182,7 +182,7 @@ ghci|        ("D", D.fromList (replicate 4 (3 :: Int))),
 ghci|        ("E", D.fromList (take 4 $ cycle [Test, Train])),
 ghci|        ("F", D.fromList (replicate 4 "foo"))]
 ghci|:}
-ghci> df
+dataframe> df
 -------------------------------------------------------
    A    |     B      |   C   |  D  |     E     |   F   
 --------|------------|-------|-----|-----------|-------
@@ -214,7 +214,7 @@ python> df.head()  # Shows first 5 rows by default
 We provide a `take` function that requires you to specify the number of rows:
 
 ```haskell
-ghci> D.take 2 df
+dataframe> D.take 2 df
 -------------------------------------------------------
    A    |     B      |   C   |  D  |     E     |   F   
 --------|------------|-------|-----|-----------|-------
@@ -237,7 +237,7 @@ python> df.describe()
 Our equivalent is `summarize`, which computes statistics for numeric columns:
 
 ```haskell
-ghci> D.summarize df
+dataframe> D.summarize df
 ----------------------------------------------
  Statistic |     D     |     C     |     A    
 -----------|-----------|-----------|----------
@@ -269,7 +269,7 @@ python> df.sort_values(by='E')
 Since we don't support row indexes, we only provide column-based sorting. You specify the sort direction and column names:
 
 ```haskell
-ghci> D.sortBy [D.Asc "E"] df
+dataframe> D.sortBy [D.Asc "E"] df
 -------------------------------------------------------
    A    |     B      |   C   |  D  |     E     |   F   
 --------|------------|-------|-----|-----------|-------
@@ -305,7 +305,7 @@ python> df.loc[:, ["A", "B"]]
 We use the SQL-inspired `select` function:
 
 ```haskell
-ghci> D.select ["A"] df
+dataframe> D.select ["A"] df
 -------
    A   
 -------
@@ -334,7 +334,7 @@ python> df.loc["20130102":"20130104", ["A", "B"]]
 Since we don't have row indexes, we filter by actual values using predicates:
 
 ```haskell
-ghci> :{
+dataframe> :{
 ghci| df' |> D.filter "date" (\d -> d >= (fromGregorian 2013 01 02) 
 ghci|                              && d <= (fromGregorian 2013 01 04))
 ghci|     |> D.select ["A", "B"]
@@ -365,8 +365,8 @@ In pandas, missing values are typically represented as `NaN` or `None`. In Haske
 Let's add a column with missing values:
 
 ```haskell
-ghci> df' = D.insert "G" [Just 1, Just 2, Nothing, Just 4] df
-ghci> df'
+dataframe> df' = D.insert "G" [Just 1, Just 2, Nothing, Just 4] df
+dataframe> df'
 -----------------------------------------------------------------------
    A    |     B      |   C   |  D  |     E     |   F    |       G      
 --------|------------|-------|-----|-----------|--------|--------------
@@ -389,7 +389,7 @@ python> df.fillna(5)
 In Haskell, we use the `impute` function:
 
 ```haskell
-ghci> D.impute (F.col @Integer "G") 5 df'
+dataframe> D.impute (F.col @Integer "G") 5 df'
 -----------------------------------------------------------------
    A    |     B      |   C   |  D  |     E     |   F    |    G   
 --------|------------|-------|-----|-----------|--------|--------
@@ -416,7 +416,7 @@ python> df.dropna()
 We use `filterJust`:
 
 ```haskell
-ghci> df' |> D.filterJust "G"
+dataframe> df' |> D.filterJust "G"
 --------------------------------------------------------------------
    A    |     B      |   C   |  D  |     E     |   F    |    G      
 --------|------------|-------|-----|-----------|--------|-----------
@@ -552,7 +552,7 @@ main = do
     
     print $ df_csv
           |> D.derive "birth_year" (F.lift year (F.col @Day "birthdate"))
-          |> D.derive "bmi" (F.col @Double "weight" / (F.pow 2 (F.col @Double "height")))
+          |> D.derive "bmi" (F.col @Double "weight" / (F.pow (F.col @Double "height") 2))
           |> D.select ["name", "birth_year", "bmi"]
 ```
 
@@ -576,7 +576,7 @@ main = do
    - `F.lift` adapts a regular Haskell function to work with columns
    - `F.col @Day "birthdate"` references the birthdate column with explicit type
 2. `derive "bmi"` creates another column with the BMI formula
-   - `F.pow 2` squares the height
+   - `F.pow <col> 2` squares the height
    - Division works directly on column expressions
 3. `select` keeps only the columns we want
 
@@ -592,16 +592,15 @@ The `lift` family of functions is central to our expression system:
 
 - `lift`: Apply a unary function to one column
 - `lift2`: Apply a binary function to two columns  
-- `lift3`, `lift4`, etc.: Apply functions with more arguments
 
 Example:
 
 ```haskell
 -- Using lift for a unary function
-D.derive "doubled" (F.lift (*2) (F.col @Double "weight"))
+D.derive "doubled" (F.lift (*2) weight)
 
 -- Using lift2 for a binary function
-D.derive "weight_per_height" (F.lift2 (/) (F.col @Double "weight") (F.col @Double "height"))
+D.derive "weight_per_height" (F.lift2 (/) weight height)
 ```
 
 #### Column Expansion
@@ -620,8 +619,10 @@ We don't provide built-in column expansion, so you write multiple explicit opera
 
 ```haskell
 df_csv
-    |> D.derive "weight-5%" ((F.col @Double "weight") * (F.lit 0.95))
-    |> D.derive "height-5%" ((F.col @Double "height") * (F.lit 0.95))
+    |> D.deriveMany
+          [ "weight-5%" .=  weight * 0.95
+          , "height-5%" .= height * 0.95
+          ]
     |> D.select ["name", "weight-5%", "height-5%"]
 ```
 
@@ -749,7 +750,6 @@ let decade d = let (y, _, _) = toGregorian d
 
 df_csv
     |> D.derive "decade" (F.lift decade (F.col @Day "birthdate"))
-    |> D.select ["decade"]
     |> D.groupBy ["decade"]
     |> D.aggregate [F.count (F.col @Day "decade") `F.as` "Count"]
 ```
@@ -959,7 +959,7 @@ For predicate-based selection like `ends_with()`, we use `selectBy`:
 
 ```haskell
 starwars 
-  |> D.selectBy (\colName -> colName == "name" || T.isSuffixOf "color" colName)
+  |> D.selectBy [D.byName "name", D.byNameProperty (T.isSuffixOf "color")]
   |> D.take 5
 ```
 
@@ -997,7 +997,27 @@ starwars
   -- Remove the maybes.
   |> D.filterJust "mass"
   |> D.filterJust "height"
-  |> D.derive "bmi" (F.col @Double "mass" / F.pow 2 (F.col @Double "height" / F.lit 100))
+  |> D.derive "bmi" (F.col @Double "mass" / F.pow (F.col @Double "height" / F.lit 100) 2)
+  |> D.select ["name", "height", "mass", "bmi"]
+  |> D.take 5
+```
+
+We can enable non-started evaluation by one of three methods:
+* In a terminal, calling the `:exposeColumns` macro on the dataframe.
+* In a notebook calling the function `declareColumns`
+* In a script adding `$(declareColumnsFromCsv)` after the imports section.
+
+Once we do this we can rewrite our expressions as (in this case in a notebook):
+
+```haskell
+let cleaned = starwars
+  -- Remove the maybes.
+  |> D.filterAllJust
+
+F.declareColumns cleaned
+
+cleaned
+  |> D.derive "bmi" (mass / F.pow height 2 / 100)
   |> D.select ["name", "height", "mass", "bmi"]
   |> D.take 5
 ```
@@ -1079,8 +1099,8 @@ starwars %>%
 starwars 
   |> D.select ["species", "mass"]
   |> D.groupBy ["species"]
-  |> D.aggregate [ F.mean (F.col @Double "mass") `F.as` "mean_mass"
-                 , F.count (F.col @Double "mass") `F.as` "count"
+  |> D.aggregate [ F.mean mass `F.as` "mean_mass"
+                 , F.count mass `F.as` "count"
                  ]
   |> D.filterWhere ((F.col @Int "count" .> 1) .&& (F.col @Double "mean_mass" .> 50))
 ```
@@ -1138,14 +1158,14 @@ df |> D.select ["col1", "col2"]
 
 **Creating Derived Columns:**
 ```haskell
-df |> D.derive "new_col" (F.col @Double "old_col" * 2)
+df |> D.derive "new_col" (old_col * 2)
 ```
 
 **Grouping and Aggregating:**
 ```haskell
 df |> D.groupBy ["group_col"]
-   |> D.aggregate [ F.mean (F.col @Double "val") `F.as` "avg_val"
-                  , F.count (F.col @Double "val") `F.as` "n"
+   |> D.aggregate [ F.mean val `F.as` "avg_val"
+                  , F.count val `F.as` "n"
                   ]
 ```
 

@@ -1,5 +1,118 @@
 # Revision history for dataframe
 
+## 0.4.0.5
+* Faster groupby: does less allocations by keeping everything in a mutable vector.
+* declareColumnsFromCsvFile now infers types from a sample rather than reading the whole dataframe.
+* Decision trees API is now more configurable.
+* Add annotation to show what expressions were used to derive a column.
+
+## 0.4.0.4
+* More robust synthesis based decision tree
+* Improved performance on sum and mean.
+* recodeWithCondition - to change a value given a condition
+* medianMaybe, genericPercentile, percentile - self explanatory
+* all the maybe functions as dataframe functions
+* Fix concatColumnsEither when types are the same.
+* Decision tree implementation is more robust now.
+
+## 0.4.0.3
+* Improved performance for folds and reductions.
+* Improve standalone mean and correlation functions.
+* Remove buggy boxedness check in aggregations.
+* CSV files shouldn't have spaces in headers.
+* Small decision tree implementation (experimental).
+
+## 0.4.0.1
+* Fuse literals in binary expressions and conditionals: we can now express computations like: `df |> D.groupBy [F.name ocean_proximity] |> D.aggregate ["rand" .= F.sum (F.ifThenElse (ocean_proximity .== "ISLAND") 1 0)]`.
+* Unary aggregations do not mistakenly boxed unboxed instances.
+
+## 0.4.0.0
+* `readSeparated` no longer takes the separator as an argument. This is not placed into readOptions.
+* Some improvements to the synthesis demo
+* Add a `declareColumnsParquetFile` function. 
+* Column conversion functions now take expressions instead of strings.
+* Add more monadic functions to make previously tricky transformations easier to write:
+    ```haskell
+    {-# LANGUAGE OverloadedStrings #-}
+    {-# LANGUAGE TemplateHaskell #-}
+
+    module Main where
+
+    import qualified DataFrame as D
+    import qualified DataFrame.Functions as F
+
+    import DataFrame.Monad
+
+    import Data.Text (Text)
+    import DataFrame.Functions ((.&&), (.>=))
+
+    $(F.declareColumnsFromCsvFile "./data/housing.csv")
+
+    main :: IO ()
+    main = do
+        df <- D.readCsv "./data/housing.csv"
+        print $ execFrameM df $ do
+            is_expensive <- deriveM "is_expensive" (median_house_value .>= 500000)
+            meanBedrooms <- inspectM (D.meanMaybe total_bedrooms)
+            totalBedrooms <- imputeM total_bedrooms meanBedrooms
+            filterWhereM (totalBedrooms .>= 200 .&& is_expensive)
+    ```
+
+## 0.3.5.0
+* Add a `deriveWithExpr` that returns an expression that you can use in a subsequent expressions.
+* Add `declareColumnsFromCsvFile` which can create the expressions up front for use in scripts.
+    ```haskell
+    import qualified DataFrame as D
+    import qualified DataFrame.Functions as F
+
+    import Data.Text (Text)
+    import DataFrame.Functions ((.==), (.>=))
+
+    $(F.declareColumnsFromCsvFile "./data/housing.csv")
+
+    main :: IO ()
+    main = do
+        df <- D.readCsv "./data/housing.csv"
+        let (df', test) = D.deriveWithExpr "test" (median_house_value .>= 500000) df
+        print (D.filterWhere test df')
+    ```
+* Fix bounds on random.
+* Parquet Column chunks weren't reading properly because we didn't correctly calculate the list size.
+* Sum function had a bug where the first number was summed twice.
+* Add monadic interface for building dataframe expressions that makes schema evolution nice.
+    ```haskell
+    {-# LANGUAGE OverloadedStrings #-}
+    {-# LANGUAGE TemplateHaskell #-}
+
+    module Main where
+
+    import qualified DataFrame as D
+    import qualified DataFrame.Functions as F
+
+    import DataFrame.Monad
+
+    import Data.Text (Text)
+    import DataFrame.Functions ((.&&), (.>=))
+
+    $(F.declareColumnsFromCsvFile "./data/housing.csv")
+
+    main :: IO ()
+    main = do
+        df <- D.readCsv "./data/housing.csv"
+        print $ runFrameM df $ do
+            is_expensive <- deriveM "is_expensive" (median_house_value .>= 500000)
+            filterWhereM is_expensive
+            luxury <- deriveM "luxury" (is_expensive .&& median_income .>= 8)
+            filterWhereM luxury
+    ```
+* Change order of exponentiation to putting the exponent second. It was initially first cause of some internal efficiency detail but that's silly.
+* Fix bug where we didn't concat columns from row groups.
+
+## 0.3.4.1
+* Faster sum operation (now does a reduction instead of collecting the vector and aggregating)
+* Update the fixity of comparison operations. Before `(x + y) .<= 10`. Now: `x + y ,<= 10`.
+* Revert sort for groupby back to mergesort.
+
 ## 0.3.4.0
 * Fix right join - previously erased some values in the key.
 * Change sort API so we can sort on different rows.

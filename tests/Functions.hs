@@ -3,11 +3,12 @@
 
 module Functions where
 
+import qualified DataFrame as D
 import DataFrame.Functions (
-    col,
-    generatePrograms,
     sanitize,
  )
+import qualified DataFrame.Functions as F
+import qualified DataFrame.Internal.Column as DI
 import Test.HUnit
 
 -- Test cases for the sanitize function
@@ -60,20 +61,26 @@ sanitizeIdentifiers =
                 "_____"
                 (sanitize "***")
         ]
+df :: D.DataFrame
+df =
+    D.fromNamedColumns
+        [("A", DI.fromList [(1 :: Int) .. 10])]
 
-generateProgramsCalledWithNoExistingPrograms :: Test
-generateProgramsCalledWithNoExistingPrograms =
+testSum :: Test
+testSum =
     TestCase
         ( assertEqual
-            "generatePrograms called with no existing programs"
-            [col @Double "x"]
-            (generatePrograms True [] [col "x"] [] [])
+            "Sum first 10 numbers"
+            ( D.fromNamedColumns
+                [ ("A", DI.fromList [(1 :: Int) .. 10])
+                , ("sum", DI.fromList (replicate 10 (55 :: Int)))
+                ]
+            )
+            (D.derive "sum" (F.sum (F.col @Int "A")) df)
         )
 
 tests :: [Test]
 tests =
     [ TestLabel "sanitizeIdentifiers" sanitizeIdentifiers
-    , TestLabel
-        "generateProgramsCalledWithNoExistingPrograms"
-        generateProgramsCalledWithNoExistingPrograms
+    , TestLabel "testSum" testSum
     ]

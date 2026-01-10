@@ -3,9 +3,11 @@
 
 module DataFrame.IO.Parquet.Page where
 
+import qualified Codec.Compression.GZip as GZip
 import Codec.Compression.Zstd.Streaming
 import Data.Bits
 import qualified Data.ByteString as BSO
+import qualified Data.ByteString.Lazy as LB
 import Data.Int
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Word
@@ -42,6 +44,7 @@ readPage c columnBytes = do
             Left e -> error (show e)
             Right res -> pure res
         UNCOMPRESSED -> pure (BSO.pack compressed)
+        GZIP -> pure (LB.toStrict (GZip.decompress (LB.pack compressed)))
         other -> error ("Unsupported compression type: " ++ show other)
     pure
         ( Just $ Page hdr (BSO.unpack fullData)
@@ -96,7 +99,7 @@ readPageHeader hdr xs lastFieldId =
                         (dataPageHeaderV2, rem') = readPageTypeHeader emptyDataPageHeaderV2 rem 0
                      in
                         readPageHeader (hdr{pageTypeHeader = dataPageHeaderV2}) rem' identifier
-                n -> error $ "Unknown page header field" ++ show n
+                n -> error $ "Unknown page header field " ++ show n
 
 readPageTypeHeader ::
     PageTypeHeader -> [Word8] -> Int16 -> (PageTypeHeader, [Word8])
@@ -132,7 +135,13 @@ readPageTypeHeader hdr@(DictionaryPageHeader{..}) xs lastFieldId =
                      in
                         readPageTypeHeader
                             (hdr{dictionaryPageIsSorted = isSorted == compactBooleanTrue})
-                            (drop 1 rem)
+                            -- TODO(mchavinda): The bool logic here is a little tricky.
+                            -- If the field is a bool then you can get the value
+                            -- from the byte (and you don't have to drop a field).
+                            -- But in other cases you do.
+                            -- This might become a problem later but in the mean
+                            -- time I'm not dropping (this assumes this is the common case).
+                            rem
                             identifier
                 n ->
                     error $ "readPageTypeHeader: unsupported identifier " ++ show n

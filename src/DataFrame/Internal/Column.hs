@@ -280,7 +280,7 @@ mapColumn f = \case
         | Just Refl <- testEquality (typeRep @a) (typeRep @b) ->
             Right $ case sUnbox @c of
                 STrue -> UnboxedColumn (VU.map f col)
-                SFalse -> fromVector @c (VB.map f (VB.convert col))
+                SFalse -> fromVector @c (VB.generate (VU.length col) (f . VU.unsafeIndex col))
         | otherwise ->
             Left $
                 TypeMismatchException
@@ -291,6 +291,10 @@ mapColumn f = \case
                         , errorColumnName = Nothing
                         }
                     )
+{-# SPECIALIZE mapColumn ::
+    (Double -> Double) -> Column -> Either DataFrameException Column
+    #-}
+{-# INLINEABLE mapColumn #-}
 
 -- | O(1) Gets the number of elements in the column.
 columnLength :: Column -> Int
@@ -329,13 +333,13 @@ sliceColumn start n (OptionalColumn xs) = OptionalColumn $ VG.slice start n xs
 atIndices :: S.Set Int -> Column -> Column
 atIndices indexes (BoxedColumn column) = BoxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
 atIndices indexes (OptionalColumn column) = OptionalColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
-atIndices indexes (UnboxedColumn column) = UnboxedColumn $ VG.ifilter (\i _ -> i `S.member` indexes) column
+atIndices indexes (UnboxedColumn column) = UnboxedColumn $ VU.ifilter (\i _ -> i `S.member` indexes) column
 {-# INLINE atIndices #-}
 
 -- | O(n) Selects the elements at a given set of indices. Does not change the order.
 atIndicesStable :: VU.Vector Int -> Column -> Column
 atIndicesStable indexes (BoxedColumn column) = BoxedColumn $ VG.unsafeBackpermute column (VG.convert indexes)
-atIndicesStable indexes (UnboxedColumn column) = UnboxedColumn $ VG.unsafeBackpermute column indexes
+atIndicesStable indexes (UnboxedColumn column) = UnboxedColumn $ VU.unsafeBackpermute column indexes
 atIndicesStable indexes (OptionalColumn column) = OptionalColumn $ VG.unsafeBackpermute column (VG.convert indexes)
 {-# INLINE atIndicesStable #-}
 
@@ -606,6 +610,88 @@ ifoldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality
                     }
                 )
 
+foldlColumn ::
+    forall a b.
+    (Columnable a, Columnable b) =>
+    (b -> a -> b) -> b -> Column -> Either DataFrameException b
+foldlColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl' f acc column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldlColumn"
+                    , errorColumnName = Nothing
+                    }
+                )
+foldlColumn f acc c@(OptionalColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl' f acc column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldlColumn"
+                    , errorColumnName = Nothing
+                    }
+                )
+foldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl' f acc column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldlColumn"
+                    , errorColumnName = Nothing
+                    }
+                )
+
+foldl1Column ::
+    forall a.
+    (Columnable a) =>
+    (a -> a -> a) -> Column -> Either DataFrameException a
+foldl1Column f c@(BoxedColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl1' f column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldl1Column"
+                    , errorColumnName = Nothing
+                    }
+                )
+foldl1Column f c@(OptionalColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl1' f column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldl1Column"
+                    , errorColumnName = Nothing
+                    }
+                )
+foldl1Column f c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
+    Just Refl -> pure $ VG.foldl1' f column
+    Nothing ->
+        Left $
+            TypeMismatchException
+                ( MkTypeErrorContext
+                    { userType = Right (typeRep @a)
+                    , expectedType = Right (typeRep @d)
+                    , callingFunctionName = Just "foldl1Column"
+                    , errorColumnName = Nothing
+                    }
+                )
+
 headColumn :: forall a. (Columnable a) => Column -> Either DataFrameException a
 headColumn (BoxedColumn (col :: VB.Vector b)) = case testEquality (typeRep @a) (typeRep @b) of
     Just Refl ->
@@ -803,7 +889,7 @@ freezeColumn' nulls (MBoxedColumn col)
             . VB.imap
                 ( \i v ->
                     if i `elem` map fst nulls
-                        then Left (fromMaybe (error "") (lookup i nulls))
+                        then Left (fromMaybe (error "UNEXPECTED ERROR DURING FREEZE") (lookup i nulls))
                         else Right v
                 )
             <$> VB.unsafeFreeze col
@@ -824,7 +910,7 @@ freezeColumn' nulls (MUnboxedColumn col)
                         (VU.length c)
                         ( \i ->
                             if i `elem` map fst nulls
-                                then Left (fromMaybe (error "") (lookup i nulls))
+                                then Left (fromMaybe (error "UNEXPECTED ERROR DURING FREEZE") (lookup i nulls))
                                 else Right (c VU.! i)
                         )
 {-# INLINE freezeColumn' #-}
@@ -937,18 +1023,24 @@ concatColumnsEither (BoxedColumn left) (UnboxedColumn right) =
     BoxedColumn $ fmap Left left <> fmap Right (VG.convert right)
 concatColumnsEither (UnboxedColumn left) (BoxedColumn right) =
     BoxedColumn $ fmap Left (VG.convert left) <> fmap Right right
-concatColumnsEither (OptionalColumn left) (BoxedColumn right) =
-    OptionalColumn $
-        fmap (fmap Left) left <> fmap (Just . Right) (VG.convert right)
-concatColumnsEither (BoxedColumn left) (OptionalColumn right) =
-    OptionalColumn $
-        fmap (Just . Left) (VG.convert left) <> fmap (fmap Right) right
-concatColumnsEither (OptionalColumn left) (UnboxedColumn right) =
-    OptionalColumn $
-        fmap (fmap Left) left <> fmap (Just . Right) (VG.convert right)
-concatColumnsEither (UnboxedColumn left) (OptionalColumn right) =
-    OptionalColumn $
-        fmap (Just . Left) (VG.convert left) <> fmap (fmap Right) right
+concatColumnsEither (OptionalColumn (left :: VB.Vector (Maybe a))) (BoxedColumn (right :: VB.Vector b)) =
+    case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> OptionalColumn $ left <> fmap Just right
+        Nothing -> OptionalColumn $ fmap (fmap Left) left <> fmap (Just . Right) right
+concatColumnsEither (BoxedColumn (left :: VB.Vector a)) (OptionalColumn (right :: VB.Vector (Maybe b))) =
+    case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> OptionalColumn $ fmap Just left <> right
+        Nothing -> OptionalColumn $ fmap (Just . Left) left <> fmap (fmap Right) right
+concatColumnsEither (OptionalColumn (left :: VB.Vector (Maybe a))) (UnboxedColumn (right :: VU.Vector b)) =
+    case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> OptionalColumn $ left <> fmap Just (VG.convert right)
+        Nothing ->
+            OptionalColumn $ fmap (fmap Left) left <> fmap (Just . Right) (VG.convert right)
+concatColumnsEither (UnboxedColumn (left :: VU.Vector a)) (OptionalColumn (right :: VB.Vector (Maybe b))) =
+    case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> OptionalColumn $ fmap Just (VG.convert left) <> right
+        Nothing ->
+            OptionalColumn $ fmap (Just . Left) (VG.convert left) <> fmap (fmap Right) right
 
 {- | O(n) Converts a column to a list. Throws an exception if the wrong type is specified.
 
@@ -1265,7 +1357,7 @@ toUnboxedVector column =
                         ( MkTypeErrorContext
                             { userType = Right (typeRep @Int)
                             , expectedType = Right (typeRep @a)
-                            , callingFunctionName = Just "toIntVector"
+                            , callingFunctionName = Just "toUnboxedVector"
                             , errorColumnName = Nothing
                             }
                         )
@@ -1279,3 +1371,7 @@ toUnboxedVector column =
                         , errorColumnName = Nothing
                         }
                     )
+{-# SPECIALIZE toUnboxedVector ::
+    Column -> Either DataFrameException (VU.Vector Double)
+    #-}
+{-# INLINE toUnboxedVector #-}

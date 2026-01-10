@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -5,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE Strict #-}
 {-# LANGUAGE TypeApplications #-}
 
 module DataFrame.Operations.Aggregation where
@@ -14,7 +16,6 @@ import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Algorithms.Merge as VA
-import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
@@ -31,6 +32,7 @@ import DataFrame.Internal.Column (
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), GroupedDataFrame (..))
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
 import DataFrame.Internal.Types
 import DataFrame.Operations.Core
 import DataFrame.Operations.Subset
@@ -54,22 +56,103 @@ groupBy names df
         Grouped
             df
             names
-            (VG.map fst valueIndices)
-            (VU.fromList (reverse (changingPoints valueIndices)))
+            (VU.map fst valueIndices)
+            (changingPoints valueIndices)
   where
     indicesToGroup = M.elems $ M.filterWithKey (\k _ -> k `elem` names) (columnIndices df)
-    rowRepresentations = computeRowHashes indicesToGroup df
-
+    doubleToInt :: Double -> Int
+    doubleToInt = floor . (* 1000)
     valueIndices = runST $ do
-        withIndexes <- VG.thaw $ VG.indexed rowRepresentations
-        VA.sortBy (\(a, b) (a', b') -> compare b' b) withIndexes
-        VG.unsafeFreeze withIndexes
+        let n = fst (dimensions df)
+        mv <- VUM.new n
 
-changingPoints :: (Eq a, VU.Unbox a) => VU.Vector (Int, a) -> [Int]
-changingPoints vs = VG.length vs : fst (VU.ifoldl findChangePoints initialState vs)
+        let selectedCols = map (columns df V.!) indicesToGroup
+
+        forM_ selectedCols $ \case
+            UnboxedColumn (v :: VU.Vector a) ->
+                case testEquality (typeRep @a) (typeRep @Int) of
+                    Just Refl ->
+                        VU.imapM_
+                            ( \i x -> do
+                                (_, !h) <- VUM.unsafeRead mv i
+                                VUM.unsafeWrite mv i (i, hashWithSalt h x)
+                            )
+                            v
+                    Nothing ->
+                        case testEquality (typeRep @a) (typeRep @Double) of
+                            Just Refl ->
+                                VU.imapM_
+                                    ( \i d -> do
+                                        (_, !h) <- VUM.unsafeRead mv i
+                                        VUM.unsafeWrite mv i (i, hashWithSalt h (doubleToInt d))
+                                    )
+                                    v
+                            Nothing ->
+                                case sIntegral @a of
+                                    STrue ->
+                                        VU.imapM_
+                                            ( \i d -> do
+                                                let x :: Int
+                                                    x = fromIntegral @a @Int d
+                                                (_, !h) <- VUM.unsafeRead mv i
+                                                VUM.unsafeWrite mv i (i, hashWithSalt h x)
+                                            )
+                                            v
+                                    SFalse ->
+                                        case sFloating @a of
+                                            STrue ->
+                                                VU.imapM_
+                                                    ( \i d -> do
+                                                        let x :: Int
+                                                            x = doubleToInt (realToFrac d :: Double)
+                                                        (_, !h) <- VUM.unsafeRead mv i
+                                                        VUM.unsafeWrite mv i (i, hashWithSalt h x)
+                                                    )
+                                                    v
+                                            SFalse ->
+                                                VU.imapM_
+                                                    ( \i d -> do
+                                                        let x = hash (show d)
+                                                        (_, !h) <- VUM.unsafeRead mv i
+                                                        VUM.unsafeWrite mv i (i, hashWithSalt h x)
+                                                    )
+                                                    v
+            BoxedColumn (v :: V.Vector a) ->
+                case testEquality (typeRep @a) (typeRep @T.Text) of
+                    Just Refl ->
+                        V.imapM_
+                            ( \i t -> do
+                                (_, !h) <- VUM.unsafeRead mv i
+                                VUM.unsafeWrite mv i (i, hashWithSalt h t)
+                            )
+                            v
+                    Nothing ->
+                        V.imapM_
+                            ( \i d -> do
+                                let x = hash (show d)
+                                (_, !h) <- VUM.unsafeRead mv i
+                                VUM.unsafeWrite mv i (i, hashWithSalt h x)
+                            )
+                            v
+            OptionalColumn v ->
+                V.imapM_
+                    ( \i d -> do
+                        let x = hash (show d)
+                        (_, !h) <- VUM.unsafeRead mv i
+                        VUM.unsafeWrite mv i (i, hashWithSalt h x)
+                    )
+                    v
+
+        VA.sortBy (\(!a, !b) (!a', !b') -> compare b' b) mv
+        VU.unsafeFreeze mv
+
+changingPoints :: VU.Vector (Int, Int) -> VU.Vector Int
+changingPoints vs =
+    VU.reverse
+        (VU.fromList (VU.length vs : fst (VU.ifoldl' findChangePoints initialState vs)))
   where
-    initialState = ([0], snd (VG.head vs))
-    findChangePoints (offsets, currentVal) index (_, newVal)
+    initialState = ([0], snd (VU.head vs))
+    findChangePoints (!offsets, !currentVal) index (_, !newVal)
         | currentVal == newVal = (offsets, currentVal)
         | otherwise = (index : offsets, newVal)
 
@@ -168,7 +251,7 @@ aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
     let
         df' =
             selectIndices
-                (VG.map (valueIndices VG.!) (VG.init offsets))
+                (VU.map (valueIndices VU.!) (VU.init offsets))
                 (select groupingColumns df)
 
         f (name, Wrap (expr :: Expr a)) d =
@@ -185,12 +268,12 @@ aggregate aggs gdf@(Grouped df groupingColumns valueIndices offsets) =
 selectIndices :: VU.Vector Int -> DataFrame -> DataFrame
 selectIndices xs df =
     df
-        { columns = VG.map (atIndicesStable xs) (columns df)
-        , dataframeDimensions = (VG.length xs, VG.length (columns df))
+        { columns = V.map (atIndicesStable xs) (columns df)
+        , dataframeDimensions = (VU.length xs, V.length (columns df))
         }
 
 -- | Filter out all non-unique values in a dataframe.
 distinct :: DataFrame -> DataFrame
-distinct df = selectIndices (VG.map (indices VG.!) (VG.init os)) df
+distinct df = selectIndices (VU.map (indices VU.!) (VU.init os)) df
   where
     (Grouped _ _ indices os) = groupBy (columnNames df) df

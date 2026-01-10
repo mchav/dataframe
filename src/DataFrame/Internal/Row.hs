@@ -110,7 +110,7 @@ The rows are returned in their natural order (from index 0 to n-1).
 ==== __Examples__
 
 >>> toRowList df
-[Row {name = "Alice", age = 25, ...}, Row {name = "Bob", age = 30, ...}, ...]
+[[("name", "Alice"), ("age", 25), ...], [("name", "Bob"), ("age", 30), ...], ...]
 
 ==== __Performance note__
 
@@ -118,12 +118,14 @@ This function materializes all rows into a list, which may be memory-intensive
 for large dataframes. Consider using 'toRowVector' if you need random access
 or streaming operations.
 -}
-toRowList :: DataFrame -> [Row]
+toRowList :: DataFrame -> [[(T.Text, Any)]]
 toRowList df =
     let
         names = map fst (L.sortBy (compare `on` snd) $ M.toList (columnIndices df))
      in
-        map (mkRowRep df names) [0 .. (fst (dataframeDimensions df) - 1)]
+        map
+            (zip names . V.toList . mkRowRep df names)
+            [0 .. (fst (dataframeDimensions df) - 1)]
 
 {- | Converts the dataframe to a vector of rows with only the specified columns.
 

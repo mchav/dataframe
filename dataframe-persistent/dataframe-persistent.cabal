@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               dataframe-persistent
-version:            0.1.0.0
+version:            0.2.0.0
 
 synopsis: Persistent database integration for the dataframe library
 
@@ -37,7 +37,7 @@ library
     build-depends:    base >= 4 && <5,
                       bytestring >= 0.11 && < 0.13,
                       containers >= 0.6.7 && < 0.9,
-                      dataframe ^>= 0.3,
+                      dataframe ^>= 0.4,
                       persistent >= 2.14 && < 3,
                       template-haskell >= 2.0 && < 3,
                       text >= 2.0 && < 3,
@@ -53,7 +53,7 @@ test-suite dataframe-persistent-tests
     main-is: Main.hs
     other-modules: PersistentTests
     build-depends:  base >= 4 && < 5,
-                    dataframe ^>= 0.3,
+                    dataframe ^>= 0.4,
                     dataframe-persistent,
                     HUnit ^>= 1.6,
                     monad-logger >= 0.3 && < 0.4,

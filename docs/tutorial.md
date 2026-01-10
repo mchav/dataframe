@@ -1,262 +1,372 @@
-# DataFrame (Haskell) — Comprehensive Tutorial & Cookbook
+# Tutorial: Your first analysis with `dataframe` (Iris)
 
 > A hands‑on, copy‑paste‑friendly tour of the **dataframe** ecosystem.
 
-> **Conventions**
->
-> * Code blocks are minimal and strongly typed; feel free to replace strings/paths.
-> * Examples use **Iris** and **California Housing** datasets.
+By the end of this tutorial you will have:
+
+- loaded `iris.parquet` into a `DataFrame`
+- inspected columns and rows
+- filtered to a subset of rows
+- derived a few new columns using typed expressions (`Expr a`)
+- grouped + aggregated columns
+- made a quick plot
+- written results back out to CSV
+
+**Assumptions**
+
+- You have a file at `./data/iris.parquet`
+- You’re using Cabal (if you prefer to use Jupyter notebooks (via IHaskell) see the “try it in a notebook” section at the end).
 
 ---
 
-## 0) Quickstart
+## 1) Create a tiny project you can run
 
-### Install
-
-
-#### REPL
-
-**Cabal**
+In an empty folder:
 
 ```bash
-$ cabal update
-$ cabal install dataframe
-$ dataframe
+mkdir iris
+cd iris
+cabal init -n --exe --minimal
 ```
 
-#### Project dependency
+Add `dataframe` and `text` (the recommended Haskell string library) to your `.cabal` file under `build-depends` for the executable:
 
-In your package.yaml or <project>.cabal file
-
-```yaml
-dependencies:
-  - dataframe
+```
+build-depends: base, dataframe, text
 ```
 
-#### IHaskell (Notebook)
-
-```bash
-$ git clone github.com/mchav/ihaskell-dataframe/
-$ cd ihaskell-dataframe
-$ sudo make up
-```
+**Checkpoint**: Run the program with `cabal run`. You should see `Hello, Haskell` shown in the terminal.
 
 ---
 
-## 1) Core Concepts
+## 2) Load Iris and verify the shape
 
-* **DataFrame**: A dataframe is a two-dimensional, table-like data structure that organizes data into rows and columns, similar to a spreadsheet or an SQL table. Columns are lazily intialized; many ops are fusion‑friendly.
-* **Column / TypedColumn a**: statically typed column with phantom type `a` (e.g., `Double`, `Text`, `Bool`).
-* **Expr a**: a typed DSL for building transformations safely (`zScore`, `pow`, `ifThenElse`, `abs`, `log`, `percentile`, etc.).
-* **Schema**: mapping from column name → type. In many places inferred; can be annotated for safety.
+We’ll do two things:
 
-Minimal imports (adjust to your module layout):
+* Generate typed column expressions from the CSV header (Template Haskell)
+* Read the Parquet file into a DataFrame
+
+Add this near the top of Main.hs (above main):
 
 ```haskell
+-- We need this extenstion to generate
+-- column references for our dataframe.
+{-# LANGUAGE TemplateHaskell #-}
+
+module Main where
+
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 
-import DataFrame ((|>))
-import DataFrame.Functions ((.==), (.=), (.>), (.<), (.>=), (.<=), (.&&), (.||), as)
+-- We default to reading strings as `Text`
+-- So you need this import here to make the
+-- column generation work.
+import Data.Text (Text)
+
+-- Reads the file, determines what the types of the column
+-- are and creates references to the columns.
+$(F.declareColumnsFromParquetFile "../dataframe/data/iris.parquet")
+
+main :: IO ()
+main = putStrLn "Hello, Haskell!"
 ```
 
----
+You should see the names of the generated symbols when the code compiles.
 
-## 2) Loading & Saving Data
+```haskell
+$ cabal run
+Resolving dependencies...
+Build profile: -w ghc-9.8.4 -O1
+In order, the following will be built (use -v for more details):
+ - iris-0.1.0.0 (exe:iris) (configuration changed)
+Configuring executable 'iris' for iris-0.1.0.0...
+Preprocessing executable 'iris' for iris-0.1.0.0...
+Building executable 'iris' for iris-0.1.0.0...
+[1 of 1] Compiling Main             ( app/Main.hs, /home/user/code/iris/dist-newstyle/build/x86_64-linux/ghc-9.8.4/iris-0.1.0.0/x/iris/build/iris/iris-tmp/Main.o ) [Source file changed]
+sepal_length :: Expr Double
+sepal_width :: Expr Double
+petal_length :: Expr Double
+petal_width :: Expr Double
+variety :: Expr Text
+```
 
-### CSV / TSV
+Now we can change `main` to read the file and print the information we care about.
 
 ```haskell
 main :: IO ()
 main = do
-  dfIris <- D.readCsv "./data/iris.csv"
-  print (D.dimensions dfIris)  -- (rows, cols)
-
-  -- Save a filtered slice
-  let small = D.take 5 dfIris
-  D.writeCsv "out/iris_head.csv" small
+  df <- D.readParquet ("/data/iris.parquet")
+  print (D.dimensions df)
+  print (D.take 5 df)
 ```
 
-### Parquet
+## 3) Select the columns you care about
+In early exploration, selecting a few columns makes everything easier to read.
+
+Let's, for some time, just look at the petal columns.
 
 ```haskell
 main :: IO ()
-    df <- D.readParquet "data/iris.parquet"
-    print df
+main = do
+  df <- D.readParquet "../dataframe/data/iris.parquet"
+  print (D.select [F.name petal_length, F.name petal_width, F.name variety] df)
 ```
 
----
+In the code above we retrieve the underlying column names from the column references generated by `declareColumnsFromParquetFile`. This means we can use tab-completions for column names. Additionally,
+it means we can avoid typos!
 
-## 3) Inspecting & Selecting
+## 4) Filter rows with typed predicates
+
+Filtering is where the `Expr`s start to pay off: you can build type-safe predicates.
 
 ```haskell
-D.dimensions df               -- (nRows, nCols)
-D.nRows
-D.nColumns
-D.describeColumns df          -- Shows column types and null counts
-D.take 10 df
-D.takeLast 5 df
+-- We need this extenstion to generate
+-- column references for our dataframe.
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
 
--- Select & rename
-let df2 = D.select ["sepal.length","sepal.width","variety"] df
-let df3 = D.renameMany [ ("sepal.length","sepal_len")
-                       , ("sepal.width" ,"sepal_wid") ] df2
+module Main where
 
--- Drop columns
-let df4 = D.exclude ["id","unused"] df
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
 
--- Reorder columns
-let df5 = D.select ["variety","sepal_len","sepal_wid"] df3
+-- Some comparison functions for expressions.
+-- We export them separately so we can use them
+-- without type `F.`.
+import DataFrame.Functions ((.==), (.>), (.<), (.&&))
+
+import Data.Text (Text)
+
+$(F.declareColumnsFromParquetFile "./data/iris.parquet")
+
+main :: IO ()
+main = do
+  df <- D.readParquet "./data/iris.parquet"
+
+  -- String literals are automatically "promoted" to expressions.
+  let dfV = D.filterWhere (variety .== "Setosa")  df
+  -- So are number literals.
+  let dfC = D.filterWhere (petal_length .> 4.5 .&& (petal_width .< 1.3)) df
+
+  print (D.dimensions dfV)
+  print (D.take 5 dfC)
 ```
 
----
+## 5) Derive new columns (your first "feature engineering" step)
 
-## 4) Filtering Rows
+You’ll often want new columns that are:
+
+* arithmetic combinations (ratio, area),
+* boolean flags, or,
+* normalized features (zScore)
+
+Again, our type-safe column references make this code safer and easier to write.
 
 ```haskell
--- Basic predicates (typed)
-let pLen  = F.col @Double "petal.length"
-let pWid  = F.col @Double "petal.width"
-let spec  = F.col @Text   "variety"
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-let isVersicolor = spec .== "Versicolor"
-let longPetal    = pLen .> 4.5
-let narrowPetal  = pWid .< 1.3
+module Main where
 
-let dfV = D.filterWhere isVersicolor df
-let dfC = D.filterWhere (longPetal .&& narrowPetal) df
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
+
+-- include import for `as`.
+import DataFrame.Functions ((.==), (.>), (.<), (.&&), as)
+
+-- import chaining operator
+import DataFrame ((|>))
+import Data.Text (Text)
+
+$(F.declareColumnsFromParquetFile "../dataframe/data/iris.parquet")
+
+main :: IO ()
+main = do
+  df <- D.readParquet "../dataframe/data/iris.parquet"
+  let df2 =
+        df
+          |> D.deriveMany
+              [ (sepal_length / sepal_width) `as` "sepal_ratio"
+              , (petal_width * petal_length) `as` "petal_area"
+              , (sepal_width .> 3.0)         `as` "has_wide_sepal"
+              , (F.zScore petal_length)      `as` "zscore_petal_length"
+              , (F.pow petal_width 2)        `as` "petal_width_squared"
+              ]
+
+  print (D.take 5 df2)
 ```
 
----
-
-## 5) Creating / Mutating Column
+Alternatively we can also use the `.=` operator to define columns.
 
 ```haskell
--- Column from a list (or any foldable structure)
-let df = D.insert "age" [10,30,40,50] D.empty
--- From a vector
-import qualified Data.Vector as V
-let d2 = D.insert "age" (V.fromList [10,30,40,50]) D.empty
--- Unboxed vectors aren't foldable so they get their own function.
-import qualified Data.Vector.Unboxed as VU
-let df3 = D.insertUnboxedVector "age" (VU.fromList [10,30,40,50])
--- Insert a column with less items than rows in the dataframe and have the
--- tail appear as a default value.
--- In the example below, Nyasha gets a grade of 0.
-let df4 = D.insertWithDefault 0 "grades" [90,10] (D.fromNamedColumns [("Student", D.fromList ["Sizwe", "Tendai", "Nyasha"])])
+-- We need this extenstion to generate
+-- column references for our dataframe.
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
 
--- Build expressions
-let sl = F.col @Double "sepal.length"
-let sw = F.col @Double "sepal.width"
-let pl = F.col @Double "petal.length"
-let pw = F.col @Double "petal.width"
+module Main where
 
-let ratio = sl / sw
-let area  = pl * pw
-let wide  = D.ifThenElse (sw .> 3.0) True False -- or just (sw .> 3.0)
-let z_pl  = D.zScore pl
-let pw4   = D.pow 4 pw
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
 
--- mutate/add
-let df' = df
-            |> D.deriveMany
-                [
-                , "ratio" .= ratio
-                , "area"  .= area
-                , "wide"  .= wide
-                , "z_petal_length" .= z_pl
-                , "pw4" .= pw4
-                ]
+-- include import for `as`.
+import DataFrame.Functions ((.==), (.>), (.<), (.&&), (.=))
 
--- Alternatively
-let df2 = df
-            |> D.deriveMany
-                [
-                , ratio `as` "ratio"
-                , area `as` "area"
-                , wide `as` "wide"
-                , z_pl `as` "z_petal_length"
-                , pw4 `as` "pw4"
-                ]
+-- import chaining operator
+import DataFrame ((|>))
+
+-- We default to reading strings as `Text`
+-- So you need this import here to make the
+-- column generation work.
+import Data.Text (Text)
+
+-- Reads the file, determines what the types of the column
+-- are and creates references to the columns.
+$(F.declareColumnsFromParquetFile "../dataframe/data/iris.parquet")
+
+main :: IO ()
+main = do
+  df <- D.readParquet "../dataframe/data/iris.parquet"
+  let df2 =
+        df
+          |> D.deriveMany
+              [ "sepal_ratio"         .= sepal_length / sepal_width
+              , "petal_area"          .= petal_width * petal_length
+              , "has_wide_sepal"      .= sepal_width .> 3.0
+              , "zcore_petal_length"  .= F.zScore petal_length
+              , "petal_width_squared" .= F.pow petal_width 2
+              ]
+
+  print (D.take 5 df2)
 ```
 
-Built‑ins commonly available: `abs`, `sqrt`, `log1p`, `exp`, `sin`, `cos`, `relu`, `signum`.
-Statistical functions in expressions: `percentile k expr`, `mean expr`, `stddev expr` etc.
+## 6) User defined functions
 
-**User‑Defined Functions (UDFs)**
+You can also use custom haskell functions to manipulate dataframe columns.
+Say you had the following Haskell function that takes in the petal length and bucketized it.
 
 ```haskell
--- Pure UDF on Doubles
-let myScore x y = (x - y) / (abs y + 1e-6)
--- Supports binary functions (lift2) and unary functions (lift)
-let scoreExpr   = F.lift2 myScore sl sw
-let df2 = D.derive "score" scoreExpr df
+-- Custom dataframe types need to derive these 4 instances.
+data PetalSize = SMALL | MEDIUM | LARGE deriving (Show, Ord, Eq, Read)
+petalSize :: Double -> PetalSize
+petalSize p
+  | p >= 5.1  = LARGE
+  | p >= 1.6  = MEDIUM
+  | otherwise = SMALL
 ```
 
----
-
-## 6) Aggregations & GroupBy
+We can apply it to the `petal_length` column using the `lift` function.
 
 ```haskell
-let bySpecies = D.groupBy ["species"] df'
-let stats = bySpecies |>
-                D.aggregate bySpecies
-                    [ "n"     .= F.count pl
-                    , "meanPL".= F.mean pl
-                    , "sdPL"  .= F.stddev pl
-                    , "minPW" .= F.mininum pw
-                    , "maxPW" .= F.maximum pw
-                    ]
-print stats  -- pretty table to terminal
+main :: IO ()
+main = do
+  df <- D.readParquet "../dataframe/data/iris.parquet"
+  let df2 =
+        df
+          |> D.deriveMany
+              [ "sepal_ratio"         .= sepal_length / sepal_width
+              , "petal_area"          .= petal_width * petal_length
+              , "has_wide_sepal"      .= sepal_width .> 3.0
+              , "zcore_petal_length"  .= F.zScore petal_length
+              -- Add petal size.
+              , "petal_size"          .= F.lift petalSize petal_length
+              , "petal_width_squared" .= F.pow petal_width 2
+              ]
+
+  print (D.take 5 df2)
 ```
 
----
+If we wanted to apply a function that takes in two variables to our columns we would use the `lift2` function. For example, we can define `petal_area` as `"petal_area" .= F.lift2 (*) petal_width petal_length`.
 
-## 7) Joins
+## 7) Group + aggregate (summary stats per species)
+
+Let's create a "report" that compute counts and basic stats per group.
 
 ```haskell
-let joined = D.innerJoin [F.col @Double "id"] dfLeft dfRight
+main :: IO ()
+main = do
+  df <- D.readParquet "../dataframe/data/iris.parquet"
+
+  -- we've skipped the feature derivation code.
+
+  let groups = D.groupBy ["variety"] df
+  let stats =
+        groups
+          |> D.aggregate
+              [ "n"      .= F.count petal_length
+              , "meanPL" .= F.mean petal_length
+              , "sdPL"   .= F.stddev petal_length
+              , "minPW"  .= F.minimum petal_width
+              , "maxPW"  .= F.maximum petal_width
+              ]
+  print stats
 ```
 
-Only inner join is currently supported.
+## 8) A simple scatter plot
 
----
-
-## 8) Missing Data
+We can show the sepal width and length by variety with the following terminal plot:
 
 ```haskell
-let hasNA   = not (D.selectBy [D.byProperty D.hasMissing] df == D.empty)
-let dfNoNA  = D.filterAllJust df  -- drop rows with any NA
-let dfImput = D.impute (F.col @Double "sepal.length") 10 df
+D.plotScatterBy (F.name sepal_length) (F.name sepal_width) (F.name variety) df
 ```
 
----
+dataframe's terminal plotting allows for quick and easy data exploration without having to leave the context of your terminal.
 
-## 9) Sorting, Shuffling, Distinct, Sampling
+## 9) Save outputs you can share or reuse
+
+Add the following to the end of your main function:
 
 ```haskell
-D.sortBy [D.Asc "variety"] df
-D.sample (mkStdGen 42) 0.1 df           -- 10% uniform random sample sample
-D.shuffle (mStdGen 42) df
+D.writeCsv "out/iris_enriched.csv" df2
+D.writeCsv "out/iris_stats.csv" stats
 ```
 
----
+Run and check that the two CSV files are successfully generated.
 
-## 10) Split / Combine
-
-```haskell
-let (train, test) = D.randomSplit (mkStdGen 42) 0.8 (df |> D.insert "index" [1..(fst (D.dimensions df))])
-let original = train <> test |> D.sortBy [D.Asc "index"]
+```bash
+mkdir -p out
+cabal run
 ```
 
----
+## IHaskell
+You can open an iHaskell instance in binder or in our playground (instructions in README).
+This environment comes with the imports and extensions preloaded so you can start coding
+without boilerplate.
 
-## 11) Visualization
-
-### Granite (Terminal Plots)
 
 ```haskell
-D.plotHistogram "petal.length" df
-D.plotScatter "sepal.length" "sepal.width" df
-D.plotStackedBars "variety" ["sepal.width"] stats
+-- Cell 1
+df <- D.readParquet "./data/iris.parquet"
+F.declareColumns df -- in notebooks we can run the column generation function at any point
+
+-- Cell 2
+df2 =
+    df
+      |> D.deriveMany
+          [ "sepal_ratio"         .= sepal_length / sepal_width
+          , "petal_area"          .= petal_width * petal_length
+          , "has_wide_sepal"      .= sepal_width .> 3.0
+          , "zcore_petal_length"  .= F.zScore petal_length
+          , "petal_width_squared" .= F.pow petal_width 2
+          ]
+```
+
+No imports, main function, or language extensions necessary!
+
+## GHCi
+GHCi also gives you a working environment out of the box. 
+
+Run `cabal install dataframe` then `dataframe` (it should be in your path after installation).
+
+Then we can run:
+
+```haskell
+dataframe> df <- D.readParquet "./data/iris.parquet"
+dataframe> :exposeColumns df
+sepal_length :: Expr Double
+sepal_width :: Expr Double
+petal_length :: Expr Double
+petal_width :: Expr Double
+variety :: Expr Text
+dataframe> df |> D.filterWhere (petal_length .> 6.5)
 ```

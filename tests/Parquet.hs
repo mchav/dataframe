@@ -534,10 +534,10 @@ mtCars =
         ( assertEqual
             "mt_cars"
             mtCarsDataset
-            (unsafePerformIO (D.readParquet "./data/mtcars.parquet"))
+            (unsafePerformIO (D.readParquet "./tests/data/mtcars.parquet"))
         )
 
 -- Uncomment to run parquet tests.
 -- Currently commented because they don't run with github CI
 tests :: [Test]
-tests = [] -- [allTypesPlain, allTypesPlainSnappy, allTypesDictionary, mtCars]
+tests = [allTypesPlain, allTypesPlainSnappy, allTypesDictionary, mtCars]

@@ -26,14 +26,26 @@ import DataFrame.Errors
 import DataFrame.Internal.Column (
     Column (..),
     Columnable,
+    TypedColumn (..),
     columnLength,
     columnTypeString,
     expandColumn,
     fromList,
     fromVector,
+    toDoubleVector,
+    toFloatVector,
+    toIntVector,
+    toUnboxedVector,
+    toVector,
  )
-import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
+import DataFrame.Internal.DataFrame (
+    DataFrame (..),
+    columnIndices,
+    empty,
+    getColumn,
+ )
 import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
 import DataFrame.Internal.Parsing (isNullish)
 import DataFrame.Internal.Row (Any, mkColumnFromRow)
 import Type.Reflection
@@ -339,11 +351,13 @@ insertColumn name column d =
                     (V.map (expandColumn n) (columns d V.// [(i, column)]))
                     (columnIndices d)
                     (n, c)
+                    M.empty
             Nothing ->
                 DataFrame
                     (V.map (expandColumn n) (columns d `V.snoc` column))
                     (M.insert name c (columnIndices d))
                     (n, c + 1)
+                    M.empty
 
 {- | /O(n)/ Clones a column and places it under a new name in the dataframe.
 
@@ -667,85 +681,263 @@ fromRows names rows =
 @
 -}
 valueCounts :: forall a. (Columnable a) => Expr a -> DataFrame -> [(a, Int)]
-valueCounts (Col columnName) df = case getColumn columnName df of
-    Nothing ->
-        throw $
-            ColumnNotFoundException columnName "valueCounts" (M.keys $ columnIndices df)
-    Just (BoxedColumn (column' :: V.Vector c)) ->
+valueCounts expr df = case columnAsVector expr df of
+    Left e -> throw e
+    Right column' ->
         let
             column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
          in
-            case (typeRep @a) `testEquality` (typeRep @c) of
-                Nothing ->
-                    throw $
-                        TypeMismatchException
-                            ( MkTypeErrorContext
-                                { userType = Right $ typeRep @a
-                                , expectedType = Right $ typeRep @c
-                                , errorColumnName = Just (T.unpack columnName)
-                                , callingFunctionName = Just "valueCounts"
-                                }
-                            )
-                Just Refl -> M.toAscList column
-    Just (OptionalColumn (column' :: V.Vector c)) ->
+            M.toAscList column
+
+{- | O (k * n) Shows the proportions of each value in a given column.
+
+==== __Example__
+@
+>>> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
+
+>>> D.valueCounts @Int "0" df
+
+[(1,0.1),(2,0.1),(3,0.1),(4,0.1),(5,0.1),(6,0.1),(7,0.1),(8,0.1),(9,0.1),(10,0.1)]
+
+@
+-}
+valueProportions ::
+    forall a. (Columnable a) => Expr a -> DataFrame -> [(a, Double)]
+valueProportions expr df = case columnAsVector expr df of
+    Left e -> throw e
+    Right column' ->
         let
-            column = V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column'
+            counts =
+                M.toAscList
+                    (V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty column')
+            total = fromIntegral (sum (map snd counts))
          in
-            case (typeRep @a) `testEquality` (typeRep @c) of
-                Nothing ->
-                    throw $
-                        TypeMismatchException
-                            ( MkTypeErrorContext
-                                { userType = Right $ typeRep @a
-                                , expectedType = Right $ typeRep @c
-                                , errorColumnName = Just (T.unpack columnName)
-                                , callingFunctionName = Just "valueCounts"
-                                }
-                            )
-                Just Refl -> M.toAscList column
-    Just (UnboxedColumn (column' :: VU.Vector c)) ->
-        let
-            column =
-                V.foldl' (\m v -> MS.insertWith (+) v (1 :: Int) m) M.empty (V.convert column')
-         in
-            case (typeRep @a) `testEquality` (typeRep @c) of
-                Nothing ->
-                    throw $
-                        TypeMismatchException
-                            ( MkTypeErrorContext
-                                { userType = Right $ typeRep @a
-                                , expectedType = Right $ typeRep @c
-                                , errorColumnName = Just (T.unpack columnName)
-                                , callingFunctionName = Just "valueCounts"
-                                }
-                            )
-                Just Refl -> M.toAscList column
-valueCounts _ _ = error "Cannot call value counts on non-column reference"
+            map (fmap ((/ total) . fromIntegral)) counts
 
 {- | A left fold for dataframes that takes the dataframe as the last object.
 This makes it easier to chain operations.
 
 ==== __Example__
 @
->>> D.fold (const id) [1..5] df
+>>> df = D.fromNamedColumns [("x", D.fromList [1..100]), ("y", D.fromList [11..110])]
+>>> D.fold D.dropLast [1..5] df
 
-----------
-  0  |  1
------|----
- Int | Int
------|----
- 1   | 11
- 2   | 12
- 3   | 13
- 4   | 14
- 5   | 15
- 6   | 16
- 7   | 17
- 8   | 18
- 9   | 19
- 10  | 20
+---------
+ x  |  y
+----|----
+Int | Int
+----|----
+1   | 11
+2   | 12
+3   | 13
+4   | 14
+5   | 15
+6   | 16
+7   | 17
+8   | 18
+9   | 19
+10  | 20
+11  | 21
+12  | 22
+13  | 23
+14  | 24
+15  | 25
+16  | 26
+17  | 27
+18  | 28
+19  | 29
+20  | 30
+
+Showing 20 rows out of 85
 
 @
 -}
 fold :: (a -> DataFrame -> DataFrame) -> [a] -> DataFrame -> DataFrame
 fold f xs acc = L.foldl' (flip f) acc xs
+
+{- | Returns a dataframe as a two dimensional vector of floats.
+
+Converts all columns in the dataframe to float vectors and transposes them
+into a row-major matrix representation.
+
+This is useful for handing data over into ML systems.
+
+Returns 'Left' with an error if any column cannot be converted to floats.
+-}
+toFloatMatrix ::
+    DataFrame -> Either DataFrameException (V.Vector (VU.Vector Float))
+toFloatMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> toFloatVector c)
+    (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Float)))
+    (columns df) of
+    Left e -> Left e
+    Right m ->
+        pure $
+            V.generate
+                (fst (dataframeDimensions df))
+                ( \i ->
+                    foldl
+                        (\acc j -> acc `VU.snoc` ((m VG.! j) VG.! i))
+                        VU.empty
+                        [0 .. (V.length m - 1)]
+                )
+
+{- | Returns a dataframe as a two dimensional vector of doubles.
+
+Converts all columns in the dataframe to double vectors and transposes them
+into a row-major matrix representation.
+
+This is useful for handing data over into ML systems.
+
+Returns 'Left' with an error if any column cannot be converted to doubles.
+-}
+toDoubleMatrix ::
+    DataFrame -> Either DataFrameException (V.Vector (VU.Vector Double))
+toDoubleMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> toDoubleVector c)
+    (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Double)))
+    (columns df) of
+    Left e -> Left e
+    Right m ->
+        pure $
+            V.generate
+                (fst (dataframeDimensions df))
+                ( \i ->
+                    foldl
+                        (\acc j -> acc `VU.snoc` ((m VG.! j) VG.! i))
+                        VU.empty
+                        [0 .. (V.length m - 1)]
+                )
+
+{- | Returns a dataframe as a two dimensional vector of ints.
+
+Converts all columns in the dataframe to int vectors and transposes them
+into a row-major matrix representation.
+
+This is useful for handing data over into ML systems.
+
+Returns 'Left' with an error if any column cannot be converted to ints.
+-}
+toIntMatrix :: DataFrame -> Either DataFrameException (V.Vector (VU.Vector Int))
+toIntMatrix df = case V.foldl'
+    (\acc c -> V.snoc <$> acc <*> toIntVector c)
+    (Right V.empty :: Either DataFrameException (V.Vector (VU.Vector Int)))
+    (columns df) of
+    Left e -> Left e
+    Right m ->
+        pure $
+            V.generate
+                (fst (dataframeDimensions df))
+                ( \i ->
+                    foldl
+                        (\acc j -> acc `VU.snoc` ((m VG.! j) VG.! i))
+                        VU.empty
+                        [0 .. (V.length m - 1)]
+                )
+
+{- | Get a specific column as a vector.
+
+You must specify the type via type applications.
+
+==== __Examples__
+
+>>> columnAsVector (F.col @Int "age") df
+Right [25, 30, 35, ...]
+
+>>> columnAsVector (F.col @Text "name") df
+Right ["Alice", "Bob", "Charlie", ...]
+-}
+columnAsVector ::
+    forall a.
+    (Columnable a) => Expr a -> DataFrame -> Either DataFrameException (V.Vector a)
+columnAsVector (Col name) df = case getColumn name df of
+    Just col -> toVector col
+    Nothing ->
+        Left $ ColumnNotFoundException name "columnAsVector" (M.keys $ columnIndices df)
+columnAsVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toVector col
+
+{- | Retrieves a column as an unboxed vector of 'Int' values.
+
+Returns 'Left' with a 'DataFrameException' if the column cannot be converted to ints.
+This may occur if the column contains non-numeric data or values outside the 'Int' range.
+-}
+columnAsIntVector ::
+    Expr Int -> DataFrame -> Either DataFrameException (VU.Vector Int)
+columnAsIntVector (Col name) df = case getColumn name df of
+    Just col -> toIntVector col
+    Nothing ->
+        Left $
+            ColumnNotFoundException name "columnAsIntVector" (M.keys $ columnIndices df)
+columnAsIntVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toIntVector col
+
+{- | Retrieves a column as an unboxed vector of 'Double' values.
+
+Returns 'Left' with a 'DataFrameException' if the column cannot be converted to doubles.
+This may occur if the column contains non-numeric data.
+-}
+columnAsDoubleVector ::
+    Expr Double -> DataFrame -> Either DataFrameException (VU.Vector Double)
+columnAsDoubleVector (Col name) df = case getColumn name df of
+    Just col -> toDoubleVector col
+    Nothing ->
+        Left $
+            ColumnNotFoundException name "columnAsDoubleVector" (M.keys $ columnIndices df)
+columnAsDoubleVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toDoubleVector col
+
+{- | Retrieves a column as an unboxed vector of 'Float' values.
+
+Returns 'Left' with a 'DataFrameException' if the column cannot be converted to floats.
+This may occur if the column contains non-numeric data.
+-}
+columnAsFloatVector ::
+    Expr Float -> DataFrame -> Either DataFrameException (VU.Vector Float)
+columnAsFloatVector (Col name) df = case getColumn name df of
+    Just col -> toFloatVector col
+    Nothing ->
+        Left $
+            ColumnNotFoundException name "columnAsFloatVector" (M.keys $ columnIndices df)
+columnAsFloatVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toFloatVector col
+
+columnAsUnboxedVector ::
+    forall a.
+    (Columnable a, VU.Unbox a) =>
+    Expr a -> DataFrame -> Either DataFrameException (VU.Vector a)
+columnAsUnboxedVector (Col name) df = case getColumn name df of
+    Just col -> toUnboxedVector col
+    Nothing ->
+        Left $
+            ColumnNotFoundException name "columnAsFloatVector" (M.keys $ columnIndices df)
+columnAsUnboxedVector expr df = case interpret df expr of
+    Left e -> throw e
+    Right (TColumn col) -> toUnboxedVector col
+{-# SPECIALIZE columnAsUnboxedVector ::
+    Expr Double -> DataFrame -> Either DataFrameException (VU.Vector Double)
+    #-}
+{-# INLINE columnAsUnboxedVector #-}
+
+{- | Get a specific column as a list.
+
+You must specify the type via type applications.
+
+==== __Examples__
+
+>>> columnAsList @Int "age" df
+[25, 30, 35, ...]
+
+>>> columnAsList @Text "name" df
+["Alice", "Bob", "Charlie", ...]
+
+==== __Throws__
+
+* 'error' - if the column type doesn't match the requested type
+-}
+columnAsList :: forall a. (Columnable a) => Expr a -> DataFrame -> [a]
+columnAsList expr df = either throw V.toList (columnAsVector expr df)

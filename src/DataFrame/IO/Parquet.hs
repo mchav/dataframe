@@ -97,7 +97,7 @@ readParquet path = do
                     primaryEncoding
                     maybeTypeLength
 
-            modifyIORef colMap (M.insert colName column)
+            modifyIORef colMap (M.insertWith DI.concatColumnsEither colName column)
 
     finalColMap <- readIORef colMap
     let orderedColumns =
@@ -268,6 +268,7 @@ processColumnPages (maxDef, maxRep) pages pType _ maybeTypeLength = do
             DictionaryPageHeader{} -> error "processColumnPages: impossible DictionaryPageHeader"
             INDEX_PAGE_HEADER -> error "processColumnPages: impossible INDEX_PAGE_HEADER"
             PAGE_TYPE_HEADER_UNKNOWN -> error "processColumnPages: impossible PAGE_TYPE_HEADER_UNKNOWN"
+    -- This is N^2. We should probably use mutable columns here.
     case cols of
         [] -> pure $ DI.fromList ([] :: [Maybe Int])
         (c : cs) ->

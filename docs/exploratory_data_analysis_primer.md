@@ -96,9 +96,9 @@ The central tendency of a distribution describes a "typical" value of that distr
 For a given column calculating the mean and median is fairly straightfoward and shown below.
 
 ```haskell
-ghci> D.mean (F.col @Double "housing_median_age") df
+dataframe> D.mean (F.col @Double "housing_median_age") df
 28.63948643410852
-ghci> D.median (F.col @Double "housing_median_age") df
+dataframe> D.median (F.col @Double "housing_median_age") df
 29.0
 ```
 
@@ -162,7 +162,7 @@ dataframe> :exposeColumns withDeviation
 "median_house_value :: Expr Double"
 "deviation :: Expr Double"
 dataframe> import Data.Maybe
-dataframe> sumOfSqureDifferences = withDeviation |> D.derive "deviation^2" (F.pow 2 deviation) |> D.sum @Double "deviation^2" |> fromMaybe 0
+dataframe> sumOfSqureDifferences = withDeviation |> D.derive "deviation^2" (F.pow deviation 2) |> D.sum @Double "deviation^2" |> fromMaybe 0
 dataframe> n = fromIntegral (fst (D.dimensions df) - 1)
 dataframe> sqrt (sumOfSqureDifferences / n)
 115395.6158744
@@ -262,7 +262,7 @@ Histograms are bar plots where each bar represents the frequency (count) or prop
 range of value. Going back to our california housing dataset, we can plot a histogram of house prices:
 
 ```haskell
-ghci> D.plotHistogram "median_house_value" df
+dataframe> D.plotHistogram "median_house_value" df
 1501.0│                ▁▁██
       │              ▂▂████
       │        ██  ▂▂████████
