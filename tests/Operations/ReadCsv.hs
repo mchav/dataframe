@@ -73,6 +73,7 @@ escapeField sep field
 getRowEscaped :: Char -> DataFrame -> Int -> [T.Text]
 getRowEscaped sep df i = V.ifoldr go [] (columns df)
   where
+    go :: Int -> Column -> [T.Text] -> [T.Text]
     go _ (BoxedColumn (c :: V.Vector a)) acc = case c V.!? i of
         Just e -> escapeField sep textRep : acc
           where
