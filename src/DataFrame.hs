@@ -254,7 +254,9 @@ import DataFrame.IO.CSV as CSV (
 import DataFrame.IO.Parquet as Parquet (readParquet)
 import DataFrame.IO.Unstable.CSV as UnstableCSV (
     fastReadCsvUnstable,
+    fastReadTsvUnstable,
     readCsvUnstable,
+    readTsvUnstable,
  )
 import DataFrame.Internal.Column as Column (
     Column,

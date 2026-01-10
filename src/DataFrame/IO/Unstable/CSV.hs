@@ -5,6 +5,8 @@
 module DataFrame.IO.Unstable.CSV (
     fastReadCsvUnstable,
     readCsvUnstable,
+    fastReadTsvUnstable,
+    readTsvUnstable,
 ) where
 
 import qualified Data.Vector as Vector
@@ -52,27 +54,42 @@ import DataFrame.IO.CSV (
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Operations.Typing (parseFromExamples)
 
-fastReadCsvUnstable :: FilePath -> IO DataFrame
-fastReadCsvUnstable =
-    readCsvUnstable'
+readSeparatedDefaultFast :: Word8 -> FilePath -> IO DataFrame
+readSeparatedDefaultFast separator =
+    readSeparated
+        separator
         defaultReadOptions
         getDelimiterIndices
 
-readCsvUnstable :: FilePath -> IO DataFrame
-readCsvUnstable =
-    readCsvUnstable'
+readSeparatedDefault :: Word8 -> FilePath -> IO DataFrame
+readSeparatedDefault separator =
+    readSeparated
+        separator
         defaultReadOptions
-        ( \originalLen v -> do
+        ( \separator originalLen v -> do
             indices <- mallocArray originalLen
-            getDelimiterIndices_ originalLen v indices
+            getDelimiterIndices_ separator originalLen v indices
         )
 
-readCsvUnstable' ::
+fastReadCsvUnstable :: FilePath -> IO DataFrame
+fastReadCsvUnstable = readSeparatedDefaultFast comma
+
+readCsvUnstable :: FilePath -> IO DataFrame
+readCsvUnstable = readSeparatedDefault comma
+
+fastReadTsvUnstable :: FilePath -> IO DataFrame
+fastReadTsvUnstable = readSeparatedDefaultFast tab
+
+readTsvUnstable :: FilePath -> IO DataFrame
+readTsvUnstable = readSeparatedDefault tab
+
+readSeparated ::
+    Word8 ->
     ReadOptions ->
-    (Int -> VS.Vector Word8 -> IO (VS.Vector CSize)) ->
+    (Word8 -> Int -> VS.Vector Word8 -> IO (VS.Vector CSize)) ->
     FilePath ->
     IO DataFrame
-readCsvUnstable' opts delimiterIndices filePath = do
+readSeparated separator opts delimiterIndices filePath = do
     -- We use write copy mode so that we can append
     -- padding to the end of the memory space
     (bufferPtr, offset, len) <-
@@ -83,7 +100,7 @@ readCsvUnstable' opts delimiterIndices filePath = do
     let mutableFile = unsafeFromForeignPtr bufferPtr offset len
     paddedMutableFile <- grow mutableFile 64
     paddedCSVFile <- VS.unsafeFreeze paddedMutableFile
-    indices <- delimiterIndices len paddedCSVFile
+    indices <- delimiterIndices separator len paddedCSVFile
     let numCol = countColumnsInFirstRow paddedCSVFile indices
         totalRows = VS.length indices `div` numCol
         extractField' = extractField paddedCSVFile indices
@@ -142,7 +159,8 @@ extractField ::
     Int ->
     Text
 extractField file indices position =
-    TextEncoding.decodeUtf8Lenient
+    Text.strip
+        . TextEncoding.decodeUtf8Lenient
         . unsafeToByteString
         $ VS.slice
             previous
@@ -163,15 +181,17 @@ foreign import capi "process_csv.h get_delimiter_indices"
     get_delimiter_indices ::
         Ptr CUChar -> -- input
         CSize -> -- input size
+        CUChar -> -- separator character
         Ptr CSize -> -- result array
         IO CSize -- occupancy of result array
 
 {-# INLINE getDelimiterIndices #-}
 getDelimiterIndices ::
+    Word8 ->
     Int ->
     VS.Vector Word8 ->
     IO (VS.Vector CSize)
-getDelimiterIndices originalLen csvFile =
+getDelimiterIndices separator originalLen csvFile =
     VS.unsafeWith csvFile $ \buffer -> do
         let paddedLen = VS.length csvFile
         -- then number of delimiters cannot exceed the size
@@ -182,9 +202,10 @@ getDelimiterIndices originalLen csvFile =
             get_delimiter_indices
                 (castPtr buffer)
                 (fromIntegral paddedLen)
+                (fromIntegral separator)
                 (castPtr indices)
         if num_fields == -1
-            then getDelimiterIndices_ originalLen csvFile indices
+            then getDelimiterIndices_ separator originalLen csvFile indices
             else do
                 indices' <- newForeignPtr_ indices
                 let resultVector = VSM.unsafeFromForeignPtr0 indices' paddedLen
@@ -202,10 +223,11 @@ getDelimiterIndices originalLen csvFile =
 -- cannot be used. For example if neither ARM_NEON
 -- nor AVX2 are available
 
-lf, cr, comma, quote :: Word8
+lf, cr, comma, tab, quote :: Word8
 lf = 0x0A
 cr = 0x0D
 comma = 0x2C
+tab = 0x09
 quote = 0x22
 
 -- We parse using a state machine
@@ -215,15 +237,17 @@ data State
     deriving (Enum)
 
 {-# INLINE stateTransitionTable #-}
-stateTransitionTable :: UArray (Int, Word8) Int
-stateTransitionTable = array ((0, 0), (1, 255)) [(i, f i) | i <- range ((0, 0), (1, 255))]
+stateTransitionTable :: Word8 -> UArray (Int, Word8) Int
+stateTransitionTable separator = array ((0, 0), (1, 255)) [(i, f i) | i <- range ((0, 0), (1, 255))]
   where
-    -- Unescaped newline
-    f (0, 0x0A) = fromEnum UnEscaped
-    -- Unescaped comma
-    f (0, 0x2C) = fromEnum UnEscaped
-    -- Unescaped quote
-    f (0, 0x22) = fromEnum Escaped
+    f (0, character)
+        -- Unescaped newline
+        | character == 0x0A = fromEnum UnEscaped
+        -- Unescaped separator
+        | character == separator = fromEnum UnEscaped
+        -- Unescaped quote
+        | character == 0x22 = fromEnum Escaped
+        | otherwise = fromEnum UnEscaped
     -- Escaped quote
     -- escaped quote in fields are dealt as
     -- consecutive quoted sections of a field
@@ -237,11 +261,12 @@ stateTransitionTable = array ((0, 0), (1, 255)) [(i, f i) | i <- range ((0, 0), 
 
 {-# INLINE getDelimiterIndices_ #-}
 getDelimiterIndices_ ::
+    Word8 ->
     Int ->
     VS.Vector Word8 ->
     Ptr CSize ->
     IO (VS.Vector CSize)
-getDelimiterIndices_ originalLen csvFile resultPtr = do
+getDelimiterIndices_ separator originalLen csvFile resultPtr = do
     resultVector <- resultVectorM
     (_, resultLen) <-
         VS.ifoldM'
@@ -262,6 +287,7 @@ getDelimiterIndices_ originalLen csvFile resultPtr = do
     resultVectorM = do
         resultForeignPtr <- newForeignPtr_ resultPtr
         return $ VSM.unsafeFromForeignPtr0 resultForeignPtr paddedLen
+    transitionTable = stateTransitionTable separator
     processCharacter ::
         VSM.IOVector CSize ->
         (State, Int) ->
@@ -275,7 +301,7 @@ getDelimiterIndices_ originalLen csvFile resultPtr = do
         character =
             case state of
                 UnEscaped ->
-                    if character == lf || character == comma
+                    if character == lf || character == separator
                         then do
                             VSM.write
                                 resultVector
@@ -287,7 +313,7 @@ getDelimiterIndices_ originalLen csvFile resultPtr = do
           where
             newState =
                 toEnum $
-                    stateTransitionTable
+                    transitionTable
                         ! (fromEnum state, character)
 
 {-# INLINE countColumnsInFirstRow #-}
