@@ -55,8 +55,7 @@ prettyPrintSeparated sep filepath df = withFile filepath WriteMode $ \handle -> 
         (T.intercalate (T.singleton sep) (map (escapeField sep) headers))
     -- Write data rows
     mapM_
-        ( \i ->
-            TIO.hPutStrLn handle (T.intercalate (T.singleton sep) (getRowEscaped sep df i))
+        ( TIO.hPutStrLn handle . T.intercalate (T.singleton sep) . getRowEscaped sep df
         )
         [0 .. rows - 1]
 
