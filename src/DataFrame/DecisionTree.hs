@@ -327,7 +327,10 @@ findBestSplit cfg target conds df =
                 take
                     (expressionPairs cfg)
                     ( filter
-                        ((> 0) . fst . snd)
+                        ( \(c, v) ->
+                            ((> (complexityPenalty (synthConfig cfg) * fromIntegral (eSize c) * (-1))) . fst)
+                                v
+                        )
                         (sortBy (flip compare `on` snd) (map (\c -> (c, evalGain c)) validConds))
                     )
      in
