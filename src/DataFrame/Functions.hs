@@ -275,7 +275,7 @@ recodeWithDefault ::
     (Columnable a, Columnable b) => b -> [(a, b)] -> Expr a -> Expr b
 recodeWithDefault d mapping =
     UnaryOp
-        (T.pack ("recode " ++ show mapping))
+        (T.pack ("recodeWithDefault " ++ show d ++ " " ++ show mapping))
         (Maybe.fromMaybe d . (`lookup` mapping))
 
 firstOrNothing :: (Columnable a) => Expr [a] -> Expr (Maybe a)
