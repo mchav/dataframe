@@ -35,7 +35,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import Type.Reflection (typeRep)
 
-import DataFrame.Functions ((.<), (.<=), (.==), (.>), (.>=))
+import DataFrame.Functions ((./=), (.<), (.<=), (.==), (.>), (.>=))
 
 data TreeConfig
     = TreeConfig
@@ -43,6 +43,7 @@ data TreeConfig
     , minSamplesSplit :: Int
     , minLeafSize :: Int
     , percentiles :: [Int]
+    , expressionPairs :: Int
     , synthConfig :: SynthConfig
     }
     deriving (Eq, Show)
@@ -75,6 +76,7 @@ defaultTreeConfig =
         , minSamplesSplit = 5
         , minLeafSize = 1
         , percentiles = [0, 10 .. 100]
+        , expressionPairs = 10
         , synthConfig = defaultSynthConfig
         }
 
@@ -90,8 +92,9 @@ fitDecisionTree cfg (Col target) df =
         cfg
         (maxTreeDepth cfg)
         target
-        ( numericConditions cfg (exclude [target] df)
-            ++ generateConditionsOld cfg (exclude [target] df)
+        ( nubOrd $
+            numericConditions cfg (exclude [target] df)
+                ++ generateConditionsOld cfg (exclude [target] df)
         )
         df
 fitDecisionTree _ expr _ = error $ "Cannot create tree for compound expression: " ++ show expr
@@ -192,7 +195,7 @@ numericExprs cfg df prevExprs depth maxDepth
             e1 <- prevExprs
             e2 <- baseExprs
             guard (e1 /= e2)
-            [e1 + e2, e1 - e2, e1 * e2, F.ifThenElse (e2 .>= 0) (e1 / e2) 0]
+            [e1 + e2, e1 - e2, e1 * e2, F.ifThenElse (e2 ./= 0) (e1 / e2) 0]
 
 boolExprs ::
     DataFrame -> [Expr Bool] -> [Expr Bool] -> Int -> Int -> [Expr Bool]
@@ -296,6 +299,7 @@ findBestSplit ::
 findBestSplit cfg target conds df =
     let
         initialImpurity = calculateGini @a target df
+        evalGain :: Expr Bool -> (Double, Int)
         evalGain cond =
             let (t, f) = partitionDataFrame cond df
                 n = fromIntegral @Int @Double (nRows df)
@@ -317,10 +321,17 @@ findBestSplit cfg target conds df =
                      in
                         nRows t >= minLeafSize cfg && nRows f >= minLeafSize cfg
                 )
-                (nubOrd conds)
-        sortedConditions = take 10 (sortBy (flip compare `on` evalGain) validConds)
+                conds
+        sortedConditions =
+            map fst $
+                take
+                    (expressionPairs cfg)
+                    ( filter
+                        ((> 0) . fst . snd)
+                        (sortBy (flip compare `on` snd) (map (\c -> (c, evalGain c)) validConds))
+                    )
      in
-        if null validConds
+        if null sortedConditions
             then Nothing
             else
                 Just $
