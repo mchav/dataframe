@@ -42,6 +42,7 @@ data TreeConfig
     { maxTreeDepth :: Int
     , minSamplesSplit :: Int
     , minLeafSize :: Int
+    , percentiles :: [Int]
     , synthConfig :: SynthConfig
     }
     deriving (Eq, Show)
@@ -49,7 +50,6 @@ data TreeConfig
 data SynthConfig = SynthConfig
     { maxExprDepth :: Int
     , boolExpansion :: Int
-    , percentiles :: [Int]
     , complexityPenalty :: Double
     , enableStringOps :: Bool
     , enableCrossCols :: Bool
@@ -62,7 +62,6 @@ defaultSynthConfig =
     SynthConfig
         { maxExprDepth = 2
         , boolExpansion = 2
-        , percentiles = [0, 10 .. 100]
         , complexityPenalty = 0.05
         , enableStringOps = True
         , enableCrossCols = True
@@ -75,6 +74,7 @@ defaultTreeConfig =
         { maxTreeDepth = 4
         , minSamplesSplit = 5
         , minLeafSize = 1
+        , percentiles = [0, 10 .. 100]
         , synthConfig = defaultSynthConfig
         }
 
@@ -90,8 +90,8 @@ fitDecisionTree cfg (Col target) df =
         cfg
         (maxTreeDepth cfg)
         target
-        ( numericConditions (synthConfig cfg) (exclude [target] df)
-            ++ generateConditionsOld (synthConfig cfg) (exclude [target] df)
+        ( numericConditions cfg (exclude [target] df)
+            ++ generateConditionsOld cfg (exclude [target] df)
         )
         df
 fitDecisionTree _ expr _ = error $ "Cannot create tree for compound expression: " ++ show expr
@@ -142,15 +142,15 @@ pruneTree (UnaryOp name op e) = UnaryOp name op (pruneTree e)
 pruneTree (BinaryOp name op l r) = BinaryOp name op (pruneTree l) (pruneTree r)
 pruneTree e = e
 
-type CondGen = SynthConfig -> DataFrame -> [Expr Bool]
+type CondGen = TreeConfig -> DataFrame -> [Expr Bool]
 
 numericConditions :: CondGen
 numericConditions = generateNumericConds
 
 generateNumericConds ::
-    SynthConfig -> DataFrame -> [Expr Bool]
+    TreeConfig -> DataFrame -> [Expr Bool]
 generateNumericConds cfg df = do
-    expr <- numericExprsWithTerms cfg df
+    expr <- numericExprsWithTerms (synthConfig cfg) df
     let thresholds = map (\p -> percentile p expr df) (percentiles cfg)
     threshold <- thresholds
     [ expr .<= F.lit threshold
@@ -209,7 +209,7 @@ boolExprs df baseExprs prevExprs depth maxDepth
         guard (e1 /= e2)
         [F.and e1 e2, F.or e1 e2]
 
-generateConditionsOld :: SynthConfig -> DataFrame -> [Expr Bool]
+generateConditionsOld :: TreeConfig -> DataFrame -> [Expr Bool]
 generateConditionsOld cfg df =
     let
         genConds :: T.Text -> [Expr Bool]
