@@ -6,4 +6,3 @@ set -e
 ./scripts/lint.sh
 
 cabal build
-cabal sdist
