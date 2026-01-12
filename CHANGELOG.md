@@ -1,5 +1,14 @@
 # Revision history for dataframe
 
+## 0.4.0.6
+* Even faster groupby: uses radix sort rather than mergesort.
+* Created `rowValue` function - `df |> D.toRowList |> map (D.rowValue some_column)`.
+* SIMD reads for TSV files (thanks to @jhingon).
+* Fix string representation of recodeWithDefault.
+* Fix gain function for decision tree.
+* Add disallowed pairs for decision tree analyst.
+* Decision tree percentiles are now a tree-level configuration.
+
 ## 0.4.0.5
 * Faster groupby: does less allocations by keeping everything in a mutable vector.
 * declareColumnsFromCsvFile now infers types from a sample rather than reading the whole dataframe.
