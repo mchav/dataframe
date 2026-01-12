@@ -15,13 +15,14 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
-import qualified Data.Vector.Algorithms.Merge as VA
+import qualified Data.Vector.Algorithms.Radix as VA
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Exception (throw)
 import Control.Monad
 import Control.Monad.ST (runST)
+import Data.Bits
 import Data.Hashable
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import DataFrame.Errors
@@ -143,7 +144,13 @@ groupBy names df
                     )
                     v
 
-        VA.sortBy (\(!a, !b) (!a', !b') -> compare b' b) mv
+        let numPasses = 4
+            bucketSize = 65536
+            radixFunc k (_, !h) =
+                let h' = fromIntegral h `xor` (1 `unsafeShiftL` 63) :: Word
+                    shiftBits = k * 16
+                 in fromIntegral ((h' `unsafeShiftR` shiftBits) .&. 65535)
+        VA.sortBy numPasses bucketSize radixFunc mv
         VU.unsafeFreeze mv
 
 changingPoints :: VU.Vector (Int, Int) -> VU.Vector Int
