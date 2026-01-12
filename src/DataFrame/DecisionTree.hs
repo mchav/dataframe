@@ -26,7 +26,7 @@ import Control.Exception (throw)
 import Control.Monad (guard)
 import Data.Containers.ListUtils (nubOrd)
 import Data.Function (on)
-import Data.List (foldl', isSubsequenceOf, maximumBy, sort, sortBy)
+import Data.List (foldl', maximumBy, sort, sortBy)
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import qualified Data.Text as T
