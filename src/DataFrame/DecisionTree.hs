@@ -14,7 +14,7 @@ module DataFrame.DecisionTree where
 import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame (DataFrame (..), unsafeGetColumn)
-import DataFrame.Internal.Expression (Expr (..), eSize)
+import DataFrame.Internal.Expression (Expr (..), eSize, getColumns)
 import DataFrame.Internal.Interpreter (interpret)
 import DataFrame.Internal.Statistics (percentile', percentileOrd')
 import DataFrame.Internal.Types
@@ -26,7 +26,7 @@ import Control.Exception (throw)
 import Control.Monad (guard)
 import Data.Containers.ListUtils (nubOrd)
 import Data.Function (on)
-import Data.List (foldl', maximumBy, sortBy)
+import Data.List (foldl', isSubsequenceOf, maximumBy, sort, sortBy)
 import qualified Data.Map.Strict as M
 import Data.Maybe
 import qualified Data.Text as T
@@ -51,6 +51,7 @@ data TreeConfig
 data SynthConfig = SynthConfig
     { maxExprDepth :: Int
     , boolExpansion :: Int
+    , disallowedCombinations :: [(T.Text, T.Text)]
     , complexityPenalty :: Double
     , enableStringOps :: Bool
     , enableCrossCols :: Bool
@@ -63,6 +64,7 @@ defaultSynthConfig =
     SynthConfig
         { maxExprDepth = 2
         , boolExpansion = 2
+        , disallowedCombinations = []
         , complexityPenalty = 0.05
         , enableStringOps = True
         , enableCrossCols = True
@@ -194,7 +196,15 @@ numericExprs cfg df prevExprs depth maxDepth
         | otherwise = do
             e1 <- prevExprs
             e2 <- baseExprs
-            guard (e1 /= e2)
+            let cols = getColumns e1 <> getColumns e2
+            guard
+                ( e1 /= e2
+                    && not
+                        ( any
+                            (\(l, r) -> l `elem` cols && r `elem` cols)
+                            (disallowedCombinations cfg)
+                        )
+                )
             [e1 + e2, e1 - e2, e1 * e2, F.ifThenElse (e2 ./= 0) (e1 / e2) 0]
 
 boolExprs ::
@@ -271,7 +281,18 @@ generateConditionsOld cfg df =
                             ((Col @(Maybe a) colName .==) . Lit . (`percentileOrd'` col))
                             [1, 25, 75, 99]
             (UnboxedColumn (col :: VU.Vector a)) -> []
-        columnConds = concatMap colConds [(l, r) | l <- columnNames df, r <- columnNames df]
+        columnConds =
+            concatMap
+                colConds
+                [ (l, r)
+                | l <- columnNames df
+                , r <- columnNames df
+                , not
+                    ( any
+                        (\(l', r') -> sort [l', r'] == sort [l, r])
+                        (disallowedCombinations (synthConfig cfg))
+                    )
+                ]
           where
             colConds (!l, !r) = case (unsafeGetColumn l df, unsafeGetColumn r df) of
                 (BoxedColumn (col1 :: V.Vector a), BoxedColumn (col2 :: V.Vector b)) -> case testEquality (typeRep @a) (typeRep @b) of
@@ -299,6 +320,7 @@ findBestSplit ::
 findBestSplit cfg target conds df =
     let
         initialImpurity = calculateGini @a target df
+        calculateComplexity c = complexityPenalty (synthConfig cfg) * fromIntegral (eSize c)
         evalGain :: Expr Bool -> (Double, Int)
         evalGain cond =
             let (t, f) = partitionDataFrame cond df
@@ -309,7 +331,7 @@ findBestSplit cfg target conds df =
                     (weightT * calculateGini @a target t)
                         + (weightF * calculateGini @a target f)
              in ( (initialImpurity - newImpurity)
-                    - complexityPenalty (synthConfig cfg) * fromIntegral (eSize cond)
+                    - calculateComplexity cond
                 , negate (eSize cond)
                 )
 
@@ -328,7 +350,7 @@ findBestSplit cfg target conds df =
                     (expressionPairs cfg)
                     ( filter
                         ( \(c, v) ->
-                            ((> (complexityPenalty (synthConfig cfg) * fromIntegral (eSize c) * (-1))) . fst)
+                            ((> negate (calculateComplexity c)) . fst)
                                 v
                         )
                         (sortBy (flip compare `on` snd) (map (\c -> (c, evalGain c)) validConds))

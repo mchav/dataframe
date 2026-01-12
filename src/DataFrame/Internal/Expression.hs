@@ -300,3 +300,14 @@ eSize (AggNumericVector expr op _) = eSize expr + 1
 eSize (AggVector expr op _) = eSize expr + 1
 eSize (AggReduce expr op _) = eSize expr + 1
 eSize (AggFold expr op _ _) = eSize expr + 1
+
+getColumns :: Expr a -> [T.Text]
+getColumns (Col cName) = [cName]
+getColumns expr@(Lit _) = []
+getColumns (If cond l r) = getColumns cond <> getColumns l <> getColumns r
+getColumns (UnaryOp name f value) = getColumns value
+getColumns (BinaryOp name f l r) = getColumns l <> getColumns r
+getColumns (AggNumericVector expr op f) = getColumns expr
+getColumns (AggVector expr op f) = getColumns expr
+getColumns (AggReduce expr op f) = getColumns expr
+getColumns (AggFold expr op acc f) = getColumns expr
