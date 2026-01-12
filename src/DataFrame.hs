@@ -281,6 +281,7 @@ import DataFrame.Internal.Row as Row (
     Any,
     Row,
     fromAny,
+    rowValue,
     toAny,
     toRowList,
     toRowVector,

@@ -20,12 +20,13 @@ import qualified Data.Vector.Unboxed as VU
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
 import Data.Function (on)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Type.Equality (TestEquality (..))
 import Data.Typeable (type (:~:) (..))
 import DataFrame.Errors (DataFrameException (..))
 import DataFrame.Internal.Column
 import DataFrame.Internal.DataFrame
+import DataFrame.Internal.Expression (Expr (..))
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 import Text.Read (
     Lexeme (Ident),
@@ -150,6 +151,17 @@ Vector of empty rows (one per dataframe row)
 -}
 toRowVector :: [T.Text] -> DataFrame -> V.Vector Row
 toRowVector names df = V.generate (fst (dataframeDimensions df)) (mkRowRep df names)
+
+{- | Given a row gets the value associated with a field.
+
+==== __Examples__
+
+>>> map (rowValue (F.col @Int "age")) (toRowList df)
+[25,30, ...]
+-}
+rowValue :: forall a . Expr a -> [(T.Text, Any)] -> a
+rowValue (Col name) row = fromJust (lookup name row >>= fromAny @a)
+rowValue _ _ = error "Can only get rowValue of column reference"
 
 mkRowFromArgs :: [T.Text] -> DataFrame -> Int -> Row
 mkRowFromArgs names df i = V.map get (V.fromList names)
