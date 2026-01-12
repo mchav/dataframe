@@ -159,7 +159,7 @@ toRowVector names df = V.generate (fst (dataframeDimensions df)) (mkRowRep df na
 >>> map (rowValue (F.col @Int "age")) (toRowList df)
 [25,30, ...]
 -}
-rowValue :: forall a . Expr a -> [(T.Text, Any)] -> a
+rowValue :: forall a. Expr a -> [(T.Text, Any)] -> a
 rowValue (Col name) row = fromJust (lookup name row >>= fromAny @a)
 rowValue _ _ = error "Can only get rowValue of column reference"
 
