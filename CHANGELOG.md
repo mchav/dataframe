@@ -1,5 +1,10 @@
 # Revision history for dataframe
 
+## 0.4.0.7
+* Pretty printer for expression
+* Fix issue with how `pow` was getting displayed.
+* `exposeColumns` has been renamed to `declareColumns`
+
 ## 0.4.0.6
 * Even faster groupby: uses radix sort rather than mergesort.
 * Created `rowValue` function - `df |> D.toRowList |> map (D.rowValue some_column)`.
