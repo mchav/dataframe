@@ -14,10 +14,10 @@ Before we begin, let's load our data. We'll be working primarily with city and s
 
 ```haskell
 dataframe> df <- D.readCsv "./data/city.csv"
-dataframe> :exposeColumns df
+dataframe> :declareColumns df
 ```
 
-The `:exposeColumns` command makes column names available as variables in your scope, allowing you to reference them directly (e.g., `id`, `name`, `population`).
+The `:declareColumns` command makes column names available as variables in your scope, allowing you to reference them directly (e.g., `id`, `name`, `population`).
 
 ## Filtering Data
 
@@ -94,7 +94,7 @@ Query all columns for all American cities in city dataframe with:
 ### Solution
 ```haskell
 dataframe> D.readCsv "./data/country.csv"
-dataframe> :exposeColumns df
+dataframe> :declareColumns df
 dataframe> df |> D.filterWhere ((population .> 100000) .&& (country_code .== "USA"))
 --------------------------------------------------------------
   id  |     name      | country_code |  district  | population

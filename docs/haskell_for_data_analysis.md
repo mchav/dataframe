@@ -435,7 +435,7 @@ So in the previous example we said: take the column "ounces" and multiply it by 
 You can imagine that writing `F.col` for everything becomes tedious after some time so we provide a useful tool that generates the column references of a dataframe.
 
 ```haskell
-dataframe> :exposeColumns df
+dataframe> :declareColumns df
 "food :: Expr Text"
 "ounces :: Expr Double"
 dataframe> D.derive "kilograms" (ounces * 0.03) df

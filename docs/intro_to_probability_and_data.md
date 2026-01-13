@@ -214,10 +214,10 @@ This is essentially equivalent to going through each row and adding up the boys
 and girls counts for that year and recording that value in a new column called
 total.
 
-The `F.col @Int "boys" + F.col @Int "girls"` part is how we right expressions for our dataframe. Read left to right, this expression says take the `Int` called boys and add it to the `Int` column called girls. This saves us the work of having to work with vectors directly. But having to remember the name and type of each column is tedious and error prone. We can ask Haskell to expose correct references to these columns by using `:exposeColumns`.
+The `F.col @Int "boys" + F.col @Int "girls"` part is how we right expressions for our dataframe. Read left to right, this expression says take the `Int` called boys and add it to the `Int` column called girls. This saves us the work of having to work with vectors directly. But having to remember the name and type of each column is tedious and error prone. We can ask Haskell to expose correct references to these columns by using `:declareColumns`.
 
 ```haskell
-dataframe> :exposeColumns df
+dataframe> :declareColumns df
 "year :: Expr Int"
 "boys :: Expr Int"
 "girls :: Expr Int"

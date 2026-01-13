@@ -161,16 +161,16 @@ F.min   \@t (F.col \@t "x")
 F.max   \@t (F.col \@t "x")
 @
 
-== REPL power-tool: ':exposeColumns'
+== REPL power-tool: ':declareColumns'
 
-Use @:exposeColumns <df>@ in GHCi/IHaskell to turn each column of a bound 'DataFrame'
+Use @:declareColumns <df>@ in GHCi/IHaskell to turn each column of a bound 'DataFrame'
 into a local binding with the same (mangled if needed) name and the column's concrete
 vector type. This is great for quick ad-hoc analysis, plotting, or hand-rolled checks.
 
 @
 -- Suppose df has columns: "passengers" :: Int, "fare" :: Double, "payment" :: Text
 ghci> :set -XTemplateHaskell
-ghci> :exposeColumns df
+ghci> :declareColumns df
 
 -- Now you have in scope:
 ghci> :type passengers

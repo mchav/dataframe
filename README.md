@@ -77,7 +77,7 @@ product_id | sales
 3          | 40   
 3          | 30   
 
-dataframe> :exposeColumns df
+dataframe> :declareColumns df
 "product_id :: Expr Int"
 "sales :: Expr Int"
 dataframe> df |> D.groupBy [F.name product_id] |> D.aggregate [F.sum sales `as` "total_sales"]

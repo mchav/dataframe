@@ -362,7 +362,7 @@ Then we can run:
 
 ```haskell
 dataframe> df <- D.readParquet "./data/iris.parquet"
-dataframe> :exposeColumns df
+dataframe> :declareColumns df
 sepal_length :: Expr Double
 sepal_width :: Expr Double
 petal_length :: Expr Double

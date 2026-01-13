@@ -52,7 +52,7 @@ dataframe> D.describeColumns df
 Automatically generate column names.
 
 ```haskell
-dataframe> :exposeColumns df
+dataframe> :declareColumns df
 ```
 
 We can use the generated columns in expressions.
@@ -112,7 +112,7 @@ dataframe> df |> D.derive "nonsense_feature" (latitude + ocean_proximity) |> D.t
 Key features in example:
 
 * Intuitive, SQL-like API to get from data to insights.
-* Create type-safe references to columns in a dataframe using :exposeColumns
+* Create type-safe references to columns in a dataframe using :declareColumns
 * Type-safe column transformations for faster and safer exploration.
 * Fluid, chaining API that makes code easy to reason about.
 

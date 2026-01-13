@@ -113,7 +113,7 @@ We start by looking at mean absolute deviation since it's the simplest measure o
 In the housing dataset it'll tell how "typical" our typical home price is.
 
 ```haskell
-dataframe> :exposeColumns df
+dataframe> :declareColumns df
 dataframe> df |> D.derive "deviation" (abs (median_house_value - (F.mean median_house_value))) |> D.select ["median_house_value", "deviation"]
 ---------------------------------------
 median_house_value |     deviation
@@ -134,7 +134,7 @@ median_house_value |     deviation
 Showing 10 rows out of 20640
 ```
 
-The first part (`:exposeColumns df`) creates typed references to our columns that we can use in expressions. This command gets the types from a snapshot of the schema.
+The first part (`:declareColumns df`) creates typed references to our columns that we can use in expressions. This command gets the types from a snapshot of the schema.
 
 The main logic, read left to right, we begin by calling `derive` which creates a new column computed from a given expression. The order of arguments is `derive <target column> <expression>  <dataframe>`. We then select only the two columns we want and take the first 10 rows.
 
@@ -158,7 +158,7 @@ That's what standard deviation aims to do. Standard deviation considers the spre
 
 ```haskell
 dataframe> withDeviation = df |> D.derive "deviation" (abs (median_house_value - (F.mean median_house_value))) |> D.select ["median_house_value", "deviation"]
-dataframe> :exposeColumns withDeviation
+dataframe> :declareColumns withDeviation
 "median_house_value :: Expr Double"
 "deviation :: Expr Double"
 dataframe> import Data.Maybe

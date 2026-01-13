@@ -1003,7 +1003,7 @@ starwars
 ```
 
 We can enable non-started evaluation by one of three methods:
-* In a terminal, calling the `:exposeColumns` macro on the dataframe.
+* In a terminal, calling the `:declareColumns` macro on the dataframe.
 * In a notebook calling the function `declareColumns`
 * In a script adding `$(declareColumnsFromCsv)` after the imports section.
 

@@ -7,4 +7,4 @@ import Data.Text (Text)
 
 default (Int, Str.Text, Double)
 
-:def! exposeColumns \s -> return ("_ = (); declareColumns " ++ s)
+:def! declareColumns \s -> return ("_ = (); declareColumns " ++ s)
