@@ -48,7 +48,7 @@ import Data.List (
  )
 import Data.List.Split (splitOn)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 import Data.SRTree
 import Data.SRTree.Datasets
 import qualified Data.SRTree.Internal as SI
@@ -258,12 +258,14 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
         pareto <-
             forM [1 .. maxExpressionSize cfg] (`getTopFitEClassWithSize` nParetos)
                 >>= Prelude.mapM canonical . concat
-        infos <- forM pareto (\c -> gets (_info . (IM.! c) . _eClass))
+        infos <- forM pareto (\c -> gets (fmap _info . (IM.!? c) . _eClass))
         exprs <- forM pareto getBestExpr
         put emptyGraph
         newIds <- fromTrees myCost $ Prelude.map relabel exprs
         forM_ (Prelude.zip newIds (Prelude.reverse infos)) $ \(eId, info') ->
-            insertFitness eId (fromJust $ _fitness info') (_theta info')
+            case info' of
+                Nothing -> pure ()
+                Just i'' -> insertFitness eId (fromJust $ _fitness i'') (_theta i'')
 
     rndTerm = do
         coin <- toss
@@ -472,7 +474,7 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
 
     printExpr' :: Int -> EClassId -> RndEGraph [String]
     printExpr' ix ec = do
-        thetas' <- gets (_theta . _info . (IM.! ec) . _eClass)
+        thetas' <- gets (fmap (_theta . _info) . (IM.!? ec) . _eClass)
         bestExpr <-
             (if simplifyExpressions cfg then simplifyEqSatDefault else id)
                 <$> getBestExpr ec
@@ -481,11 +483,11 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                 if shouldReparam then relabelParams bestExpr else relabelParamsOrder bestExpr
             nParams' = countParamsUniq best'
             fromSz (MA.Sz x) = x
-            nThetas = Prelude.map (fromSz . MA.size) thetas'
+            nThetas = fmap (Prelude.map (fromSz . MA.size)) thetas'
         (_, thetas) <-
-            if Prelude.any (/= nParams') nThetas
+            if maybe False (Prelude.any (/= nParams')) nThetas
                 then fitFun best'
-                else pure (1.0, thetas')
+                else pure (1.0, fromMaybe [] thetas')
 
         maxLoss <- negate . fromJust <$> getFitness ec
         forM (Data.List.zip4 [(0 :: Int) ..] dataTrainVals dataTests thetas) $ \(view, (dataTrain, dataVal), dataTest, theta') -> do
@@ -561,13 +563,13 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                         ec <- canonical ec'
                         if improved
                             then do
-                                thetas' <- gets (_theta . _info . (IM.! ec) . _eClass)
+                                thetas' <- gets (fmap (_theta . _info) . (IM.!? ec) . _eClass)
                                 bestExpr <-
                                     relabelParams . (if simplifyExpressions cfg then simplifyEqSatDefault else id)
                                         <$> getBestExpr ec
                                 let t = case thetas' of
-                                        [] -> Fix (Const 0) -- Not sure if this makes sense as a default.
-                                        (h : _) -> paramsToConst (MA.toList h) bestExpr
+                                        Just (h : _) -> paramsToConst (MA.toList h) bestExpr
+                                        _ -> Fix (Const 0) -- Not sure if this makes sense as a default.
                                 ts <- go (n + 1) (max f f')
                                 pure (t : ts)
                             else go (n + 1) (max f f')
