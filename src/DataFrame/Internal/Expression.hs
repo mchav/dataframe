@@ -311,3 +311,38 @@ getColumns (AggNumericVector expr op f) = getColumns expr
 getColumns (AggVector expr op f) = getColumns expr
 getColumns (AggReduce expr op f) = getColumns expr
 getColumns (AggFold expr op acc f) = getColumns expr
+
+prettyPrint :: Expr a -> String
+prettyPrint = go 0
+  where
+    go :: Int -> Expr a -> String
+    go prec expr = case expr of
+        Col name -> T.unpack name
+        Lit value -> show value
+        If cond t e ->
+            "if " ++ go 0 cond ++ " then " ++ go 0 t ++ " else " ++ go 0 e
+        UnaryOp name _ arg -> T.unpack name ++ "(" ++ go 0 arg ++ ")"
+        BinaryOp name _ l r ->
+            let p = opPrec name
+                inner = go p l ++ " " ++ opSym name ++ " " ++ go p r
+             in if prec > p then "(" ++ inner ++ ")" else inner
+        AggVector arg op _ -> T.unpack op ++ "(" ++ go 0 arg ++ ")"
+        AggReduce arg op _ -> T.unpack op ++ "(" ++ go 0 arg ++ ")"
+        AggNumericVector arg op _ -> T.unpack op ++ "(" ++ go 0 arg ++ ")"
+        AggFold arg op _ _ -> T.unpack op ++ "(" ++ go 0 arg ++ ")"
+
+    opPrec :: T.Text -> Int
+    opPrec "add" = 1
+    opPrec "sub" = 1
+    opPrec "mult" = 2
+    opPrec "divide" = 2
+    opPrec "pow" = 3
+    opPrec _ = 0
+
+    opSym :: T.Text -> String
+    opSym "add" = "+"
+    opSym "sub" = "-"
+    opSym "mult" = "*"
+    opSym "divide" = "/"
+    opSym "pow" = "^"
+    opSym other = T.unpack other

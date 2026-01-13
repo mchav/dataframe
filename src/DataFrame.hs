@@ -276,7 +276,7 @@ import DataFrame.Internal.DataFrame as Dataframe (
     null,
     toMarkdownTable,
  )
-import DataFrame.Internal.Expression as Expression (Expr)
+import DataFrame.Internal.Expression as Expression (Expr, prettyPrint)
 import DataFrame.Internal.Row as Row (
     Any,
     Row,
