@@ -114,7 +114,7 @@ library
                       vector-algorithms ^>= 0.9,
                       zlib >= 0.5 && < 1,
                       zstd >= 0.1.2.0 && < 0.2,
-                      mmap >= 0.5.8 && <= 0.5.9,
+                      mmap >= 0.5.8 && < 0.6,
                       parallel >= 3.2.2.0 && < 5
     hs-source-dirs:   src
     c-sources:        cbits/process_csv.c
