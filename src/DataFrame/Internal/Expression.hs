@@ -69,7 +69,7 @@ instance (Num a, Columnable a) => Num (Expr a) where
     (*) e (Lit 1) = e
     (*) (Lit x) (Lit y) = Lit (x * y)
     (*) e1 e2
-        | e1 == e2 = UnaryOp "pow 2" (^ 2) e1
+        | e1 == e2 = BinaryOp "pow" (^) e1 (Lit @Int 2)
         | otherwise = BinaryOp "mult" (*) e1 e2
 
     fromInteger :: Integer -> Expr a

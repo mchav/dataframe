@@ -22,7 +22,7 @@ library
     -- other-modules:
     -- other-extensions:
     build-depends:    base >= 4 && <5
-                    , dataframe
+                    , dataframe ^>= 0.4
                     , attoparsec >=0.14.4 && <0.15
                     , attoparsec-expr >=0.1.1.2 && <0.2
                     , base >=4.19 && <5
