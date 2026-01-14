@@ -25,7 +25,6 @@ library
                     , dataframe ^>= 0.4
                     , attoparsec >=0.14.4 && <0.15
                     , attoparsec-expr >=0.1.1.2 && <0.2
-                    , base >=4.19 && <5
                     , binary >=0.8.9.1 && <0.9
                     , bytestring >=0.11 && <0.13
                     , containers >=0.6.7 && <0.8
