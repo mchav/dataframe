@@ -74,21 +74,6 @@ decodeDictIndicesV1 need dictCard bs =
     case bs of
         [] -> error "empty dictionary index stream"
         (w0 : rest0) ->
-            let widthFromDict = ceilLog2 dictCard
-                looksLikeWidth = w0 <= 32 && (w0 /= 0 || dictCard <= 1)
-                tryWithWidthByte =
-                    let bw = fromIntegral w0
-                        (u32s, rest1) = decodeRLEBitPackedHybrid bw need rest0
-                     in (map fromIntegral u32s, rest1)
-                tryWithoutWidthByte =
-                    let bw = widthFromDict
-                        (u32s, rest1) = decodeRLEBitPackedHybrid bw need bs
-                     in (map fromIntegral u32s, rest1)
-                (idxs, rest') =
-                    if looksLikeWidth
-                        then
-                            let (xs, r) = tryWithWidthByte
-                             in if length xs == need then (xs, r) else tryWithoutWidthByte
-                        else
-                            tryWithoutWidthByte
-             in (idxs, rest')
+            let bw = fromIntegral w0 :: Int
+                (u32s, rest1) = decodeRLEBitPackedHybrid bw need rest0
+             in (map fromIntegral u32s, rest1)
