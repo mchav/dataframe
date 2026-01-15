@@ -152,7 +152,7 @@ toExpr df (Fix (Bin op left right)) = case op of
     SI.Sub -> toExpr df left - toExpr df right
     SI.Mul -> toExpr df left * toExpr df right
     SI.Div -> toExpr df left / toExpr df right
-    op -> error ("UNIMPLEMENTED OPERATION: " ++ show op)
+    treeOp -> error ("UNIMPLEMENTED OPERATION: " ++ show treeOp)
 toExpr _ _ = error "UNIMPLEMENTED"
 
 toNonTerminal :: D.Expr Double -> String
