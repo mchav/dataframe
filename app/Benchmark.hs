@@ -18,8 +18,8 @@ main = do
     xs <- VU.replicateM n (uniformRM range g)
     ys <- VU.replicateM n (uniformRM range g)
     let df = D.fromUnnamedColumns (map D.fromUnboxedVector [ns, xs, ys])
-    print df
     endGeneration <- getCurrentTime
+    print $ D.summarize df
     let generationTime = diffUTCTime endGeneration startGeneration
     putStrLn $ "Data generation Time: " ++ show generationTime
     startCalculation <- getCurrentTime
@@ -34,5 +34,5 @@ main = do
     endFilter <- getCurrentTime
     let filterTime = diffUTCTime endFilter startFilter
     putStrLn $ "Filter Time: " ++ show filterTime
-    let totalTime = diffUTCTime endFilter startGeneration
-    putStrLn $ "Total Time: " ++ show totalTime
+    putStrLn $
+        "Total Time: " ++ show (filterTime + generationTime + calculationTime)

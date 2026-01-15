@@ -40,7 +40,7 @@ explorer = do
 
 groupByHaskell :: IO ()
 groupByHaskell = do
-    df <- D.readCsv "./data/housing.csv"
+    df <- D.fastReadCsvUnstable "./data/housing.csv"
     print $
         df
             |> D.groupBy ["ocean_proximity"]
@@ -106,10 +106,10 @@ main = do
     defaultMain
         [ bgroup
             "stats"
-            [ bench "simpleStatsHaskell" $ nfIO haskell
-            , bench "simpleStatsPandas" $ nfIO pandas
-            , bench "simpleStatsPolars" $ nfIO polars
-            , bench "groupByHaskell" $ nfIO groupByHaskell
+            [ -- bench "simpleStatsHaskell" $ nfIO haskell
+              -- , bench "simpleStatsPandas" $ nfIO pandas
+              -- , bench "simpleStatsPolars" $ nfIO polars
+              bench "groupByHaskell" $ nfIO groupByHaskell
             , bench "groupByPolars" $ nfIO groupByPolars
             , bench "groupByPandas" $ nfIO groupByPandas
             , bench "groupByExplorer" $ nfIO groupByExplorer
