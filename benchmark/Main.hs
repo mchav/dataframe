@@ -106,13 +106,13 @@ main = do
     defaultMain
         [ bgroup
             "stats"
-            [ -- bench "simpleStatsHaskell" $ nfIO haskell
-              -- , bench "simpleStatsPandas" $ nfIO pandas
-              -- , bench "simpleStatsPolars" $ nfIO polars
-              bench "groupByHaskell" $ nfIO groupByHaskell
+            [ bench "simpleStatsHaskell" $ nfIO haskell
+            , bench "simpleStatsPandas" $ nfIO pandas
+            , bench "simpleStatsPolars" $ nfIO polars
+            , bench "groupByHaskell" $ nfIO groupByHaskell
             , bench "groupByPolars" $ nfIO groupByPolars
             , bench "groupByPandas" $ nfIO groupByPandas
-            , bench "groupByExplorer" $ nfIO groupByExplorer
+            -- , bench "groupByExplorer" $ nfIO groupByExplorer
             ]
         , bgroup
             "housing.csv (1.4 MB)"
