@@ -925,7 +925,7 @@ toIntegralType n
     | n == 1 = I32
     | n == 2 = I64
     | n == 3 = I96
-    | n == 4 = DOUBLE
+    | n == 4 = FLOAT
     | n == 5 = DOUBLE
     | n == 6 = STRING
     | n == 7 = STRING
