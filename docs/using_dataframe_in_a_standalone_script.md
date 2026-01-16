@@ -194,7 +194,7 @@ How do you get stuff out of this series of computations? There are three functio
 
 FrameM is actually an implementation of a [state monad](https://wiki.haskell.org/State_Monad) and its function names are meant to mirror the same naming scheme.
 
-So let's can extract some expressions and use them outside of FrameM:
+So let's extract some expressions and use them outside of FrameM:
 
 ```haskell
 main :: IO ()
