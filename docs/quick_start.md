@@ -14,19 +14,81 @@
 ### Examples
 * There are pre-loaded examples in the Jupyter environment.
 
-## Command-line
+## Running Haskell locally
 
 ### Installation
 
 * Install GHC (The Haskell compiler) and cabal
     * For MacOS/Linux/WSL2: `curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | BOOTSTRAP_HASKELL_NONINTERACTIVE=1 sh`
     * For windows: `$ErrorActionPreference = 'Stop';Set-ExecutionPolicy Bypass -Scope Process -Force;[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;try { & ([ScriptBlock]::Create((Invoke-WebRequest https://www.haskell.org/ghcup/sh/bootstrap-haskell.ps1 -UseBasicParsing))) -InBash -InstallDir "C:\" } catch { Write-Error $_ }`
+
+### Cabal scripts
+You can run standalone scripts with minimal setup using cabal scripts.
+
+```haskell
+#!/usr/bin/env cabal
+{- cabal:
+  build-depends: base >= 4, dataframe
+-}
+-- Test.hs
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
+
+import DataFrame ((|>))
+
+-- Creates the column references used below (namely total_rooms and households)
+-- This gives us type-safe column access.
+$(F.declareColumnsFromCsvFile "/home/yavinda/code/dataframe/data/housing.csv")
+
+main :: IO ()
+main = do
+  df <- D.readCsv "./dataframe/data/housing.csv"
+  print (df |> D.derive "rooms_per_household" (total_rooms / households))
+```
+
+Save the file as `Test.hs` and run with:
+
+`cabal run Test.hs`
+
+We provide a small, monadic DSL for scripts where you want relatively more type safety.
+
+```haskell
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+
+module Main where
+
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
+
+import DataFrame.Monad
+
+import Data.Text (Text)
+import DataFrame.Functions ((.&&), (.>=))
+
+$(F.declareColumnsFromCsvFile "./data/housing.csv")
+
+main :: IO ()
+main = do
+    df <- D.readCsv "./data/housing.csv"
+    print $ execFrameM df $ do
+        -- 1) Type safe reference to `median_house_value` and `median_income`
+        -- 2) creates a type safe reference to the newly created column.
+        is_expensive <- deriveM "is_expensive" (median_house_value .>= 500000)
+        luxury <- deriveM "luxury" (is_expensive .&& median_income .>= 8)
+        filterWhereM luxury
+```
+
+### As a commandline tool
 * Run `cabal install dataframe`.
 * Start the dataframe REPL by running `dataframe` which should be in your PATH.
 
-### Example usage
+#### Example usage
 
-#### GHCi/Jupyter notebooks
+##### GHCi/Jupyter notebooks
 Looking through the structure of the columns.
 
 ```haskell    
@@ -115,34 +177,3 @@ Key features in example:
 * Create type-safe references to columns in a dataframe using :declareColumns
 * Type-safe column transformations for faster and safer exploration.
 * Fluid, chaining API that makes code easy to reason about.
-
-#### Standalone scripts
-
-We provide a small, monadic DSL for scripts where you want relatively more type safety.
-
-```haskell
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-
-module Main where
-
-import qualified DataFrame as D
-import qualified DataFrame.Functions as F
-
-import DataFrame.Monad
-
-import Data.Text (Text)
-import DataFrame.Functions ((.&&), (.>=))
-
-$(F.declareColumnsFromCsvFile "./data/housing.csv")
-
-main :: IO ()
-main = do
-    df <- D.readCsv "./data/housing.csv"
-    print $ runFrameM df $ do
-        -- 1) Type safe reference to `median_house_value` and `median_income`
-        -- 2) creates a type safe reference to the newly created column.
-        is_expensive <- deriveM "is_expensive" (median_house_value .>= 500000)
-        luxury <- deriveM "luxury" (is_expensive .&& median_income .>= 8)
-        filterWhereM luxury
-```

@@ -2,11 +2,156 @@
 
 What you’ll learn
 * How to write a small, compiled Haskell program that reads a CSV, engineers features, imputes missing values, and filters rows.
-* How the FrameM monad lets you update a dataframe without threading the df variable by hand.
 * How Template Haskell column declarations eliminate stringly‑typed references.
+* How using FrameM lets you update a dataframe without threading the df variable by hand.
 
+## Peeking at our file
+We'll be looking at the California Housing dataset for this tutorial. Download the [housing.csv](https://raw.githubusercontent.com/mchav/dataframe/refs/heads/main/data/housing.csv) file into whatever folder you're working from.
+
+Create a file called `Housing.hs` in your working folder and copy/type the following code:
+
+```haskell
+#!/usr/bin/env cabal
+{- cabal:
+  build-depends: base >= 4, dataframe
+-}
+
+module Main where
+
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
+
+main :: IO ()
+main = do
+  df <- D.readCsv "./housing.csv"
+  print df
+```
+
+It's not very useful yet but it gets the boilerplate out of the way. Test that everything works by running `cabal run Housing.hs`. You should see the first few rows of the dataframe printed out.
 
 ## Generating our dataframe expressions
+Now that we can load our dataframe we want to run some interesting computations on it. We want to create some combinations of columns that are predictive of `median_house_value`. Let's see how dense each place is by computing the number of rooms per household (more rooms per household means lower density).
+
+```haskell
+#!/usr/bin/env cabal
+{- cabal:
+  build-depends: base >= 4, dataframe
+-}
+-- We need this so because most dataframe functions take
+-- `Text` not `String`.
+{-# LANGUAGE OverloadedStrings #-}
+
+module Main where
+
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
+
+main :: IO ()
+main = do
+  df <- D.readCsv "./housing.csv"
+  print (D.derive "rooms_per_household" (F.col @Double "total_rooms" / F.col @Double "households") df)
+```
+
+You'll notice the dataframe now has a new column called `rooms_per_household` at the end. This is great! But what if we had made a mistake? What if we had instead typed "totalrooms"? Or what if we had assumed both columns were ints and used integer division? These would have both resulted in runtime errors. This gets worse as we rewrite more transformations using the same columns (we're more likely to have a stray typo or get the type wrong).
+
+Can we protect ourselves better?
+
+We can mitigate this by carrying them out to be separate variables that we reuse.
+
+```haskell
+#!/usr/bin/env cabal
+{- cabal:
+  build-depends: base >= 4, dataframe
+-}
+-- We need this so because most dataframe functions take
+-- `Text` not `String`.
+{-# LANGUAGE OverloadedStrings #-}
+
+module Main where
+
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
+
+total_rooms = F.col @Double "total_rooms"
+households = F.col @Double "households"
+
+main :: IO ()
+main = do
+  df <- D.readCsv "./housing.csv"
+  print (D.derive "rooms_per_household" (total_rooms / households) df)
+```
+
+This does make things a little clearer but we could still make all the same mistakes. Can we do better? We absolutely can. We can automatically generate the references to our columns.
+
+```haskell
+#!/usr/bin/env cabal
+{- cabal:
+  build-depends: base >= 4, dataframe
+-}
+-- We need this so because most dataframe functions take
+-- `Text` not `String`.
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+
+module Main where
+
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
+
+$(F.declareColumnsFromCsvFile "./housing.csv")
+
+main :: IO ()
+main = do
+  df <- D.readCsv "./housing.csv"
+  print (D.derive "rooms_per_household" (total_rooms / households) df)
+```
+
+`declareColumnsFromCsvFile` runs at compile time and generates top‑level, typed bindings for each column in the CSV header in snake case. This is a big improvement. Misspelling column names or misspecifying the type are now both compile time errors!
+
+Because Template Haskell reads the file at compile time, make sure `./housing.csv` exists and is in the same folder as the script. Paths are resolved relative to your current working directory when you run `cabal run Housing.hs`.
+
+## The FrameM monad
+We're still not entirely in the clear. Suppose we wanted to:
+
+* define a new feature called `is_expensive` which has a value of true when the house price is greater than or equal to `500_000` and is false otherwise.
+* define a new feature for the average number of rooms in each house called `rooms_per_household`. 
+* we also wanted to impute the mean value of total bedrooms in places where it's `Nothing`/`Null`.
+* filter all rows where `is_expensive` is true, `rooms_per_household` is greater than or equal to 7, and `total_bedrooms` is greater than or equal to 200.
+
+We have a version of `derive` that returns the column reference and the updated dataframe. The function is called `deriveWithExpr`.
+
+So we can write:
+
+```haskell
+#!/usr/bin/env cabal
+{- cabal:
+  build-depends: base >= 4, dataframe
+-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+
+module Main where
+
+import qualified DataFrame as D
+import qualified DataFrame.Functions as F
+
+import DataFrame ((|>))
+import DataFrame.Functions ((.>=), (.&&))
+
+$(F.declareColumnsFromCsvFile "./housing.csv")
+
+main :: IO ()
+main = do
+    df <- D.readCsv "./housing.csv"
+    let (isExpensive, dfWithExpensive) = D.deriveWithExpr "is_expensive" (median_house_value .>= 500000)
+        (roomsPerHoushold, dfWithRoomsPerHousehold) = D.deriveWithExpr "rooms_per_household" (total_rooms / households)
+        meanBedrooms = D.meanMaybe total_bedrooms dfWithRoomsPerHousehold
+        dfWithTotalBedroomsImputed = D.impute total_bedrooms meanBedrooms dfWithRoomsPerHousehold
+
+    print $ dfWithTotalBedroomsImputed |> D.filterWhere (isExpensive .&& roomsPerHousehold .>= 7 .&& (F.col @Double "total_bedrooms") .>= 200)
+```
+
+Our code is now inundated with different dataframe variables and a bunch of pipeline management. Should we just revert back to using the old `derive` and keep track of names and types ourselves? Not at all. We can use a structure called a `FrameM` to remove this boilerplate while still keeping the guarantees we unlocked before.
 
 ```haskell
 {-# LANGUAGE OverloadedStrings #-}
@@ -17,74 +162,47 @@ module Main where
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 
+import DataFrame ((|>))
+import DataFrame.Functions ((.>=), (.&&))
+
 import DataFrame.Monad
 
-import Data.Text (Text)
-import DataFrame.Functions ((.&&), (.>=))
+$(F.declareColumnsFromCsvFile "./housing.csv")
 
--- Generate top-level column variables from a CSV file.
--- Example: 'median_house_value', 'total_bedrooms', etc.
-$(F.declareColumnsFromCsvFile "./data/housing.csv")
+main :: IO ()
+main = do
+  df <- D.readCsv "./housing.csv"
+  let df' = execFrameM df $ do
+              isExpensive   <- deriveM "is_expensive" (median_house_value .>= 500000)
+              roomsPerHousehold <- deriveM "rooms_per_household" (total_rooms / households)
+              meanBedrooms   <- inspectM (D.meanMaybe total_bedrooms)
+              totalBedrooms  <- imputeM total_bedrooms meanBedrooms
+              filterWhereM (isExpensive .&& roomsPerHousehold .>= 7 .&& totalBedrooms .>= 200)
+  print df'
 ```
 
-`declareColumnsFromCsvFile` runs at compile time and generates top‑level, typed bindings for each column in the CSV header in snake case. In practice you get values like `median_house_value :: Expr Double` and `ocean_proximity :: Expr Text`. In your scripts you write `median_house_value .>= 500000` instead of `F.col @Double "median_house_value" .>= 500000`. This removes the possibility of misspelling column names or misspecifying the type!
+In the earlier version (without FrameM), every operation has to take an input dataframe and return a new one. We do this because dataframes are immutable but it forces us to keep naming each intermediate result (dfWithRoomsPerHousehold, dfWithTotalBedroomsImputed, ...). We end up doing bookkeeping that has nothing to do with our data work. We're manually threading the dataframe through a pipeline, and the pipeline is getting visually buried under variable names.
 
-Because Template Haskell reads the file at compile time, make sure `./data/housing.csv` exists relative to the project root when building, and list it under extra-source-files or data-files in your Cabal file so CI builds can find it.
+FrameM is a way to say: "For the next few lines, assume we're working on one evolving dataframe, and keep passing it along for me." You can think of it as a do-block where the dataframe is the implicit context. Inside the block, each step sees "the current dataframe" and can update it, but you don’t have to keep writing the plumbing yourself.
 
-## The FrameM monad
-This isn't another monad tutorial. In fact, I don't think you have to know what they are to use them well. We use them in scripts because they help us keep the code compact. Suppose we wanted to:
+That’s what the M suffix is hinting at. When you see functions like deriveM, imputeM, or filterWhereM, the M is just a conventional signal that this version runs in a monad. And "monad", here, can be understood very simply: it’s a pattern for sequencing operations where each line may carry along some hidden context. In IO (like in the main function for example), the hidden context is "the outside world" (the console screen, system clocks, environment variables etc). In FrameM, the hidden context is "the current dataframe".
 
-* define a new feature called `is_expensive` which has a value of true when the house price is greater than or equal to `500_000` and is false otherwise.
-* define a new feature for the average number of rooms in each house called `rooms_per_household`. 
-* we also wanted to impute the mean value of total bedrooms in places where it's `Nothing`/`Null`.
-* filter all rows where `is_expensive` is true, `rooms_per_household` is greater than or equal to 7, and `total_bedrooms` is greater than or equal to 200.
+A nice way to read the FrameM part without doing "monads as a theory lesson" is to treat it like a mini language for dataframe steps. You write your steps in a natural order, and the monad takes care of passing the context to the next step.
 
-We'd normally have to write:
+FrameM currently focuses on single-table, column-at-a-time transformations (derive/impute/filter/rename). Operations that change row grouping or produce new tables (groupBy/aggregate/join) aren’t in the monadic API yet.
+
+How do you get stuff out of this series of computation? There are three functions for doing so: `execFrameM`, `runFrameM`, and `evalFrameM`. These are just different ways to "end the story" depending on what you want to keep. If you only care about the final table, use `execFrameM`. If you want both the final table and some values you computed along the way (like an imputed expression you want to reuse), use `runFrameM`. If you only care about the extracted results and not the updated table, use `evalFrameM`. The important beginner-friendly idea is: you’re writing a sequence of dataframe steps, and you get to choose whether you want the updated dataframe, the computed results, or both at the end.
+
+FrameM is actually an implementation of a [state monad](https://wiki.haskell.org/State_Monad) and its function names are meant to mirror the same naming scheme.
+
+So let's can extract some expressions and use them outside of FrameM:
 
 ```haskell
 main :: IO ()
 main = do
-    df <- D.readCsv "./data/housing.csv"
-    let (isExpensive, dfWithExpensive) = D.deriveWithExpr "is_expensive" (median_house_value .>= 500000)
-        (roomsPerHoushold, dfWithRoomsPerHousehold) = D.deriveWithExpr "rooms_per_household" (total_rooms / households)
-        meanBedrooms = D.meanMaybe total_bedrooms dfWithRoomsPerHousehold
-        dfWithTotalBedroomsImputed = D.impute total_bedrooms meanBedrooms dfWithRoomsPerHousehold
+  df <- D.readCsv "./housing.csv"
 
-    print $ dfWithTotalBedroomsImputed |> D.filterWhere (isExpensive .&& roomsPerHousehold .>= 7 .&& (F.col @Double "total_bedrooms") .>= 200)
-```
-
-Because our dataframe is immutable and we return a new modified dataframe after every call to `deriveWithExpr` we get an explosion of names and generally unclear code. There are a number of ways we can solve this problem but a monadic interface seems to fit naturally here. We can make the dataframes implicit and keep chaining them through the computations.
-
-```haskell
-let df' = execFrameM df $ do
-            isExpensive   <- deriveM "is_expensive" (median_house_value .>= 500000)
-            roomsPerHousehold <- deriveM "rooms_per_household" (total_rooms / households)
-            meanBedrooms   <- inspectM (D.meanMaybe total_bedrooms)
-            totalBedrooms  <- imputeM total_bedrooms meanBedrooms
-            filterWhereM (isExpensive .&& roomsPerHousehold .>= 7 .&& totalBedrooms .>= 200)
-```
-
-The code is now more readable. Your eyes can zero in on the computations without being distracted ny state keeping. We introduce a couple of functions to work within this monadic context:
-
-* Our core functions now have a version suffixed with `M` to indicate that they are working within the FrameM monad. The monadic API is only defined for functions that may mutate at most one column schema. Functions like `groupBy + aggregate` are note supported.
-* An `inspectM` function that takes a nother function that expects a dataframe and produces a value. We used this to get the mean in this case.
-
-FrameM is an implementation of a [state monad](https://wiki.haskell.org/State_Monad) and its function names are meant to mirror the same naming scheme.
-
-* `execFrameM df action :: DataFrame` - returns the final dataframe (like execState).
-Use when you only care about the resulting table.
-* `runFrameM df action :: (a, DataFrame)` - returns result value(s) and the final dataframe (like runState). Use when you want to pull out expressions or inspected values and keep the updated frame.
-* `evalFrameM df action :: a` - returns just the result value(s) (like evalState). Useful when you only need scalars/Exprs from the computation.
-
-
-We can extract expressions and use them outside of the monadic API as follows:
-
-```haskell
-main :: IO ()
-main = do
-  df <- D.readCsv "./data/housing.csv"
-
-  let ((isExpensive, totalBedrooms), df') =
+  let ((is_expensive, totalBedrooms), df') =
         runFrameM df $ do
           is_expensive  <- deriveM "is_expensive" (median_house_value .>= 500000)
           meanBedrooms  <- inspectM (D.meanMaybe total_bedrooms)
@@ -97,7 +215,9 @@ main = do
       |> D.filterWhere (isExpensive .&& totalBedrooms .>= 200)
 ```
 
-This pattern lets you keep most of your pipeline in the monad (ergonomic state updates), but allows you yo reuse the derived Exprs elsewhere - for example, in plotting, or further filtering with the non‑monadic API.
+Now we can reuse the derived Exprs elsewhere - for example, in plotting, or further filtering with the regular dataframe API.
+
+We can go ahead and run the complete file with the same command as before.
 
 ## Type safety, schema evolution, and the “foot‑gun”
 
