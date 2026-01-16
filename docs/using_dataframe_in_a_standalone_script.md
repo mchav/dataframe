@@ -56,7 +56,7 @@ You'll notice the dataframe now has a new column called `rooms_per_household` at
 
 Can we protect ourselves better?
 
-We can mitigate this by carrying them out to be separate variables that we reuse.
+We can mitigate this by lifting them to top level scope to be separate variables that we reuse.
 
 ```haskell
 #!/usr/bin/env cabal
