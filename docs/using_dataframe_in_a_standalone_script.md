@@ -234,20 +234,3 @@ Practical mitigations
 * If you must reuse Exprs outside, pass the updated df' and the Exprs together (use runFrameM instead of the other two evalFrameM) to remind yourself they're from the same logical schema version.
 * Normalize and rename columns immediately after ingest so names are stable throughout the pipeline.
 * Consider module‑scoped helpers that build the “contract” expressions in one place (e.g a function that returns a record of Exprs) so evolution is centralized.
-
-## Optional: Doing it without Template Haskell
-
-If you don’t want to depend on compile‑time CSV introspection, you can define columns manually:
-
-```haskell
-
-let median_house_value = F.col @Double "median_house_value"
-let total_bedrooms     = F.col @(Maybe Double) "total_bedrooms"
-let ocean_proximity    = F.col @Text   "ocean_proximity"
-
-execFrameM df $ do
-  expensive <- deriveM "is_expensive" (median_house_value .>= 500000)
-  muBeds    <- inspectM (D.meanMaybe total_bedrooms)
-  bedsImp   <- imputeM total_bedrooms muBeds
-  filterWhereM (bedsImp .>= 200 .&& expensive)
-```
