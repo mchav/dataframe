@@ -52,6 +52,12 @@ deriveM name expr = FrameM $ \df ->
     let df' = D.derive name expr df
      in (df', Col name)
 
+renameM :: (Columnable a) => Expr a -> T.Text -> FrameM (Expr a)
+renameM (Col oldName) newName = FrameM $ \df ->
+    let df' = D.rename oldName newName df
+     in (df', Col newName)
+renameM expr newName = deriveM newName expr
+
 filterWhereM :: Expr Bool -> FrameM ()
 filterWhereM p = modifyM (D.filterWhere p)
 
