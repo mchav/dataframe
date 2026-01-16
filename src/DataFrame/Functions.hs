@@ -26,6 +26,7 @@ import DataFrame.Internal.Expression (
  )
 import DataFrame.Internal.Statistics
 
+import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
 import qualified Data.Char as Char
@@ -374,27 +375,36 @@ sanitize t
 
 typeFromString :: [String] -> Q Type
 typeFromString [] = fail "No type specified"
-typeFromString [t] = do
-    maybeType <- lookupTypeName t
-    case maybeType of
-        Just name -> return (ConT name)
-        Nothing ->
-            if take 1 t == "["
-                then typeFromString [dropFirstAndLast t] <&> AppT ListT
-                else fail $ "Unsupported type: " ++ t
-typeFromString [tycon, t1] = do
-    outer <- typeFromString [tycon]
-    inner <- typeFromString [t1]
-    return (AppT outer inner)
-typeFromString [tycon, t1, t2] = do
-    outer <- typeFromString [tycon]
-    lhs <- typeFromString [t1]
-    rhs <- typeFromString [t2]
-    return (AppT (AppT outer lhs) rhs)
+typeFromString [t0] = do
+    let t = normalize t0
+    case stripBrackets t of
+        Just inner -> typeFromString [inner] <&> AppT ListT
+        Nothing
+            | t == "Text" || t == "Data.Text.Text" || t == "T.Text" ->
+                pure (ConT ''T.Text)
+            | otherwise -> do
+                m <- lookupTypeName t
+                case m of
+                    Just name -> pure (ConT name)
+                    Nothing -> fail $ "Unsupported type: " ++ t0
+typeFromString [tycon, t1] = AppT <$> typeFromString [tycon] <*> typeFromString [t1]
+typeFromString [tycon, t1, t2] =
+    (\outer a b -> AppT (AppT outer a) b)
+        <$> typeFromString [tycon]
+        <*> typeFromString [t1]
+        <*> typeFromString [t2]
 typeFromString s = fail $ "Unsupported types: " ++ unwords s
 
-dropFirstAndLast :: [a] -> [a]
-dropFirstAndLast = reverse . drop 1 . reverse . drop 1
+normalize :: String -> String
+normalize = dropWhile (== ' ') . reverse . dropWhile (== ' ') . reverse
+
+stripBrackets :: String -> Maybe String
+stripBrackets s =
+    case s of
+        ('[' : rest)
+            | P.not (null rest) && last rest == ']' ->
+                Just (init rest)
+        _ -> Nothing
 
 declareColumnsFromCsvFile :: String -> DecsQ
 declareColumnsFromCsvFile path = do
