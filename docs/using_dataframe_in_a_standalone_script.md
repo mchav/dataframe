@@ -128,7 +128,6 @@ So we can write:
   build-depends: base >= 4, dataframe
 -}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
