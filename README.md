@@ -40,25 +40,7 @@ A fast, safe, and intuitive DataFrame library.
 Browse through some examples in [binder](https://mybinder.org/v2/gh/mchav/ihaskell-dataframe/HEAD) or in our [playground](https://ulwazi-exh9dbh2exbzgbc9.westus-01.azurewebsites.net/lab).
 
 ## Install
-
-### Cabal
-To use the CLI tool:
-```bash
-$ cabal update
-$ cabal install dataframe
-$ dataframe
-```
-
-As a prodject dependency add `dataframe` to your <project>.cabal file.
-
-### Stack (in stack.yaml add to extra-deps if needed)
-Add to your package.yaml dependencies:
-```yaml
-dependencies:
-  - dataframe
-```
-
-Or manually to stack.yaml extra-deps if needed.
+See the [Quick Start](https://dataframe.readthedocs.io/en/latest/quick_start.html) guide for setup and installation instructions.
 
 ## Example
 
