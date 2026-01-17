@@ -10,7 +10,7 @@ import qualified DataFrame.Functions as F
 import Data.Char
 import DataFrame ((|>))
 import DataFrame.DecisionTree
-import DataFrame.Functions ((.&&), (.==))
+import DataFrame.Functions ((.&&), (.=), (.==))
 
 import System.Random
 
@@ -24,24 +24,27 @@ main = do
     -- Apply the same transformations to training and test.
     let combined =
             (train <> test)
-                |> D.derive
-                    (F.name ticket)
-                    (F.whenPresent (T.filter isAlpha) (F.match "^([A-Za-z][A-Za-z0-9./]*)" ticket))
-                |> D.derive (F.name name) (F.match "\\s*([A-Za-z]+)\\." name)
-                |> D.derive (F.name cabin) (F.whenPresent (T.take 1) cabin)
-                |> D.renameMany [ (F.name name, "title")
-                                , (F.name cabin, "cabin_prefix")
-                                , (F.name pclass, "ticket_class")
-                                , (F.name sibsp, "number_of_siblings_and_spouses_aboard")
-                                , (F.name parch, "number_of_parents_and_children_aboard")
-                                ]
+                |> D.deriveMany
+                    [ "Ticket" .= F.lift (T.filter isAlpha) ticket
+                    , "Name" .= F.match "\\s*([A-Za-z]+)\\." name
+                    , "Cabin" .= F.whenPresent (T.take 1) cabin
+                    ]
+                |> D.renameMany
+                    [ (F.name name, "title")
+                    , (F.name cabin, "cabin_prefix")
+                    , (F.name pclass, "passenger_class")
+                    , (F.name sibsp, "number_of_siblings_and_spouses")
+                    , (F.name parch, "number_of_parents_and_children")
+                    ]
     print combined
 
     let (train', validation) =
             D.take
                 (D.nRows train)
                 combined
+                |> D.filterJust (F.name survived)
                 |> D.randomSplit (mkStdGen 4232) 0.8
+        -- Split the test out again.
         test' =
             D.drop
                 (D.nRows train)
@@ -58,13 +61,12 @@ main = do
                             { complexityPenalty = 0
                             , maxExprDepth = 2
                             , disallowedCombinations =
-                                [ (F.name age, F.name fare) ]
+                                [(F.name age, F.name fare)]
                             }
                     }
                 )
-                survived
+                survived -- Label to predict
                 ( train'
-                    |> D.filterJust (F.name survived)
                     |> D.exclude [F.name passengerid]
                 )
 
@@ -73,13 +75,12 @@ main = do
     putStrLn "Training accuracy: "
     print $
         computeAccuracy
-            (train' |> D.filterJust (F.name survived) |> D.derive (F.name prediction) model)
+            (train' |> D.derive (F.name prediction) model)
 
     putStrLn "Validation accuracy: "
     print $
         computeAccuracy
             ( validation
-                |> D.filterJust (F.name survived)
                 |> D.derive (F.name prediction) model
             )
 
