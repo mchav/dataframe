@@ -320,7 +320,7 @@ prettyPrint = go 0
         Col name -> T.unpack name
         Lit value -> show value
         If cond t e ->
-            "if " ++ go 0 cond ++ " then " ++ go 0 t ++ " else " ++ go 0 e
+            "if (" ++ go 0 cond ++ ") then (" ++ go 0 t ++ ") else (" ++ go 0 e ++ ")"
         UnaryOp name _ arg -> T.unpack name ++ "(" ++ go 0 arg ++ ")"
         BinaryOp name _ l r ->
             let p = opPrec name
@@ -345,4 +345,8 @@ prettyPrint = go 0
     opSym "mult" = "*"
     opSym "divide" = "/"
     opSym "pow" = "^"
+    opSym "lt" = "<"
+    opSym "leq" = "<="
+    opSym "gt" = ">"
+    opSym "geq" = ">="
     opSym other = T.unpack other
