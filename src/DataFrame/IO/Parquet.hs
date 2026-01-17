@@ -2,7 +2,10 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
-module DataFrame.IO.Parquet where
+module DataFrame.IO.Parquet
+  ( readParquet
+  , readParquetFiles
+  ) where
 
 import Control.Monad
 import Data.Bits
@@ -18,12 +21,23 @@ import Data.Word
 import qualified DataFrame.Internal.Column as DI
 import DataFrame.Internal.DataFrame (DataFrame)
 import qualified DataFrame.Operations.Core as DI
+import DataFrame.Operations.Merge ()
+
 
 import DataFrame.IO.Parquet.Dictionary
 import DataFrame.IO.Parquet.Levels
 import DataFrame.IO.Parquet.Page
 import DataFrame.IO.Parquet.Thrift
 import DataFrame.IO.Parquet.Types
+import System.Directory
+  ( doesDirectoryExist
+  , listDirectory
+  )
+
+import System.FilePath
+  ( (</>)
+  , takeExtension
+  )
 
 {- | Read a parquet file from path and load it into a dataframe.
 
@@ -106,6 +120,35 @@ readParquet path = do
                 (filter (`M.member` finalColMap) columnNames)
 
     pure $ DI.fromNamedColumns orderedColumns
+
+readParquetFiles :: FilePath -> IO DataFrame
+readParquetFiles path = do
+    isDir <- doesDirectoryExist path
+    
+    allFiles <- if isDir 
+                then getRecursiveContents path 
+                else pure [path]
+
+    let parquetFiles = filter (\f -> takeExtension f == ".parquet") allFiles
+
+    case parquetFiles of
+        [] -> error $ "readParquetFiles: no parquet files found in " ++ path
+        _  -> do
+            dfs <- mapM readParquet parquetFiles
+            pure (mconcat dfs)
+
+getRecursiveContents :: FilePath -> IO [FilePath]
+getRecursiveContents topPath = do
+  names <- listDirectory topPath
+  paths <- forM names $ \name -> do
+    let path = topPath </> name
+    isDirectory <- doesDirectoryExist path
+    if isDirectory
+      then getRecursiveContents path
+      else return [path]
+  return (concat paths)
+
+
 
 readMetadataFromPath :: FilePath -> IO FileMetadata
 readMetadataFromPath path = do
