@@ -275,7 +275,7 @@ dataframe> withTotal |> D.derive "percentage_boys" ((fromIntegral boys) / (fromI
 The compiler tells us that `boys` isn't an `Int`- it's an `Expr Int`. It's an integer hidden inside an expression. We have to take the integer out of this expression, convert it, then re-wrap it in the expression again so we can continue to do other things to the expression. The `lift` function does just that. It says, take a function and make it reach into the `Expr` container to change the object inside.
 
 ```haskell
-dataframe> withTotal |> D.derive "percentage_boys" (F.lift fromIntegral boys / (F.lift fromIntegral total)) |> D.take 10
+dataframe> withTotal |> D.derive "percentage_boys" (F.toDouble boys / (F.toDouble total)) |> D.take 10
 -------------------------------------------------
  year | boys | girls | total |  percentage_boys
 ------|------|-------|-------|-------------------
