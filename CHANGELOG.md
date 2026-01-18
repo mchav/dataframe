@@ -1,5 +1,11 @@
 # Revision history for dataframe
 
+## 0.4.0.8
+* LLM guided decision tree
+* Parquet fixes: floats read properly and bit width now properly interpreted.
+* renameM added to monadic functions.
+* No need to explicitly import text for declareColumns
+
 ## 0.4.0.7
 * Pretty printer for expression
 * Fix issue with how `pow` was getting displayed.
