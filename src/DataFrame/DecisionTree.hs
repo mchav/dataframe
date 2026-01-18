@@ -22,7 +22,7 @@ import DataFrame.Operations.Core (columnNames, nRows)
 import DataFrame.Operations.Statistics (percentile)
 import DataFrame.Operations.Subset (exclude, filterWhere)
 
-import Control.Exception (throw)
+import Control.Exception (SomeException, throw, try)
 import Control.Monad (guard)
 import Data.Containers.ListUtils (nubOrd)
 import Data.Function (on)
@@ -224,10 +224,14 @@ score expr =
                 , prompt = T.pack (instructions ++ prettyPrint expr)
                 }
         llamaConfig = Just (defaultOllamaConfig{hostUrl = "http://127.0.0.1:8080"})
-        llmResponse = genResponse $ either throw id $ unsafePerformIO (generate genOp llamaConfig)
-        s = fst $ either error id $ decimal @Int $ llmResponse
+        result = unsafePerformIO $ try @SomeException (generate genOp llamaConfig)
      in
-        trace (prettyPrint expr ++ ": " ++ show s) s
+        case result of
+            Right (Right response) ->
+                let llmResponse = genResponse response
+                    s = fst $ either error id $ decimal @Int llmResponse
+                 in trace (prettyPrint expr ++ ": " ++ show s) s
+            _ -> 7
 
 numericExprs ::
     SynthConfig -> DataFrame -> [Expr Double] -> Int -> Int -> [Expr Double]
