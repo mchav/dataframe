@@ -22,6 +22,7 @@ import qualified DataFrame.Internal.Column as DI
 import DataFrame.Internal.DataFrame (DataFrame)
 import qualified DataFrame.Operations.Core as DI
 import DataFrame.Operations.Merge ()
+import System.FilePath.Glob (glob)
 
 
 import DataFrame.IO.Parquet.Dictionary
@@ -29,15 +30,9 @@ import DataFrame.IO.Parquet.Levels
 import DataFrame.IO.Parquet.Page
 import DataFrame.IO.Parquet.Thrift
 import DataFrame.IO.Parquet.Types
-import System.Directory
-  ( doesDirectoryExist
-  , listDirectory
-  )
+import System.Directory (doesDirectoryExist)
 
-import System.FilePath
-  ( (</>)
-  , takeExtension
-  )
+import System.FilePath ((</>))
 
 {- | Read a parquet file from path and load it into a dataframe.
 
@@ -124,31 +119,24 @@ readParquet path = do
 readParquetFiles :: FilePath -> IO DataFrame
 readParquetFiles path = do
     isDir <- doesDirectoryExist path
-    
-    allFiles <- if isDir 
-                then getRecursiveContents path 
-                else pure [path]
 
-    let parquetFiles = filter (\f -> takeExtension f == ".parquet") allFiles
+    let pattern =
+            if isDir
+                then path </> "*"
+                else path
 
-    case parquetFiles of
-        [] -> error $ "readParquetFiles: no parquet files found in " ++ path
-        _  -> do
-            dfs <- mapM readParquet parquetFiles
+    matches <- glob pattern
+
+    files <- filterM (fmap not . doesDirectoryExist) matches
+
+    case files of
+        [] ->
+            error $
+                "readParquetFiles: no parquet files found for " ++ path
+
+        _ -> do
+            dfs <- mapM readParquet files
             pure (mconcat dfs)
-
-getRecursiveContents :: FilePath -> IO [FilePath]
-getRecursiveContents topPath = do
-  names <- listDirectory topPath
-  paths <- forM names $ \name -> do
-    let path = topPath </> name
-    isDirectory <- doesDirectoryExist path
-    if isDirectory
-      then getRecursiveContents path
-      else return [path]
-  return (concat paths)
-
-
 
 readMetadataFromPath :: FilePath -> IO FileMetadata
 readMetadataFromPath path = do

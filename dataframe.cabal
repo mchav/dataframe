@@ -119,6 +119,7 @@ library
                       mmap >= 0.5.8 && < 0.6,
                       parallel >= 3.2.2.0 && < 5,
                       filepath >= 1.4 && < 2,
+                      Glob >= 0.10 && < 1,
 
     hs-source-dirs:   src
     c-sources:        cbits/process_csv.c
