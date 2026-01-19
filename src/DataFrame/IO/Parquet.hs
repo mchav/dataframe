@@ -2,10 +2,10 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
-module DataFrame.IO.Parquet
-  ( readParquet
-  , readParquetFiles
-  ) where
+module DataFrame.IO.Parquet (
+    readParquet,
+    readParquetFiles,
+) where
 
 import Control.Monad
 import Data.Bits
@@ -130,7 +130,6 @@ readParquetFiles path = do
         [] ->
             error $
                 "readParquetFiles: no parquet files found for " ++ path
-
         _ -> do
             dfs <- mapM readParquet files
             pure (mconcat dfs)
