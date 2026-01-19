@@ -77,10 +77,10 @@ library
                     DataFrame.IO.JSON,
                     DataFrame.IO.Unstable.CSV,
                     DataFrame.IO.Parquet,
-                    DataFrame.IO.Parquet.Binary
-                    DataFrame.IO.Parquet.Dictionary
-                    DataFrame.IO.Parquet.Levels
-                    DataFrame.IO.Parquet.Thrift
+                    DataFrame.IO.Parquet.Binary,
+                    DataFrame.IO.Parquet.Dictionary,
+                    DataFrame.IO.Parquet.Levels,
+                    DataFrame.IO.Parquet.Thrift,
                     DataFrame.IO.Parquet.ColumnStatistics,
                     DataFrame.IO.Parquet.Compression,
                     DataFrame.IO.Parquet.Encoding,
@@ -117,7 +117,10 @@ library
                       zlib >= 0.5 && < 1,
                       zstd >= 0.1.2.0 && < 0.2,
                       mmap >= 0.5.8 && < 0.6,
-                      parallel >= 3.2.2.0 && < 5
+                      parallel >= 3.2.2.0 && < 5,
+                      filepath >= 1.4 && < 2,
+                      Glob >= 0.10 && < 1,
+
     hs-source-dirs:   src
     c-sources:        cbits/process_csv.c
     include-dirs:     cbits

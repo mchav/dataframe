@@ -2,7 +2,10 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
-module DataFrame.IO.Parquet where
+module DataFrame.IO.Parquet (
+    readParquet,
+    readParquetFiles,
+) where
 
 import Control.Monad
 import Data.Bits
@@ -18,12 +21,18 @@ import Data.Word
 import qualified DataFrame.Internal.Column as DI
 import DataFrame.Internal.DataFrame (DataFrame)
 import qualified DataFrame.Operations.Core as DI
+import DataFrame.Operations.Merge ()
+import System.FilePath.Glob (glob)
+
 
 import DataFrame.IO.Parquet.Dictionary
 import DataFrame.IO.Parquet.Levels
 import DataFrame.IO.Parquet.Page
 import DataFrame.IO.Parquet.Thrift
 import DataFrame.IO.Parquet.Types
+import System.Directory (doesDirectoryExist)
+
+import System.FilePath ((</>))
 
 {- | Read a parquet file from path and load it into a dataframe.
 
@@ -106,6 +115,24 @@ readParquet path = do
                 (filter (`M.member` finalColMap) columnNames)
 
     pure $ DI.fromNamedColumns orderedColumns
+
+readParquetFiles :: FilePath -> IO DataFrame
+readParquetFiles path = do
+    isDir <- doesDirectoryExist path
+
+    let pat = if isDir then path </> "*" else path
+
+    matches <- glob pat
+
+    files <- filterM (fmap not . doesDirectoryExist) matches
+
+    case files of
+        [] ->
+            error $
+                "readParquetFiles: no parquet files found for " ++ path
+        _ -> do
+            dfs <- mapM readParquet files
+            pure (mconcat dfs)
 
 readMetadataFromPath :: FilePath -> IO FileMetadata
 readMetadataFromPath path = do
