@@ -120,12 +120,9 @@ readParquetFiles :: FilePath -> IO DataFrame
 readParquetFiles path = do
     isDir <- doesDirectoryExist path
 
-    let pattern =
-            if isDir
-                then path </> "*"
-                else path
+    let pat = if isDir then path </> "*" else path
 
-    matches <- glob pattern
+    matches <- glob pat
 
     files <- filterM (fmap not . doesDirectoryExist) matches
 
