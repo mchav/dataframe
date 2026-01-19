@@ -24,7 +24,6 @@ import qualified DataFrame.Operations.Core as DI
 import DataFrame.Operations.Merge ()
 import System.FilePath.Glob (glob)
 
-
 import DataFrame.IO.Parquet.Dictionary
 import DataFrame.IO.Parquet.Levels
 import DataFrame.IO.Parquet.Page
