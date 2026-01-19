@@ -97,7 +97,7 @@ However, for comparison operations we have a special syntax. It's all the regula
 F.col @Int "x" .>= F.lit @Int 5
 ```
 
-The expression language ensures that column operations prevent small bugs (like adding a string to an integer).
+The expression language eliminates a class of bugs from column operations (like adding a string to an integer).
 
 Armed with this knowledge, we can go back and filter all flowers with petal length greater than 6.
 
