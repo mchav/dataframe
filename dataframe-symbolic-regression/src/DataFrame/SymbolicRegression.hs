@@ -473,7 +473,8 @@ egraphGP cfg nonterminals varnames dataTrainVals dataTests = do
                         pure . Fix $ Bin op l' r'
 
     printExpr' :: Int -> EClassId -> RndEGraph [String]
-    printExpr' ix ec = do
+    printExpr' ix ec' = do
+        ec <- canonical ec'
         thetas' <- gets (fmap (_theta . _info) . (IM.!? ec) . _eClass)
         bestExpr <-
             (if simplifyExpressions cfg then simplifyEqSatDefault else id)
