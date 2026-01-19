@@ -64,7 +64,7 @@ This says:
 * pass it to the end of the select function
 * take that result and pass it to the end of the take function.
 
-This is a common idiom in languages like R, and Julia where it's sometimes called piping.
+This is a common idiom in languages like R and Julia, where it's sometimes called piping.
 
 ## 3) Filter rows with typed predicates
 
@@ -97,7 +97,7 @@ However, for comparison operations we have a special syntax. It's all the regula
 F.col @Int "x" .>= F.lit @Int 5
 ```
 
-The expression language makes ensures that column operations prevent small bugs (like adding a string to an integer).
+The expression language ensures that column operations prevent small bugs (like adding a string to an integer).
 
 Armed with this knowledge, we can go back and filter all flowers with petal length greater than 6.
 
@@ -105,21 +105,21 @@ We can see from the sample we printed before that `petal.length` is of type `Dou
 
 ![Screenshot of filtering with full annotations](./_static/filter_no_declare.png)
 
-Suppose we write out the wrong types in the expression. That is suppose we say that `petal.length` is a `Int` instead. This will cause a run time failure:
+Suppose we write out the wrong types in the expression. That is suppose we say that `petal.length` is a `Int` instead. This will cause a runtime failure:
 
 ![Screenshot of filtering with type error](./_static/filter_wrong_type.png)
 
 A typo like `petal_length` would also cause the same sort of runtime failures. We'd ideally like to catch these kinds of errors earlier so we don't have unexpected failures while running a long pipeline.
 
-We can ask Haskell to generate the correct references and use them without fear. The `declareColumns` function does exactly that. It takes the column name, creates a variable with the name as an all lower string with all special characters replaced with underscores.
+We can ask Haskell to generate the correct references and use them without fear. The `declareColumns` function does exactly that. It takes the column name and creates a variable with the column name as an all lowercase string, with all special characters replaced with underscores.
 
 In our case `petal.width` becomes `petal_width` or if it were `Petal Width (cm)` it would become `petal_width_cm_`.
 
-Once we run `declareColumns` (which requires `TemplateHaskell` to be enabled) we get the column names as completion in the notebook.
+Once we run `declareColumns` (which requires `TemplateHaskell` to be enabled) we get the column names as completion options in the notebook.
 
 ![Screenshot of filtering with autocomplete](./_static/filter_autocomplete.png)
 
-In fact, we can make this event shorter. Since Haskell knows how to create any num instance from literals we don't have to write `F.lit @Int 6`. It knows, from the context, to wrap `6` so it's an `Expr Int`. Thus, we can write:
+In fact, we can make this event shorter. Since Haskell knows how to create any num instance from literals, we don't have to write `F.lit @Int 6`. It knows, from the context, to wrap `6` so it's an `Expr Int`. Thus, we can write:
 
 ![Screenshot of filtering with automatically derived refernce](./_static/filter_declare.png)
 
@@ -141,8 +141,8 @@ We can also derive many columns at once using a variant called `deriveMany`.
 
 ## 5) User defined functions
 
-You can also use custom haskell functions to manipulate dataframe columns.
-Say you had the following Haskell function that takes in the petal length and bucketized it.
+You can also use custom Haskell functions to manipulate dataframe columns.
+Say you had the following Haskell function that takes in the petal length and bucketizes it.
 
 ![Screenshot of user defined functions](./_static/lift_custom_function.png)
 
@@ -150,7 +150,7 @@ If we wanted to apply a function that takes in two variables to our columns we w
 
 ## 7) Group + aggregate (summary stats per species)
 
-Let's create a "report" that compute counts and basic stats per group.
+Let's create a "report" that computes counts and basic stats per group.
 
 We use the `groupBy` to group by some columns and we use `aggregate` to combine column values.
 
