@@ -95,7 +95,7 @@ mod = BinaryOp "mod" Prelude.mod
 (.==) = BinaryOp "eq" (==)
 
 (./=) :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
-(./=) = BinaryOp "eq" (/=)
+(./=) = BinaryOp "neq" (/=)
 
 eq :: (Columnable a, Eq a) => Expr a -> Expr a -> Expr Bool
 eq = BinaryOp "eq" (==)
