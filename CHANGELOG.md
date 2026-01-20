@@ -1,5 +1,8 @@
 # Revision history for dataframe
 
+## 0.4.0.9
+* Update license to MIT.
+
 ## 0.4.0.8
 * LLM guided decision tree
 * Parquet fixes: floats read properly and bit width now properly interpreted.
