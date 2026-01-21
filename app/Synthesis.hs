@@ -43,7 +43,7 @@ main = do
                 (D.nRows train)
                 combined
                 |> D.filterJust (F.name survived)
-                |> D.randomSplit (mkStdGen 4232) 0.8
+                |> D.randomSplit (mkStdGen 4232) 0.7
         -- Split the test out again.
         test' =
             D.drop
@@ -54,14 +54,18 @@ main = do
             fitDecisionTree
                 ( defaultTreeConfig
                     { maxTreeDepth = 5
-                    , minSamplesSplit = 25
-                    , minLeafSize = 15
+                    , minSamplesSplit = 10
+                    , minLeafSize = 3
+                    , taoIterations = 100
                     , synthConfig =
                         defaultSynthConfig
-                            { complexityPenalty = 0
+                            { complexityPenalty = 0.00
                             , maxExprDepth = 2
                             , disallowedCombinations =
-                                [(F.name age, F.name fare)]
+                                [ (F.name age, F.name fare)
+                                , ("passenger_class", "number_of_siblings_and_spouses")
+                                , ("passenger_class", "number_of_parents_and_children")
+                                ]
                             }
                     }
                 )
