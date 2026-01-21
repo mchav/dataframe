@@ -1,4 +1,7 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -13,9 +16,20 @@ import Data.Int
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
+import Data.Typeable (Typeable)
+import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 import Data.Word
 import DataFrame.IO.Parquet.Binary
 import DataFrame.IO.Parquet.Types
+import qualified DataFrame.Internal.Column as DI
+import DataFrame.Internal.DataFrame (DataFrame, unsafeGetColumn)
+import qualified DataFrame.Operations.Core as DI
+import Type.Reflection (
+    eqTypeRep,
+    typeRep,
+    (:~~:) (HRefl),
+ )
 
 data SchemaElement = SchemaElement
     { elementName :: T.Text
@@ -30,6 +44,39 @@ data SchemaElement = SchemaElement
     , logicalType :: LogicalType
     }
     deriving (Show, Eq)
+
+createParquetSchema :: DataFrame -> [SchemaElement]
+createParquetSchema df = schemaDef : map toSchemaElement (DI.columnNames df)
+  where
+    -- The schema always contains an initial element
+    -- indicating the group of fields.
+    schemaDef =
+        SchemaElement
+            { elementName = "schema"
+            , elementType = STOP
+            , typeLength = 0
+            , numChildren = fromIntegral (snd (DI.dimensions df))
+            , fieldId = -1
+            , repetitionType = UNKNOWN_REPETITION_TYPE
+            , convertedType = 0
+            , scale = 0
+            , precision = 0
+            , logicalType = LOGICAL_TYPE_UNKNOWN
+            }
+    toSchemaElement colName =
+        let
+            colType :: TType
+            colType = case unsafeGetColumn colName df of
+                (DI.BoxedColumn (col :: V.Vector a)) -> haskellToTType @a
+                (DI.UnboxedColumn (col :: VU.Vector a)) -> haskellToTType @a
+                (DI.OptionalColumn (col :: V.Vector (Maybe a))) -> haskellToTType @a
+            lType =
+                if DI.hasElemType @T.Text (unsafeGetColumn colName df)
+                    || DI.hasElemType @(Maybe T.Text) (unsafeGetColumn colName df)
+                    then STRING_TYPE
+                    else LOGICAL_TYPE_UNKNOWN
+         in
+            SchemaElement colName colType 0 0 (-1) OPTIONAL 0 0 0 lType
 
 data KeyValue = KeyValue
     { key :: String
@@ -67,6 +114,29 @@ data TType
     | STRUCT
     | UUID
     deriving (Show, Eq)
+
+haskellToTType :: forall a. (Typeable a) => TType
+haskellToTType
+    | is @Bool = BOOL
+    | is @Int8 = BYTE
+    | is @Word8 = BYTE
+    | is @Int16 = I16
+    | is @Word16 = I16
+    | is @Int32 = I32
+    | is @Word32 = I32
+    | is @Int64 = I64
+    | is @Word64 = I64
+    | is @Float = FLOAT
+    | is @Double = DOUBLE
+    | is @String = STRING
+    | is @T.Text = STRING
+    | is @BS.ByteString = STRING
+    | otherwise = STOP
+  where
+    is :: forall x. (Typeable x) => Bool
+    is = case eqTypeRep (typeRep @a) (typeRep @x) of
+        Just HRefl -> True
+        Nothing -> False
 
 defaultMetadata :: FileMetadata
 defaultMetadata =
