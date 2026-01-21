@@ -1,5 +1,11 @@
 # Revision history for dataframe
 
+## 0.4.0.10
+* License in cabal was wrong.
+* Remove ollama-haskell dependencies.
+* readParquetFiles for reading globs.
+* Fixed printing of `neq` function. 
+
 ## 0.4.0.9
 * Update license to MIT.
 
