@@ -29,7 +29,6 @@ import Data.Function (on)
 import Data.List (foldl', maximumBy, sort, sortBy)
 import qualified Data.Map.Strict as M
 import Data.Maybe
-import Data.Ollama.Generate
 import qualified Data.Text as T
 import Data.Type.Equality
 import qualified Data.Vector as V
@@ -185,54 +184,6 @@ numericCols df = concatMap extract (columnNames df)
                     SFalse -> []
         _ -> []
 
-instructions :: String
-instructions =
-    "You must output ONLY a single digit 0-10, nothing else. No explanation, no text, just the number. \n"
-        ++ "Rate whether this expression produces a meaningful real-world quantity: \n"
-        ++ "Evaluate if this expression produces a meaningful quantity by checking:\n"
-        ++ "- Do the units/types match for the operation?\n"
-        ++ "- Is either operand a categorical code rather than a true quantity?\n"
-        ++ "- Would the result be useful to actually calculate?\n"
-        ++ "Scoring: \n"
-        ++ " - 0-3: Result is meaningless (e.g., \"fare + age\" = dollars+years, \"height + weight\" = meters+kg)\n"
-        ++ " - 4-5: Unclear or context-dependent meaning\n"
-        ++ " - 6-7: Makes sense in specific domains\n"
-        ++ " - 8-9: Clear, commonly useful quantity\n"
-        ++ " - 10: Fundamental/universal quantity\n"
-        ++ "Guidelines:\n"
-        ++ "- Addition/subtraction: operands must represent the same kind of thing\n"
-        ++ "- Multiplication/division: can create meaningful derived quantities\n"
-        ++ "- Consider: would this result be useful to calculate in practice?\n"
-        ++ "- `toDouble` is just a function that converts any number to a decimal and is semantically unimportant.\n"
-        ++ "Examples:\n"
-        ++ "toDouble(fare) + toDouble(age) = 2 (adding money to years)\n"
-        ++ "toDouble(price) / toDouble(area) = 9 (price per sq ft)\n"
-        ++ "toDouble(distance) / toDouble(time) = 10 (speed)\n"
-        ++ "toDouble(num_people) * toDouble(rejection_rate) = 9 (expected rejections)\n"
-        ++ "toDouble(revenue) - toDouble(costs) = 10 (profit)\n"
-        ++ "toDouble(height) + toDouble(weight) = 2 (adding length to mass)\n"
-        ++ "Output format: Just the digit, e.g., 2\n"
-        ++ "Think very carefully about each but only give me the final answer.\n"
-        ++ "Expression: "
-
-score :: Expr a -> Int
-score expr =
-    let
-        genOp =
-            defaultGenerateOps
-                { modelName = "llama3"
-                , prompt = T.pack (instructions ++ prettyPrint expr)
-                }
-        llamaConfig = Just (defaultOllamaConfig{hostUrl = "http://127.0.0.1:8080"})
-        result = unsafePerformIO $ try @SomeException (generate genOp llamaConfig)
-     in
-        case result of
-            Right (Right response) ->
-                let llmResponse = genResponse response
-                    s = fst $ either error id $ decimal @Int llmResponse
-                 in trace (prettyPrint expr ++ ": " ++ show s) s
-            _ -> 7
-
 numericExprs ::
     SynthConfig -> DataFrame -> [Expr Double] -> Int -> Int -> [Expr Double]
 numericExprs cfg df prevExprs depth maxDepth
@@ -256,8 +207,7 @@ numericExprs cfg df prevExprs depth maxDepth
                             (disallowedCombinations cfg)
                         )
                 )
-            concat [[e1 + e2, e1 - e2] | score (e1 + e2) > 5]
-                ++ concat [[e1 * e2, F.ifThenElse (e2 ./= 0) (e1 / e2) 0] | score (e1 * e2) > 5]
+            [e1 + e2, e1 - e2, e1 * e2, F.ifThenElse (e2 ./= 0) (e1 / e2) 0]
 
 boolExprs ::
     DataFrame -> [Expr Bool] -> [Expr Bool] -> Int -> Int -> [Expr Bool]
