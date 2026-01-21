@@ -383,11 +383,9 @@ getRowAsText df i = V.ifoldr go [] (columns df)
                     ++ "the other columns at index "
                     ++ show i
     go k (OptionalColumn (c :: V.Vector (Maybe a))) acc = case c V.!? i of
-        Just e -> textRep : acc
-          where
-            textRep = case testEquality (typeRep @a) (typeRep @T.Text) of
-                Just Refl -> fromMaybe "Nothing" e
-                Nothing -> (T.pack . show) e
+        Just e -> case testEquality (typeRep @a) (typeRep @T.Text) of
+            Just Refl -> fromMaybe T.empty e : acc
+            Nothing -> maybe T.empty (T.pack . show) e : acc
         Nothing ->
             error $
                 "Column "
