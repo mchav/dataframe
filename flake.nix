@@ -22,12 +22,14 @@
           default = hsPkgs.dataframe;
         };
 
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
+        devShells.default = hsPkgs.shellFor {
+          packages = ps: [ (ps.callCabal2nix "dataframe" ./. { }) ];
+          nativeBuildInputs = with pkgs; [
             ghc
             cabal-install
             haskell-language-server
           ];
+          withHoogle = true;
         };
       });
 }
