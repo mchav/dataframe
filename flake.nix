@@ -13,6 +13,8 @@
 
         hsPkgs = pkgs.haskellPackages.extend (self: super: {
           dataframe = self.callCabal2nix "dataframe" ./. { };
+          random = pkgs.haskellPackages.callHackage "random" "1.3.1" { };
+          time-compat = pkgs.haskell.lib.dontCheck super.time-compat;
         });
       in
       {
