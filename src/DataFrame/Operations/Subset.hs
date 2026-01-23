@@ -18,11 +18,23 @@ import qualified Prelude
 
 import Control.Exception (throw)
 import Data.Function ((&))
-import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
+import Data.Maybe (
+    fromJust,
+    fromMaybe,
+    isJust,
+    isNothing,
+ )
 import Data.Type.Equality (TestEquality (..))
-import DataFrame.Errors (DataFrameException (..), TypeErrorContext (..))
+import DataFrame.Errors (
+    DataFrameException (..),
+    TypeErrorContext (..),
+ )
 import DataFrame.Internal.Column
-import DataFrame.Internal.DataFrame (DataFrame (..), empty, getColumn)
+import DataFrame.Internal.DataFrame (
+    DataFrame (..),
+    empty,
+    getColumn,
+ )
 import DataFrame.Internal.Expression
 import DataFrame.Internal.Interpreter
 import DataFrame.Operations.Core

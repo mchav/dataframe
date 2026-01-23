@@ -14,6 +14,7 @@ import DataFrame.Internal.Column (Columnable)
 import DataFrame.Internal.Expression (Expr (..))
 
 import qualified Data.Text as T
+import System.Random
 
 -- A re-implementation of the state monad.
 -- `mtl` might be too heavy a dependency just to get
@@ -60,6 +61,9 @@ renameM expr newName = deriveM newName expr
 
 filterWhereM :: Expr Bool -> FrameM ()
 filterWhereM p = modifyM (D.filterWhere p)
+
+sampleM :: (RandomGen g) => g -> Double -> FrameM ()
+sampleM pureGen p = modifyM (D.sample pureGen p)
 
 filterJustM :: (Columnable a) => Expr (Maybe a) -> FrameM (Expr a)
 filterJustM (Col name) = FrameM $ \df ->
