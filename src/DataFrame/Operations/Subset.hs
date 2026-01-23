@@ -1,38 +1,47 @@
-{-# LANGUAGE ExplicitNamespaces  #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeApplications #-}
 
 module DataFrame.Operations.Subset where
 
-import qualified Data.List                            as L
-import qualified Data.Map                             as M
-import qualified Data.Text                            as T
-import qualified Data.Vector                          as V
-import qualified Data.Vector.Generic                  as VG
-import qualified Data.Vector.Unboxed                  as VU
+import qualified Data.List as L
+import qualified Data.Map as M
+import qualified Data.Text as T
+import qualified Data.Vector as V
+import qualified Data.Vector.Generic as VG
+import qualified Data.Vector.Unboxed as VU
 import qualified Prelude
 
-import           Control.Exception                    (throw)
-import           Data.Function                        ((&))
-import           Data.Maybe                           (fromJust, fromMaybe,
-                                                       isJust, isNothing)
-import           Data.Type.Equality                   (TestEquality (..))
-import           DataFrame.Errors                     (DataFrameException (..),
-                                                       TypeErrorContext (..))
-import           DataFrame.Internal.Column
-import           DataFrame.Internal.DataFrame         (DataFrame (..), empty,
-                                                       getColumn)
-import           DataFrame.Internal.Expression
-import           DataFrame.Internal.Interpreter
-import           DataFrame.Operations.Core
-import           DataFrame.Operations.Transformations (apply)
-import           Prelude                              hiding (filter, take)
-import           System.Random
-import           Type.Reflection
+import Control.Exception (throw)
+import Data.Function ((&))
+import Data.Maybe (
+    fromJust,
+    fromMaybe,
+    isJust,
+    isNothing,
+ )
+import Data.Type.Equality (TestEquality (..))
+import DataFrame.Errors (
+    DataFrameException (..),
+    TypeErrorContext (..),
+ )
+import DataFrame.Internal.Column
+import DataFrame.Internal.DataFrame (
+    DataFrame (..),
+    empty,
+    getColumn,
+ )
+import DataFrame.Internal.Expression
+import DataFrame.Internal.Interpreter
+import DataFrame.Operations.Core
+import DataFrame.Operations.Transformations (apply)
+import System.Random
+import Type.Reflection
+import Prelude hiding (filter, take)
 
 -- | O(k * n) Take the first n rows of a DataFrame.
 take :: Int -> DataFrame -> DataFrame
@@ -109,11 +118,11 @@ filter (Col filterColumnName) condition df = case getColumn filterColumnName df 
 filter expr condition df =
     let
         (TColumn col) = case interpret @a df (normalize expr) of
-            Left e  -> throw e
+            Left e -> throw e
             Right c -> c
         indexes = case findIndices condition col of
             Right ixs -> ixs
-            Left e    -> throw e
+            Left e -> throw e
         c' = snd $ dataframeDimensions df
      in
         df
@@ -160,11 +169,11 @@ filterWhere :: Expr Bool -> DataFrame -> DataFrame
 filterWhere expr df =
     let
         (TColumn col) = case interpret @Bool df (normalize expr) of
-            Left e  -> throw e
+            Left e -> throw e
             Right c -> c
         indexes = case findIndices id col of
             Right ixs -> ixs
-            Left e    -> throw e
+            Left e -> throw e
         c' = snd $ dataframeDimensions df
      in
         df
