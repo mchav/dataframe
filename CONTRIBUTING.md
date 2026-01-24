@@ -1,6 +1,6 @@
 # Contributing to `dataframe`
 
-Thank you for your interest in contributing to **hsky**, a Haskell dataframe library built for speed, clarity, and expressive data analysis. Contributions are welcome and encouraged! This guide will walk you through how to get started.
+Thank you for your interest in contributing to **dataframe**, a Haskell dataframe library built for speed, clarity, and expressive data analysis. Contributions are welcome and encouraged! This guide will walk you through how to get started.
 
 ## Table of Contents
 
@@ -43,10 +43,13 @@ You can contribute in many ways:
    * Prefer total functions and avoid partial ones unless necessary (with clear documentation).
    * Use strict folds when applicable to avoid space leaks.
    * Maintain performance discipline: avoid unnecessary allocations or intermediate structures.
-   * Please run `./scripts/format.sh` and `./scripts/lint.sh` (or `./scripts/lint.sh --fix`) before submitting your code! 
+   * Please run `./scripts/presubmit.sh` (or `./scripts/lint.sh --fix`) before submitting your code! 
    * Code is formatted with Fourmolu. Both HLint and Fourmolu run in CI and must pass.
 4. **Testing**
    We use HUnit and QuickCheck for unit and property-based tests. Add tests for new features under `test/`. If you're fixing a bug, add a test that fails without your fix.
+   * To test a change in the REPL run:
+      * `./script/repl.sh`
+      * Then in the terminal run `:script dataframe.ghci`
 
 ## Documentation
 
@@ -70,6 +73,7 @@ Feature suggestions are welcome too! Bonus points for a motivating use case.
   * Push to your fork and open a PR.
 
 Please include:
+* A tag (usually `feat`, `documentation`, `refactor` etc).
 * A description of the problem and solution.
 * Benchmarks or reasoning if the change impacts performance.
 * Tests and documentation where applicable.
