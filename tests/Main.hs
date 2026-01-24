@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
@@ -12,7 +13,9 @@ import qualified DataFrame.Operations.Typing as D
 import qualified System.Exit as Exit
 
 import Data.Time
+import GenDataFrame ()
 import Test.HUnit
+import Test.QuickCheck
 
 import qualified Functions
 import qualified Operations.Aggregations
@@ -27,6 +30,7 @@ import qualified Operations.Merge
 import qualified Operations.ReadCsv
 import qualified Operations.Sort
 import qualified Operations.Statistics
+import qualified Operations.Subset
 import qualified Operations.Take
 import qualified Parquet
 
@@ -5105,9 +5109,18 @@ tests =
             ++ Parquet.tests
             ++ parseTests
 
+isSuccessful :: Result -> Bool
+isSuccessful (Success{..}) = True
+isSuccessful _ = False
+
 main :: IO ()
 main = do
     result <- runTestTT tests
-    if failures result > 0 || errors result > 0
+    -- Property tests
+    propRes <-
+        mapM
+            (quickCheckWithResult stdArgs)
+            Operations.Subset.tests
+    if failures result > 0 || errors result > 0 || not (all isSuccessful propRes)
         then Exit.exitFailure
         else Exit.exitSuccess

@@ -183,6 +183,7 @@ test-suite tests
     main-is: Main.hs
     other-modules: Assertions,
                    Functions,
+                   GenDataFrame,
                    Operations.Aggregations,
                    Operations.Apply,
                    Operations.Core,
@@ -194,6 +195,7 @@ test-suite tests
                    Operations.Merge,
                    Operations.ReadCsv,
                    Operations.Sort,
+                   Operations.Subset,
                    Operations.Statistics,
                    Operations.Take,
                    Parquet
@@ -201,6 +203,7 @@ test-suite tests
                     dataframe ^>= 0.4,
                     directory >= 1.3.0.0 && < 2,
                     HUnit ^>= 1.6,
+                    QuickCheck >= 2 && < 3,
                     random >= 1 && < 2,
                     random-shuffle >= 0.0.4 && < 1,
                     random >= 1 && < 2,
