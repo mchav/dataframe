@@ -236,7 +236,8 @@ ghci> D.readSeparated (D.defaultReadOptions { columnSeparator = ';' }) ".\/data\
 readSeparated :: ReadOptions -> FilePath -> IO DataFrame
 readSeparated !opts !path = do
     let sep = columnSeparator opts
-    csvData <- BL.readFile path
+    let stripUtf8Bom bs = fromMaybe bs (BL.stripPrefix "\xEF\xBB\xBF" bs)
+    csvData <- stripUtf8Bom <$> BL.readFile path
     let decodeOpts = Csv.defaultDecodeOptions{Csv.decDelimiter = fromIntegral (ord sep)}
     let stream = CsvStream.decodeWith decodeOpts Csv.NoHeader csvData
 
