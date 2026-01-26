@@ -124,6 +124,7 @@ readSeparated separator opts delimiterIndices filePath = do
                         then typeInferenceSampleSize (typeSpec opts)
                         else 0
              in parseFromExamples
+                    (missingIndicators opts)
                     n
                     (safeRead opts)
                     (dateFormat opts)

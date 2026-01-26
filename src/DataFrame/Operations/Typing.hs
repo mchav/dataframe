@@ -22,28 +22,35 @@ import Type.Reflection (typeRep)
 
 type DateFormat = String
 
-parseDefaults :: Int -> Bool -> DateFormat -> DataFrame -> DataFrame
-parseDefaults n safeRead dateFormat df = df{columns = V.map (parseDefault n safeRead dateFormat) (columns df)}
+parseDefaults :: [T.Text] -> Int -> Bool -> DateFormat -> DataFrame -> DataFrame
+parseDefaults missing n safeRead dateFormat df = df{columns = V.map (parseDefault missing n safeRead dateFormat) (columns df)}
 
-parseDefault :: Int -> Bool -> DateFormat -> Column -> Column
-parseDefault n safeRead dateFormat (BoxedColumn (c :: V.Vector a)) =
+parseDefault :: [T.Text] -> Int -> Bool -> DateFormat -> Column -> Column
+parseDefault missing n safeRead dateFormat (BoxedColumn (c :: V.Vector a)) =
     case (typeRep @a) `testEquality` (typeRep @T.Text) of
         Nothing -> case (typeRep @a) `testEquality` (typeRep @String) of
-            Just Refl -> parseFromExamples n safeRead dateFormat (V.map T.pack c)
+            Just Refl -> parseFromExamples missing n safeRead dateFormat (V.map T.pack c)
             Nothing -> BoxedColumn c
-        Just Refl -> parseFromExamples n safeRead dateFormat c
-parseDefault n safeRead dateFormat (OptionalColumn (c :: V.Vector (Maybe a))) =
+        Just Refl -> parseFromExamples missing n safeRead dateFormat c
+parseDefault missing n safeRead dateFormat (OptionalColumn (c :: V.Vector (Maybe a))) =
     case (typeRep @a) `testEquality` (typeRep @T.Text) of
         Nothing -> case (typeRep @a) `testEquality` (typeRep @String) of
-            Just Refl -> parseFromExamples n safeRead dateFormat (V.map (T.pack . fromMaybe "") c)
+            Just Refl ->
+                parseFromExamples
+                    missing
+                    n
+                    safeRead
+                    dateFormat
+                    (V.map (T.pack . fromMaybe "") c)
             Nothing -> BoxedColumn c
-        Just Refl -> parseFromExamples n safeRead dateFormat (V.map (fromMaybe "") c)
-parseDefault _ _ _ column = column
+        Just Refl -> parseFromExamples missing n safeRead dateFormat (V.map (fromMaybe "") c)
+parseDefault _ _ _ _ column = column
 
-parseFromExamples :: Int -> Bool -> DateFormat -> V.Vector T.Text -> Column
-parseFromExamples n safeRead dateFormat cols =
+parseFromExamples ::
+    [T.Text] -> Int -> Bool -> DateFormat -> V.Vector T.Text -> Column
+parseFromExamples missing n safeRead dateFormat cols =
     let
-        converter = if safeRead then convertNullish else convertOnlyEmpty
+        converter = if safeRead then convertNullish missing else convertOnlyEmpty
         examples = V.map converter (V.take n cols)
         asMaybeText = V.map converter cols
      in
@@ -123,8 +130,8 @@ handleNoAssumption dateFormat asMaybeText
     parsableAsDouble = vecSameConstructor asMaybeText asMaybeDouble
     parsableAsDate = vecSameConstructor asMaybeText asMaybeDate
 
-convertNullish :: T.Text -> Maybe T.Text
-convertNullish v = if isNullish v then Nothing else Just v
+convertNullish :: [T.Text] -> T.Text -> Maybe T.Text
+convertNullish missing v = if isNullish v || v `elem` missing then Nothing else Just v
 
 convertOnlyEmpty :: T.Text -> Maybe T.Text
 convertOnlyEmpty v = if v == "" then Nothing else Just v

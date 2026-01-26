@@ -167,6 +167,8 @@ data ReadOptions = ReadOptions
     -- ^ Character that separates column values.
     , numColumns :: Maybe Int
     -- ^ Number of columns to read.
+    , missingIndicators :: [T.Text]
+    -- ^ Values that should be read as `Nothing`.
     }
 
 shouldInferFromSample :: TypeSpec -> Bool
@@ -190,6 +192,7 @@ defaultReadOptions =
         , dateFormat = "%Y-%m-%d"
         , columnSeparator = ','
         , numColumns = Nothing
+        , missingIndicators = []
         }
 
 {- | Read CSV file from path and load it into a dataframe.
@@ -264,7 +267,11 @@ readSeparated !opts !path = do
 
     (sampleRow, _) <- peekStream rowsToProcess
     builderCols <- initializeColumns (V.toList sampleRow) opts
-    processStream rowsToProcess builderCols (numColumns opts)
+    processStream
+        (missingIndicators opts)
+        rowsToProcess
+        builderCols
+        (numColumns opts)
 
     frozenCols <- V.fromList <$> mapM freezeBuilderColumn builderCols
     let numRows = maybe 0 columnLength (frozenCols V.!? 0)
@@ -279,6 +286,7 @@ readSeparated !opts !path = do
         if shouldInferFromSample (typeSpec opts)
             then
                 parseDefaults
+                    (missingIndicators opts)
                     (typeInferenceSampleSize (typeSpec opts))
                     (safeRead opts)
                     (dateFormat opts)
@@ -306,17 +314,20 @@ initializeColumns row opts = case typeSpec opts of
                     Nothing -> BuilderText <$> newPagedVector <*> pure validityRef
 
 processStream ::
+    [T.Text] ->
     CsvStream.Records (V.Vector BL.ByteString) ->
     [BuilderColumn] ->
     Maybe Int ->
     IO ()
-processStream _ _ (Just 0) = return ()
-processStream (Cons (Right row) rest) cols n = processRow row cols >> processStream rest cols (fmap (flip (-) 1) n)
-processStream (Cons (Left err) _) _ _ = error ("CSV Parse Error: " ++ err)
-processStream (Nil _ _) _ _ = return ()
+processStream _ _ _ (Just 0) = return ()
+processStream missing (Cons (Right row) rest) cols n =
+    processRow missing row cols
+        >> processStream missing rest cols (fmap (flip (-) 1) n)
+processStream missing (Cons (Left err) _) _ _ = error ("CSV Parse Error: " ++ err)
+processStream missing (Nil _ _) _ _ = return ()
 
-processRow :: V.Vector BL.ByteString -> [BuilderColumn] -> IO ()
-processRow !vals !cols = V.zipWithM_ processValue vals (V.fromList cols)
+processRow :: [T.Text] -> V.Vector BL.ByteString -> [BuilderColumn] -> IO ()
+processRow missing !vals !cols = V.zipWithM_ processValue vals (V.fromList cols)
   where
     processValue !bs !col = do
         let bs' = BL.toStrict bs
@@ -329,7 +340,7 @@ processRow !vals !cols = V.zipWithM_ processValue vals (V.fromList cols)
                 Nothing -> appendPagedUnboxedVector gv 0.0 >> appendPagedUnboxedVector valid 0
             BuilderText gv valid -> do
                 let !val = T.strip (TE.decodeUtf8Lenient bs')
-                if isNullish val
+                if isNullish val || val `elem` missing
                     then appendPagedVector gv T.empty >> appendPagedUnboxedVector valid 0
                     else appendPagedVector gv val >> appendPagedUnboxedVector valid 1
 

@@ -63,7 +63,7 @@ parseBools =
         beforeParse :: [T.Text]
         beforeParse = ["True", "true", "TRUE"] ++ ["False", "false", "FALSE"]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Bools without missing values as UnboxedColumn of Bools"
@@ -78,7 +78,7 @@ parseInts =
         beforeParse :: [T.Text]
         beforeParse = T.pack . show <$> [1 .. 50]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints without missing values as UnboxedColumn of Ints"
@@ -95,7 +95,7 @@ parseDoubles =
             T.pack . show
                 <$> [1.0 .. 50.0] ++ [3.14, 2.22, 8.55, 23.3, 12.22222235049450945049504950]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Doubles without missing values as UnboxedColumn of Doubles"
@@ -142,7 +142,7 @@ parseDates =
             , "2020-02-26"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Dates without missing values as BoxedColumn of Days"
@@ -227,7 +227,7 @@ parseTexts =
             , "Meowth, that's right!"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Text without missing values as BoxedColumn of Text"
@@ -243,7 +243,7 @@ parseBoolsAndIntsAsTexts =
         beforeParse :: [T.Text]
         beforeParse = ["True", "true", "TRUE"] ++ ["False", "false", "FALSE"] ++ ["1", "0", "1"]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses mixture of Bools and Ints as Text"
@@ -470,7 +470,7 @@ parseIntsAndDoublesAsDoubles =
             , "12.22222235049451"
             ]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Ints and Doubles as UnboxedColumn of Doubles"
@@ -565,7 +565,7 @@ parseIntsAndDatesAsTexts =
             , "2020-02-20"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Ints and Dates as BoxedColumn of Texts"
@@ -704,7 +704,7 @@ parseTextsAndDoublesAsTexts =
             , "12.22222235049451"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Texts and Doubles as BoxedColumn of Texts"
@@ -757,7 +757,7 @@ parseDatesAndTextsAsTexts =
             , "Meowth"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Dates and Texts as BoxedColumn of Texts"
@@ -774,7 +774,8 @@ parseBoolsWithoutSafeRead =
         beforeParse :: [T.Text]
         beforeParse = replicate 10 "true" ++ replicate 10 "false"
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Bools without missing values as UnboxedColumn of Bools, when safeRead is off"
@@ -891,7 +892,8 @@ parseIntsWithoutSafeRead =
             , "50"
             ]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints without missing values as UnboxedColumn of Ints, when safeRead is off"
@@ -1018,7 +1020,8 @@ parseDoublesWithoutSafeRead =
             , "12.22222235049451"
             ]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Doubles without missing values as UnboxedColumn of Doubles, when safeRead is off"
@@ -1065,7 +1068,8 @@ parseDatesWithoutSafeRead =
             , "2020-02-26"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Dates without missing values as BoxedColumn of Days"
@@ -1150,7 +1154,8 @@ parseTextsWithoutSafeRead =
             , "Meowth, that's right!"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Text without missing values as BoxedColumn of Text"
@@ -1165,7 +1170,8 @@ parseBoolsAndEmptyStringsWithoutSafeRead =
         beforeParse :: [T.Text]
         beforeParse = replicate 10 "" ++ replicate 10 "true" ++ replicate 10 "false"
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Bools and empty Strings as OptionalColumn of Bools, when safeRead is off"
@@ -1292,7 +1298,8 @@ parseIntsAndEmptyStringsWithoutSafeRead =
             , "50"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints and empty strings as OptionalColumn of Ints, when safeRead is off"
@@ -1429,7 +1436,8 @@ parseIntsAndDoublesAndEmptyStringsWithoutSafeRead =
             , "12.22222235049451"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses combination of Ints, Doubles and empty strings as OptionalColumn of Doubles, when safeRead is off"
@@ -1486,7 +1494,8 @@ parseDatesAndEmptyStringsWithoutSafeRead =
             , ""
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Dates and Empty Strings as OptionalColumn of Dates, with safeRead off"
@@ -1585,7 +1594,8 @@ parseTextsAndEmptyStringsWithoutSafeRead =
             , "Meowth, that's right!"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Texts and Empty Strings as OptionalColumn of Text, with safeRead off"
@@ -1600,7 +1610,8 @@ parseBoolsAndNullishStringsWithoutSafeRead =
         beforeParse :: [T.Text]
         beforeParse = replicate 10 "N/A" ++ replicate 10 "True" ++ replicate 10 "False"
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Bools with nullish values as BoxedColumn of Texts, when safeRead is off"
@@ -1727,7 +1738,8 @@ parseIntsAndNullishStringsWithoutSafeRead =
             , "50"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints with nullish values as BoxedColumn of Texts, when safeRead is off"
@@ -1864,7 +1876,8 @@ parseIntsAndDoublesAndNullishStringsWithoutSafeRead =
             , "12.22222235049451"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses combination of Ints, Doubles and empty strings as OptionalColumn of Doubles, when safeRead is off"
@@ -2003,7 +2016,8 @@ parseIntsAndNullishAndEmptyStringsWithoutSafeRead =
             , ""
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints with nullish values AND empty strings as OptionalColumn of Texts, when safeRead is off"
@@ -2108,7 +2122,8 @@ parseTextsAndEmptyAndNullishStringsWithoutSafeRead =
             , "N/A"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 10 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Texts and Empty Strings as OptionalColumn of Text, with safeRead off"
@@ -2124,7 +2139,7 @@ parseBoolsAndEmptyStringsWithSafeRead =
         beforeParse :: [T.Text]
         beforeParse = replicate 10 "" ++ replicate 10 "true"
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Bools and empty strings as OptionalColumn of Bools, when safeRead is on"
@@ -2251,7 +2266,7 @@ parseIntsAndEmptyStringsWithSafeRead =
             , "50"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints and empty strings as OptionalColumn of Ints, when safeRead is on"
@@ -2388,7 +2403,7 @@ parseIntsAndDoublesAndEmptyStringsWithSafeRead =
             , "12.22222235049451"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses combination of Ints, Doubles and empty strings as OptionalColumn of Doubles, when safeRead is on"
@@ -2445,7 +2460,7 @@ parseDatesAndEmptyStringsWithSafeRead =
             , ""
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Dates and Empty Strings as OptionalColumn of Dates, with safeRead on"
@@ -2544,7 +2559,7 @@ parseTextsAndEmptyStringsWithSafeRead =
             , "Meowth, that's right!"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Texts and Empty Strings as OptionalColumn of Text, with safeRead on"
@@ -2671,7 +2686,7 @@ parseIntsAndNullishStringsWithSafeRead =
             , "50"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints with nullish values as OptionalColumn of Ints, when safeRead is on"
@@ -2808,7 +2823,7 @@ parseIntsAndDoublesAndNullishStringsWithSafeRead =
             , "12.03"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses combination of Ints, Doubles and empty strings as OptionalColumn of Doubles, when safeRead is off"
@@ -2947,7 +2962,7 @@ parseIntsAndNullishAndEmptyStringsWithSafeRead =
             , ""
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints with nullish values AND empty strings as OptionalColumn of Ints, when safeRead is on"
@@ -3044,7 +3059,7 @@ parseIntsAndDoublesAndNullishAndEmptyStringsWithSafeRead =
             , "3.14"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints and Doubles with nullish values AND empty strings as OptionalColumn of Doubles, when safeRead is on"
@@ -3149,7 +3164,7 @@ parseTextsAndEmptyAndNullishStringsWithSafeRead =
             , "N/A"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Texts and Empty Strings as OptionalColumn of Text, with safeRead off"
@@ -3165,7 +3180,7 @@ parseBoolsWithOneExample =
         beforeParse :: [T.Text]
         beforeParse = "false" : replicate 50 "true"
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 1 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 1 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Bools without missing values as UnboxedColumn of Ints with only one example"
@@ -3180,7 +3195,7 @@ parseBoolsWithManyExamples =
         beforeParse :: [T.Text]
         beforeParse = "false" : replicate 50 "true"
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 49 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 49 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Bools without missing values as UnboxedColumn of Ints with only one example"
@@ -3297,7 +3312,7 @@ parseIntsWithOneExample =
             , "50"
             ]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 1 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 1 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints without missing values as UnboxedColumn of Ints with only one example"
@@ -3414,7 +3429,7 @@ parseIntsWithTwentyFiveExamples =
             , "50"
             ]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 25 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 25 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints without missing values as UnboxedColumn of Ints with some examples"
@@ -3531,7 +3546,7 @@ parseIntsWithFortyNineExamples =
             , "50"
             ]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 49 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 49 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Ints without missing values as UnboxedColumn of Ints with many examples"
@@ -3578,7 +3593,7 @@ parseDatesWithOneExample =
             , "2020-02-26"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 1 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 1 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Dates without missing values as BoxedColumn of Days with only one example"
@@ -3625,7 +3640,7 @@ parseDatesWithFifteenExamples =
             , "2020-02-26"
             ]
         expected = DI.BoxedColumn $ V.fromList afterParse
-        actual = D.parseDefault 15 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 15 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses Dates without missing values as BoxedColumn of Days with many examples"
@@ -3852,7 +3867,7 @@ parseIntsAndDoublesAsDoublesWithOneExample =
             , "12.22222235049451"
             ]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 1 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 1 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Ints and Doubles as UnboxedColumn of Doubles with just one example"
@@ -4079,7 +4094,7 @@ parseIntsAndDoublesAsDoublesWithManyExamples =
             , "12.22222235049451"
             ]
         expected = DI.UnboxedColumn $ VU.fromList afterParse
-        actual = D.parseDefault 50 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 50 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Ints and Doubles as UnboxedColumn of Doubles with just one example"
@@ -4326,7 +4341,7 @@ parseIntsAndDoublesAndEmptyStringsAsDoublesWithOneExampleWithSafeReadOff =
             , "12.22222235049451"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 1 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 1 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Ints and Doubles as UnboxedColumn of Doubles with just one example"
@@ -4574,7 +4589,8 @@ parseIntsAndDoublesAndEmptyStringsAsDoublesWithManyExamplesWithSafeReadOff =
             , "12.22222235049451"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 30 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 30 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Ints and Doubles as UnboxedColumn of Doubles with just one example"
@@ -4742,7 +4758,7 @@ parseIntsAndDoublesAndEmptyStringsAndNullishAsStringssWithOneExampleWithSafeRead
             , "12.22222235049451"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 1 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 1 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Ints, Doubles, empty strings, nullish as OptionalColumn of Text with just one example, when safeRead is off"
@@ -4910,7 +4926,8 @@ parseIntsAndDoublesAndEmptyStringsAndNullishAsStringssWithManyExamplesWithSafeRe
             , "12.22222235049451"
             ]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 30 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual =
+            D.parseDefault [] 30 False "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             ( assertEqual
                 "Correctly parses a mixture of Ints, Doubles, empty strings, nullish as OptionalColumn of Text with many examples, when safeRead is off"
@@ -4927,7 +4944,7 @@ parseManyNullishAndOneInt =
         beforeParse :: [T.Text]
         beforeParse = replicate 100 "NaN" ++ ["100000"]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             (assertEqual "Correctly parses many Nulls followed by one Int" expected actual)
 
@@ -4938,7 +4955,7 @@ parseManyNullishAndOneDouble =
         beforeParse :: [T.Text]
         beforeParse = replicate 100 "NaN" ++ ["3.14"]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             (assertEqual "Correctly parses many Nulls followed by one Int" expected actual)
 
@@ -4949,7 +4966,7 @@ parseManyNullishAndOneDate =
         beforeParse :: [T.Text]
         beforeParse = replicate 100 "NaN" ++ ["2024-12-25"]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             (assertEqual "Correctly parses many Nulls followed by one Int" expected actual)
 
@@ -4960,7 +4977,7 @@ parseManyNullishAndIncorrectDates =
         beforeParse :: [T.Text]
         beforeParse = replicate 100 "NaN" ++ ["2024-12-25", "2024-12-w6"]
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             (assertEqual "Correctly parses many Nulls followed by one Int" expected actual)
 
@@ -4971,7 +4988,7 @@ parseRepeatedNullish =
         beforeParse :: [T.Text]
         beforeParse = replicate 100 "NaN"
         expected = DI.OptionalColumn $ V.fromList afterParse
-        actual = D.parseDefault 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
+        actual = D.parseDefault [] 10 True "%Y-%m-%d" $ DI.fromVector $ V.fromList beforeParse
      in TestCase
             (assertEqual "Correctly parses many Nulls followed by one Int" expected actual)
 
