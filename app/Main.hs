@@ -1,5 +1,9 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Main where
 
+import Control.Exception (bracket)
 import Control.Monad
 import Data.Time (NominalDiffTime, diffUTCTime, getCurrentTime)
 import System.Directory (
@@ -9,8 +13,12 @@ import System.Directory (
     getModificationTime,
     getXdgDirectory,
  )
+import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Process
+#ifndef mingw32_HOST_OS
+import System.Posix.Signals (Handler(..), installHandler, sigINT)
+#endif
 
 main :: IO ()
 main = do
@@ -37,15 +45,41 @@ main = do
     let command = "cabal"
         args =
             [ "repl"
+            , "--ignore-project"
             , "-O2"
             , "--build-depends"
             , "dataframe"
             , "--repl-option=-ghci-script=" ++ filepath
             ]
-    (_, _, _, processHandle) <- createProcess (proc command args)
+    let baseCp =
+            (proc command args)
+                { cwd = Just cacheDir
+                , std_in = Inherit
+                , std_out = Inherit
+                , std_err = Inherit
+                }
+#ifdef mingw32_HOST_OS
+        cp = baseCp {delegate_ctlc = True}
+#else
+        cp = baseCp
+#endif
+#ifndef mingw32_HOST_OS
+    -- Unix: ignore Ctrl-C in the wrapper so the child handles it.
+    bracket (installHandler sigINT Ignore Nothing)
+            (\old -> installHandler sigINT old Nothing)
+            (\_ -> runChild cp)
+#else
+    -- Windows: delegate Ctrl-C handling to the child.
+    runChild cp
+#endif
 
-    exitCode <- waitForProcess processHandle
-    pure ()
+runChild :: CreateProcess -> IO ()
+runChild cp = do
+    (_, _, _, ph) <- createProcess cp
+    ec <- waitForProcess ph
+    case ec of
+        ExitSuccess -> pure ()
+        ExitFailure n -> fail ("cabal repl failed with exit code " <> show n)
 
 oneWeek :: NominalDiffTime
 oneWeek = 7 * 24 * 60 * 60
