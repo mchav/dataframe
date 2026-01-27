@@ -10,31 +10,42 @@ import System.Directory (
     XdgDirectory (..),
     createDirectoryIfMissing,
     doesFileExist,
+    getCurrentDirectory,
     getModificationTime,
     getXdgDirectory,
  )
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Process
+
 #ifndef mingw32_HOST_OS
-import System.Posix.Signals (Handler(..), installHandler, sigINT)
+import System.Posix.Signals (Handler (..), installHandler, sigINT)
 #endif
 
 main :: IO ()
 main = do
     cacheDir <- getXdgDirectory XdgCache "dataframe_repl"
+    currDir <- getCurrentDirectory
+    print currDir
     createDirectoryIfMissing True cacheDir
 
-    let filepath = cacheDir </> "dataframe.ghci"
-    shouldDownload <- needsUpdate filepath
+    let ghciScript = cacheDir </> "dataframe.ghci"
+        projectFile = cacheDir </> "cabal.project"
+        cabalFile = cacheDir </> "df-repl.cabal"
+        mainFile = cacheDir </> "Main.hs"
 
+    -- Ensure the directory is a valid Cabal project with a local target to repl into.
+    ensureBoilerplate projectFile cabalFile mainFile
+
+    -- Keep your ghci script updated (weekly).
+    shouldDownload <- needsUpdate ghciScript
     when shouldDownload $ do
         putStrLn "\ESC[92mDownloading latest version of dataframe config...\ESC[0m"
         output <-
             readProcess
                 "curl"
                 [ "--output"
-                , filepath
+                , ghciScript
                 , "https://raw.githubusercontent.com/mchav/dataframe/refs/heads/main/dataframe.ghci"
                 ]
                 ""
@@ -45,33 +56,74 @@ main = do
     let command = "cabal"
         args =
             [ "repl"
-            , "--ignore-project"
+            , "exe:df-repl"
+            , "--project-file=" ++ projectFile
             , "-O2"
-            , "--build-depends"
-            , "dataframe"
-            , "--repl-option=-ghci-script=" ++ filepath
+            , "--repl-option=-ghci-script=" ++ ghciScript
             ]
-    let baseCp =
+
+        baseCp =
             (proc command args)
-                { cwd = Just cacheDir
+                { cwd = Just currDir
                 , std_in = Inherit
                 , std_out = Inherit
                 , std_err = Inherit
                 }
+
 #ifdef mingw32_HOST_OS
-        cp = baseCp {delegate_ctlc = True}
+        cp = baseCp { delegate_ctlc = True }
 #else
         cp = baseCp
 #endif
+
 #ifndef mingw32_HOST_OS
     -- Unix: ignore Ctrl-C in the wrapper so the child handles it.
-    bracket (installHandler sigINT Ignore Nothing)
-            (\old -> installHandler sigINT old Nothing)
-            (\_ -> runChild cp)
+    bracket
+        (installHandler sigINT Ignore Nothing)
+        (\old -> installHandler sigINT old Nothing)
+        (\_ -> runChild cp)
 #else
     -- Windows: delegate Ctrl-C handling to the child.
     runChild cp
 #endif
+
+ensureBoilerplate :: FilePath -> FilePath -> FilePath -> IO ()
+ensureBoilerplate projectFile cabalFile mainFile = do
+    -- cabal.project
+    writeIfMissing
+        projectFile
+        $ unlines
+            [ "packages: ."
+            ]
+
+    writeIfMissing
+        cabalFile
+        $ unlines
+            [ "cabal-version:      3.0"
+            , "name:               df-repl"
+            , "version:            0.1.0.0"
+            , "build-type:         Simple"
+            , ""
+            , "executable df-repl"
+            , "  main-is:          Main.hs"
+            , "  hs-source-dirs:   ."
+            , "  default-language: Haskell2010"
+            , "  build-depends:    base, dataframe, text, time, random"
+            ]
+
+    writeIfMissing
+        mainFile
+        $ unlines
+            [ "module Main where"
+            , ""
+            , "main :: IO ()"
+            , "main = putStrLn \"df-repl\""
+            ]
+
+writeIfMissing :: FilePath -> String -> IO ()
+writeIfMissing fp contents = do
+    exists <- doesFileExist fp
+    unless exists $ writeFile fp contents
 
 runChild :: CreateProcess -> IO ()
 runChild cp = do
