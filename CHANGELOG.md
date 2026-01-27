@@ -1,5 +1,12 @@
 # Revision history for dataframe
 
+## 0.4.1.0
+* Improve signal handling of dataframe repl.
+* `writeCsv` not correctly writes `Maybe` values (thanks to @mcoady).
+* Create a boilerplate package in cache that will be used to start repl.
+* Tree implementation is now a TAO tree instead of greedy cart trees.
+* Add `sampleM` and `takeM` functions.
+
 ## 0.4.0.10
 * License in cabal was wrong.
 * Remove ollama-haskell dependencies.
