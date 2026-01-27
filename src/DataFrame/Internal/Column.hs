@@ -484,48 +484,6 @@ imapColumn f = \case
                         }
                     )
 
--- | Filter column with index.
-ifilterColumn ::
-    forall a.
-    (Columnable a) =>
-    (Int -> a -> Bool) -> Column -> Either DataFrameException Column
-ifilterColumn f c@(BoxedColumn (column :: VB.Vector b)) = case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> pure $ BoxedColumn $ VG.ifilter f column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
-                    , callingFunctionName = Just "ifilterColumn"
-                    , errorColumnName = Nothing
-                    }
-                )
-ifilterColumn f c@(UnboxedColumn (column :: VU.Vector b)) = case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> pure $ UnboxedColumn $ VG.ifilter f column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
-                    , callingFunctionName = Just "ifilterColumn"
-                    , errorColumnName = Nothing
-                    }
-                )
-ifilterColumn f c@(OptionalColumn (column :: VB.Vector b)) = case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> pure $ OptionalColumn $ VG.ifilter f column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
-                    , callingFunctionName = Just "ifilterColumn"
-                    , errorColumnName = Nothing
-                    }
-                )
-
 -- | Fold (right) column with index.
 ifoldrColumn ::
     forall a b.
@@ -564,48 +522,6 @@ ifoldrColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality
                     { userType = Right (typeRep @a)
                     , expectedType = Right (typeRep @d)
                     , callingFunctionName = Just "ifoldrColumn"
-                    , errorColumnName = Nothing
-                    }
-                )
-
--- | Fold (left) column with index.
-ifoldlColumn ::
-    forall a b.
-    (Columnable a, Columnable b) =>
-    (b -> Int -> a -> b) -> b -> Column -> Either DataFrameException b
-ifoldlColumn f acc c@(BoxedColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
-    Just Refl -> pure $ VG.ifoldl' f acc column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @d)
-                    , callingFunctionName = Just "ifoldlColumn"
-                    , errorColumnName = Nothing
-                    }
-                )
-ifoldlColumn f acc c@(OptionalColumn (column :: VB.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
-    Just Refl -> pure $ VG.ifoldl' f acc column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @d)
-                    , callingFunctionName = Just "ifoldlColumn"
-                    , errorColumnName = Nothing
-                    }
-                )
-ifoldlColumn f acc c@(UnboxedColumn (column :: VU.Vector d)) = case testEquality (typeRep @a) (typeRep @d) of
-    Just Refl -> pure $ VG.ifoldl' f acc column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @d)
-                    , callingFunctionName = Just "ifoldlColumn"
                     , errorColumnName = Nothing
                     }
                 )
@@ -738,55 +654,6 @@ headColumn (OptionalColumn (col :: VB.Vector b)) = case testEquality (typeRep @a
                     , errorColumnName = Nothing
                     }
                 )
-
--- | Generic reduce function for all Column types.
-reduceColumn ::
-    forall a b.
-    (Columnable a, Columnable b) =>
-    (a -> b) -> Column -> Either DataFrameException b
-{-# SPECIALIZE reduceColumn ::
-    (VU.Vector (Double, Double) -> Double) ->
-    Column ->
-    Either DataFrameException Double
-    , (VU.Vector Double -> Double) -> Column -> Either DataFrameException Double
-    #-}
-reduceColumn f (BoxedColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
-    Just Refl -> pure $ f column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
-                    , callingFunctionName = Just "reduceColumn"
-                    , errorColumnName = Nothing
-                    }
-                )
-reduceColumn f (UnboxedColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
-    Just Refl -> pure $ f column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
-                    , callingFunctionName = Just "reduceColumn"
-                    , errorColumnName = Nothing
-                    }
-                )
-reduceColumn f (OptionalColumn (column :: c)) = case testEquality (typeRep @c) (typeRep @a) of
-    Just Refl -> pure $ f column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
-                    , callingFunctionName = Just "reduceColumn"
-                    , errorColumnName = Nothing
-                    }
-                )
-{-# INLINE reduceColumn #-}
 
 -- | An internal, column version of zip.
 zipColumns :: Column -> Column -> Column
