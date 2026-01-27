@@ -266,7 +266,9 @@ percentiles :: DataFrame -> [Expr Double]
 percentiles df =
     let
         doubleColumns =
-            map (either throw id . ((`columnAsDoubleVector` df) . Col)) (D.columnNames df)
+            map
+                (either throw id . ((`columnAsDoubleVector` df) . Col @Double))
+                (D.columnNames df)
      in
         concatMap
             (\c -> map (Lit . roundTo2SigDigits . (`percentile'` c)) [1, 25, 75, 99])
