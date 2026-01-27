@@ -65,6 +65,9 @@ filterWhereM p = modifyM (D.filterWhere p)
 sampleM :: (RandomGen g) => g -> Double -> FrameM ()
 sampleM pureGen p = modifyM (D.sample pureGen p)
 
+takeM :: Int -> FrameM ()
+takeM n = modifyM (D.take n)
+
 filterJustM :: (Columnable a) => Expr (Maybe a) -> FrameM (Expr a)
 filterJustM (Col name) = FrameM $ \df ->
     let df' = D.filterJust name df
