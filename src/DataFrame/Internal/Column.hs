@@ -28,6 +28,7 @@ import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Exception (throw)
 import Control.Monad.ST (runST)
+import Data.Kind (Type)
 import Data.Maybe
 import Data.Type.Equality (TestEquality (..))
 import DataFrame.Errors
@@ -139,20 +140,18 @@ instance Eq Column where
             Just Refl -> a == b
     (==) _ _ = False
 
+-- Generalised LEQ that does reflection.
+generalLEQ ::
+    forall a b. (Typeable a, Typeable b, Ord a, Ord b) => a -> b -> Bool
+generalLEQ x y = case testEquality (typeRep @a) (typeRep @b) of
+    Nothing -> False
+    Just Refl -> x <= y
+
 instance Ord Column where
     (<=) :: Column -> Column -> Bool
-    (<=) (BoxedColumn (a :: VB.Vector t1)) (BoxedColumn (b :: VB.Vector t2)) =
-        case testEquality (typeRep @t1) (typeRep @t2) of
-            Nothing -> False
-            Just Refl -> a <= b
-    (<=) (OptionalColumn (a :: VB.Vector t1)) (OptionalColumn (b :: VB.Vector t2)) =
-        case testEquality (typeRep @t1) (typeRep @t2) of
-            Nothing -> False
-            Just Refl -> a <= b
-    (<=) (UnboxedColumn (a :: VU.Vector t1)) (UnboxedColumn (b :: VU.Vector t2)) =
-        case testEquality (typeRep @t1) (typeRep @t2) of
-            Nothing -> False
-            Just Refl -> a <= b
+    (<=) (BoxedColumn (a :: VB.Vector t1)) (BoxedColumn (b :: VB.Vector t2)) = generalLEQ a b
+    (<=) (OptionalColumn (a :: VB.Vector t1)) (OptionalColumn (b :: VB.Vector t2)) = generalLEQ a b
+    (<=) (UnboxedColumn (a :: VU.Vector t1)) (UnboxedColumn (b :: VU.Vector t2)) = generalLEQ a b
     (<=) _ _ = False
 
 {- | A class for converting a vector to a column of the appropriate type.
@@ -239,62 +238,70 @@ fromList ::
     [a] -> Column
 fromList = toColumnRep @(KindOf a) . VB.fromList
 
+throwTypeMismatch ::
+    forall (a :: Type) (b :: Type).
+    (Typeable a, Typeable b) => Either DataFrameException Column
+throwTypeMismatch =
+    Left $
+        TypeMismatchException
+            MkTypeErrorContext
+                { userType = Right (typeRep @b)
+                , expectedType = Right (typeRep @a)
+                , callingFunctionName = Just "mapColumn"
+                , errorColumnName = Nothing
+                }
+
 -- | An internal function to map a function over the values of a column.
 mapColumn ::
     forall b c.
-    ( Columnable b
-    , Columnable c
-    , UnboxIf c
-    ) =>
-    (b -> c) ->
-    Column ->
-    Either DataFrameException Column
+    (Columnable b, Columnable c) =>
+    (b -> c) -> Column -> Either DataFrameException Column
 mapColumn f = \case
-    BoxedColumn (col :: VB.Vector a)
-        | Just Refl <- testEquality (typeRep @a) (typeRep @b) ->
-            Right (fromVector @c (VB.map f col))
-        | otherwise ->
-            Left $
-                TypeMismatchException
-                    ( MkTypeErrorContext
-                        { userType = Right (typeRep @b)
-                        , expectedType = Right (typeRep @a)
-                        , callingFunctionName = Just "mapColumn"
-                        , errorColumnName = Nothing
-                        }
-                    )
-    OptionalColumn (col :: VB.Vector a)
-        | Just Refl <- testEquality (typeRep @a) (typeRep @b) ->
-            Right (fromVector @c (VB.map f col))
-        | otherwise ->
-            Left $
-                TypeMismatchException
-                    ( MkTypeErrorContext
-                        { userType = Right (typeRep @b)
-                        , expectedType = Right (typeRep @a)
-                        , callingFunctionName = Just "mapColumn"
-                        , errorColumnName = Nothing
-                        }
-                    )
-    UnboxedColumn (col :: VU.Vector a)
-        | Just Refl <- testEquality (typeRep @a) (typeRep @b) ->
-            Right $ case sUnbox @c of
-                STrue -> UnboxedColumn (VU.map f col)
-                SFalse -> fromVector @c (VB.generate (VU.length col) (f . VU.unsafeIndex col))
-        | otherwise ->
-            Left $
-                TypeMismatchException
-                    ( MkTypeErrorContext
-                        { userType = Right (typeRep @b)
-                        , expectedType = Right (typeRep @a)
-                        , callingFunctionName = Just "mapColumn"
-                        , errorColumnName = Nothing
-                        }
-                    )
+    BoxedColumn (col :: VB.Vector a) -> run col
+    OptionalColumn (col :: VB.Vector a) -> run col
+    UnboxedColumn (col :: VU.Vector a) -> runUnboxed col
+  where
+    run :: forall a. (Typeable a) => VB.Vector a -> Either DataFrameException Column
+    run col = case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> Right (fromVector @c (VB.map f col))
+        Nothing -> throwTypeMismatch @a @b
+
+    runUnboxed ::
+        forall a.
+        (Typeable a, VU.Unbox a) => VU.Vector a -> Either DataFrameException Column
+    runUnboxed col = case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> Right $ case sUnbox @c of
+            STrue -> UnboxedColumn (VU.map f col)
+            SFalse -> fromVector @c (VB.generate (VU.length col) (f . VU.unsafeIndex col))
+        Nothing -> throwTypeMismatch @a @b
 {-# SPECIALIZE mapColumn ::
     (Double -> Double) -> Column -> Either DataFrameException Column
     #-}
 {-# INLINEABLE mapColumn #-}
+
+-- | Applies a function that returns an unboxed result to an unboxed vector, storing the result in a column.
+imapColumn ::
+    forall b c.
+    (Columnable b, Columnable c) =>
+    (Int -> b -> c) -> Column -> Either DataFrameException Column
+imapColumn f = \case
+    BoxedColumn (col :: VB.Vector a) -> run col
+    OptionalColumn (col :: VB.Vector a) -> run col
+    UnboxedColumn (col :: VU.Vector a) -> runUnboxed col
+  where
+    run :: forall a. (Typeable a) => VB.Vector a -> Either DataFrameException Column
+    run col = case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> Right (fromVector @c (VB.imap f col))
+        Nothing -> throwTypeMismatch @a @b
+
+    runUnboxed ::
+        forall a.
+        (Typeable a, VU.Unbox a) => VU.Vector a -> Either DataFrameException Column
+    runUnboxed col = case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> Right $ case sUnbox @c of
+            STrue -> UnboxedColumn (VU.imap f col)
+            SFalse -> BoxedColumn (VB.imap f (VG.convert col))
+        Nothing -> throwTypeMismatch @a @b
 
 -- | O(1) Gets the number of elements in the column.
 columnLength :: Column -> Int
@@ -373,116 +380,46 @@ findIndices ::
     (a -> Bool) ->
     Column ->
     Either DataFrameException (VU.Vector Int)
-findIndices pred (BoxedColumn (column :: VB.Vector b)) = case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> pure $ VG.convert (VG.findIndices pred column)
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
-                    , callingFunctionName = Just "findIndices"
-                    , errorColumnName = Nothing
-                    }
-                )
-findIndices pred (UnboxedColumn (column :: VU.Vector b)) = case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> pure $ VG.findIndices pred column
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
-                    , callingFunctionName = Just "findIndices"
-                    , errorColumnName = Nothing
-                    }
-                )
-findIndices pred (OptionalColumn (column :: VB.Vector b)) = case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> pure $ VG.convert (VG.findIndices pred column)
-    Nothing ->
-        Left $
-            TypeMismatchException
-                ( MkTypeErrorContext
-                    { userType = Right (typeRep @a)
-                    , expectedType = Right (typeRep @b)
-                    , callingFunctionName = Just "findIndices"
-                    , errorColumnName = Nothing
-                    }
-                )
+findIndices pred = \case
+    BoxedColumn (v :: VB.Vector b) -> run v VG.convert
+    OptionalColumn (v :: VB.Vector b) -> run v VG.convert
+    UnboxedColumn (v :: VU.Vector b) -> run v id
+  where
+    run ::
+        forall b v.
+        (Typeable b, VG.Vector v b, VG.Vector v Int) =>
+        v b ->
+        (v Int -> VU.Vector Int) ->
+        Either DataFrameException (VU.Vector Int)
+    run column finalize = case testEquality (typeRep @a) (typeRep @b) of
+        Just Refl -> Right . finalize $ VG.findIndices pred column
+        Nothing ->
+            Left $
+                TypeMismatchException
+                    MkTypeErrorContext
+                        { userType = Right (typeRep @a)
+                        , expectedType = Right (typeRep @b)
+                        , callingFunctionName = Just "findIndices"
+                        , errorColumnName = Nothing
+                        }
 
 -- | An internal function that returns a vector of how indexes change after a column is sorted.
 sortedIndexes :: Bool -> Column -> VU.Vector Int
-sortedIndexes asc (BoxedColumn column) = runST $ do
-    withIndexes <- VG.thaw $ VG.indexed column
-    VA.sortBy
-        (\(a, b) (a', b') -> (if asc then compare else flip compare) b b')
-        withIndexes
-    sorted <- VG.unsafeFreeze withIndexes
-    return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
-sortedIndexes asc (UnboxedColumn column) = runST $ do
-    withIndexes <- VG.thaw $ VG.indexed column
-    VA.sortBy
-        (\(a, b) (a', b') -> (if asc then compare else flip compare) b b')
-        withIndexes
-    sorted <- VG.unsafeFreeze withIndexes
-    return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
-sortedIndexes asc (OptionalColumn column) = runST $ do
-    withIndexes <- VG.thaw $ VG.indexed column
-    VA.sortBy
-        (\(a, b) (a', b') -> (if asc then compare else flip compare) b b')
-        withIndexes
-    sorted <- VG.unsafeFreeze withIndexes
-    return $ VU.generate (VG.length column) (\i -> fst (sorted VG.! i))
+sortedIndexes asc = \case
+    BoxedColumn column -> sortWorker column
+    UnboxedColumn column -> sortWorker column
+    OptionalColumn column -> sortWorker column
+  where
+    sortWorker ::
+        (VG.Vector v a, Ord a, VG.Vector v (Int, a), VG.Vector v Int) =>
+        v a -> VU.Vector Int
+    sortWorker column = runST $ do
+        withIndexes <- VG.thaw $ VG.indexed column
+        let cmp = if asc then compare else flip compare
+        VA.sortBy (\(_, b) (_, b') -> cmp b b') withIndexes
+        sorted <- VG.unsafeFreeze withIndexes
+        return $ VG.convert $ VG.map fst sorted
 {-# INLINE sortedIndexes #-}
-
--- | Applies a function that returns an unboxed result to an unboxed vector, storing the result in a column.
-imapColumn ::
-    forall b c.
-    (Columnable b, Columnable c) =>
-    (Int -> b -> c) -> Column -> Either DataFrameException Column
-imapColumn f = \case
-    BoxedColumn (col :: VB.Vector a)
-        | Just Refl <- testEquality (typeRep @a) (typeRep @b) ->
-            pure (fromVector @c (VB.imap f col))
-        | otherwise ->
-            Left $
-                TypeMismatchException
-                    ( MkTypeErrorContext
-                        { userType = Right (typeRep @b)
-                        , expectedType = Right (typeRep @a)
-                        , callingFunctionName = Just "imapColumn"
-                        , errorColumnName = Nothing
-                        }
-                    )
-    UnboxedColumn (col :: VU.Vector a)
-        | Just Refl <- testEquality (typeRep @a) (typeRep @b) ->
-            pure $
-                case sUnbox @c of
-                    STrue -> UnboxedColumn (VU.imap f col)
-                    SFalse -> fromVector @c (VB.imap f (VB.convert col))
-        | otherwise ->
-            Left $
-                TypeMismatchException
-                    ( MkTypeErrorContext
-                        { userType = Right (typeRep @b)
-                        , expectedType = Right (typeRep @a)
-                        , callingFunctionName = Just "imapColumn"
-                        , errorColumnName = Nothing
-                        }
-                    )
-    OptionalColumn (col :: VB.Vector a)
-        | Just Refl <- testEquality (typeRep @a) (typeRep @b) ->
-            pure (fromVector @c (VB.imap f col))
-        | otherwise ->
-            Left $
-                TypeMismatchException
-                    ( MkTypeErrorContext
-                        { userType = Right (typeRep @b)
-                        , expectedType = Right (typeRep @a)
-                        , callingFunctionName = Just "imapColumn"
-                        , errorColumnName = Nothing
-                        }
-                    )
 
 -- | Fold (right) column with index.
 ifoldrColumn ::
