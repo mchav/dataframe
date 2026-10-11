@@ -5,13 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- | sklearn-style standalone tree estimators returning inspectable records
-(depth, leaf count, per-feature split usage). 'fit' trains a classifier (from a
-'TreeConfig') or a regressor (from a 'RegTreeConfig'); 'predict' is the compiled
-tree expression, and the record exposes the raw 'Tree' too. The bare
-'DataFrame.DecisionTree.Fit.fitDecisionTree' remains for callers that only want
-the classifier @Expr@.
--}
+-- | Standalone tree estimators returning inspectable fitted records.
 module DataFrame.DecisionTree.Model (
     module DataFrame.Model,
     DecisionTreeClassifier (..),

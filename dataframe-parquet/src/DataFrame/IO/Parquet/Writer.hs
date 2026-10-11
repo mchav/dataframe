@@ -227,9 +227,7 @@ nativeTypeKeyValues names df =
     , Just col <- [getColumn name df]
     ]
 
-{- | Encode @count@ rows starting at @firstRow@ into the column's page.
-Returns 'True' when the page has reached the page size and should be flushed.
--}
+-- | Encode @count@ rows from @firstRow@ into the column's page.
 writeRows ::
     ParquetWriteOptions -> Int -> Int -> ColumnChunkState s -> ST s Bool
 writeRows options firstRow count ccs = do
@@ -316,8 +314,7 @@ writeDataPage codec numPageRows body columnChunkState = do
     compressedBody <- case codec of
         UNCOMPRESSED _ -> pure Nothing
         SNAPPY _ -> do
-            -- Compress straight from the page buffer, forcing the result now
-            -- so it can't be read after the buffer is reused for the next page.
+            -- Compress now: the page buffer is reused for the next page.
             page <- unsafeBufferView body
             Just <$> evaluate (Snappy.compress page)
         other -> error ("writeParquet: unsupported codec " <> show other)
@@ -413,18 +410,7 @@ initColumnChunkState options columnName_ column = do
                 encoder_.convertedType
                 encoder_.logicalType
         bufferSize = max 1 options.pageSize
-    -- ColumnChunk Buffers start at page size and grow to their
-    -- actual size over the course of building out the first row
-    -- group.
-    -- Each column chunk in a row group must have the same number
-    -- of rows, but each column chunk is liable to fit the same
-    -- number of rows in varying amounts of data depending on the
-    -- encoding and the compression characteristics of the data.
-    -- So the optimal buffer size of each column chunk is liable
-    -- to vary
-    -- As a result while one specific column chunk in a row group
-    -- is likely to hit the page limit, the others are liable to be
-    -- much smaller than the limit.
+    -- Buffers start at page size and grow, as chunk sizes vary by encoding.
     buffer_ <- mallocBuffer bufferSize
     uncompressedBufferSize_ <- newSTRef 0
     pageState_ <- initPageState bufferSize

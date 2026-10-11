@@ -29,10 +29,7 @@ import DataFrame.IO.Parquet.Time (int96ToUTCTime)
 import DataFrame.Internal.Binary (littleEndianWord32)
 import GHC.Float
 
-{- | A decoded dictionary page. Numeric entries are unboxed so a lookup is one
-indexed load. Byte-array entries stay in the page buffer: entry @i@ is the
-@lens!i@ bytes at @starts!i@.
--}
+-- | A decoded dictionary page with unboxed numeric entries.
 data DictVals
     = DBool !(VU.Vector Bool)
     | DInt32 !(VU.Vector Int32)
@@ -43,16 +40,7 @@ data DictVals
     | DText !(VU.Vector Int) !(VU.Vector Int) !BS.ByteString
     deriving (Show, Eq)
 
-{- | Decode the values from a dictionary page.
-
-The @numVals@ argument is the entry count declared in the dictionary page
-header.  It is used to limit BOOLEAN decoding (1-bit-per-value encoding has
-no natural delimiter).
-
-The @typeLength@ argument is only meaningful for FIXED_LEN_BYTE_ARRAY: it is
-the byte-width of each individual dictionary entry, NOT the total number of
-entries.
--}
+-- | Decode the values from a dictionary page.
 readDictVals :: ThriftType -> BS.ByteString -> Int32 -> Maybe Int32 -> DictVals
 readDictVals (BOOLEAN _) bs count _ =
     let n = min (fromIntegral count) (8 * BS.length bs)
@@ -76,7 +64,7 @@ readDictVals (FIXED_LEN_BYTE_ARRAY _) bs _ (Just len) =
      in DText (VU.generate n (* w)) (VU.replicate n w) bs
 readDictVals t _ _ _ = error $ "Unsupported dictionary type: " ++ show t
 
--- | Length-prefixed byte-array entries: one pass to count, one to record positions.
+-- | Length-prefixed byte-array entries, in two passes.
 textDict :: BS.ByteString -> DictVals
 textDict bs = DText starts lens bs
   where
@@ -139,7 +127,7 @@ unpackBitPacked bw count bs
             rest = BS.drop totalBytes bs
          in (extractBits bw count chunk, rest)
 
--- | LSB-first bit accumulator: reads each byte once with no intermediate ByteString allocation.
+-- | LSB-first bit accumulator that reads each byte once.
 extractBits :: Int -> Int -> BS.ByteString -> [Word32]
 extractBits bw count bs = go 0 (0 :: Word64) 0 count
   where
@@ -160,9 +148,7 @@ decodeRLEBitPackedHybrid bitWidth bs
     | bitWidth == 0 = ([0], bs)
     | BS.null bs = ([], bs)
     | otherwise =
-        -- readUVarInt is evaluated here, inside the guard that has already
-        -- confirmed bs is non-empty.  Keeping it in a where clause would cause
-        -- it to be forced before the BS.null guard under {-# LANGUAGE Strict #-}.
+        -- Evaluated inside the guard: a where clause would force it too early.
         let (hdr64, afterHdr) = readUVarInt bs
             isPacked = (hdr64 .&. 1) == 1
          in if isPacked

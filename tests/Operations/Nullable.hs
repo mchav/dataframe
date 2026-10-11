@@ -20,10 +20,6 @@ import DataFrame.Typed.Types (TExpr (..))
 
 import Test.HUnit
 
--- ---------------------------------------------------------------------------
--- Untyped Expr layer tests
--- ---------------------------------------------------------------------------
-
 -- DataFrame with one plain Int column and one Maybe Int column
 testData :: D.DataFrame
 testData =
@@ -141,10 +137,6 @@ eqIntInt =
             )
         )
 
--- ---------------------------------------------------------------------------
--- nullLift / nullLift2 — untyped layer
--- ---------------------------------------------------------------------------
-
 -- | nullLift negate on Maybe Int propagates Nothing
 nullLiftMaybeInt :: Test
 nullLiftMaybeInt =
@@ -221,10 +213,6 @@ nullLift2IntInt =
                     testData
             )
         )
-
--- ---------------------------------------------------------------------------
--- Cross-type arithmetic (Int × Double promotion)
--- ---------------------------------------------------------------------------
 
 -- DataFrame with Int, Maybe Int, Double, Maybe Double columns
 crossData :: D.DataFrame
@@ -527,10 +515,6 @@ divMaybeIntMaybeDouble =
             )
         )
 
--- ---------------------------------------------------------------------------
--- Typed TExpr layer — cross-type arithmetic
--- ---------------------------------------------------------------------------
-
 type CrossSchema =
     '[ '("x", Int)
      , '("y", Maybe Int)
@@ -614,10 +598,6 @@ typedMulIntDouble =
                 DT.derive @"result" (TE.col @"x" TE..* TE.col @"d") typedCrossData
             )
         )
-
--- ---------------------------------------------------------------------------
--- Typed TExpr layer tests
--- ---------------------------------------------------------------------------
 
 type TestSchema = '[ '("x", Int), '("y", Maybe Int)]
 
@@ -724,10 +704,6 @@ applyPlainInt =
                 D.apply @Int negate "x" testData
             )
         )
-
--- ---------------------------------------------------------------------------
--- Grouped aggregation over nullable columns
--- ---------------------------------------------------------------------------
 
 -- | Interleaved, so grouping's row permutation is not the identity.
 interleavedKeys :: [T.Text]

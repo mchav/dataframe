@@ -1,11 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | Per-column sinks for the default CSV reader. Typed columns (explicit
-schema) parse straight from the input slice into the WS-C builders;
-inferred and EitherRead columns record unboxed @(start, end)@ offsets
-into the input buffer (plus a cold side map for quote-unescaped cells)
-for the inference pass ("DataFrame.IO.CSV.Internal.Infer").
--}
+-- | Per-column sinks for the default CSV reader.
 module DataFrame.IO.CSV.Internal.Sink (
     Env (..),
     MissingMode (..),
@@ -41,9 +36,7 @@ import DataFrame.Internal.Parsing.Fast (
  )
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 
-{- | How missing tokens are detected (audit D2: canonical list goes
-through the WS-B memcmp fast path; custom lists decode and compare).
--}
+-- | How missing tokens are detected.
 data MissingMode = MissNone | MissCanonical | MissCustom
 
 -- | Read-time environment shared by every sink.
@@ -63,11 +56,7 @@ data Sink
     | SinkText !(TextBuilder RealWorld)
     | SinkBS !SliceCol
 
-{- | Growable cell store for inferred columns: per cell a @(start, end)@
-offset pair into the input (already Char8-stripped) and a 0\/1 validity
-byte. Quote-unescaped cells (cold) live in an 'IM.IntMap' keyed by row;
-their offset pair is @(-1, row)@.
--}
+-- | Growable cell store of offset pairs for inferred columns.
 data SliceCol = SliceCol
     { scOffs :: !(IORef (VUM.IOVector Int))
     , scValid :: !(IORef (VUM.IOVector Word8))
@@ -83,9 +72,7 @@ data Cells = Cells
     , cLen :: !Int
     }
 
-{- | Resolve cell @i@ as a slice and continue (no 'BS.ByteString' header
-is allocated for the common in-buffer case).
--}
+-- | Resolve cell @i@ as a slice and continue with it.
 withCell :: Cells -> Int -> (BS.ByteString -> Int -> Int -> r) -> r
 withCell c !i k =
     let s = VU.unsafeIndex (cOffs c) (2 * i)
@@ -147,10 +134,7 @@ sliceBS :: BS.ByteString -> Int -> Int -> BS.ByteString
 sliceBS bs s e = BSU.unsafeTake (e - s) (BSU.unsafeDrop s bs)
 {-# INLINE sliceBS #-}
 
-{- | Feed one field slice @[s, e)@ of the input into a sink. @unesc@
-fields (quoted with embedded @\"\"@) are unescaped into a fresh strict
-'BS.ByteString' first (cold path).
--}
+-- | Feed one field slice of the input into a sink.
 feedSink :: Env -> Sink -> Int -> Int -> Int -> Bool -> IO ()
 feedSink env sink !row !s !e !unesc = case sink of
     SinkBS sc
@@ -194,11 +178,7 @@ feedTyped env sink bs !ptr !s !e = case sink of
     SinkBS _ -> error "feedTyped: SinkBS handled by feedSink"
 {-# INLINE feedTyped #-}
 
-{- | Text cells reproduce @T.strip . decodeUtf8Lenient@ plus the
-missing-indicator test. Fast path: ASCII-edge slices append raw bytes
-(the shared-buffer freeze decodes leniently per field); anything with
-non-ASCII edges or a custom missing list goes through real 'T.strip'.
--}
+-- | Append a text cell, with a fast path for ASCII-edge slices.
 appendTextCell ::
     Env ->
     TextBuilder RealWorld ->

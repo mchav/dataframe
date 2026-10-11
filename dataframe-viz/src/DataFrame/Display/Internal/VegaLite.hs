@@ -7,11 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- |
-Internal Vega-Lite spec model plus aeson encoding, shared by the web plot
-backends. Not public. Channel encodings resolve to a 'ResolvedField' carrying
-the field name, Vega-Lite type, and inlined column values.
--}
+-- | Internal Vega-Lite spec model and aeson encoding for the web backends.
 module DataFrame.Display.Internal.VegaLite (
     -- * Spec model
     Mark (..),
@@ -61,10 +57,6 @@ import DataFrame.Internal.Expression (Expr (Col))
 import DataFrame.Internal.Interpreter (Ctx (..), eval, materialize)
 
 import DataFrame.Display.Internal.Common (columnToDoubles, columnToStrings)
-
--- ---------------------------------------------------------------------------
--- Spec model
--- ---------------------------------------------------------------------------
 
 data Mark = Bar | Line | Point | Area | Boxplot | Arc | Rule | Tick
     deriving (Eq, Show)
@@ -118,9 +110,7 @@ fieldTypeName t = case t of
     Ordinal -> "ordinal"
     Temporal -> "temporal"
 
-{- | A single channel encoding. An empty 'ceField' with a 'ceAggregate' of
-@count@ produces a fieldless count aggregation, as Vega-Lite expects.
--}
+-- | A single channel encoding.
 data ChannelEnc = ChannelEnc
     { ceChannel :: Channel
     , ceField :: T.Text
@@ -131,21 +121,15 @@ data ChannelEnc = ChannelEnc
     , ceSort :: Maybe Sort
     }
 
--- | A bare channel encoding with no aggregation, binning, scale, or sort options.
+-- | A bare channel encoding: no aggregation, binning, scale, or sort options.
 chanEnc :: Channel -> T.Text -> FieldType -> ChannelEnc
 chanEnc ch fld ft = ChannelEnc ch fld ft Nothing False defaultScale Nothing
 
-{- | Domain ordering for a discrete channel, mirroring Vega-Lite's @sort@.
-'DataOrder' pins the axis to the order rows appear in the inlined data, so
-pre-sorted values (e.g. histogram bins) display in that order.
--}
+-- | Domain ordering for a discrete channel, mirroring Vega-Lite's @sort@.
 data Sort = DataOrder
     deriving (Eq, Show)
 
-{- | Per-channel scale configuration, mirroring Vega-Lite's @scale@ object.
-'Nothing' fields leave the Vega-Lite default in place; grow this record
-(domain, nice, clamp, scheme, ...) as the public vocabulary grows.
--}
+-- | Per-channel scale configuration, mirroring Vega-Lite's @scale@ object.
 data ScaleSpec = ScaleSpec
     { scaleType :: Maybe ScaleType
     , scaleZero :: Maybe Bool
@@ -165,10 +149,7 @@ data Transform
       DensityT T.Text
     deriving (Eq, Show)
 
-{- | A Vega-Lite spec. When 'vlLayers' is non-empty the spec is a layered
-container: the top level carries the shared data and each layer carries its own
-mark/encoding/transform.
--}
+-- | A Vega-Lite spec, layered when 'vlLayers' is non-empty.
 data VLSpec = VLSpec
     { vlMark :: Mark
     , vlEncodings :: [ChannelEnc]
@@ -182,14 +163,7 @@ data VLSpec = VLSpec
 emptySpec :: Mark -> VLSpec
 emptySpec m = VLSpec m [] [] Nothing 600 400 []
 
--- ---------------------------------------------------------------------------
--- Field-type inference from the expression's element type
--- ---------------------------------------------------------------------------
-
-{- | Derive the Vega-Lite field type from a Haskell type: numeric →
-'Quantitative', date/time → 'Temporal', everything else → 'Nominal'. @Maybe a@
-classifies as its inner type.
--}
+-- | Derive the Vega-Lite field type from a Haskell type.
 fieldTypeOf :: forall a. (Columnable a) => FieldType
 fieldTypeOf = classify (typeRep @a)
 
@@ -223,20 +197,13 @@ classify tr
     temporalNames =
         ["Day", "UTCTime", "LocalTime", "ZonedTime", "TimeOfDay"]
 
--- ---------------------------------------------------------------------------
--- Resolving an expression to a field + values
--- ---------------------------------------------------------------------------
-
 data ResolvedField = ResolvedField
     { rfName :: T.Text
     , rfType :: FieldType
     , rfValues :: [Value]
     }
 
-{- | Resolve an expression against a frame. A bare @Col name@ reuses the named
-column; any other expression is materialised with the core interpreter and
-stored under the given fallback name.
--}
+-- | Resolve an expression against a frame, reusing a bare column directly.
 resolveField ::
     forall a. (Columnable a) => DataFrame -> T.Text -> Expr a -> ResolvedField
 resolveField df fallbackName expr =
@@ -264,13 +231,9 @@ columnToValues _ col = map (toJSON :: T.Text -> Value) (columnToStrings col)
 textField :: T.Text -> [T.Text] -> ResolvedField
 textField name vals = ResolvedField name Nominal (map (toJSON :: T.Text -> Value) vals)
 
--- | A quantitative field built directly from numeric values (for pre-computed data).
+-- | A quantitative field built directly from pre-computed numeric values.
 numField :: T.Text -> [Double] -> ResolvedField
 numField name vals = ResolvedField name Quantitative (map toJSON vals)
-
--- ---------------------------------------------------------------------------
--- Encoding to JSON
--- ---------------------------------------------------------------------------
 
 schemaUrl :: T.Text
 schemaUrl = "https://vega.github.io/schema/vega-lite/v5.json"
@@ -293,7 +256,7 @@ specToValue fields spec
             , Just ("data" .= object ["values" .= inlineRows fields])
             ]
 
--- | The mark/encoding/transform pairs of a unit spec (no data — that is shared).
+-- | The mark/encoding/transform pairs of a unit spec (data is shared).
 unitPairs :: VLSpec -> [(K.Key, Value)]
 unitPairs spec =
     catMaybes
@@ -357,14 +320,7 @@ inlineRows fields =
         row i = object [K.fromText nm .= fromMaybe Null (vs V.!? i) | (nm, vs) <- vecs]
      in toJSON [row i | i <- [0 .. n - 1]]
 
--- ---------------------------------------------------------------------------
--- HTML embedding (vega-embed via CDN)
--- ---------------------------------------------------------------------------
-
-{- | Render a spec to a self-contained HTML snippet that loads vega/vega-lite/
-vega-embed from a CDN and embeds the chart. Data is inlined, so the snippet
-renders correctly even from a @file://@ URL.
--}
+-- | Render a spec to a self-contained HTML snippet with inlined data.
 specHtml :: T.Text -> [ResolvedField] -> VLSpec -> T.Text
 specHtml chartId fields spec =
     let specJson = TL.toStrict (encodeToLazyText (specToValue fields spec))
@@ -382,9 +338,7 @@ specHtml chartId fields spec =
             , ");</script>\n"
             ]
 
-{- | Warn on stderr when a large number of rows is being inlined, which bloats
-the spec and can slow the browser.
--}
+-- | Warn on stderr when a large number of rows is being inlined.
 rowCountWarning :: [ResolvedField] -> IO ()
 rowCountWarning fields = do
     let n = maximum (0 : map (length . rfValues) fields)

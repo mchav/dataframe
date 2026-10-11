@@ -76,9 +76,7 @@ fromRowsKeepsNullsInPlace =
             (D.fromRows ["A"] [[D.toAny (1 :: Int)], [Null], [D.toAny (3 :: Int)]])
         )
 
-{- | An all-null column has as many rows as it was given. Collapsing it to an
-empty column silently truncates the frame.
--}
+-- | An all-null column keeps the row count it was given.
 fromRowsAllNullColumnKeepsRows :: Test
 fromRowsAllNullColumnKeepsRows =
     TestCase
@@ -88,9 +86,7 @@ fromRowsAllNullColumnKeepsRows =
             (D.nRows (D.fromRows ["A"] [[Null], [Null], [Null]]))
         )
 
-{- | A frame with a null survives the round trip at full length. Guards the
-alignment invariant through 'toRowList' as well as 'fromRows'.
--}
+-- | A frame with a null survives the round trip at full length.
 fromRowsRoundTripsWithNulls :: Test
 fromRowsRoundTripsWithNulls =
     TestCase

@@ -48,11 +48,7 @@ import DataFrame.Internal.Column (
  )
 import DataFrame.Internal.Column.Bitmap (buildBitmapFromValid)
 
-{- | A left-fold driver over a column's per-page triples
-@(values, def-levels, rep-levels)@, as produced by
-'DataFrame.IO.Parquet.Page.foldColumnPagesM'. Generic in the accumulator so a
-single driver serves every fold strategy below.
--}
+-- | A left-fold driver over a column's per-page triples.
 type PageFold m v a =
     forall acc.
     (acc -> (v a, VU.Vector Int, VU.Vector Int) -> m acc) -> acc -> m acc
@@ -161,12 +157,7 @@ getColumnNames schemaElements =
                     childLeaves = go children subPath False
                  in childLeaves ++ go rest path skipThis
 
-{- | Fold a column's value pages into a non-nullable 'Column'.
-
-Pre-allocates a mutable vector of @totalRows@ and fills it page-by-page via a
-single streaming left fold ('PageFold'), avoiding any intermediate list or
-concatenation allocation. Only one page's values are live at a time.
--}
+-- | Fold a column's value pages into a non-nullable 'Column'.
 {-# INLINEABLE foldNonNullable #-}
 foldNonNullable ::
     forall m a.
@@ -207,14 +198,7 @@ foldNonNullableUnboxed totalRows runPages = do
     dat <- liftIO $ VU.unsafeFreeze mv
     return (UnboxedColumn Nothing dat)
 
-{- | Fold a column's (values, def-levels) pages into a nullable 'Column'.
-
-Pre-allocates the output buffer and a valid-mask vector of @totalRows@, then
-scatters values inline during a single streaming left fold ('PageFold').
-
-A 'hasNull' flag is accumulated during the scatter so the
-'buildBitmapFromValid' call is skipped entirely when all values are present.
--}
+-- | Fold a column's value and def-level pages into a nullable 'Column'.
 {-# INLINEABLE foldNullable #-}
 foldNullable ::
     forall m a.
@@ -224,13 +208,7 @@ foldNullable ::
     PageFold m VB.Vector a ->
     m Column
 foldNullable maxDef totalRows runPages = do
-    -- null slots hold an error thunk, guarded by bitmap.
-    --
-    -- IMPORTANT: 'VBM.unsafeWrite' for boxed vectors stores a *pointer* to
-    -- the value without evaluating it, so unsupported-encoding error thunks
-    -- would be silently swallowed into the column data and only fire lazily
-    -- when user code reads a cell. The '!v' bang pattern forces each value
-    -- to WHNF before the write, surfacing decoder errors immediately.
+    -- The '!v' bang forces each value so decoder errors surface immediately.
     mvDat <-
         liftIO $ VBM.replicate totalRows (error "parquet: null slot accessed")
     mvValid <- liftIO (VUM.new totalRows :: IO (VUM.IOVector Word8))
@@ -295,17 +273,7 @@ foldNullableUnboxed maxDef totalRows runPages = do
             else return Nothing
     return (UnboxedColumn maybeBm dat)
 
-{- | Fold a stream of (values, def-levels, rep-levels) triples into a
-repeated (list) 'Column' using Dremel-style level stitching.
-
-The stitching function is selected by @maxRep@:
-
-  * @maxRep == 1@  →  'stitchList'   → @[Maybe [Maybe a]]@
-  * @maxRep == 2@  →  'stitchList2'  → @[Maybe [Maybe [Maybe a]]]@
-  * @maxRep >= 3@  →  'stitchList3'  → @[Maybe [Maybe [Maybe [Maybe a]]]]@
-
-Threshold formula: @defT_r = maxDef - 2 * (maxRep - r)@.
--}
+-- | Fold page triples into a repeated (list) 'Column' by level stitching.
 {-# INLINEABLE foldRepeated #-}
 foldRepeated ::
     forall m a.
@@ -355,10 +323,7 @@ foldRepeatedUnboxed maxRep maxDef runPages = do
             fromList (stitchList3 (maxDef - 4) (maxDef - 2) maxDef allReps allDefs allVals)
         _ -> fromList (stitchList maxDef allReps allDefs allVals)
 
-{- | Collect all of a column's page triples into a list, in page order. Used by
-the repeated/list folds, where Dremel level-stitching needs the full
-concatenated rep/def/value arrays at once (so streaming gives no benefit here).
--}
+-- | Collect all of a column's page triples into a list, in page order.
 collectPages ::
     (Monad m) =>
     PageFold m v a ->

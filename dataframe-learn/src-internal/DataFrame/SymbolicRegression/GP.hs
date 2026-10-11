@@ -1,7 +1,4 @@
-{- | A compact generational genetic-programming search over 'SRExpr': ramped
-initialization, tournament selection, subtree crossover/mutation, elitism, and a
-complexity-keyed Pareto archive. Deterministic given the seed.
--}
+-- | A compact generational genetic-programming search over SRExpr.
 module DataFrame.SymbolicRegression.GP (
     GPParams (..),
     runGP,

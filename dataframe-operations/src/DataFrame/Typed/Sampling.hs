@@ -1,9 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-{- | Typed sampling and splitting. All operations are schema-preserving: they
-change which rows are present, never the columns, so every result reuses the
-input schema @cols@.
--}
+-- | Typed sampling and splitting; all operations preserve the schema.
 module DataFrame.Typed.Sampling (
     randomSplit,
     kFolds,
@@ -30,10 +27,7 @@ kFolds ::
     (RandomGen g) => g -> Int -> TypedDataFrame cols -> [TypedDataFrame cols]
 kFolds g k (TDF df) = map TDF (D.kFolds g k df)
 
-{- | Select rows by index.
-| This may fail if the indices are out of bounds;
-| use with caution or use 'filter' to select rows by a predicate instead.
--}
+-- | Select rows by index; may fail if the indices are out of bounds.
 selectRows :: [Int] -> TypedDataFrame cols -> TypedDataFrame cols
 selectRows ixs (TDF df) = TDF (D.selectRows ixs df)
 

@@ -1,13 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The parallel-join correctness gate. Each case asserts that the parallel
-chunked-probe kernels ('parInnerKernel' \/ 'parLeftKernel') produce index
-vectors /bit-for-bit identical/ to the sequential reference kernels, and that
-the assembled join through the public 'innerJoin' \/ 'leftJoin' matches a
-sequentially-forced reference. Covered: int\/text keys, many-to-many duplicate
-keys, unmatched left rows, null patterns, and row counts straddling the
-parallel threshold.
--}
+-- | Parallel join kernels must match the sequential reference bit for bit.
 module Operations.ParallelJoin where
 
 import qualified Data.Text as T
@@ -31,9 +24,7 @@ type HashPair = (VU.Vector Int, VU.Vector Int)
 mkHashes :: [Int] -> VU.Vector Int
 mkHashes = VU.fromList
 
-{- | Synthetic hash vectors. Many collisions (mod), duplicates on both sides,
-and sizes that exceed the parallel threshold so the parallel path engages.
--}
+-- | Synthetic hash vectors with collisions, duplicates and large sizes.
 probeBuildPairs :: [(String, HashPair)]
 probeBuildPairs =
     [ ("tiny", (mkHashes [1, 2, 3], mkHashes [2, 3, 4]))
@@ -52,10 +43,7 @@ probeBuildPairs =
             , mkHashes [i * 3 | i <- [0 .. 120000 :: Int]]
             )
         )
-    , -- Small-build (cache-resident) build side probed by a very large probe:
-      -- the parallel small-build-probe lever (medium-factor regime). The probe
-      -- exceeds parProbeThreshold so the parallel path engages with a tiny
-      -- read-only shared index. Parity here is the new correctness gate.
+    , -- Small-build side probed by a very large probe; parity is the gate.
 
         ( "small-build-big-probe"
         ,
@@ -98,10 +86,7 @@ custFrame n =
         , ("region", D.fromList [T.pack ('r' : show (i `mod` 5)) | i <- [0 .. n - 1]])
         ]
 
-{- | End-to-end: the assembled inner/left join over a frame that exceeds the
-parallel threshold equals the same join sorted (order-independent value check),
-and the result row count is stable.
--}
+-- | End to end: a large join equals the sorted join and has a stable row count.
 endToEndInner :: Test
 endToEndInner =
     TestCase $
@@ -123,11 +108,7 @@ endToEndLeft =
                 600000
                 (D.nRows joined)
 
-{- | A probe frame whose join key is TEXT and whose row count crosses the
-parallel row-hash threshold, so the inner join hashes the key in parallel.
-Exercises the parallel text/factor-key hash path (the medium-factor lever) end
-to end: a factor key with @k@ distinct values mapped over @n@ rows.
--}
+-- | Probe frame with a text join key and enough rows for parallel hashing.
 factorOrdersFrame :: Int -> Int -> D.DataFrame
 factorOrdersFrame n k =
     D.fromColumns
@@ -142,11 +123,7 @@ factorDimFrame k =
         , ("label", D.fromList [T.pack ('L' : show i) | i <- [0 .. k - 1]])
         ]
 
-{- | Inner join on a TEXT key over a frame past the parallel-hash threshold: the
-every-key-matches case must keep all @n@ probe rows, confirming the parallel
-text hashing buckets identically to a sequential pass (a miscomputed parallel
-hash would drop matches and shrink the row count).
--}
+-- | Inner join on a text key keeps all n probe rows under parallel hashing.
 endToEndFactorInner :: Test
 endToEndFactorInner =
     TestCase $
@@ -159,13 +136,7 @@ endToEndFactorInner =
                 n
                 (D.nRows joined)
 
-{- | Small-build (cache-resident dim), very large probe (> parProbeThreshold) on
-a TEXT/factor key, the medium-factor lever. The public 'innerJoin' takes the
-parallel small-build-probe path here; every probe key matches a dim key, so a
-mis-partitioned parallel probe that dropped or duplicated matches would change
-the kept row count. The bit-identity of the parallel and sequential kernels is
-pinned separately by 'innerKernelParity' on the @small-build-big-probe@ shape.
--}
+-- | Small-build, very large probe inner join on a text key keeps every match.
 endToEndSmallBuildFactorInner :: Test
 endToEndSmallBuildFactorInner =
     TestCase $
@@ -179,11 +150,7 @@ endToEndSmallBuildFactorInner =
                 n
                 (D.nRows joined)
 
-{- | Small-build, large-probe LEFT join on the factor key: every probe row is
-kept (matched or sentinel). Exercises the parallel small-build 'parLeftKernel'
-through the public 'leftJoin'. With @k@ distinct dim keys and probe keys in
-@[0, 2k)@, roughly half the probe rows miss and carry a Nothing.
--}
+-- | Small-build, large-probe left join keeps every probe row, matched or not.
 endToEndSmallBuildFactorLeft :: Test
 endToEndSmallBuildFactorLeft =
     TestCase $

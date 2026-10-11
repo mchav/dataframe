@@ -5,25 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Persist dataframe expressions and pipelines, and load them back for
-inference in another process (or from Python — see "DataFrame.IR.ExprJson" for
-the shared wire format).
-
-  * A single 'Expr' round-trips via 'encodeExpr' / 'decodeExprAny' (or the
-    type-asserting 'decodeExprAt') and the file helpers below.
-  * A /pipeline/ is an ordered @['NamedExpr']@ — the same shape a fitted
-    @Transform@ carries. 'encodeNamedExprs' / 'decodeNamedExprs' wrap it in a
-    versioned envelope; replay a decoded pipeline for inference with
-    @deriveMany@ / @applyTransform@.
-
-All functions are pure 'Either'; the @save@ helpers report an encode failure
-before touching the file (no partial write), and the @load@ helpers turn a
-missing/unreadable file into a 'Left' rather than throwing.
-
-Limitations inherited from the wire format: @CastWith@ / @CastExprWith@ (they
-hold closures) and @collect@ (its list-typed output has no type tag) cannot be
-serialized.
--}
+-- | Save and load dataframe expressions and pipelines for inference elsewhere.
 module DataFrame.Expr.Serialize (
     -- * Single expressions (re-exported wire codec)
     SomeExpr (..),
@@ -70,9 +52,7 @@ import DataFrame.Internal.Expression (Expr, NamedExpr)
 decodeExprFromBytes :: BS.ByteString -> Either String SomeExpr
 decodeExprFromBytes bs = Aeson.eitherDecodeStrict bs >>= decodeExprAny
 
-{- | Encode an ordered pipeline (named output expressions) into the versioned
-envelope @{ "version": 1, "outputs": [ { "name", "expr" }, … ] }@.
--}
+-- | Encode an ordered pipeline of named expressions into a versioned envelope.
 encodeNamedExprs :: [NamedExpr] -> Either String Aeson.Value
 encodeNamedExprs nes = do
     outs <- traverse encodeOne nes
@@ -111,9 +91,7 @@ saveExprToFile fp e = case encodeExprToBytes e of
 loadExprFromFile :: FilePath -> IO (Either String SomeExpr)
 loadExprFromFile fp = (>>= decodeExprFromBytes) <$> readBytes fp
 
-{- | Load an expression from a file, asserting its output type. Fails with
-'Left' if the stored expression has a different output type.
--}
+-- | Load an expression from a file, failing if its output type differs.
 loadExprAtFromFile ::
     forall a. (Columnable a) => FilePath -> IO (Either String (Expr a))
 loadExprAtFromFile fp = (>>= decode) <$> readBytes fp

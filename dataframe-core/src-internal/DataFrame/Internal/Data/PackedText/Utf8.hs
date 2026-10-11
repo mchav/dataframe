@@ -1,8 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | UTF-8 validation and @decodeUtf8Lenient@-parity slice decoding used by
-'DataFrame.Internal.Column.Builder' to turn shared byte buffers into 'Text'.
--}
+-- | UTF-8 validation and lenient slice decoding for shared byte buffers.
 module DataFrame.Internal.Data.PackedText.Utf8 (
     isValidUtf8Slice,
     isUtf8Boundary,
@@ -30,18 +28,12 @@ isValidUtf8Slice :: A.Array -> Int -> Int -> Bool
 isValidUtf8Slice = isValidUtf8ByteArray
 {-# INLINE isValidUtf8Slice #-}
 
-{- | Whether a byte may start a code point (i.e. is not a continuation
-byte). Field slices of a valid buffer are themselves valid iff every
-field starts on a boundary.
--}
+-- | Whether a byte may start a code point (is not a continuation byte).
 isUtf8Boundary :: Word8 -> Bool
 isUtf8Boundary w = w < 0x80 || w >= 0xC0
 {-# INLINE isUtf8Boundary #-}
 
-{- | Decode a byte slice exactly like @decodeUtf8Lenient@: greedy decode at
-each position; any byte that cannot begin a complete, valid sequence within
-the slice becomes one U+FFFD and decoding resumes at the next byte.
--}
+-- | Decode a byte slice exactly like @decodeUtf8Lenient@.
 lenientDecodeSlice :: A.Array -> Int -> Int -> T.Text
 lenientDecodeSlice arr off len = T.pack (go off)
   where
@@ -59,10 +51,7 @@ lenientDecodeSlice arr off len = T.pack (go off)
             | j >= end = Nothing
             | otherwise = loop (utf8DecodeContinue (A.unsafeIndex arr j) st cp) (j + 1)
 
-{- | Slice forced 'Text' values off a shared array; row @i@ spans bytes
-@[offs!i, offs!(i+1))@. Fast path validates the whole span once when every field
-starts on a code-point boundary; else per-field validation with lenient decode.
--}
+-- | Slice forced 'Text' values off a shared array by row offsets.
 sliceTextVector :: A.Array -> VU.Vector Int -> VB.Vector T.Text
 sliceTextVector arr offs = VB.create $ do
     mv <- VBM.unsafeNew n

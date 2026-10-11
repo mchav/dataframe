@@ -1,15 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- |
-Module      : DataFrame.IO.Persistent.Schema.Introspect
-License     : MIT
-
-Compile-time-safe SQLite schema introspection. Everything here is plain 'IO'
-(callable from a Template Haskell @runIO@ in "DataFrame.IO.Persistent.Schema")
-plus a pure SQLite-affinity → 'HaskellType' mapping. No Template Haskell and no
-DataFrame dependencies live here, so the logic can be unit-tested directly.
--}
+-- | Compile-time-safe SQLite schema introspection and type mapping.
 module DataFrame.IO.Persistent.Schema.Introspect (
     -- * Column metadata
     ColumnInfo (..),
@@ -55,10 +47,7 @@ data ColumnInfo = ColumnInfo
     }
     deriving (Eq, Show)
 
-{- | The closed set of Haskell element types we map SQLite columns onto. Every
-constructor corresponds to a type that is both 'Database.Persist.PersistField'
-and 'DataFrame.Internal.Column.Columnable'.
--}
+-- | The closed set of Haskell element types SQLite columns map onto.
 data HaskellType
     = HTInt
     | HTDouble
@@ -70,11 +59,7 @@ data HaskellType
     | HTTimeOfDay
     deriving (Eq, Show)
 
-{- | Map a declared SQLite type to a 'HaskellType' using SQLite's own
-(case-insensitive, substring) type-affinity rules, with a few semantic
-refinements for dates/booleans. Unknown or empty declarations fall back the
-same way SQLite does (BLOB affinity for empty, numeric otherwise).
--}
+-- | Map a declared SQLite type to a 'HaskellType' using SQLite affinity rules.
 inferType :: Text -> HaskellType
 inferType declared
     | "INT" `inUpper` declared = HTInt
@@ -104,17 +89,12 @@ inUpper needle hay = needle `T.isInfixOf` T.toUpper hay
 anyIn :: [Text] -> Text -> Bool
 anyIn needles hay = any (`inUpper` hay) needles
 
-{- | Read the columns of @table@ from the SQLite database at @path@, ordered by
-their @PRAGMA table_info@ @cid@ (i.e. declaration order).
--}
+-- | Read a table's columns from a SQLite database in declaration order.
 introspectTable :: FilePath -> String -> IO [ColumnInfo]
 introspectTable path table =
     runSqlite (T.pack path) (introspectTableConn (T.pack table))
 
-{- | 'introspectTable' over an existing connection. Backend-agnostic: SQLite uses
-@PRAGMA table_info@; every other backend (PostgreSQL, MySQL, etc.) uses the
-standard @information_schema.columns@.
--}
+-- | 'introspectTable' over an existing, backend-agnostic connection.
 introspectTableConn ::
     (MonadResource m) => Text -> ReaderT SqlBackend m [ColumnInfo]
 introspectTableConn table = do
@@ -186,9 +166,7 @@ parsePragmaRow [cid, name, ctype, notnull, _dflt, pk] =
 parsePragmaRow other =
     error ("introspectTable: unexpected PRAGMA table_info row: " <> show other)
 
-{- | Parse an @information_schema.columns@ row @(name, data_type, is_nullable)@,
-marking 'ciPk' from the table's primary-key column names.
--}
+-- | Parse an @information_schema.columns@ row into a 'ColumnInfo'.
 parseInfoSchemaRow :: [Text] -> [PersistValue] -> ColumnInfo
 parseInfoSchemaRow pkNames [name, dtype, nullable] =
     ColumnInfo nm (pvText dtype) (pvText nullable == "NO") (nm `elem` pkNames)

@@ -2,25 +2,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | The vectorized scatter-accumulate kernel parity gate. Every case asserts
-that 'D.aggregate' (which routes recognised reductions through the fast scatter
-kernel) produces a result byte-identical to the same aggregation forced through
-the expression interpreter ('interpretOnly'). Covered: sum/min/max/count over
-Int and Double, mean, stddev/variance, median, the @max - min@
-compound (Q7), and a mixed multi-aggregation over single and multi-key
-groupings, on Int/Double/nullable/Text-key grids and sizes straddling the
-parallel threshold.
-
-Floating-point sums computed by the scatter follow the same left-to-right
-group-order fold as the interpreter, so the two paths agree bit-for-bit here.
-The PARALLEL path ('DataFrame.Internal.Aggregation.Kernel.Scatter') splits the work by
-disjoint group-id range, and because each group's rows stay in their original
-@valueIndices@ order within one worker's range, the per-group fold order is
-unchanged from the sequential scatter — so the parallel path is also
-byte-identical to the interpreter, asserted here at sizes above the 200k
-parallel threshold (the test suite runs @-with-rtsopts=-N@, so those cases
-exercise the multi-capability scatter).
--}
 module Operations.VectorKernel where
 
 import Control.Exception (throw)
@@ -63,8 +44,7 @@ grid n =
     D.fromColumns
         [ ("ki", DI.fromList [i `mod` 17 | i <- [0 .. n - 1]])
         , ("kt", DI.fromList [T.pack ('g' : show (i `mod` 11)) | i <- [0 .. n - 1]])
-        , -- A high-cardinality key so the parallel group-range split sees many
-          -- small groups (alongside the low-cardinality 'ki'/'kt' few-big-groups).
+        , -- A high-cardinality key so the group-range split sees many groups.
           ("kh", DI.fromList [(i * 2654435761) `mod` 50021 :: Int | i <- [0 .. n - 1]])
         , ("vi", DI.fromList [(i * 31 + 7) `mod` 1000 - 500 :: Int | i <- [0 .. n - 1]])
         , ("vj", DI.fromList [(i * 13) `mod` 97 :: Int | i <- [0 .. n - 1]])

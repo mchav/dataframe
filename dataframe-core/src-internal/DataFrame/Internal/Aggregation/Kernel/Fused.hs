@@ -4,22 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Fused multi-reduction aggregation kernels: several reductions over the
-SAME grouping, evaluated in one pass over the rows.
-
-Two shapes, picked by group-domain width:
-
-* 'mkFusedAgg' \/ 'runFusedAggs' — the STREAMING pass, driven by @rowToGroup@.
-  No @valueIndices@ and no placement pass; each worker keeps a private
-  accumulator per reduction and the partials merge over group slices. Capped at
-  'streamGroupCap', above which the per-worker arrays overflow cache.
-
-* 'mkGatherAgg' \/ 'runGatherAggs' — the GATHER pass, driven by the grouped
-  @(valueIndices, offsets)@ layout, for group domains too wide to stream.
-
-Both amortize the memory traffic of the grouping across every reduction in the
-batch instead of re-reading it once per reduction.
--}
+-- | Fused multi-reduction kernels: several reductions in one pass.
 module DataFrame.Internal.Aggregation.Kernel.Fused (
     FusedAgg,
     mkFusedAgg,
@@ -57,15 +42,7 @@ import DataFrame.Internal.Control.Concurrent (
 shouldPar :: Int -> Bool
 shouldPar = shouldParallelize parThreshold
 
--------------------------------------------------------------------------------
--- Fused multi-reduction streaming pass
--------------------------------------------------------------------------------
-
-{- | One fused reduction of a multi-reduction streaming pass: how to allocate a
-per-worker accumulator, fold a row range into it, merge another worker's
-accumulator into it over a group range (callers merge in worker order), and
-finalize the fully merged accumulator into the output column.
--}
+-- | One fused reduction of a multi-reduction streaming pass.
 data FusedAgg
     = forall s.
         FusedAgg
@@ -79,28 +56,11 @@ data FusedAgg
 
 -- \^ finalize the merged accumulator
 
-{- | Below this many groups a Double sum/mean does NOT join the fused streaming
-pass: the per-expression kernel it would replace
-('DataFrame.Internal.AggKernelDirect.sumDblDirect' under its @seqFloatGroups@
-policy, value mirrored here) runs those as ONE sequential row-order pass that
-is byte-identical to the gather kernels and the interpreter, and the vectorized
-parity gate asserts exactly that. Above it the per-expression kernel already
-merges chunk partials in worker order, so fusing changes nothing semantically
-new. Int reductions and count/min/max are exact under any merge and always
-fuse.
--}
+-- | Below this many groups a Double sum/mean skips the fused streaming pass.
 fusedSeqFloatGroups :: Int
 fusedSeqFloatGroups = 65536
 
-{- | Build the fused-pass reduction for one @(reduction, column)@ pair, or
-'Nothing' when the pair cannot stream (nullable/boxed columns; the
-order-sensitive var/std reductions, which keep their per-expression
-kernels; or a Double sum/mean below 'fusedSeqFloatGroups', which keeps its
-byte-identical sequential pass). Sum/min/max/count/mean over Int are exact
-under any chunk merge; the admitted Double sum and mean merge their per-worker
-partials in worker order (deterministic at a fixed @-N@, chunk-major float
-summation order).
--}
+-- | Build the fused-pass reduction for a pair, or 'Nothing' if it can't stream.
 mkFusedAgg :: Int -> VU.Vector Int -> Reduction -> Column -> Maybe FusedAgg
 mkFusedAgg nGroups rtg red col
     | nGroups <= 0 || nGroups > streamGroupCap = Nothing
@@ -128,20 +88,7 @@ mkFusedAgg nGroups rtg red col
                     _ -> Nothing
         _ -> Nothing
 
-{- | Execute all fused reductions in ONE pass over @rowToGroup@ and the value
-columns: the rows are split into one contiguous chunk per capability, each
-worker walks its chunk in 4096-row blocks running every reduction's
-accumulate-step on the block (the block's @rowToGroup@ slice stays in L1
-across the k steps), and each reduction then merges its per-worker partials in
-fixed worker order (parallel over group slices) and finalizes. Per-group update
-order within each worker is ascending original row order, and chunk boundaries
-are a fixed function of the row and capability counts, so the result is
-deterministic at a fixed @-N@; on a single capability it is bit-identical to
-running each unfused sequential scatter kernel separately.
-
-Pure w.r.t. its immutable inputs (deterministic fan-out and merge order), so
-the 'unsafePerformIO' is safe.
--}
+-- | Execute all fused reductions in one pass over @rowToGroup@ and values.
 runFusedAggs :: Int -> Int -> [FusedAgg] -> [Column]
 runFusedAggs n nGroups aggs = unsafePerformIO $ do
     let !caps' = if shouldPar n then capabilities else 1
@@ -159,9 +106,7 @@ runFusedAggs n nGroups aggs = unsafePerformIO $ do
     mapM snd opened
 {-# NOINLINE runFusedAggs #-}
 
-{- | Open one fused reduction for @caps'@ workers: its per-worker step
-functions (worker order) and the merge+finalize action.
--}
+-- | Open one fused reduction for @caps'@ workers: step functions and merge.
 openFusedAgg :: Int -> Int -> FusedAgg -> IO ([Int -> Int -> IO ()], IO Column)
 openFusedAgg caps' nGroups (FusedAgg new step mergeR fin) = do
     ss <- replicateM caps' new
@@ -251,14 +196,7 @@ sumStepDbl rtg v acc lo hi = go lo
             VUM.unsafeWrite acc k (c + VU.unsafeIndex v i)
             go (i + 1)
 
-{- | The mean aggs hold their (sum, count) pair INTERLEAVED in one array —
-slots @2g@/@2g+1@ share a cache line (pairs are 16-byte aligned, so they never
-straddle one), halving the accumulator misses of the random per-row update
-against two separate arrays (measured ~13% off a fused sum+mean pass at 1e6
-groups / 1e8 rows on -N16). The count is exact in both layouts (an integer, or
-integer-valued Double additions well below 2^53), so sums, merges and the
-finalize divide are bit-identical to the two-array layout.
--}
+-- | Mean aggs keep their (sum, count) pair interleaved in one array.
 meanIntFusedAgg :: Int -> VU.Vector Int -> VU.Vector Int -> FusedAgg
 meanIntFusedAgg nGroups rtg v =
     FusedAgg
@@ -443,18 +381,7 @@ combineDblRange isMin a b lo hi = go lo
             VUM.unsafeWrite a g (if isMin then min x y else max x y)
             go (g + 1)
 
--------------------------------------------------------------------------------
--- Fused multi-reduction gather pass (nGroups above 'streamGroupCap')
--------------------------------------------------------------------------------
-
-{- | One fused reduction of a multi-reduction GATHER pass: allocate the output
-array, fold a contiguous group range (each group's rows via the shared
-@valueIndices@ slice, accumulator in registers, one write per group), finalize.
-Group ranges are disjoint across workers, so there is no merge and every
-reduction reproduces the exact per-group fold order and formula of its unfused
-gather kernel ('reduceParTyped') — results are bit-identical to running the
-kernels separately, at any @-N@.
--}
+-- | One fused reduction of a multi-reduction gather pass.
 data GatherAgg
     = forall s.
         GatherAgg
@@ -462,11 +389,7 @@ data GatherAgg
         (s -> Int -> Int -> IO ())
         (s -> IO Column)
 
-{- | Build the fused gather reduction for one @(reduction, column)@ pair, or
-'Nothing' when the pair cannot fuse (nullable/boxed columns, or var/std,
-which keep their per-expression gather kernels). @vis@/@offs@ are captured
-lazily: nothing is forced until the pass actually runs.
--}
+-- | Build the fused gather reduction for a pair, or 'Nothing' if it can't fuse.
 mkGatherAgg ::
     Int ->
     VU.Vector Int ->
@@ -510,21 +433,11 @@ mkGatherAgg nGroups vis offs red col = case col of
             step
             (fmap fromUnboxedVector . VU.unsafeFreeze)
 
-{- | Number of groups each fused-gather block hands to every reduction before
-moving on: the block's @valueIndices@ slice stays hot in cache across the k
-per-reduction loops.
--}
+-- | Groups each fused-gather block hands to every reduction before moving on.
 gatherBlock :: Int
 gatherBlock = 32
 
-{- | Execute all fused gather reductions in one traversal: workers own disjoint
-contiguous group ranges (row-balanced, same policy as every gather kernel), and
-walk them in 'gatherBlock'-group blocks running each reduction's fold on the
-block. Deterministic and bit-identical to the unfused kernels (see
-'GatherAgg'). Forces @valueIndices@ once, before the fan-out.
-
-Pure w.r.t. its immutable inputs, so the 'unsafePerformIO' is safe.
--}
+-- | Execute all fused gather reductions in one traversal over group ranges.
 runGatherAggs ::
     VU.Vector Int -> VU.Vector Int -> Int -> [GatherAgg] -> [Column]
 runGatherAggs vis offs nGroups aggs = unsafePerformIO $ do
@@ -544,9 +457,7 @@ runGatherAggs vis offs nGroups aggs = unsafePerformIO $ do
     mapM snd opened
 {-# NOINLINE runGatherAggs #-}
 
--- Monomorphic per-reduction gather folds; each replicates the exact per-group
--- recurrence of its unfused kernel above ('countPar'/'sumPar'/'extremaPar'/
--- 'meanPar'), so fused results are bit-identical.
+-- Gather folds replicate their unfused kernels' per-group recurrence exactly.
 
 gatherCount :: VU.Vector Int -> VUM.IOVector Int -> Int -> Int -> IO ()
 gatherCount offs out gs ge = go gs

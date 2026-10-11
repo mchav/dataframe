@@ -15,10 +15,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- |
-Predicates and introspection over a 'Column': representation tests, null/type
-queries, and the human-readable type descriptions used in error messages.
--}
+-- | Predicates and introspection over a 'Column'.
 module DataFrame.Internal.Column.Properties where
 
 import qualified Data.Text as T
@@ -82,9 +79,7 @@ isNumeric (BoxedColumn _ (_vec :: VB.Vector a)) = case testEquality (typeRep @a)
     Just Refl -> True
 isNumeric (PackedText _ _) = False
 
-{- | Whether the column stores element type @a@. For nullable columns, also
-'True' when @a = Maybe b@ and the column stores @b@ internally.
--}
+-- | Whether the column stores element type @a@, looking through 'Maybe'.
 hasElemType :: forall a. (Columnable a) => Column -> Bool
 hasElemType = \case
     BoxedColumn bm (_column :: VB.Vector b) -> checkBoxed bm (typeRep @b)
@@ -116,9 +111,7 @@ columnVersionString column = case column of
     PackedText (Just _) _ -> "NullableBoxed"
     MergedColumn _ _ -> columnVersionString (mergedHead column)
 
-{- | An internal/debugging function to get the type stored in the outermost vector
-of a column.
--}
+-- | Debugging helper: the type stored in a column's outermost vector.
 columnTypeString :: Column -> String
 columnTypeString column = case column of
     BoxedColumn Nothing (_ :: VB.Vector a) -> show (typeRep @a)

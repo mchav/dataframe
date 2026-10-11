@@ -23,8 +23,7 @@ frame =
         , ("Arrival Delay in Minutes", D.fromList [0, 12.5, 3, 0 :: Double])
         ]
 
--- A fitted-tree shape: a cast Int threshold, a Text inequality, a column whose
--- name contains an operator character, a negative leaf, and a scaled sum.
+-- A fitted-tree shape: cast threshold, Text inequality, operator-char name.
 model :: Expr Double
 model =
     F.lit 0.1

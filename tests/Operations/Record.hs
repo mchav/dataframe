@@ -49,7 +49,7 @@ $( D.deriveSchemaValuesFromParquetFile
     "./tests/data/alltypes_plain.parquet"
  )
 
--- Nullable fields (Maybe Text -> RNullableBoxed; Maybe Int -> RNullableUnboxed).
+-- Nullable (Maybe Text -> RNullableBoxed, Maybe Int -> RNullableUnboxed).
 data User = User
     { userId :: Int64
     , userName :: Maybe T.Text

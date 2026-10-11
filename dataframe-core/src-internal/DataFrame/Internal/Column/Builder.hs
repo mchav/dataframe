@@ -3,10 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- | Mutable, growable column builders for high-throughput ingest. No
-per-append @IORef@ traffic: hot counters live in an unboxed vector, payloads
-double on demand, and validity is only materialized once a null is seen.
--}
+-- | Mutable, growable column builders for high-throughput ingest.
 module DataFrame.Internal.Column.Builder (
     ColumnBuilder (..),
     NumBuilder,
@@ -56,10 +53,7 @@ import DataFrame.Internal.Column.Merge (
  )
 import Foreign.Ptr (Ptr)
 
-{- | Operations shared by all column builders.
-
-NB: Do not use after freezing
--}
+-- | Operations shared by all column builders; do not use after freezing.
 class ColumnBuilder b where
     -- | Append a null row (sentinel payload + invalid bit).
     appendNull :: b s -> ST s ()
@@ -76,9 +70,7 @@ cRows = 0
 cAnyNull = 1
 cBytes = 2
 
-{- | Builder for unboxed numeric payloads ('Int', 'Double', ...). 'nbNull'
-is the sentinel written into null slots.
--}
+-- | Builder for unboxed numeric payloads, with a null-slot sentinel.
 data NumBuilder a s = NumBuilder
     { nbNull :: !a
     , nbCounters :: !(VUM.MVector s Int)
@@ -178,11 +170,7 @@ freezeTrimmed n mv
     | VUM.length mv - n <= n `shiftR` 2 = VU.unsafeFreeze (VUM.slice 0 n mv)
     | otherwise = VU.freeze (VUM.slice 0 n mv)
 
-{- | Builder for 'Text' columns.
-
-Representation is packed. I.e all field bytes go into one exponentially
-grown byte array with rows recorded as offsets.
--}
+-- | Builder for 'Text' columns using one packed, growable byte array.
 data TextBuilder s = TextBuilder
     { tbCounters :: !(VUM.MVector s Int)
     , tbArrays :: !(STRef s (TextArrays s))
@@ -272,9 +260,7 @@ growText b (TextArrays bytes bcap offsets val) needRows needBytes = do
     writeSTRef (tbArrays b) arrs
     pure arrs
 
-{- | Freeze a 'TextBuilder' into a raw 'TextChunk' for later merging
-('mergeTextChunks').
--}
+-- | Freeze a 'TextBuilder' into a raw 'TextChunk' for later merging.
 freezeTextChunk :: TextBuilder s -> ST s TextChunk
 freezeTextChunk b = do
     n <- VUM.unsafeRead (tbCounters b) cRows

@@ -1,9 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Large DataFrame fixtures used by the Parquet test suite.
-Kept in a separate module to avoid cluttering Parquet.hs.
--}
+-- | Large DataFrame fixtures used by the Parquet test suite.
 module ParquetTestData (
     allTypes,
     tinyPagesLast10,

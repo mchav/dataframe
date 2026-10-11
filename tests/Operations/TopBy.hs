@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
--- | 'topBy' returns exactly the window a full 'sortBy' would, for every key type and tie pattern.
+-- | 'topBy' returns the window a full 'sortBy' would, for every key type.
 module Operations.TopBy (tests) where
 
 import qualified Data.Text as T

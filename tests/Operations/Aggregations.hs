@@ -302,7 +302,7 @@ distinctAllSameRows =
             )
         )
 
--- groupBy on an Optional (nullable) column: Nothing values form their own group.
+-- groupBy on a nullable column: Nothing values form their own group.
 optGroupByDf :: D.DataFrame
 optGroupByDf =
     D.fromColumns

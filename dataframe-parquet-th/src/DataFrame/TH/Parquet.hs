@@ -1,12 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-{- |
-Module      : DataFrame.TH.Parquet
-License     : MIT
-
-Parquet-file-based 'DataFrame.TH' splices. Splits out the Parquet ingest
-path so @dataframe-th@ stays IO-agnostic.
--}
+-- | Splices that derive column bindings from Parquet files.
 module DataFrame.TH.Parquet (
     declareColumnsFromParquetFile,
     deriveSchemaValuesFromParquetFile,
@@ -40,9 +34,7 @@ import qualified DataFrame.Internal.DataFrame as DI
 import DataFrame.TH.Records (declareColumns, declareSchemaValues)
 import Prelude as P
 
-{- | Splice a binding for every column of a parquet file (or directory of
-parquet files). The schema is read from each file's metadata and merged.
--}
+-- | Splice a binding for every column of a parquet file or directory.
 declareColumnsFromParquetFile :: String -> DecsQ
 declareColumnsFromParquetFile path =
     liftIO (emptyFrameFromParquet path) >>= declareColumns

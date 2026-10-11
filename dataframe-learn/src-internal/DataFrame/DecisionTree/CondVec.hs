@@ -3,10 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Cached condition truth vectors and the per-fit cache keyed by structural
-form. A condition's truth over a fixed DataFrame is invariant for a whole
-fit, so it is materialized once and reused.
--}
+-- | Cached condition truth vectors and the per-fit cache keyed by form.
 module DataFrame.DecisionTree.CondVec (
     CondVec (..),
     materializeCondVec,
@@ -48,9 +45,7 @@ data CondVec = CondVec
     , cvVec :: !(VU.Vector Bool)
     }
 
-{- | Interpret a condition once over the DataFrame; 'Nothing' on a
-type/interpret failure so the candidate is silently dropped.
--}
+-- | Interpret a condition once over the DataFrame; Nothing on failure.
 materializeCondVec :: DataFrame -> Expr Bool -> Maybe CondVec
 materializeCondVec df cond = case interpret @Bool df cond of
     Left _ -> Nothing
@@ -59,15 +54,10 @@ materializeCondVec df cond = case interpret @Bool df cond of
 eitherToMaybe :: Either e a -> Maybe a
 eitherToMaybe = either (const Nothing) Just
 
-{- | Full-DataFrame truth vectors keyed by structural form, read-only once
-built. Seeded for free from the candidate pool plus the initial tree so the
-predict/loss passes index a vector instead of re-interpreting per node.
--}
+-- | Truth vectors keyed by structural form, read-only once built.
 type CondCache = M.Map T.Text (VU.Vector Bool)
 
-{- | Structural key matching the candidate-dedup key, so a tree branch whose
-condition came from the pool hits the cache (equal keys ⟹ equal vector).
--}
+-- | Structural key matching the candidate-dedup key.
 condCacheKey :: Expr Bool -> T.Text
 condCacheKey = T.pack . show . normalize
 
@@ -75,9 +65,7 @@ condCacheKey = T.pack . show . normalize
 condCacheFromVecs :: [CondVec] -> CondCache
 condCacheFromVecs cvs = M.fromList [(condCacheKey (cvExpr cv), cvVec cv) | cv <- cvs]
 
-{- | Add a tree's branch-condition vectors to a cache (one interpret per
-distinct, not-yet-cached condition).
--}
+-- | Add a tree's branch-condition vectors to a cache.
 addTreeCondsToCache :: DataFrame -> Tree a -> CondCache -> CondCache
 addTreeCondsToCache df = go
   where
@@ -92,15 +80,13 @@ insertCond df cond c
   where
     k = condCacheKey cond
 
-{- | A condition's truth vector: a cache hit, else interpret over the
-DataFrame. 'Nothing' mirrors the interpret-failure fallback (route left).
--}
+-- | A condition's truth vector: a cache hit, else interpret.
 lookupCondVec :: CondCache -> DataFrame -> Expr Bool -> Maybe (VU.Vector Bool)
 lookupCondVec cache df cond = case M.lookup (condCacheKey cond) cache of
     hit@(Just _) -> hit
     Nothing -> cvVec <$> materializeCondVec df cond
 
--- | Partition row indices by a truth vector: @True@ → left, @False@ → right.
+-- | Partition row indices by a truth vector: True goes left.
 partitionByVec :: VU.Vector Bool -> V.Vector Int -> (V.Vector Int, V.Vector Int)
 partitionByVec boolVals = V.partition (boolVals VU.!)
 
@@ -110,9 +96,7 @@ countErrorsByVec boolVals = length . filter misrouted
   where
     misrouted cp = (boolVals VU.! cpIndex cp) /= (cpCorrectDir cp == GoLeft)
 
-{- | A same-column same-direction Double threshold comparison, with a rebuild
-function to swap in a new threshold.
--}
+-- | A same-column same-direction Double threshold comparison.
 data ThreshCmp = ThreshCmp
     { tcCol :: !T.Text
     , tcName :: !T.Text
@@ -132,9 +116,7 @@ asDoubleThreshold _ = Nothing
 directionalNames :: [T.Text]
 directionalNames = ["lt", "leq", "gt", "geq"]
 
-{- | Tighter (AND) or looser (OR) of two same-direction thresholds: @<@/@<=@
-are left-half-spaces (AND = min), @>@/@>=@ are right-half-spaces (AND = max).
--}
+-- | Tighter (AND) or looser (OR) of two same-direction thresholds.
 chooseThreshold :: Bool -> T.Text -> Double -> Double -> Double
 chooseThreshold isAnd name t1 t2
     | leftDir = if isAnd then min t1 t2 else max t1 t2
@@ -142,9 +124,7 @@ chooseThreshold isAnd name t1 t2
   where
     leftDir = name == "lt" || name == "leq"
 
-{- | Collapse two same-column same-direction strict-Double comparisons into one
-comparison (the @True@ argument selects AND, @False@ OR); 'Nothing' otherwise.
--}
+-- | Collapse two same-direction Double comparisons into one, if possible.
 consolidateThreshold :: Bool -> Expr Bool -> Expr Bool -> Maybe (Expr Bool)
 consolidateThreshold isAnd ea eb = do
     a <- asDoubleThreshold ea
@@ -153,9 +133,7 @@ consolidateThreshold isAnd ea eb = do
         then Just (tcRebuild a (chooseThreshold isAnd (tcName a) (tcThr a) (tcThr b)))
         else Nothing
 
-{- | AND-combine two cached conditions: idempotence and threshold consolidation
-first, else the generic @F.and@; the vector is always the elementwise AND.
--}
+-- | AND-combine two cached conditions, consolidating thresholds if possible.
 combineAndVec :: CondVec -> CondVec -> CondVec
 combineAndVec a b
     | eqExpr (cvExpr a) (cvExpr b) = a
@@ -166,9 +144,7 @@ combineAndVec a b
             (F.and (cvExpr a) (cvExpr b))
             (consolidateThreshold True (cvExpr a) (cvExpr b))
 
-{- | OR-combine two cached conditions (see 'combineAndVec'; AND/OR direction
-differs in 'consolidateThreshold').
--}
+-- | OR-combine two cached conditions (see combineAndVec).
 combineOrVec :: CondVec -> CondVec -> CondVec
 combineOrVec a b
     | eqExpr (cvExpr a) (cvExpr b) = a

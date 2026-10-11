@@ -1,9 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Specification for the fitted-tree pruning pass ('pruneDead'): path-condition
-entailment, the false-edge NaN gate, and same-branch collapse.
--}
+-- | Specification for the fitted-tree pruning pass (pruneDead).
 module TreePruning (tests) where
 
 import DataFrame.DecisionTree.Prune (pruneDead)

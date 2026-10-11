@@ -186,8 +186,7 @@ quantilesOrd' qs q samp
                 let !p = fromIntegral i / fromIntegral q :: Double
                     !position = p * fromIntegral (n - 1)
                     !index = floor position :: Int
-                -- This is not exact for Ord instances.
-                -- Figure out how to make it so.
+                -- Not exact for Ord instances; TODO make it so.
                 VM.read mutableSamp index
             )
             (V.convert qs)

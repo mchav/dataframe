@@ -1,7 +1,4 @@
-{- | A fuel-bounded, deterministic algebraic simplifier — the dependency-light
-stand-in for equality saturation. Used as a canonical dedup key for the Pareto
-archive and to tidy reported expressions; total and evaluation-preserving.
--}
+-- | A fuel-bounded, deterministic algebraic simplifier.
 module DataFrame.SymbolicRegression.Simplify (
     simplify,
 ) where

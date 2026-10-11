@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Agreement tests: 'buildCartTree' must predict identically to sklearn's
-@DecisionTreeClassifier(random_state=0, max_depth=4)@ on shared folds (golden
-fixtures from @bench/export_cart_fixtures.py@); missing fixtures SKIP.
--}
+-- | Agreement tests: buildCartTree must predict identically to sklearn.
 module Cart (tests) where
 
 import Control.Exception (SomeException, try)
@@ -35,8 +32,7 @@ data Fixture = Fixture ![Int] ![T.Text]
 instance FromJSON Fixture where
     parseJSON = withObject "fixture" $ \o -> Fixture <$> o .: "test_index" <*> o .: "test_pred"
 
--- sklearn cart_d4 params: max_depth 4, min_samples_leaf 1 (min_samples_split
--- is fixed at 2 inside buildCartTree).
+-- sklearn cart_d4 params: max_depth 4, min_samples_leaf 1.
 cartCfg :: TreeConfig
 cartCfg = defaultTreeConfig{maxTreeDepth = 4, minLeafSize = 1}
 
@@ -57,9 +53,7 @@ readJson fp = do
         Left _ -> Left "missing"
         Right raw -> eitherDecode raw
 
--- wine is tie-free so sklearn is deterministic (exact match); bcw/adult have
--- equal-gain ties sklearn breaks via a seeded feature permutation, so we only
--- report the match fraction rather than chase its RNG.
+-- wine is tie-free (exact match); bcw/adult report the match fraction.
 runCase :: String -> Int -> IO ()
 runCase name i = do
     efx <- readJson ("tests/fixtures/cart/" ++ name ++ "_fold" ++ show i ++ ".json")

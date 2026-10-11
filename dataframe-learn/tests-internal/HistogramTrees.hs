@@ -2,10 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Histogram trees (the gradient-boosting learner): the compiled tree must
-route rows exactly as fitting did, and with no more distinct values than bins
-it must partition the rows like the exact regression tree.
--}
+-- | Histogram trees: compiled routing must match fitting, and exact trees.
 module HistogramTrees (tests) where
 
 import Data.Either (fromRight)
@@ -100,8 +97,7 @@ inSampleMatchesInterpret = TestCase $ do
         (interpreted df t)
         inSample
 
--- 23 distinct values of md squeezed into 4 bins: thresholds come from the
--- equal-count cuts, and routing must still agree.
+-- 23 distinct md values squeezed into 4 bins must still route consistently.
 coarseBinsMatchInterpret :: Test
 coarseBinsMatchInterpret = TestCase $ do
     let (y, df) = mixedFrame 200

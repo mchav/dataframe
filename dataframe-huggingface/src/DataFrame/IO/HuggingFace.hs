@@ -1,11 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Read Parquet datasets from HuggingFace URIs
-(@hf:\/\/datasets\/{owner}\/{dataset}\/{glob}@) into 'DataFrame's. Globs are
-resolved via the datasets-server API, files downloaded to a temp dir, then read
-with the local "DataFrame.IO.Parquet".
--}
+-- | Read Parquet datasets from HuggingFace @hf://@ URIs into 'DataFrame's.
 module DataFrame.IO.HuggingFace (
     -- * Eager readers
     readParquet,
@@ -66,16 +62,7 @@ import System.FilePath ((</>))
 import System.FilePath.Glob (compile, match)
 import System.IO.Temp (createTempDirectory, getCanonicalTemporaryDirectory)
 
--- Eager readers -----------------------------------------------------------
-
-{- | Read a Parquet dataset from a @hf://@ URI (or a local path) into a
-'DataFrame'.
-
-==== __Example__
-@
-ghci> readParquet "hf://datasets/owner/dataset/data/train-*.parquet"
-@
--}
+-- | Read a Parquet dataset from a @hf://@ URI or local path.
 readParquet :: FilePath -> IO DataFrame
 readParquet = readParquetWithOpts defaultParquetReadOptions
 
@@ -85,23 +72,17 @@ readParquetWithOpts opts path
     | isHFUri path = readDownloaded opts =<< fetchHFParquetFiles path
     | otherwise = Parquet.readParquetWithOpts opts path
 
-{- | Read multiple Parquet files from a @hf://@ URI (or a local directory/glob).
-
-For multi-file reads, @rowRange@ is applied once after concatenation (global
-range semantics).
--}
+-- | Read several Parquet files, applying the row range once after concat.
 readParquetFiles :: FilePath -> IO DataFrame
 readParquetFiles = readParquetFilesWithOpts defaultParquetReadOptions
 
--- | Read multiple Parquet files from a @hf://@ URI (or local dir/glob) with options.
+-- | Read multiple Parquet files from a @hf://@ URI (or glob) with options.
 readParquetFilesWithOpts :: ParquetReadOptions -> FilePath -> IO DataFrame
 readParquetFilesWithOpts opts path
     | isHFUri path = readDownloaded opts =<< fetchHFParquetFiles path
     | otherwise = Parquet.readParquetFilesWithOpts opts path
 
-{- | Read a list of downloaded local files, concatenate them, and apply the
-global row range once over the result.
--}
+-- | Read and concatenate downloaded files, applying the row range once.
 readDownloaded :: ParquetReadOptions -> [FilePath] -> IO DataFrame
 readDownloaded opts files = do
     let optsNoRange = opts{rowRange = Nothing}
@@ -112,12 +93,7 @@ applyRowRange :: ParquetReadOptions -> DataFrame -> DataFrame
 applyRowRange opts df =
     maybe df (`DS.range` df) (rowRange opts)
 
--- Lazy / streaming reader -------------------------------------------------
-
-{- | Build a lazy 'Lazy.LazyDataFrame' over a @hf://@ dataset (or local path).
-HuggingFace files are downloaded to a temp dir up front, then scanned lazily
-from disk — constant-memory query, but the whole dataset is fetched first.
--}
+-- | Build a lazy dataframe over a @hf://@ dataset downloaded up front.
 scanParquet :: Schema -> T.Text -> IO Lazy.LazyDataFrame
 scanParquet schema uri
     | isHFUri (T.unpack uri) = do
@@ -125,7 +101,7 @@ scanParquet schema uri
         pure (Lazy.scanParquet schema (T.pack dir))
     | otherwise = pure (Lazy.scanParquet schema uri)
 
--- | Resolve a @hf://@ URI and download all matching files into a fresh temp dir.
+-- | Resolve a @hf://@ URI and download matching files into a fresh temp dir.
 downloadToDir :: FilePath -> IO FilePath
 downloadToDir uri = do
     (mToken, files) <- resolveFiles uri
@@ -133,8 +109,6 @@ downloadToDir uri = do
     dir <- createTempDirectory tmp "hf-parquet"
     _ <- downloadHFFilesTo dir mToken files
     pure dir
-
--- HuggingFace resolution --------------------------------------------------
 
 data HFRef = HFRef
     { hfOwner :: T.Text
@@ -190,10 +164,7 @@ getHFToken = do
                 Right bs -> pure (Just (BS.takeWhile (/= 10) bs))
                 Left _ -> pure Nothing
 
-{- | Extract the repo-relative path from a HuggingFace download URL.
-URL format: https://huggingface.co/datasets/{owner}/{dataset}/resolve/{ref}/{path}
-Returns the {path} portion (e.g. "data/train-00000-of-00001.parquet").
--}
+-- | Extract the repo-relative path from a HuggingFace download URL.
 hfUrlRepoPath :: HFParquetFile -> String
 hfUrlRepoPath f =
     case T.breakOn "/resolve/" (hfpUrl f) of
@@ -259,9 +230,7 @@ downloadHFFilesTo destDir mToken files =
 hasGlob :: T.Text -> Bool
 hasGlob = T.any (\c -> c == '*' || c == '?' || c == '[')
 
-{- | Build the direct HF repo download URL for a path with no wildcards.
-Format: https://huggingface.co/datasets/{owner}/{dataset}/resolve/main/{path}
--}
+-- | Build the direct HF repo download URL for a path with no wildcards.
 directHFUrl :: HFRef -> T.Text
 directHFUrl ref =
     "https://huggingface.co/datasets/"
@@ -271,9 +240,7 @@ directHFUrl ref =
         <> "/resolve/main/"
         <> hfGlob ref
 
-{- | Resolve a @hf://@ URI to the token and the list of files to fetch, without
-downloading.
--}
+-- | Resolve a @hf://@ URI to a token and files to fetch, without downloading.
 resolveFiles :: FilePath -> IO (Maybe BS.ByteString, [HFParquetFile])
 resolveFiles uri = do
     ref <- case parseHFUri uri of

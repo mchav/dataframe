@@ -1,9 +1,4 @@
-{- | Cross-validation and grid search for hyperparameter tuning. The model
-fitters have heterogeneous types, so these helpers are parameterized by a
-user-supplied @train -> test -> score@ closure; the search maximizes the mean
-cross-validated score (use a negated error metric to minimize). Splitting reuses
-the deterministic 'kFolds' from @dataframe-operations@.
--}
+-- | Cross-validation and grid search for hyperparameter tuning.
 module DataFrame.ModelSelection (
     crossValScore,
     crossValidate,
@@ -25,9 +20,7 @@ import DataFrame.Metrics (Metric, evaluate)
 import DataFrame.Operations.Merge ()
 import DataFrame.Operations.Subset (kFolds, rowsAtIndices)
 
-{- | Per-fold scores from k-fold cross-validation. @scoreFn train test@ fits on
-the training rows and returns a score on the held-out fold.
--}
+-- | Per-fold scores from k-fold cross-validation.
 crossValScore ::
     Int -> Int -> (DataFrame -> DataFrame -> Double) -> DataFrame -> [Double]
 crossValScore folds seed scoreFn df =
@@ -40,15 +33,7 @@ crossValScore folds seed scoreFn df =
     others i = [f | (j, f) <- zip [0 ..] fs, j /= i]
     combine = foldr1 (<>)
 
-{- | scikit-learn @cross_val_score@: fit a model on each training fold and score
-its prediction expression against a truth column on the held-out fold.
-
-@fitPredict train@ fits on the training frame and returns the prediction
-expression; @truth@ is the target column. Returns the per-fold metric values.
-
-> crossValidate 5 0 rmse (F.col @Double "target")
->   (\tr -> predict (fit defaultLinearConfig (F.col @Double "target") tr)) df
--}
+-- | Fit on each training fold and score predictions on the held-out fold.
 crossValidate ::
     Int ->
     Int ->
@@ -62,9 +47,7 @@ crossValidate folds seed metric truth fitPredict =
   where
     score train = evaluate metric (fitPredict train) truth
 
-{- | A fold number in @[0, k)@ for every row. Each label's rows are shuffled by
-the seed and dealt round-robin, so every fold has the same class balance.
--}
+-- | A class-balanced fold number in [0, k) for every row.
 stratifiedFoldIds :: Int -> Int -> VU.Vector Double -> VU.Vector Int
 stratifiedFoldIds k seed labels = VU.update (VU.replicate n 0) (VU.fromList assigned)
   where
@@ -76,9 +59,7 @@ stratifiedFoldIds k seed labels = VU.update (VU.replicate n 0) (VU.fromList assi
             | c <- S.toList (S.fromList (VU.toList labels))
             ]
 
-{- | Out-of-fold scores: row @i@ is scored by @fitScore train test@ fitted on
-every fold except row @i@'s.
--}
+-- | Out-of-fold scores: each row is scored by a model not trained on it.
 outOfFold ::
     VU.Vector Int ->
     (DataFrame -> DataFrame -> VU.Vector Double) ->
@@ -103,9 +84,7 @@ data GridSearchResult c = GridSearchResult
     }
     deriving (Show)
 
-{- | Search configurations by mean cross-validated score, returning the
-maximizer. @scoreFn cfg train test@ fits @cfg@ on @train@ and scores on @test@.
--}
+-- | Search configurations by mean cross-validated score, returning the best.
 gridSearch ::
     Int ->
     Int ->

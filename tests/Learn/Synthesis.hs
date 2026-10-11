@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Feature-synthesis enumerator: it should recover small exact features
-(@x²@, @a/b@) from the example rows, score them near-perfectly, and be
-deterministic.
--}
+-- | The synthesis enumerator recovers small exact features deterministically.
 module Learn.Synthesis (tests) where
 
 import Assertions (assertExpectException)
@@ -74,11 +71,7 @@ deterministic = TestCase $ do
         (D.prettyPrint (sfExpr a))
         (D.prettyPrint (sfExpr b))
 
-{- | A wide frame at the default 'synMaxSize' refuses instead of exhausting the
-heap. 'synBankCap' caps what is kept, not what is generated, so the layers past
-size 4 used to allocate tens of gigabytes and kill the process — which no test
-can catch, because there is no process left to fail.
--}
+-- | A wide frame at the default synMaxSize refuses, not exhausts the heap.
 refusesOversizedSearch :: Test
 refusesOversizedSearch =
     TestCase

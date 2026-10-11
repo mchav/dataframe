@@ -4,10 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Top-level fitting: assemble the candidate pool, seed from CART, run TAO,
-and convert the result to an expression. Also the probability-tree variant
-('fitProbTree') that annotates leaves with class distributions.
--}
+-- | Top-level fitting: candidate pool, CART seed, TAO, then an expression.
 module DataFrame.DecisionTree.Fit (
     treeToExpr,
     fitDecisionTree,
@@ -168,9 +165,7 @@ normaliseCounts indices vals = M.map (\c -> fromIntegral c / total) counts
             indices
     total = fromIntegral (V.length indices) :: Double
 
-{- | Re-label a fitted tree's leaves with class distributions, routing the
-training data through the (unchanged) split conditions.
--}
+-- | Re-label a fitted tree's leaves with class distributions.
 buildProbTree ::
     forall a.
     (Columnable a, Ord a) =>

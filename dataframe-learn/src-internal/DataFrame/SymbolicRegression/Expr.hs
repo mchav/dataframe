@@ -1,9 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-{- | The symbolic-regression expression tree: a small first-order ADT with
-vectorized evaluation and a total translation to a dataframe 'Expr Double'.
-Division, log, and sqrt are protected so evaluation never produces @NaN@.
--}
+-- | The symbolic-regression expression tree with protected, total operators.
 module DataFrame.SymbolicRegression.Expr (
     SRExpr (..),
     BinOp (..),
@@ -45,9 +42,7 @@ allBinOps = [minBound .. maxBound]
 allUnOps :: [UnOp]
 allUnOps = [minBound .. maxBound]
 
-{- | Evaluate over a feature matrix given column-major (@feats ! j@ is feature
-@j@ across all rows). Protected operators keep results finite.
--}
+-- | Evaluate over a column-major feature matrix with protected operators.
 evalSR :: V.Vector (VU.Vector Double) -> Int -> SRExpr -> VU.Vector Double
 evalSR feats n = go
   where

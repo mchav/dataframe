@@ -2,10 +2,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
 
-{- | Fast @Double@ slice parser, bit-exact with @readByteStringDouble@.
-Replays the reference parser's exact floating-point operations via 'Word64'
-digit accumulation and 10^k tables, falling back when exactness is in doubt.
--}
+-- | Fast @Double@ slice parser, bit-exact with @readByteStringDouble@.
 module DataFrame.Internal.Parsing.Fast.Double (parseDoubleField#) where
 
 import qualified Data.ByteString as BS
@@ -18,10 +15,6 @@ import GHC.Exts (Double (..), Double#, Int#)
 import DataFrame.Internal.Parsing (readByteStringDouble)
 import DataFrame.Internal.Parsing.Fast.Common
 
-{- | @10 ^ k@ for @k <= tableMax@, computed with the same @(^)@ the reference
-parser uses, so every entry is bit-identical. Entries from @10^309@ up are
-@Infinity@, so clamping larger exponents to 'tableMax' is exact.
--}
 pow10Table :: VU.Vector Double
 pow10Table = VU.generate (tableMax + 1) (10 ^)
 {-# NOINLINE pow10Table #-}
@@ -34,10 +27,7 @@ recipPow10Table = VU.map recip pow10Table
 tableMax :: Int
 tableMax = 1024
 
-{- | 'Word64' to 'Double' exactly as the reference parser's
-'fromInteger' rounds it; values up to @2^53@ take the exact
-'Int' conversion (int2Double#), larger ones the 'Integer' route.
--}
+-- | 'Word64' to 'Double' rounded exactly as the reference parser does.
 w2d :: Word64 -> Double
 w2d w
     | w <= 9007199254740991 = fromIntegral (fromIntegral w :: Int)
@@ -52,9 +42,7 @@ referenceSlice bs start end =
         Nothing -> (# 0#, 0.0## #)
 {-# NOINLINE referenceSlice #-}
 
-{- | Result is @(# ok, value #)@ with @ok@ 0 or 1. Caller guarantees
-@0 <= start <= end <= length buf@.
--}
+-- | Result is @(# ok, value #)@ with @ok@ 0 or 1.
 parseDoubleField# :: BS.ByteString -> Int -> Int -> (# Int#, Double# #)
 parseDoubleField# bs start end0
     | i0 >= end = none

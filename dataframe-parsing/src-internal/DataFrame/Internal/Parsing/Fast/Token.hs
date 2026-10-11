@@ -1,10 +1,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
 
-{- | Byte-level token tests: Bool fields, the canonical missing-token
-set, and the default @%Y-%m-%d@ date shape. All length-bucketed with
-first-byte dispatch; no Text decode, no list walk.
--}
+-- | Byte-level token tests: Bool fields, missing tokens and the date shape.
 module DataFrame.Internal.Parsing.Fast.Token (
     parseBoolField#,
     isMissingFieldSlice,
@@ -22,9 +19,7 @@ import GHC.Exts (Int#)
 import DataFrame.Internal.Parsing (readByteStringDate)
 import DataFrame.Internal.Parsing.Fast.Common (isDigitByte)
 
-{- | Exactly @True|true|TRUE|False|false|FALSE@, no strip (the
-'readByteStringBool' grammar). Result is @(# ok, bool #)@.
--}
+-- | Exactly @True|true|TRUE|False|false|FALSE@, with no strip.
 parseBoolField# :: BS.ByteString -> Int -> Int -> (# Int#, Int# #)
 parseBoolField# bs s e = case e - s of
     4
@@ -42,10 +37,7 @@ parseBoolField# bs s e = case e - s of
     alse a b c d = ix 1 == a && ix 2 == b && ix 3 == c && ix 4 == d
 {-# INLINE parseBoolField# #-}
 
-{- | Membership in the canonical missing list
-@[\"Nothing\",\"NULL\",\"\",\" \",\"nan\",\"null\",\"N\/A\",\"NaN\",\"NAN\",\"NA\"]@
-(case-sensitive, exact), dispatched on length then first byte.
--}
+-- | Membership in the canonical missing-token list, case-sensitive and exact.
 isMissingFieldSlice :: BS.ByteString -> Int -> Int -> Bool
 isMissingFieldSlice bs s e = case e - s of
     0 -> True
@@ -80,10 +72,7 @@ isMissingFieldIn :: [BS.ByteString] -> BS.ByteString -> Bool
 isMissingFieldIn toks f = f `elem` toks
 {-# INLINE isMissingFieldIn #-}
 
-{- | @%Y-%m-%d@: byte-level fast path for the padded 10-byte shape
-(@dddd-dd-dd@); anything else (unpadded, whitespace-tolerant, long
-years, invalid) falls back to 'readByteStringDate'.
--}
+-- | @%Y-%m-%d@ with a fast path for the padded 10-byte shape.
 parseDateFieldSlice :: BS.ByteString -> Int -> Int -> Maybe Day
 parseDateFieldSlice bs s e
     | e - s == 10

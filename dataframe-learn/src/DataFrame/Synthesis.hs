@@ -5,38 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | Feature synthesis by bottom-up enumerative search with observational
-equivalence — the canonical enumerative method from Solar-Lezama's
-/Introduction to Program Synthesis/.
-
-Given a frame and a numeric target column, it searches for a small, interpretable
-arithmetic expression over the other columns whose values track the target.
-
-The engine:
-
-  * enumerates programs by increasing AST size (so the first representative of any
-    behaviour is the smallest — interpretability for free);
-  * evaluates each candidate /incrementally/ by combining the cached result
-    vectors of its subprograms (one vector op), never re-interpreting the whole
-    tree;
-  * keeps exactly one program per /observational-equivalence/ class — candidates
-    producing the same column (up to a float tolerance) are interchangeable, so
-    duplicates are dropped rather than re-explored;
-  * breaks commutative symmetry (never both @a+b@ and @b+a@) and uses protected
-    operators (@sqrt|x|@, @log(|x|+1)@) plus a denominator guard so domain errors
-    never arise;
-  * caps each size layer by fit score when it grows large (a cost-guided
-    tractability bound over /distinct/ behaviours, not a lossy beam over raw
-    syntax).
-
-'fit' returns the best 'SynthesizedFeature'; 'predict' is its expression.
-'synthesizeFeatures' returns the whole ranked, deduplicated feature bank — useful
-as automated feature engineering feeding a downstream model.
-
-Deferred (documented next steps, not yet implemented): skeleton enumeration with
-closed-form least-squares coefficient fitting, hard-row counterexample sampling
-for very large frames, and piecewise (condition-abduction) features.
--}
+-- | Feature synthesis by bottom-up enumerative search over expressions.
 module DataFrame.Synthesis (
     module DataFrame.Model,
     LossFunction (..),
@@ -72,7 +41,7 @@ import DataFrame.Internal.Statistics (
 import DataFrame.Model
 import DataFrame.Operations.Core (columnAsDoubleVector)
 
--- | How a candidate's output column is scored against the target (higher is better).
+-- | How a candidate's output column is scored against the target.
 data LossFunction
     = -- | Pearson @r²@: scale-invariant, the default for derived features.
       PearsonCorrelation
@@ -106,9 +75,7 @@ defaultSynthesisConfig =
         , synMaxAllocBytes = 8 * 1024 * 1024 * 1024
         }
 
-{- | A synthesized feature. 'sfExpr' is the best-scoring expression and 'sfFeatures'
-is the ranked, observationally-distinct bank (expression and its score).
--}
+-- | A synthesized feature: the best expression and a ranked bank.
 data SynthesizedFeature = SynthesizedFeature
     { sfExpr :: !(Expr Double)
     , sfScore :: !Double
@@ -156,7 +123,7 @@ synthesizeFeatures cfg target df
         ((e, s) : _) -> (e, s)
         [] -> (Lit 0, negate (1 / 0))
 
--- | Size-1 programs: numeric feature columns and a pool of constants, OE-deduped.
+-- | Size-1 programs: numeric feature columns and a pool of constants.
 mkLeaves :: DataFrame -> [T.Text] -> Int -> [Prog]
 mkLeaves df feats n = fst (dedupProgs M.empty candidates)
   where
@@ -167,9 +134,7 @@ mkLeaves df feats n = fst (dedupProgs M.empty candidates)
         ]
             ++ [Prog (Lit v) 1 (VU.replicate n v) | v <- constantPool df feats]
 
-{- | Domain-informed constants: per-column quartiles, variance, and std, plus a few
-small integers. (Duplicates collapse under observational equivalence.)
--}
+-- | Domain-informed constants: column quartiles, variance, std, small ints.
 constantPool :: DataFrame -> [T.Text] -> [Double]
 constantPool df feats =
     [0, 1, 2, -1]
@@ -244,7 +209,7 @@ commutativeProds =
     , (F.max, max)
     ]
 
--- | Ordered operand pairs whose sizes sum to @size-1@ (for non-commutative ops).
+-- | Ordered operand pairs whose sizes sum to size-1.
 orderedPairs :: Int -> [Prog] -> [(Prog, Prog)]
 orderedPairs size bank =
     [ (a, b)
@@ -272,9 +237,7 @@ unorderedPairs size bank =
   where
     atSize s = filter ((== s) . progSize) bank
 
-{- | Keep the valid, observationally-novel candidates of a layer, then cap by fit
-score (cost-guided). Returns the kept programs and the updated OE-class set.
--}
+-- | Keep valid, observationally-novel candidates of a layer, capped by score.
 absorb ::
     SynthesisConfig -> Output -> Seen -> [Prog] -> ([Prog], Seen)
 absorb cfg tgt seen0 cands = (capLayer cfg tgt fresh, seen')
@@ -306,8 +269,7 @@ oversizedSearch cfg nLeaves n
   where
     budget = synMaxAllocBytes cfg
     bytesPerProg = 8 * max 1 n
-    -- 4 commutative ops over unordered pairs plus sub and div over ordered
-    -- pairs, all quadratic in the bank; unaries and powers are lower order.
+    -- Quadratic in the bank: 4 commutative ops plus ordered sub and div.
     binaryOpCount = 4 :: Int
     -- Layer k pairs the capped bank with itself over the binary operators.
     candidatesAt k
@@ -324,7 +286,7 @@ oversizedSearch cfg nLeaves n
                   ]
             )
 
--- | When a layer has more distinct programs than the cap, keep the best-scoring.
+-- | When a layer exceeds the cap, keep the best-scoring programs.
 capLayer :: SynthesisConfig -> Output -> [Prog] -> [Prog]
 capLayer cfg tgt progs
     | length progs <= synBankCap cfg = progs
@@ -342,15 +304,11 @@ scoreOf lf tgt out
         MeanSquaredError -> negate <$> meanSquaredError tgt out
   where
     bins = max 10 (ceiling (sqrt (fromIntegral (VU.length tgt) :: Double)))
-    -- Belt-and-suspenders: drop any non-finite score so it cannot win the ranking.
+    -- Drop non-finite scores so they cannot win the ranking.
     finite (Just s) | isNaN s || isInfinite s = Nothing
     finite ms = ms
 
-{- | Pearson @r²@ via the numerically stable centered two-pass formula. Returns
-'Nothing' when the feature (or target) is constant, and is bounded by
-Cauchy–Schwarz to @[0,1]@ — unlike the one-pass @n·Σxy − Σx·Σy@ form, which
-cancels catastrophically for low-variance features and can report @r² > 1@.
--}
+-- | Pearson r-squared via the stable centered two-pass formula.
 pearsonR2 :: Output -> Output -> Maybe Double
 pearsonR2 ys xs
     | n < 2 = Nothing
@@ -369,18 +327,11 @@ pearsonR2 ys xs
 valid :: Output -> Bool
 valid o = not (VU.null o) && VU.all (\x -> not (isNaN x || isInfinite x)) o
 
-{- | Quantize an output to nine significant digits, so float noise (@x*2@ vs
-@x+x@) collapses while genuinely distinct features stay apart.
--}
+-- | Quantize an output to nine significant digits to absorb float noise.
 quantize :: Output -> Output
 quantize = VU.map (\x -> if x == 0 then 0 else signum x * roundSig 9 (abs x))
 
-{- | The observational-equivalence class set: a map from a 64-bit FNV-1a
-fingerprint of the quantized output to the (usually one) quantized outputs with
-that fingerprint. Bucketing on the fingerprint keeps membership cheap, and
-verifying exact equality within the bucket makes a hash collision harmless — two
-genuinely different columns that happen to collide are kept apart, not merged.
--}
+-- | The observational-equivalence class set, bucketed by output fingerprint.
 type Seen = M.Map Int [Output]
 
 -- | FNV-1a fingerprint of an already-quantized output's bit patterns.
@@ -404,9 +355,7 @@ roundSig n x
             scale = 10 ** fromIntegral (n - 1 - magnitude)
          in fromIntegral (round (x * scale) :: Integer) / scale
 
-{- | Keep the first valid program of each observational-equivalence class,
-preserving order; returns the kept programs and the grown class set.
--}
+-- | Keep the first valid program of each observational-equivalence class.
 dedupProgs :: Seen -> [Prog] -> ([Prog], Seen)
 dedupProgs = go []
   where

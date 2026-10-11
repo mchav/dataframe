@@ -6,9 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
--- The inference lattice (sample classification, 'ParsingAssumption',
--- Int -> Double promotion) lives in "DataFrame.Operations.Inference"
--- and is re-exported here for backwards compatibility.
+-- The inference lattice lives in "DataFrame.Operations.Inference", re-exported.
 module DataFrame.Operations.Typing (
     module DataFrame.Operations.Typing,
     module DataFrame.Operations.Inference,
@@ -49,10 +47,7 @@ import DataFrame.Schema
 import Text.Read
 import Type.Reflection
 
-{- | How parse failures are surfaced: 'NoSafeRead' throws, 'MaybeRead' yields
-@Nothing@ (column wrapped @Maybe a@), 'EitherRead' yields @Left rawText@
-(column wrapped @Either Text a@, preserving the original input).
--}
+-- | How parse failures are surfaced: throw, 'Nothing', or 'Left' raw text.
 data SafeReadMode
     = NoSafeRead
     | MaybeRead
@@ -64,20 +59,16 @@ data ParseOptions = ParseOptions
     { missingValues :: [T.Text]
     -- ^ Values to treat as @Nothing@ when the effective mode is 'MaybeRead'.
     , sampleSize :: Int
-    -- ^ Number of rows to inspect when inferring a column's type (0 = all rows).
+    -- ^ Rows to inspect when inferring a column's type (0 = all rows).
     , parseSafe :: SafeReadMode
-    -- ^ Default 'SafeReadMode' for columns without a 'parseSafeOverrides' entry.
+    -- ^ Default 'SafeReadMode' for columns with no 'parseSafeOverrides' entry.
     , parseSafeOverrides :: [(T.Text, SafeReadMode)]
-    {- ^ Per-column overrides taking precedence over 'parseSafe' — e.g. strict
-    IDs (@NoSafeRead@) alongside lenient fields (@MaybeRead@/@EitherRead@).
-    -}
+    -- ^ Per-column overrides taking precedence over 'parseSafe'.
     , parseDateFormat :: DateFormat
-    -- ^ Date format string as accepted by "Data.Time.Format" (e.g. @\"%Y-%m-%d\"@).
+    -- ^ Date format as accepted by "Data.Time.Format" (e.g. @\"%Y-%m-%d\"@).
     }
 
-{- | Sensible out-of-the-box parse options: infer from the first 100 rows,
-  treat common nullish strings as missing, and expect ISO 8601 dates.
--}
+-- | Sensible out-of-the-box parse options: infer from 100 rows, ISO dates.
 defaultParseOptions :: ParseOptions
 defaultParseOptions =
     ParseOptions
@@ -88,9 +79,7 @@ defaultParseOptions =
         , parseDateFormat = "%Y-%m-%d"
         }
 
-{- | Resolve a column's effective 'SafeReadMode': the override if present,
-otherwise the default.
--}
+-- | Resolve a column's effective 'SafeReadMode': override if present.
 effectiveSafeRead ::
     SafeReadMode -> [(T.Text, SafeReadMode)] -> T.Text -> SafeReadMode
 effectiveSafeRead def overrides name = fromMaybe def (lookup name overrides)
@@ -150,10 +139,7 @@ parseFromExamples opts cols =
   where
     classify p t = if p t then Nothing else Just t
 
-{- | For 'EitherRead' mode: parse under the chosen assumption into an
-@Either Text a@ column. Successful parses become @Right@; failures (including
-null/missing cells) become @Left@ carrying the raw input verbatim.
--}
+-- | For 'EitherRead' mode: parse into an @Either Text a@ column.
 handleEitherAssumption ::
     DateFormat -> ParsingAssumption -> V.Vector T.Text -> Column
 handleEitherAssumption dfmt assumption raw = case assumption of
@@ -215,10 +201,7 @@ handleBoolAssumption isNull cols =
         (parseUnboxedColumnWithPred False isNull readBool cols)
         (handleTextAssumption isNull cols)
 
-{- | Int columns: one fused pass with in-place Int -> Double promotion; a cell
-parsing as neither demotes the column to Text. 'readIntStrict' rejects overflow
-so a huge integer promotes to 'Double' rather than wrapping.
--}
+-- | Int columns: one fused pass with in-place Int to Double promotion.
 handleIntAssumption :: (T.Text -> Bool) -> V.Vector T.Text -> Column
 handleIntAssumption isNull cols =
     case promoteIntColumn (\_ t -> isNull t) readIntStrict readDouble cols of
@@ -231,9 +214,7 @@ handleDoubleAssumption isNull cols =
         (parseUnboxedColumnWithPred 0 isNull readDouble cols)
         (handleTextAssumption isNull cols)
 
-{- | Text columns: no parse, just null-marking. An all-non-null column stays a
-plain @V.Vector T.Text@; otherwise it becomes @V.Vector (Maybe T.Text)@.
--}
+-- | Text columns: no parse, just null-marking.
 handleTextAssumption :: (T.Text -> Bool) -> V.Vector T.Text -> Column
 handleTextAssumption isNull cols
     | V.any isNull cols =
@@ -241,10 +222,7 @@ handleTextAssumption isNull cols
             (V.map (\t -> if isNull t then Nothing else Just t) cols)
     | otherwise = fromVector cols
 
-{- | Date: single boxed parse pass ('Day' is not unboxable). Bails to
-'handleTextAssumption' the moment a non-null cell fails to parse as a 'Day'.
-A column with no nulls keeps type 'Day' rather than 'Maybe Day'.
--}
+-- | Date columns: one boxed parse pass, falling back to Text on failure.
 handleDateAssumption ::
     DateFormat -> (T.Text -> Bool) -> V.Vector T.Text -> Column
 handleDateAssumption dateFormat isNull cols =
@@ -279,8 +257,7 @@ parseBoxedMaybeColumn isNull parser cols = runST $ do
                             Nothing -> return Nothing
     loop 0 False
 
--- Reached only when the sample was all-null: try each concrete type in turn,
--- falling back to Text. A column with no nulls keeps type 'Day', not 'Maybe Day'.
+-- Reached only for an all-null sample: try each concrete type, else Text.
 handleNoAssumption ::
     DateFormat -> (T.Text -> Bool) -> V.Vector T.Text -> Column
 handleNoAssumption dateFormat isNull cols
@@ -298,9 +275,7 @@ handleNoAssumption dateFormat isNull cols
             | otherwise -> fromVector (V.mapMaybe id vec)
         Nothing -> handleTextAssumption isNull cols
 
-{- | True for nullish or explicitly-listed missing strings. ('convertNullish'
-and 'convertOnlyEmpty' below are kept only for external callers.)
--}
+-- | True for nullish or explicitly-listed missing strings.
 isNullishOrMissing :: [T.Text] -> T.Text -> Bool
 isNullishOrMissing missing v = isNullish v || v `elem` missing
 
@@ -329,9 +304,7 @@ vecSameConstructor xs ys = (V.length xs == V.length ys) && V.and (V.zipWith hasS
     hasSameConstructor Nothing Nothing = True
     hasSameConstructor _ _ = False
 
-{- | Re-type columns of a 'DataFrame' according to a schema map. @resolveMode@
-maps a column name to its 'SafeReadMode' (typically via 'effectiveSafeRead').
--}
+-- | Re-type columns of a 'DataFrame' according to a schema map.
 parseWithTypes ::
     (T.Text -> SafeReadMode) ->
     M.Map T.Text SchemaType ->
@@ -398,9 +371,7 @@ readAsEither v = case asum [readMaybe $ "Left " <> s, readMaybe $ "Right " <> s]
   where
     s = if null v then "\"\"" else v
 
-{- | Try 'readMaybe'; on failure return @Left raw@ where @raw@ is the original
-input text. Used by 'parseWithTypes' under 'EitherRead'.
--}
+-- | Try 'readMaybe'; on failure return @Left raw@ with the original text.
 readEitherRaw :: forall a. (Read a) => String -> Either T.Text a
 readEitherRaw s = case readMaybe s of
     Just v -> Right v

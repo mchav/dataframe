@@ -1,7 +1,4 @@
-{- | This module contains low-level utilities around file seeking.
-
-later this module can be renamed / moved to an internal module.
--}
+-- | Low-level utilities around file seeking.
 module DataFrame.IO.Parquet.Seeking (
     SeekableHandle (getSeekableHandle),
     SeekMode (..),
@@ -22,28 +19,10 @@ import Data.IORef
 import Data.Int
 import System.IO
 
-{- | This handle carries a proof that it must be seekable.
-Note: Handle and SeekableHandle are not thread safe, should not be
-shared across threads, beaware when running parallel/concurrent code.
-
-Not seekable:
-  - stdin / stdout
-  - pipes / FIFOs
-
-But regular files are always seekable. Parquet fundamentally wants random
-access, a non-seekable source will not support effecient access without
-buffering the entire file.
--}
+-- | A handle that carries a proof that it is seekable.
 newtype SeekableHandle = SeekableHandle {getSeekableHandle :: Handle}
 
-{- | If we truely want to support non-seekable files, we need to also consider the case
-to buffer the entire file in memory.
-
-Not thread safe, contains mutable reference (as Handle already is).
-
-If we need concurrent / parallel parsing or something, we need to read into ByteString
-first, not sharing the same handle.
--}
+-- | Handle that is either seekable or buffered in memory.
 data FileBufferedOrSeekable
     = FileBuffered !(IORef Int64) !BS.ByteString
     | FileSeekable !SeekableHandle
@@ -57,9 +36,7 @@ mkSeekableHandle h = do
 -- | For testing only
 type ForceNonSeekable = Maybe Bool
 
-{- | Smart constructor for FileBufferedOrSeekable, tries to keep in the seekable case
-if possible.
--}
+-- | Smart constructor that stays in the seekable case when possible.
 mkFileBufferedOrSeekable ::
     ForceNonSeekable -> Handle -> IO FileBufferedOrSeekable
 mkFileBufferedOrSeekable forceNonSeek h = do
@@ -68,11 +45,7 @@ mkFileBufferedOrSeekable forceNonSeek h = do
         then FileBuffered <$> newIORef 0 <*> BS.hGetContents h
         else pure $ FileSeekable $ SeekableHandle h
 
-{- | With / bracket pattern for FileBufferedOrSeekable
-
-Warning: do not return the FileBufferedOrSeekable outside the scope of the action as
-it will be closed.
--}
+-- | Bracket-style access to a 'FileBufferedOrSeekable'.
 withFileBufferedOrSeekable ::
     ForceNonSeekable ->
     FilePath ->
@@ -83,10 +56,7 @@ withFileBufferedOrSeekable forceNonSeek path ioMode action = withFile path ioMod
     fbos <- mkFileBufferedOrSeekable forceNonSeek h
     action fbos
 
-{- | Read the last @n@ bytes, useful for reading metadata without loading the
-entire file. Uses 'BS.hGet' (not @hGetContents@) so the handle stays open for
-the subsequent column-chunk reads.
--}
+-- | Read the last @n@ bytes, e.g. to get metadata without the whole file.
 readLastBytes :: Integer -> FileBufferedOrSeekable -> IO BS.ByteString
 readLastBytes n (FileSeekable sh) = do
     let h = getSeekableHandle sh

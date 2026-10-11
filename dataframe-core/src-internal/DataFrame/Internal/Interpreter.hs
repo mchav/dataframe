@@ -57,7 +57,6 @@ import Data.Word (Word64)
 import GHC.Float (castDoubleToWord64)
 
 -- Specializations for common aggregation types to avoid dictionary overhead.
--- foldLinearGroups: mean accumulator
 {-# SPECIALIZE foldLinearGroups ::
     ((Double, Int) -> Double -> (Double, Int)) ->
     (Double, Int) ->
@@ -243,24 +242,19 @@ import GHC.Float (castDoubleToWord64)
     (Bool -> Bool) -> Column -> Either DataFrameException Column
     #-}
 
--------------------------------------------------------------------------------
--- Value: the unified result type
--------------------------------------------------------------------------------
-
-{- | The result of interpreting an expression.  Keeps literals as scalars
-until the point where a concrete column is needed, avoiding premature
-broadcast allocations.
--}
+-- | The result of interpreting an expression; literals stay scalar.
 data Value a where
     -- | A single value, not yet broadcast to any length.
-    Scalar :: (Columnable a) => !a -> Value a
-    {- | A flat column (one element per row in the flat case, or one
-    element per group after aggregation).
-    -}
-    Flat :: (Columnable a) => !Column -> Value a
-    {- | A grouped column: one 'Column' slice per group.  Only produced
-    when interpreting inside a 'GroupCtx'.
-    -}
+    Scalar ::
+        (Columnable a) =>
+        !a ->
+        -- | A flat column, one element per row (or per group once aggregated).
+        Value a
+    Flat ::
+        (Columnable a) =>
+        !Column ->
+        -- | A grouped column: one 'Column' slice per group.
+        Value a
     Group :: (Columnable a) => !(V.Vector Column) -> Value a
 
 instance (Show a) => Show (Value a) where
@@ -273,30 +267,18 @@ data Ctx
     = FlatCtx DataFrame
     | GroupCtx GroupedDataFrame
 
--------------------------------------------------------------------------------
--- Materialisation
--------------------------------------------------------------------------------
-
-{- | Force a 'Value' into a flat 'Column' of the given length.  Scalars
-are broadcast; flat columns are returned as-is.
--}
+-- | Force a 'Value' into a flat 'Column' of the given length.
 materialize :: forall a. (Columnable a) => Int -> Value a -> Column
 materialize n (Scalar v) = broadcastScalar @a n v
 materialize _ (Flat c) = c
 materialize _ (Group _) =
     error "materialize: cannot flatten a grouped value to a single column"
 
-{- | Replicate a scalar to a column of length @n@, choosing the most
-efficient representation.
--}
+-- | Replicate a scalar to a column of length @n@ in the cheapest form.
 broadcastScalar :: forall a. (Columnable a) => Int -> a -> Column
 broadcastScalar n v = case sUnbox @a of
     STrue -> fromUnboxedVector (VU.replicate n v)
     SFalse -> fromVector (V.replicate n v)
-
--------------------------------------------------------------------------------
--- Lifting: the core combinators
--------------------------------------------------------------------------------
 
 -- | Apply a pure function to a 'Value'.
 liftValue ::
@@ -307,10 +289,7 @@ liftValue f (Flat col) = Flat <$> mapColumn f col
 liftValue f (Group gs) = Group <$> V.mapM (mapColumn f) gs
 {-# INLINEABLE liftValue #-}
 
-{- | Apply a binary function to two 'Value's. When one side is a 'Scalar' the
-operation degenerates to 'liftValue', recovering the old @Binary op (Lit l) right@
-special cases without explicit pattern matches.
--}
+-- | Apply a binary function to two 'Value's, degenerating when one is scalar.
 liftValue2 ::
     (Columnable c, Columnable b, Columnable a) =>
     (c -> b -> a) ->
@@ -332,10 +311,7 @@ liftValue2 _ (Group _) (Group _) =
     Left $ InternalException "Group count mismatch in binary operation"
 {-# INLINEABLE liftValue2 #-}
 
-{- | If-then-else over values already computed for every row. Each row takes
-its value from the chosen branch only, so a null in the other branch does not
-make the row null.
--}
+-- | If-then-else over values already computed for every row.
 branchValue ::
     forall a.
     (Columnable a) =>
@@ -403,10 +379,7 @@ fromOperand :: (Columnable a, VU.Unbox a) => K.Operand a -> Value a
 fromOperand (K.Literal x) = Scalar x
 fromOperand (K.Column v) = Flat (UnboxedColumn Nothing v)
 
-{- | A column loop for a built-in binary operator. The loop returns 'Nothing'
-for operands it cannot take (nulls, boxed columns), and the operator's own
-function runs instead.
--}
+-- | A column loop for a built-in binary operator, if it can run.
 builtinBinary ::
     forall c b a.
     (Columnable c, Columnable b, Columnable a) =>
@@ -429,8 +402,7 @@ builtinBinary name = do
             "div" -> Just div
             "mod" -> Just mod
             _ -> Nothing
-        -- Only a non-zero literal divisor: the loop runs over every row, so a
-        -- zero anywhere would raise where a lazy per-row evaluation would not.
+        -- Only non-zero literal divisors: lazy evaluation might skip a zero.
         Just $ \l r -> case r of
             Scalar k | k /= 0 -> fromOperand <$> (K.zipOperands op <$> operand l <*> operand r)
             _ -> Nothing
@@ -465,7 +437,7 @@ builtinBinary name = do
             _ -> Nothing
         Just (packedEquals wantEq)
 
--- | Column on the left, needle on the right; not used when the needle has U+FFFD.
+-- | Column on the left, needle on the right; not used if needle has U+FFFD.
 packedContains :: Value T.Text -> Value T.Text -> Maybe (Value Bool)
 packedContains (Flat (PackedText Nothing p)) (Scalar t)
     | not (T.any (== '\xFFFD') t) =
@@ -543,10 +515,7 @@ narrow env positions = env{envRows = Rows rows}
         AllRows -> positions
         Rows sel -> VU.unsafeBackpermute sel positions
 
-{- | Identifies an expression built only from columns, literals and built-in
-operators. Two expressions with equal keys compute the same column, and
-evaluating one on extra rows cannot fail, so a result can be reused.
--}
+-- | Identifies an expression built only from columns, literals and built-ins.
 data Key
     = KeyColumn T.Text SomeTypeRep
     | KeyLiteral Literal
@@ -580,8 +549,7 @@ keyOf expr = fst <$> go maxKeyNodes expr
             Just (KeyUnary (unaryName op) (SomeTypeRep (typeRep @b)) k, left)
         Binary op (l :: Expr c) (r :: Expr b) -> do
             _ <- builtinBinary @c @b @x (binaryName op)
-            -- A shared node may be computed for every row, so a division
-            -- is only shareable when its divisor is a non-zero literal.
+            -- A division is shareable only with a non-zero literal divisor.
             if binaryName op `elem` ["div", "mod"]
                 then case r of
                     Lit (k :: b)
@@ -671,8 +639,7 @@ evalRows env expr = case expr of
         c <- evalRows env cond
         case c of
             Scalar holds -> do
-                -- The other branch runs on no rows: it can still report a
-                -- missing column, but none of its values are computed.
+                -- The other branch runs on no rows; it can only report columns.
                 let (chosen, other) = if holds then (l, r) else (r, l)
                 _ <- evalRows (narrow env VU.empty) other
                 evalRows env chosen
@@ -686,10 +653,7 @@ evalRows env expr = case expr of
     -- Aggregations and windows need every row; then keep the covered ones.
     _ -> failing (restrict (envRows env) <$> eval (FlatCtx (envFrame env)) expr)
 
-{- | Evaluate an operator node, reusing a result kept for the whole frame. A
-repeated node is computed for the whole frame once the rows asked of it add
-up to a full column; before that it is computed only for the rows covered.
--}
+-- | Evaluate an operator node, reusing a result kept for the whole frame.
 evalShared :: forall a. (Columnable a) => Env -> Expr a -> Eval (Value a)
 evalShared env expr = Eval $ \s -> case keyOf expr of
     Just key
@@ -732,9 +696,7 @@ columnBytes c = 16 * columnLength c
 -- | A branch computed for every covered row, or only for the rows choosing it.
 data Arm a = ForEveryRow (Value a) | ForChosenRows (Value a)
 
-{- | A column or literal is already there for every row. Anything else is
-computed only for the rows that choose it.
--}
+-- | A column or literal is already there for every row; else compute lazily.
 evalArm :: (Columnable a) => Env -> VU.Vector Int -> Expr a -> Eval (Arm a)
 evalArm env chosen expr = case expr of
     Col _ -> ForEveryRow <$> evalRows env expr
@@ -780,13 +742,7 @@ mergeArms cs yes no l r = case (K.mergeBranches @a, branch l, branch r, sUnbox @
     lc = chosenColumn yes l
     rc = chosenColumn no r
 
--------------------------------------------------------------------------------
--- Error enrichment
--------------------------------------------------------------------------------
-
-{- | Wrap an interpretation step so that any 'TypeMismatchException' gets
-annotated with the expression that was being evaluated.
--}
+-- | Annotate any 'TypeMismatchException' with the expression being evaluated.
 addContext ::
     (Show a) => Expr a -> Either DataFrameException b -> Either DataFrameException b
 addContext expr = first (enrichError (show expr))
@@ -805,14 +761,7 @@ enrichError loc (TypeMismatchException ctx) =
     a <|+> _ = a
 enrichError _ e = e
 
--------------------------------------------------------------------------------
--- Group slicing
--------------------------------------------------------------------------------
-
-{- | Given a flat column and grouping metadata, produce one 'Column' per
-group.  Each result column is an O(1) slice into a sorted copy of the
-input — the sort happens once, not per-group.
--}
+-- | Given a flat column and grouping metadata, produce one 'Column' per group.
 sliceGroups :: Column -> VU.Vector Int -> VU.Vector Int -> V.Vector Column
 sliceGroups col os indices = case col of
     PackedText _ _ -> sliceGroups (materializePacked col) os indices
@@ -857,10 +806,7 @@ invertPermutation perm = VU.create $ do
     return inv
 {-# INLINE invertPermutation #-}
 
-{- | Coerce a column to type @a@, then apply @onResult@ to each element; the handler
-selects the mode (like @cast@, @castWithDefault@, or @castEither@). Handles Double/
-Float/Int coercion and 'reads'-parses Text; other mismatches return 'Left'.
--}
+-- | Coerce a column to type @a@, then apply @onResult@ to each element.
 promoteColumnWith ::
     forall a b.
     (Columnable a, Columnable b, Read a) =>
@@ -1058,10 +1004,7 @@ tryParseWith onResult col = case col of
                         )
                         (V.convert v)
 
-{- | When output type @b@ is @Maybe c@ (or @Maybe (Maybe c)@) and the column stores
-plain @c@, wrap each element in 'Just' (the double-Maybe case collapses to a single
-@Maybe c@). Returns 'Nothing' when neither condition holds.
--}
+-- | Wrap each element in 'Just' when the output type is @Maybe c@.
 tryMaybeWrap ::
     forall a b.
     (Columnable a, Columnable b) =>
@@ -1099,10 +1042,7 @@ castMismatch =
                 , errorColumnName = Nothing
                 }
 
-{- | Evaluate an expression in a given context, producing a 'Value'.
-This single function replaces both the old @interpret@ (flat) and
-@interpretAggregation@ (grouped) code paths.
--}
+-- | Evaluate an expression in a given context, producing a 'Value'.
 eval ::
     forall a.
     (Columnable a) =>
@@ -1207,9 +1147,7 @@ eval (GroupCtx _) expr@(Over _ _) =
             ( InternalException
                 "Over (window function) is not supported inside a grouped context"
             )
--- Fast path: FoldAgg (seeded) on a bare Col in GroupCtx.
--- Avoids the O(n) backpermute in sliceGroups by folding directly over
--- permuted indices.  Only matches when inner is exactly (Col name).
+-- Fast path: seeded FoldAgg on a bare Col folds over permuted indices.
 
 eval (GroupCtx gdf) expr@(Agg (FoldAgg _ (Just seed) (f :: a -> b -> a)) (Col name :: Expr b)) =
     addContext expr $
@@ -1326,8 +1264,7 @@ eval
                 Group gs ->
                     Flat . fromVector
                         <$> V.mapM (fmap finalize . foldlColumn @b step seed) gs
--- Fast path: a whole-frame sum of a clean Int or Double column, possibly
--- combined with a literal, as one parallel loop with nothing materialized.
+-- Fast path: whole-frame sum of a clean Int/Double column, one parallel loop.
 eval (FlatCtx df) (Agg (FoldAgg "sum" Nothing (_ :: a -> b -> a)) inner)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
     , Just v <- fusedSum df inner =
@@ -1353,15 +1290,7 @@ eval ctx expr@(Agg (FoldAgg _ Nothing (f :: a -> b -> a)) inner) =
                         Flat . fromVector
                             <$> V.mapM (foldl1Column @a f) gs
 
-{- | The op's element function, with a fast path for @toDouble@ (matched by
-'unaryName', like the @toDouble@ peeling in "DataFrame.Internal.Simplify").
-The closure captured at 'Expr'-construction time is @realToFrac@, which at an
-integral source type without a fired rewrite rule lowers to
-@fromRational . toRational@ — a 'Rational' allocation plus 'fromRat' per
-element. 'fromIntegral' at the concrete type is the same correctly-rounded
-conversion, so the swap is bit-identical; only the constant factor changes.
-Non-integral sources and other ops keep the stored function.
--}
+-- | The op's element function, with a fast path for @toDouble@.
 fastUnaryFn ::
     forall b a.
     (Columnable b, Columnable a) =>
@@ -1406,26 +1335,19 @@ iterateStep n step = go n
     go 0 !acc _ = acc
     go k !acc x = go (k - 1) (step acc x) x
 
-{- | Apply a 'CollectAgg' function to a single column, extracting the
-appropriate vector type and applying the aggregation function.
--}
+-- | Apply a 'CollectAgg' function to a single column.
 applyCollect ::
     forall v b a.
     (VG.Vector v b, Typeable v, Columnable b, Columnable a) =>
     (v b -> a) -> Column -> Either DataFrameException a
 applyCollect f col = f <$> toVector @b @v col
 
-{- | Result of interpreting an expression in a grouped context.
-Retained for backward compatibility with 'aggregate' and friends.
--}
+-- | Result of interpreting an expression in a grouped context.
 data AggregationResult a
     = UnAggregated Column
     | Aggregated (TypedColumn a)
 
-{- | Interpret an expression against a flat 'DataFrame', producing a typed column.
-Calls 'eval' then 'materialize'; 'Lit' values are broadcast here at the boundary
-rather than eagerly.
--}
+-- | Interpret an expression against a flat 'DataFrame', producing a column.
 interpret ::
     forall a.
     (Columnable a) =>
@@ -1434,10 +1356,7 @@ interpret df expr = do
     v <- eval (FlatCtx df) expr
     pure $ TColumn $ materialize @a (fst (dataframeDimensions df)) v
 
-{- | Interpret an expression against a 'GroupedDataFrame',
-distinguishing aggregated results from bare column references.
-Internally calls 'eval'.
--}
+-- | Interpret an expression against a 'GroupedDataFrame'.
 interpretAggregation ::
     forall a.
     (Columnable a) =>
@@ -1468,7 +1387,7 @@ fusedMean df name = do
             Nothing -> Nothing
     pure $! if VU.null v then 0 / 0 else total / fromIntegral (VU.length v)
 
--- | The sum of a column, or of an arithmetic combination of a column and a literal.
+-- | The sum of a column, or of an arithmetic combination with a literal.
 fusedSum :: forall a. (Columnable a) => DataFrame -> Expr a -> Maybe a
 fusedSum df expr = case expr of
     Col name -> withClean name Nothing
@@ -1482,8 +1401,7 @@ fusedSum df expr = case expr of
             withClean name (Just (binaryName op, k, True))
     _ -> Nothing
   where
-    -- The operator is picked by name, at a concrete element type, so each
-    -- loop body is a known function over a known vector.
+    -- The operator is picked by name at a concrete element type.
     withClean :: T.Text -> Maybe (T.Text, a, Bool) -> Maybe a
     withClean name combo = do
         UnboxedColumn Nothing (v :: VU.Vector t) <- getColumn name df

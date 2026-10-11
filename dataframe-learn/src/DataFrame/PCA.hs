@@ -4,11 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | Principal component analysis via the symmetric Jacobi eigensolver on the
-covariance of the (optionally standardized) feature columns. 'fit' trains a
-'PCAModel' (components + explained variance); the projection is exposed as
-'pcaExprs' / 'pcaTransform' (PCA is a transformer, so it has no 'Predict').
--}
+-- | Principal component analysis via a Jacobi eigensolver on the covariance.
 module DataFrame.PCA (
     module DataFrame.Model,
     NComponents (..),
@@ -46,10 +42,7 @@ data PCAConfig = PCAConfig
 defaultPCAConfig :: PCAConfig
 defaultPCAConfig = PCAConfig{pcaNComponents = NComp 2, pcaStandardize = False}
 
-{- | A fitted PCA. 'pcaComponents' are sklearn's @components_@ (row @i@ is the
-@i@-th loading vector); 'pcaScale' is @Just@ the per-column std when
-standardizing.
--}
+-- | A fitted PCA with components and explained variance.
 data PCAModel = PCAModel
     { pcaComponents :: !(V.Vector (VU.Vector Double))
     , pcaExplainedVariance :: !(VU.Vector Double)

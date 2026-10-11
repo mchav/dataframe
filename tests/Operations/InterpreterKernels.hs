@@ -3,10 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Comparisons, arithmetic, if-then-else and toDouble evaluate to their
-Haskell functions applied row by row, for every mix of column and literal
-operands. Floating results compare by bit pattern.
--}
+-- | Kernels agree with plain Haskell row by row; floats compare bitwise.
 module Operations.InterpreterKernels where
 
 import Control.Exception (throw)
@@ -83,9 +80,7 @@ columnPair n vals = (Column "x" xs, Column "y" ys)
   where
     (xs, ys) = unzip (take n (cycle [(a, b) | a <- vals, b <- vals]))
 
-{- | Column-column, column-literal and literal-column operands. The large size
-uses fewer literals.
--}
+-- | Column-column, column-literal and literal-column operand pairs.
 operandPairs :: Int -> [e] -> [(Operand e, Operand e)]
 operandPairs n vals = (x, y) : concat [[(x, Literal t), (Literal t, x)] | t <- lits]
   where

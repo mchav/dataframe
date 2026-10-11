@@ -6,19 +6,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-{- | Typed statistical reducers over a 'TypedDataFrame'.
-
-These mirror the untyped reducers in "DataFrame.Operations.Statistics", taking
-a schema-checked 'TExpr' instead of a raw @Expr@. The names (@sum@, @mean@,
-@median@, …) deliberately collide with the aggregation-expression combinators
-in "DataFrame.Typed.Expr", so this module is meant to be imported qualified:
-
-@
-import qualified DataFrame.Typed.Statistics as TS
-
-avg = TS.mean (col \@\"salary\") employees
-@
--}
+-- | Typed statistical reducers over a 'TypedDataFrame'; import qualified.
 module DataFrame.Typed.Statistics (
     mean,
     meanMaybe,
@@ -117,14 +105,7 @@ interQuartileRange (TExpr e) (TDF df) = Stats.interQuartileRange e df
 sum :: (Columnable a, Num a) => TExpr cols a -> TypedDataFrame cols -> a
 sum (TExpr e) (TDF df) = Stats.sum e df
 
-{- | Pearson's correlation coefficient between two columns, named by type
-application. Both columns must exist in the schema and be numeric — these are
-checked at compile time via 'SafeLookup' on each name.
-
-@
-TS.correlation \@\"height\" \@\"weight\" people
-@
--}
+-- | Pearson's correlation coefficient between two named numeric columns.
 correlation ::
     forall c1 c2 a b cols.
     ( KnownSymbol c1
@@ -147,17 +128,12 @@ correlation (TDF df) =
         (T.pack (symbolVal (Proxy @c2)))
         df
 
-{- | Frequency table for a column. The result schema is data-dependent
-(one column per distinct value), so an untyped 'D.DataFrame' is returned.
--}
+-- | Frequency table for a column, returned as an untyped 'D.DataFrame'.
 frequencies ::
     (Columnable a, Ord a) => TExpr cols a -> TypedDataFrame cols -> D.DataFrame
 frequencies (TExpr e) (TDF df) = Stats.frequencies e df
 
-{- | Impute missing values in a column using a derived scalar (e.g. the mean).
-Schema-preserving: the imputed column keeps its type-level @Maybe@ even though
-its runtime values are now fully populated.
--}
+-- | Impute missing values in a column using a derived scalar.
 imputeWith ::
     (ImputeOp a, Columnable (BaseType a)) =>
     (TExpr cols (BaseType a) -> TExpr cols (BaseType a)) ->
@@ -167,14 +143,10 @@ imputeWith ::
 imputeWith f (TExpr e) (TDF df) =
     TDF (Stats.imputeWith (unTExpr . f . TExpr) e df)
 
-{- | Descriptive statistics of the numeric columns. Returns an untyped
-'D.DataFrame' (the result is a fixed set of statistic rows, not the input schema).
--}
+-- | Descriptive statistics of the numeric columns as an untyped 'D.DataFrame'.
 summarize :: TypedDataFrame cols -> D.DataFrame
 summarize (TDF df) = Stats.summarize df
 
-{- | Per-column summary (non-null\/null counts, unique values, type). Returns an
-untyped 'D.DataFrame'.
--}
+-- | Per-column summary of counts, unique values and type, untyped.
 describeColumns :: TypedDataFrame cols -> D.DataFrame
 describeColumns (TDF df) = Core.describeColumns df

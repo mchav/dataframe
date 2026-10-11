@@ -46,13 +46,13 @@ jsonMissingKeyBecomesOptional =
             Right df -> do
                 assertEqual "Missing key: 2 rows" 2 (D.nRows df)
                 assertEqual "Missing key: 2 columns" 2 (D.nColumns df)
-                -- 'b' is absent from the second row, so must have a missing value
+                -- 'b' is absent from the second row, so it is missing
                 assertBool
                     "b column should have missing values"
                     (maybe False DI.hasMissing (DI.getColumn "b" df))
         )
 
--- | When column values are different types across rows, the column becomes generic.
+-- | Column values of different types across rows make the column generic.
 jsonMixedTypeColumn :: Test
 jsonMixedTypeColumn =
     TestCase

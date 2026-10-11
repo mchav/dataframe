@@ -9,21 +9,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 
-{- | Nullable-aware arithmetic and comparison operators ('.+', '.==', …) that work
-transparently across nullable (@Maybe a@) and non-nullable (@a@) operands.
-Functional dependencies infer the result type without annotations.
-
-@
--- Mixing nullable and non-nullable columns:
-F.col \@Int \"x\" '.+' F.col \@(Maybe Int) \"y\"  -- :: Expr (Maybe Int)
-
--- Both non-nullable (existing behaviour preserved):
-F.col \@Int \"x\" '.+' F.col \@Int \"y\"           -- :: Expr Int
-
--- Comparison with three-valued logic:
-F.col \@(Maybe Int) \"x\" '.==' F.col \@Int \"y\"  -- :: Expr (Maybe Bool)
-@
--}
+-- | Nullable-aware operators working across @Maybe a@ and @a@ operands.
 module DataFrame.Internal.Expression.Operators.Nullable (
     -- * Type family
     BaseType,
@@ -61,21 +47,12 @@ import Data.Int (Int32, Int64)
 import DataFrame.Internal.Column (Columnable)
 import DataFrame.Internal.Column.Types (Promote, PromoteDiv)
 
-{- | Strip one layer of 'Maybe'.
-
-@
-BaseType (Maybe a) = a
-BaseType a         = a   -- for any non-Maybe type
-@
--}
+-- | Strip one layer of 'Maybe'.
 type family BaseType a where
     BaseType (Maybe a) = a
     BaseType a = a
 
-{- | Arithmetic binary operations that work over nullable and non-nullable operand
-types. The functional dependency @a b -> c@ infers the result; the 'OVERLAPPABLE'
-non-nullable instance yields to the specific @(Maybe a, Maybe a)@ one.
--}
+-- | Arithmetic binary operations over nullable and non-nullable operands.
 class
     ( Columnable a
     , Columnable b
@@ -84,35 +61,20 @@ class
     NullableArithOp a b c
         | a b -> c
     where
-    {- | Lift an arithmetic function over the inner (non-Maybe) values.
-    'Nothing' short-circuits: any 'Nothing' operand produces 'Nothing'.
-    -}
+    -- | Lift an arithmetic function over inner values; 'Nothing' wins.
     nullArithOp ::
         (BaseType a -> BaseType a -> BaseType a) ->
         a ->
         b ->
         c
 
-{- | Compute the result type of a nullable comparison.
-
-@
-NullCmpResult (Maybe a) b = Maybe Bool
-NullCmpResult a (Maybe b) = Maybe Bool   -- when a is apart from Maybe
-NullCmpResult a b         = Bool
-@
-
-Used by the comparison operators ('.==', '.<', etc.) so GHC infers the
-return type without an explicit annotation.
--}
+-- | Compute the result type of a nullable comparison.
 type family NullCmpResult a b where
     NullCmpResult (Maybe a) b = Maybe Bool
     NullCmpResult a (Maybe b) = Maybe Bool
     NullCmpResult a b = Bool
 
-{- | Comparison binary operations over nullable and non-nullable operands. No
-functional dependency on @e@; overlapping/overlappable instance pragmas pick the
-unique most-specific instance from the concrete operand types.
--}
+-- | Comparison binary operations over nullable and non-nullable operands.
 class
     ( Columnable a
     , Columnable b
@@ -120,18 +82,14 @@ class
     ) =>
     NullableCmpOp a b e
     where
-    {- | Lift a comparison function over the inner values (three-valued logic).
-    Returns 'Nothing' when either operand is 'Nothing'.
-    -}
+    -- | Lift a comparison over inner values with three-valued logic.
     nullCmpOp ::
         (BaseType a -> BaseType a -> Bool) ->
         a ->
         b ->
         e
 
-{- | Non-nullable × Non-nullable: apply directly, no wrapping.
-Arithmetic result is @a@; comparison result is @Bool@.
--}
+-- | Non-nullable by non-nullable: apply directly, no wrapping.
 instance
     {-# OVERLAPPABLE #-}
     (Columnable a, a ~ BaseType a) =>
@@ -202,25 +160,9 @@ instance
     nullCmpOp _f _ Nothing = Nothing
     nullCmpOp f (Just x) (Just y) = Just (f x y)
 
--- ---------------------------------------------------------------------------
--- Generalized nullable lift (unary)
--- ---------------------------------------------------------------------------
+-- ift a unary function over a column expression, propagating 'Nothing'.
 
-{- | Lift a unary function over a column expression, propagating 'Nothing' (applied
-directly when non-nullable, under 'Just' when @a = Maybe x@). Use via
-'DataFrame.Functions.nullLift'.
--}
-
-{- | Compute the result type of a nullable unary lift.
-
-@
-NullLift1Result (Maybe a) r = Maybe r
-NullLift1Result a         r = r        -- for any non-Maybe a
-@
-
-Used by 'DataFrame.Functions.nullLift' so GHC can infer the return type
-without an explicit annotation.
--}
+-- | Compute the result type of a nullable unary lift.
 type family NullLift1Result a r where
     NullLift1Result (Maybe a) r = Maybe r
     NullLift1Result a r = r
@@ -251,25 +193,9 @@ instance
     applyNull1 _ Nothing = Nothing
     applyNull1 f (Just x) = Just (f x)
 
--- ---------------------------------------------------------------------------
--- Generalized nullable lift (binary)
--- ---------------------------------------------------------------------------
+-- ift a binary function over two column expressions, propagating 'Nothing'.
 
-{- | Lift a binary function over two column expressions, propagating 'Nothing': the
-result is @Maybe r@ if either operand is nullable, else @r@. Use via
-'DataFrame.Functions.nullLift2'.
--}
-
-{- | Compute the result type of a nullable binary lift.
-
-@
-NullLift2Result (Maybe a) b         r = Maybe r
-NullLift2Result a         (Maybe b) r = Maybe r   -- when a is apart from Maybe
-NullLift2Result a         b         r = r
-@
-
-Used by 'DataFrame.Functions.nullLift2' so GHC can infer the return type.
--}
+-- | Compute the result type of a nullable binary lift.
 type family NullLift2Result a b r where
     NullLift2Result (Maybe a) b r = Maybe r
     NullLift2Result a (Maybe b) r = Maybe r
@@ -321,15 +247,7 @@ instance
     applyNull2 _ _ Nothing = Nothing
     applyNull2 f (Just x) (Just y) = Just (f x y)
 
--- ---------------------------------------------------------------------------
--- Numeric widening
--- ---------------------------------------------------------------------------
-
-{- | Widen two numeric base types to their promoted common type.
-
-When @a ~ b@ the coercions are identity; otherwise one operand is widened
-(e.g. 'Int' → 'Double').
--}
+-- | Widen two numeric base types to their promoted common type.
 class (Columnable (Promote a b)) => NumericWidenOp a b where
     widen1 :: a -> Promote a b
     widen2 :: b -> Promote a b
@@ -364,7 +282,7 @@ instance NumericWidenOp Double Int64 where
     widen1 = id
     widen2 = fromIntegral
 
--- | Apply an arithmetic function after widening both operands to their common type.
+-- | Apply an arithmetic function after widening both operands.
 widenArithOp ::
     forall a b.
     (NumericWidenOp a b) =>
@@ -374,7 +292,7 @@ widenArithOp ::
     Promote a b
 widenArithOp f x y = f (widen1 @a @b x) (widen2 @a @b y)
 
--- | Apply a comparison function after widening both operands to their common type.
+-- | Apply a comparison function after widening both operands.
 widenCmpOp ::
     forall a b.
     (NumericWidenOp a b) =>
@@ -384,17 +302,10 @@ widenCmpOp ::
     Bool
 widenCmpOp f x y = f (widen1 @a @b x) (widen2 @a @b y)
 
--- | Result type of a widening binary operator, accounting for nullable wrappers.
+-- | Result type of a widening binary operator, accounting for nullables.
 type WidenResult a b = NullLift2Result a b (Promote (BaseType a) (BaseType b))
 
--- ---------------------------------------------------------------------------
--- Division widening (integral × integral → Double)
--- ---------------------------------------------------------------------------
-
-{- | Like 'NumericWidenOp' but uses 'PromoteDiv': integral×integral → Double.
-Floating types still dominate (Double > Float), and any two integral types
-(same or mixed) are both widened to Double.
--}
+-- | Like 'NumericWidenOp' but uses 'PromoteDiv' (integral gives Double).
 class (Columnable (PromoteDiv a b)) => DivWidenOp a b where
     divWiden1 :: a -> PromoteDiv a b
     divWiden2 :: b -> PromoteDiv a b
@@ -462,6 +373,6 @@ divArithOp ::
     PromoteDiv a b
 divArithOp f x y = f (divWiden1 @a @b x) (divWiden2 @a @b y)
 
--- | Result type of a division-widening binary operator, accounting for nullable wrappers.
+-- | Result type of a division-widening binary operator.
 type WidenResultDiv a b =
     NullLift2Result a b (PromoteDiv (BaseType a) (BaseType b))

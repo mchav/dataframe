@@ -2,12 +2,7 @@
 {-# LANGUAGE CApiFFI #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 
-{- | Delimiter-index construction for the fast CSV reader. The index buffer
-is sized from an exact byte count (not 8 bytes per input byte), the SIMD
-scan runs over the 64-byte-aligned prefix of the unpadded mmap, and a
-scalar Haskell tail finishes the final partial chunk — so the input is
-never copied or grown.
--}
+-- | Delimiter-index construction for the fast CSV reader.
 module DataFrame.IO.CSV.Fast.Index (
     CsvParseError (..),
     getDelimiterIndices,
@@ -41,22 +36,11 @@ import Foreign.Storable (peek, poke)
 
 import DataFrame.IO.CSV (UnclosedQuotePolicy (..))
 
-{- | Exceptions raised by the fast CSV parser.  Catchable with
-'Control.Exception.catch' or 'Control.Exception.try'.
--}
+-- | Exceptions raised by the fast CSV parser.
 data CsvParseError
-    = {- | The input ends with a quoted field that was never closed.  The
-      PCLMUL quote-parity chain in the SIMD scanner treats an unmatched
-      @\"@ as if the rest of the file were inside quotes, so we refuse
-      to return a silently corrupted 'DataFrame.Internal.DataFrame.DataFrame'
-      and raise instead.
-      -}
+    = -- | The input ends with a quoted field that was never closed.
       CsvUnclosedQuote
-    | {- | A row has a different number of fields from the header.  Only
-      raised when 'DataFrame.IO.CSV.fastCsvOnRaggedRow' is set to
-      'RaiseOnRagged'.  Carries the 0-based row index, the expected field
-      count, and the actual field count.
-      -}
+    | -- | A row has a different number of fields from the header.
       CsvRaggedRow !Int !Int !Int
     deriving (Eq, Show)
 
@@ -69,17 +53,12 @@ comma = 0x2C
 tab = 0x09
 quote = 0x22
 
--- Status codes reported via the out-parameter of 'get_delimiter_indices'.
--- Must stay in sync with @GDI_*@ in @cbits/process_csv.h@.
+-- Status codes of 'get_delimiter_indices', mirroring @GDI_*@ in the C header.
 gdiOk, gdiUnclosedQuote :: CInt
 gdiOk = 0
 gdiUnclosedQuote = 1
 
-{- | Return value that the C helper uses to tell Haskell \"SIMD isn't
-available on this build / CPU, run the pure-Haskell state machine.\"
-Mirrors @GDI_SIMD_UNAVAILABLE@ in @cbits/process_csv.h@.  'CSize' is
-unsigned so this has the same bit pattern as 'maxBound'.
--}
+-- | Return value meaning SIMD is unavailable and Haskell must scan.
 simdUnavailable :: CSize
 simdUnavailable = maxBound
 
@@ -97,11 +76,7 @@ byteStringView :: Int -> VS.Vector Word8 -> BS.ByteString
 byteStringView n v = BSI.fromForeignPtr (fst (VS.unsafeToForeignPtr0 v)) 0 n
 {-# INLINE byteStringView #-}
 
-{- | Locate delimiter byte positions in the first @originalLen@ bytes of
-@csvFile@.  Treats an unclosed quoted field at EOF as a hard error; callers
-that want to suppress the exception can use 'getDelimiterIndicesPolicy'
-with 'BestEffort'.
--}
+-- | Locate delimiter byte positions in the first @originalLen@ bytes.
 {-# INLINE getDelimiterIndices #-}
 getDelimiterIndices ::
     Word8 ->
@@ -117,16 +92,11 @@ getDelimiterIndicesPolicy ::
     VS.Vector Word8 ->
     IO (VS.Vector CSize)
 getDelimiterIndicesPolicy policy separator contentLen csvFile = do
-    -- Exact upper bound on the index count: every output index is an
-    -- unquoted separator or newline byte, so two memchr-speed counts
-    -- (plus one synthetic EOF slot) right-size the buffer (audit F4).
+    -- Every index is an unquoted separator or newline, plus one EOF slot.
     let contentBS = byteStringView contentLen csvFile
         capacity = BS.count separator contentBS + BS.count lf contentBS + 1
     resultMV <- VSM.unsafeNew capacity
-    -- The C scanner reads whole 64-byte chunks; cap it at the largest
-    -- chunk boundary inside the content so no padding is needed and the
-    -- input never has to be grown or copied (audit F6). The loop in C
-    -- runs while i < len - 64, hence the + 64.
+    -- The C scanner reads whole 64-byte chunks, so stop at the last one.
     let simdLen = (contentLen `div` 64) * 64
     (numFound, status) <- VS.unsafeWith csvFile $ \buffer ->
         alloca $ \statusPtr -> do
@@ -140,8 +110,7 @@ getDelimiterIndicesPolicy policy separator contentLen csvFile = do
                     statusPtr
             s <- peek statusPtr
             pure (n, s)
-    -- The status reports the quote parity at the end of the SIMD region,
-    -- which is exactly the starting state for the scalar tail.
+    -- The status gives the quote parity the scalar tail starts from.
     (found, inQuote) <-
         if numFound == simdUnavailable
             then scalarScan separator csvFile resultMV 0 0 contentLen False
@@ -164,11 +133,7 @@ getDelimiterIndicesPolicy policy separator contentLen csvFile = do
             else pure found
     VS.unsafeFreeze (VSM.slice 0 finalLen resultMV)
 
-{- | RFC 4180 quote-parity state machine over bytes @[from, to)@, appending
-delimiter indices at @writeIdx@.  Returns the next write index and whether
-the scan ended inside a quoted region. Serves as both the SIMD tail and the
-full fallback when SIMD is unavailable.
--}
+-- | RFC 4180 quote-parity state machine over a byte range.
 scalarScan ::
     Word8 ->
     VS.Vector Word8 ->
@@ -196,10 +161,7 @@ scalarScan separator file out writeIdx from to = go writeIdx from
                                         go (idx + 1) (i + 1) False
                                     else go idx (i + 1) False
 
-{- | Walk every data row and throw 'CsvRaggedRow' on the first one whose
-field count differs from the header.  Only called when the user opts
-into 'RaiseOnRagged' via 'DataFrame.IO.CSV.fastCsvOnRaggedRow'.
--}
+-- | Throw 'CsvRaggedRow' on the first row whose field count differs.
 checkNoRaggedRows ::
     VS.Vector Int ->
     VS.Vector Int ->
@@ -214,18 +176,7 @@ checkNoRaggedRows rowEnds dataRows numCol =
         )
         dataRows
 
-{- | Classify each entry in the flat delimiter vector as either a row
-terminator or a field terminator, and return the indices-into-the-vector
-of every row terminator.  A position counts as a row break if either
-
-  * the byte at that position is @\\n@, or
-  * the position is beyond the original content length, which only
-    happens for the synthetic end-of-file delimiter written when a file
-    does not end in a newline.
-
-Field terminators (commas / tabs / the configured separator) are left
-implicit: anything between consecutive row terminators is a field.
--}
+-- | Find the indices of every row terminator in the delimiter vector.
 {-# INLINE classifyRowEnds #-}
 classifyRowEnds :: VS.Vector Word8 -> Int -> VS.Vector CSize -> VS.Vector Int
 classifyRowEnds file contentLen =
@@ -235,9 +186,7 @@ classifyRowEnds file contentLen =
         let p = fromIntegral pos :: Int
          in p >= contentLen || VS.unsafeIndex file p == lf
 
-{- | Number of fields that row @r@ contains, derived directly from the
-gap between consecutive entries in @rowEnds@.
--}
+-- | Number of fields that row @r@ contains.
 {-# INLINE fieldsInRow #-}
 fieldsInRow :: VS.Vector Int -> Int -> Int
 fieldsInRow rowEnds r =
@@ -245,12 +194,7 @@ fieldsInRow rowEnds r =
         startIdx = if r == 0 then 0 else VS.unsafeIndex rowEnds (r - 1) + 1
      in endIdx - startIdx + 1
 
-{- | Does row @r@ contain exactly one, empty field?  That is the case for
-a bare @\\n@ or a @\\r\\n@ \x2014 blank lines, which we skip by default to
-match pandas / polars @skip_blank_lines@ semantics.  We also treat a
-row whose only byte is @\\r@ as blank, so CRLF-terminated blank lines
-don't leak through when only the @\\n@ counts as a row break.
--}
+-- | Does row @r@ contain exactly one empty field (a blank line)?
 {-# INLINE isBlankRow #-}
 isBlankRow ::
     VS.Vector Word8 ->
@@ -280,9 +224,7 @@ isBlankRow file delimiters rowEnds contentLen r =
                             && VS.unsafeIndex file fieldStart == cr
                        )
 
-{- | Select the row indices that contain actual data: skip @[0 .. skip - 1]@
-and drop any blank rows from the remainder.
--}
+-- | Select the row indices that contain actual data.
 {-# INLINE collectDataRows #-}
 collectDataRows ::
     VS.Vector Word8 ->

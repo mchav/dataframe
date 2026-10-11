@@ -44,8 +44,7 @@ shufflePreservesColumnNames =
                 (D.columnNames testDataFrame)
             )
 
--- Test that un-shuffling restores the original dataframe
--- which is known to be sorted in this case
+-- Un-shuffling restores the original (sorted) dataframe.
 shufflePreservesData :: Test
 shufflePreservesData =
     let gen = mkStdGen 1234
@@ -54,8 +53,7 @@ shufflePreservesData =
      in TestCase
             (assertEqual "sort recovers initial numbers" testDataFrame sortedShuffled)
 
--- Test that shuffling isn't doing anything sneaky with summoning
--- random numbers somehow
+-- Shuffling must not summon random numbers somehow.
 shuffleSameSeedIsSameShuffle :: Test
 shuffleSameSeedIsSameShuffle =
     let gen = mkStdGen 1234
@@ -103,24 +101,13 @@ shuffleSingleRow =
             (shuffledIndices (mkStdGen 7) 1)
         )
 
-{- | Chi-squared statistic of observed counts against a flat expectation:
-sum over cells of (observed - expected)^2 / expected.
--}
+-- | Chi-squared statistic of observed counts against a flat expectation.
 chiSquared :: [Int] -> Double
 chiSquared counts =
     let expected = fromIntegral (sum counts) / fromIntegral (length counts)
      in sum [(fromIntegral o - expected) ^ (2 :: Int) / expected | o <- counts]
 
-{- | Every permutation of n items is equally likely under a uniform shuffle,
-so the counts over all n! outcomes are chi-squared with n! - 1 degrees of
-freedom. Testing the whole permutation, rather than one position at a time,
-also catches a shuffle whose positions are individually uniform but
-correlated. Seeds are fixed, so the sample -- and the verdict -- is
-deterministic.
-
-n = 5 gives 120 outcomes; 12000 draws puts 100 in each on average. The bound
-is the 0.999 quantile of chi-squared with 119 degrees of freedom.
--}
+-- | Every permutation of n items is equally likely under a uniform shuffle.
 shufflePermutationsAreUniform :: Test
 shufflePermutationsAreUniform =
     let n = 5
@@ -137,15 +124,7 @@ shufflePermutationsAreUniform =
                 (stat < 172.4)
             )
 
-{- | The frequency test from Knuth 3.3.2: each item lands in each position with
-probability 1/n, so the n x n position-by-item table is chi-squared with
-(n - 1)^2 degrees of freedom. A larger n than the permutation test can afford,
-to catch bias that only shows at scale, such as a shuffle that leaves a
-suffix untouched or never leaves an item in place.
-
-n = 10 and 5000 draws put 500 in each cell. The bound is the 0.999 quantile of
-chi-squared with 81 degrees of freedom.
--}
+-- | Knuth's frequency test: each item lands in each position with chance 1/n.
 shufflePositionsAreUniform :: Test
 shufflePositionsAreUniform =
     let n = 10

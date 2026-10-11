@@ -14,10 +14,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- |
-End-to-end tests for the compile-time SQLite schema splices and the runtime
-readers, exercised against the committed @data/chinook.db@ fixture.
--}
+-- | Tests for the SQLite schema splices and runtime readers on chinook.db.
 module SchemaTHTests (schemaThTests) where
 
 import Control.Monad.IO.Class (liftIO)
@@ -44,8 +41,6 @@ $(declareEntity "./data/chinook.db" "albums")
 
 chinook :: T.Text
 chinook = "./data/chinook.db"
-
--- Tier 0: runtime readers --------------------------------------------------
 
 testReadTable :: Test
 testReadTable = TestCase $ do
@@ -80,8 +75,6 @@ testDescribeTable = TestCase $ do
         (DF.columnNames d)
     assertEqual "one row per column" 2 (nRows d)
 
--- Tier 1: typed splice -----------------------------------------------------
-
 testDeclareTableTyped :: Test
 testDeclareTableTyped = TestCase $ do
     -- declareTable emits only the ArtistsSchema type; read into it generically:
@@ -90,8 +83,6 @@ testDeclareTableTyped = TestCase $ do
     -- @col \@"Name"@ here is checked against the generated ArtistsSchema:
     let names = DT.columnAsList @"Name" tdf
     assertEqual "first artist" (Just (Just "AC/DC")) (listToMaybe names)
-
--- Tier 2: persistent entity generation -------------------------------------
 
 testDeclareEntity :: Test
 testDeclareEntity = TestCase $ runSqlite chinook $ do
@@ -102,8 +93,6 @@ testDeclareEntityFilter :: Test
 testDeclareEntityFilter = TestCase $ runSqlite chinook $ do
     df <- selectToDataFrame [AlbumsArtistId ==. 1] []
     liftIO $ assertEqual "AC/DC albums" 2 (nRows df)
-
--- Hand-off: raw read and entity read share one connection ------------------
 
 testHandOff :: Test
 testHandOff = TestCase $ runSqlite chinook $ do

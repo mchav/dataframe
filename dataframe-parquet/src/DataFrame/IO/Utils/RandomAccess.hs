@@ -151,20 +151,7 @@ unsafeToByteString v = PS (castForeignPtr ptr) offset' len
   where
     (ptr, offset', len) = VS.unsafeToForeignPtr v
 
--- Writer Buffer -----------------------------------------------------------------
-
--- Refer to DataFrame.IO.Parquet.Writer for a justification of what we're doing here
--- There's some overlap here with what's going on in Seeking.hs, so, if this bothers
--- us, eventually someone will have to come back and reconcile the writer buffer
--- approach with the reader oriented patterns in Seeking.hs.
---
--- We're using MutableByteArrays here for convenience and because we don't need
--- the more powerful abstractions vector provides (which uses ByteArrays internally)
---
--- since we want to use hPutBuf, we're going to need a Ptr, which means are ByteArrya
--- must be pinned. Now growing pinned arrays can be problematic, but in the vast majority
--- of cases we shouldn't be growing more than once, if that. See the docs for
--- Data.Primitive.ByteArray.byteArrayContents.
+-- Writer buffers are pinned MutableByteArrays so hPutBuf can take a Ptr.
 
 newtype WritableBinaryHandle = WritableBinaryHandle {unHandle :: Handle}
 
@@ -224,21 +211,7 @@ mallocBuffer capacity
         array <- newPinnedByteArray capacity
         MemoryBuffer <$> newSTRef array <*> newSTRef 0
 
--- We're using pinned ByteArrays so we must
--- not use the grow function brovided by Data.Primitive
--- instead we must alloocate a new pinned ByteArray.
--- We might have been worried about heap fragmentation
--- because a single pinned object in a 4KB GHC block can
--- keep the whole plock alive but oyr buffers will tend to
--- be much larger than that.
--- But the memory usage will temporarily spike to 2.5x the size of
--- the buffer, but it should be fine since the current writer is single threaded
--- and grows *should* be rare.
--- If it becomes an issue we should start tracking an array of pointers
--- to buffers intsead of replacing them wholesale so grwoing a buffer
--- is just a matter of adding a new buffer to the array (which we can
--- pre-allocate to three elements to begin with and grow it only on the
--- off chance that a buffer required more than three grows).
+-- Pinned arrays cannot grow in place, so allocate a new one and copy.
 ensureCapacity :: MemoryBuffer s -> Int -> ST s (MutableByteArray s)
 ensureCapacity buffer needed = do
     array <- readSTRef buffer.arrayRef
@@ -362,10 +335,7 @@ bufferToByteString buffer = do
         withMutableByteArrayContents array $ \src ->
             copyBytes dst (castPtr src) position
 
-{- | The buffer's contents as a ByteString, without copying. The result
-shares memory with the buffer, so it is only valid until the buffer is
-next written to or reset.
--}
+-- | The buffer's contents as a ByteString, without copying.
 unsafeBufferView :: MemoryBuffer RealWorld -> IO ByteString
 unsafeBufferView buffer = do
     array@(MutableByteArray array#) <- stToIO (readSTRef buffer.arrayRef)
@@ -381,27 +351,7 @@ resetPosition :: MemoryBuffer s -> ST s ()
 resetPosition buffer = writeSTRef buffer.positionRef 0
 {-# INLINE resetPosition #-}
 
--- I tested write speeds by doing (on Apple Silicon)
--- `dd if=/dev/zero of=test bs={$n}k oflag=direct conv=fdatasync
--- Results:
---
--- ```
---    | block size | data (GiB) |  time (s) | GiB/s |
---    |------------|------------|-----------|-------|
---    | 4k         |       4.00 |     2.371 |  1.69 |
---    | 8k         |       4.00 |     1.486 |  2.69 |
---    | 16k        |       4.00 |     1.045 |  3.83 |
---    | 32k        |       4.00 |     0.740 |  5.40 |
---    | 64k        |       4.00 |     0.675 |  5.92 |
---    | 128k       |       4.00 |     0.669 |  5.98 |
---    | 256k       |       4.00 |     0.664 |  6.03 |
---    | 512k       |       4.00 |     0.670 |  5.97 |
---    | 1024k      |       4.00 |     0.664 |  6.02 |
---    | 4096k      |       4.00 |     0.668 |  5.99 |
--- ```
--- So when writing to a file to minimize syscall overhead while
--- trying not to create dirty pages in the kernel page cache, we'll
--- be flushing in 256 KiB chunks.
+-- Flush in 256 KiB chunks; larger blocks gave no write speed in dd tests.
 flushBufferToFile :: WritableBinaryHandle -> MemoryBuffer RealWorld -> IO ()
 flushBufferToFile (WritableBinaryHandle h) buffer = do
     array <- stToIO (readSTRef buffer.arrayRef)

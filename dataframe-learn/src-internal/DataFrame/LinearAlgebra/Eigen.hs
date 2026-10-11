@@ -1,9 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | Symmetric eigenproblems in pure Haskell: cyclic Jacobi for full
-decomposition (PCA covariance, @m×m@ kernels) and power iteration for the
-dominant eigenpair (FISTA step sizes). Deterministic, sign-canonicalised output.
--}
+-- | Symmetric eigenproblems in pure Haskell: Jacobi and power iteration.
 module DataFrame.LinearAlgebra.Eigen (
     jacobiEigenSym,
     powerIterTop,
@@ -18,10 +15,7 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 import DataFrame.LinearAlgebra (Matrix, dot, matVec, scaleV)
 
-{- | Cyclic Jacobi eigendecomposition of a symmetric matrix. Eigenvalues are
-returned in descending order paired with eigenvectors as rows, each
-sign-canonicalised (largest-magnitude component positive) for unique output.
--}
+-- | Cyclic Jacobi eigendecomposition of a symmetric matrix.
 jacobiEigenSym :: Matrix -> (VU.Vector Double, Matrix)
 jacobiEigenSym a0
     | V.null a0 = (VU.empty, V.empty)
@@ -102,9 +96,7 @@ canonicalSign vec =
     let idx = VU.maxIndex (VU.map abs vec)
      in if vec VU.! idx < 0 then VU.map negate vec else vec
 
-{- | Dominant eigenvalue and eigenvector of a symmetric PSD matrix via power
-iteration with a deterministic all-ones start.
--}
+-- | Dominant eigenpair of a symmetric PSD matrix via power iteration.
 powerIterTop :: Int -> Matrix -> (Double, VU.Vector Double)
 powerIterTop iters a
     | V.null a = (0, VU.empty)

@@ -9,37 +9,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- |
-Module      : DataFrame.Typed.Generic
-License     : MIT
-
-Generic-based opt-in for record-to-schema derivation. Mirrors the Template
-Haskell splice in "DataFrame.Typed.TH" but builds the schema type from a
-@GHC.Generics.Generic@ instance instead of @reify@.
-
-Use it like this:
-
-@
-data Order = Order
-  { orderId :: Int64
-  , region  :: Text
-  , amount  :: Double
-  } deriving (Show, Eq, Generic)
-
-type OrderSchema = SchemaOf Order
-
-instance HasSchema Order OrderSchema where
-  recordsToColumns   = genericToColumns
-  recordsFromFrame = genericFromColumns
-@
-
-Field names are translated with the @CamelCase -> snake_case@ rule
-(matching 'DataFrame.Typed.TH.camelToSnake'); use 'SchemaOfRaw' if you
-want the schema to keep the record selector names verbatim — in that
-case you cannot use 'genericToColumns' \/ 'genericFromColumns' and must
-either hand-roll the instance or use the TH splice with a custom name
-transform.
--}
+-- | Generic-based opt-in for record-to-schema derivation.
 module DataFrame.Typed.Generic (
     -- * Type-level schema derivation
     NameCase (..),
@@ -88,17 +58,10 @@ import DataFrame.Typed.Record (requireColumn)
 import DataFrame.Typed.Schema (Append)
 import DataFrame.Typed.Util (camelToSnake)
 
-{- | Field-name policy applied to record selectors when computing
-'RepToSchema'.
-
-* 'SnakeCase' — translate @camelCaseField@ to @\"camel_case_field\"@.
-* 'IdentityCase' — keep the selector name verbatim.
--}
+-- | Field-name policy applied to record selectors for 'RepToSchema'.
 data NameCase = SnakeCase | IdentityCase
 
-{- | The schema type @'[ '(name, ty), ...]@ derived from the 'Rep' of a
-record type, with the given 'NameCase' applied to each field name.
--}
+-- | The schema type derived from the 'Rep' of a record type.
 type family RepToSchema (nc :: NameCase) (r :: Type -> Type) :: [(Symbol, Type)] where
     RepToSchema nc (M1 D _ f) = RepToSchema nc f
     RepToSchema nc (M1 C _ f) = RepToSchema nc f
@@ -110,7 +73,7 @@ type family TransformName (nc :: NameCase) (name :: Symbol) :: Symbol where
     TransformName 'SnakeCase s = CamelToSnake s
     TransformName 'IdentityCase s = s
 
--- | Type-level camelCase -> snake_case. Matches 'camelToSnake' at the value level.
+-- | Type-level camelCase to snake_case, matching 'camelToSnake'.
 type family CamelToSnake (s :: Symbol) :: Symbol where
     CamelToSnake s = SnakeStart (UnconsSymbol s)
 
@@ -141,9 +104,7 @@ type SchemaOf a = RepToSchema 'SnakeCase (Rep a)
 -- | Identity-cased schema derived from @a@'s 'Generic' representation.
 type SchemaOfRaw a = RepToSchema 'IdentityCase (Rep a)
 
-{- | Walks the 'Rep' tree of a record, producing or consuming a list of
-named columns. Used by 'genericToColumns' \/ 'genericFromColumns'.
--}
+-- | Walks the 'Rep' tree of a record, producing or consuming named columns.
 class GHasColumns (r :: Type -> Type) where
     gToColumns :: [r p] -> [(T.Text, C.Column)]
     gFromColumns :: D.DataFrame -> Either T.Text [r p]
@@ -183,22 +144,12 @@ instance
         v <- requireColumn @a colName df
         pure (map (M1 . K1) (VB.toList v))
 
-{- | Default implementation of 'DataFrame.Typed.Record.recordsToColumns' for any
-@Generic@ record. Field names are translated with @camelCase -> snake_case@.
-
-@
-instance HasSchema Order (SchemaOf Order) where
-  recordsToColumns   = genericToColumns
-  recordsFromFrame = genericFromColumns
-@
--}
+-- | Default 'DataFrame.Typed.Record.recordsToColumns' for any Generic record.
 genericToColumns ::
     forall a. (Generic a, GHasColumns (Rep a)) => [a] -> [(T.Text, C.Column)]
 genericToColumns = gToColumns . map from
 
-{- | Default implementation of 'DataFrame.Typed.Record.recordsFromFrame' for any
-@Generic@ record.
--}
+-- | Default 'DataFrame.Typed.Record.recordsFromFrame' for any Generic record.
 genericFromColumns ::
     forall a. (Generic a, GHasColumns (Rep a)) => D.DataFrame -> Either T.Text [a]
 genericFromColumns df = fmap (map to) (gFromColumns df)

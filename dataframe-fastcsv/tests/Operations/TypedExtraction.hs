@@ -2,10 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Behavior pins for the typed-extraction fastcsv path: schema bypass,
-parser semantics, byte-level missing tests, and the chunk-boundary scalar
-tail that replaced the full-file copy.
--}
+-- | Behavior pins for the typed-extraction fastcsv path.
 module Operations.TypedExtraction (tests) where
 
 import qualified Data.Map as M
@@ -13,9 +10,7 @@ import qualified Data.Proxy as P
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
--- UTF-8 byte-mode IO: the plain Data.Text.IO writer honours the
--- handle's text mode, which on Windows turns \n into \r\n and
--- corrupts inputs meant for byte-level parsers.
+-- UTF-8 byte-mode IO: the plain writer turns \n into \r\n on Windows.
 import qualified Data.Text.IO.Utf8 as TIO
 
 import Control.Exception (ErrorCall, evaluate, try)
@@ -50,8 +45,7 @@ expectColumn what name df expected = case getColumn name df of
     Nothing -> assertFailure (what <> ": column missing")
     Just col -> assertEqual what expected col
 
--- Divergence #1 (pinned new behavior): Int overflow rejects instead of
--- wrapping, so an overflowing cell demotes the column to Double.
+-- Int overflow rejects instead of wrapping, demoting the column to Double.
 testIntOverflowDemotesToDouble :: Test
 testIntOverflowDemotesToDouble = TestLabel "typed_int_overflow_demotes" $
     TestCase $
@@ -63,9 +57,7 @@ testIntOverflowDemotesToDouble = TestLabel "typed_int_overflow_demotes" $
                 df
                 (DI.fromList @Double [1.0, 9.223372036854776e18])
 
--- Divergence #2: doubles parse with strip-equivalent semantics, so a padded
--- double past the 100-row inference sample no longer demotes the column to
--- Text. (Inside the sample the classifier still rejects padding.)
+-- A padded double past the inference sample no longer demotes to Text.
 testPaddedDoubleStaysDouble :: Test
 testPaddedDoubleStaysDouble = TestLabel "typed_padded_double" $
     TestCase $ do
@@ -79,8 +71,7 @@ testPaddedDoubleStaysDouble = TestLabel "typed_padded_double" $
                 df
                 (DI.fromList @Double (clean <> [3.5]))
 
--- Schema bypasses inference: a numeric-looking column declared Text in the
--- schema must come back as Text (old code silently kept the inferred Int).
+-- A numeric-looking column declared Text in the schema comes back as Text.
 testSchemaTextBypassesInference :: Test
 testSchemaTextBypassesInference = TestLabel "typed_schema_text" $
     TestCase $
@@ -93,8 +84,7 @@ testSchemaTextBypassesInference = TestLabel "typed_schema_text" $
                 df
                 (DI.fromList @T.Text ["1", "2"])
 
--- Schema + NoSafeRead: a cell that cannot parse as the declared type
--- raises during the read (strict read), instead of hiding an error thunk.
+-- A cell failing the declared type raises during the read.
 testSchemaStrictFailureThrows :: Test
 testSchemaStrictFailureThrows = TestLabel "typed_schema_strict_throws" $
     TestCase $
@@ -133,8 +123,7 @@ testSchemaMaybeReadNullsFailures = TestLabel "typed_schema_mayberead" $
                 df
                 (DI.fromList @(Maybe Int) [Just 1, Nothing, Just 2])
 
--- Preserved: NoSafeRead treats only empty cells as null, so "NA" still
--- demotes a numeric column to Text.
+-- NoSafeRead treats only empty cells as null, so "NA" demotes to Text.
 testNoSafeReadNADemotesToText :: Test
 testNoSafeReadNADemotesToText = TestLabel "typed_nosaferead_na" $
     TestCase $
@@ -177,8 +166,7 @@ testMaybeReadCustomMissingToken = TestLabel "typed_mayberead_custom" $
                 df
                 (DI.fromList @(Maybe Int) [Just 1, Nothing, Just 2])
 
--- Preserved: quoted numerics parse as numbers (quote stripping happens
--- before the typed parse).
+-- Quoted numerics parse as numbers; quotes are stripped first.
 testQuotedNumbersParse :: Test
 testQuotedNumbersParse = TestLabel "typed_quoted_numbers" $
     TestCase $
@@ -217,9 +205,7 @@ testDateWithNulls = TestLabel "typed_date_nulls" $
                     ]
                 )
 
--- The scalar tail (last <64 bytes after the SIMD chunks) must honour the
--- quote state from the SIMD region: a quoted field opening before the
--- boundary and closing in the tail may contain separators and newlines.
+-- A quote opening before the SIMD boundary and closing in the tail is kept.
 testQuoteSpansChunkBoundary :: Test
 testQuoteSpansChunkBoundary = TestLabel "typed_quote_spans_boundary" $
     TestCase $ do
@@ -247,8 +233,7 @@ testUnclosedQuoteInTail = TestLabel "typed_unclosed_in_tail" $
                 other ->
                     assertFailure ("expected CsvUnclosedQuote, got " <> show other)
 
--- S2 pin: inference must land on exactly the same columns (types and
--- values) as an explicit schema declaring the true types.
+-- Inference must land on the same columns as an explicit true schema.
 testInferredMatchesSchema :: Test
 testInferredMatchesSchema = TestLabel "typed_inferred_matches_schema" $
     TestCase $ do
@@ -280,8 +265,7 @@ testInferredMatchesSchema = TestLabel "typed_inferred_matches_schema" $
             explicit <- D.fastReadCsvWithSchema schema path
             assertEqual "inferred == explicit schema" explicit inferred
 
--- Ingest pin: an inferred string column freezes to a shared-buffer
--- 'PackedText' (no per-row boxed Text header), values byte-identical.
+-- An inferred string column freezes to a 'PackedText', values identical.
 testTextFreezesPacked :: Test
 testTextFreezesPacked = TestLabel "typed_text_freezes_packed" $
     TestCase $
@@ -291,7 +275,7 @@ testTextFreezesPacked = TestLabel "typed_text_freezes_packed" $
                 Nothing -> assertFailure "missing text column"
                 Just col -> do
                     assertBool "text column is PackedText" (DI.isPackedText col)
-                    assertEqual "values byte-identical" (DI.fromList @T.Text ["x", "y"]) col
+                    assertEqual "values equal" (DI.fromList @T.Text ["x", "y"]) col
 
 -- The in-memory entry point must agree with the file-based one.
 testFromBytesMatchesFile :: Test

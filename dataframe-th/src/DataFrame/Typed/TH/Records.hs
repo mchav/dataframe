@@ -4,14 +4,7 @@
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- |
-Module      : DataFrame.Typed.TH.Records
-License     : MIT
-
-Record-based typed-API schema derivation. The IO-agnostic core of the
-@DataFrame.Typed.TH@ family. CSV-file-based derivation lives in
-"DataFrame.Typed.TH.CSV" (in @dataframe-csv-th@).
--}
+-- | Record-based typed-API schema derivation, the IO-agnostic core.
 module DataFrame.Typed.TH.Records (
     -- * Schema inference from an existing DataFrame value
     deriveSchema,
@@ -53,10 +46,7 @@ import DataFrame.Typed.Record (
 import DataFrame.Typed.Types (TypedDataFrame)
 import DataFrame.Typed.Util (camelToSnake)
 
-{- | Derive an untyped 'DataFrame.Schema.Schema' value plus per-column 'Expr'
-accessors from a record type. The value-level companion to
-'deriveSchemaFromType': @$(deriveSchemaValues ''Order)@ generates @orderSchema@.
--}
+-- | Derive an untyped 'Schema' value and per-column accessors from a record.
 deriveSchemaValues :: Name -> DecsQ
 deriveSchemaValues = SchemaTH.deriveSchema
 
@@ -115,13 +105,11 @@ findDuplicate (x : xs)
 -- | Options controlling 'deriveSchemaFromTypeWith'.
 data SchemaOptions = SchemaOptions
     { nameTransform :: String -> String
-    -- ^ Map each record selector name to a column name. Default: 'camelToSnake'.
+    -- ^ Map each selector name to a column name. Default: 'camelToSnake'.
     , schemaTypeName :: Maybe String
-    -- ^ Override the generated type synonym name. Default: @\<TypeName\>Schema@.
+    -- ^ Override the generated type name. Default: @\<TypeName\>Schema@.
     , generateInstance :: Bool
-    {- ^ When @True@ (default), also generate a 'HasSchema' instance so the
-    record can be turned into a 'DataFrame' via 'fromRecords' / 'toRecords'.
-    -}
+    -- ^ When @True@ (default), also generate a 'HasSchema' instance.
     }
 
 defaultSchemaOptions :: SchemaOptions

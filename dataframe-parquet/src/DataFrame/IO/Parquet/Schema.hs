@@ -3,15 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- |
-Module      : DataFrame.IO.Parquet.Schema
-License     : MIT
-
-Helpers for converting a parquet schema (a list of 'SchemaElement') into an
-empty 'DataFrame' whose columns have the right types but no rows. Used by
-'DataFrame.TH.declareColumnsFromParquetFile' and by any tooling that wants
-to inspect a parquet schema as a 'DataFrame'.
--}
+-- | Converts a parquet schema into an empty 'DataFrame'.
 module DataFrame.IO.Parquet.Schema (
     schemaToEmptyDataFrame,
     schemaElemToColumn,
@@ -35,19 +27,14 @@ import DataFrame.IO.Parquet.Thrift (
 import DataFrame.Internal.Column (Column, fromList)
 import DataFrame.Internal.DataFrame (DataFrame, fromColumns)
 
-{- | Build an empty 'DataFrame' from a flat list of parquet 'SchemaElement's.
-Only leaf elements (those with no children) become columns. Columns whose
-name is in @nullableCols@ are typed as @Maybe a@; the rest are typed as @a@.
--}
+-- | Build an empty 'DataFrame' from a flat list of 'SchemaElement's.
 schemaToEmptyDataFrame :: S.Set T.Text -> [SchemaElement] -> DataFrame
 schemaToEmptyDataFrame nullableCols elems =
     let leafElems =
             filter (\e -> Maybe.fromMaybe 0 (unField e.num_children) == 0) elems
      in fromColumns (map (schemaElemToColumn nullableCols) leafElems)
 
-{- | Convert a single parquet 'SchemaElement' into a named empty 'Column',
-picking a nullable or non-nullable representation based on @nullableCols@.
--}
+-- | Convert a single 'SchemaElement' into a named empty 'Column'.
 schemaElemToColumn :: S.Set T.Text -> SchemaElement -> (T.Text, Column)
 schemaElemToColumn nullableCols element =
     let colName = unField element.name

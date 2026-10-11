@@ -4,28 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Low-cardinality direct-indexed grouping fast path: when every row's key
-reduces to a dense @Int@ code in a small domain, the code itself indexes a dense
-accumulator (no hashing/probing). All O(n) passes run chunked across
-capabilities — per-chunk histograms feed prefix-summed disjoint write cursors —
-so the stable within-group row order of the sequential counting sort is
-reproduced exactly.
-
-Two engines cover the code-domain spectrum with bit-identical results:
-
-* narrow domains (@card <= 'twoLevelCardThreshold'@) index per-worker
-  histogram\/cursor tables directly — they stay cache-resident;
-
-* wide domains use a two-level radix split (top code bits pick one of ~@2^10@
-  buckets, cursors cache-resident) so no pass ever random-writes a
-  multi-megabyte table per worker.
-
-'directLayoutLazy' is the aggregation entry point: it builds @rowToGroup@,
-@offsets@ and the per-group representative rows eagerly but skips the O(n)
-stable placement entirely; 'visFromRowToGroup' reconstructs @valueIndices@
-on demand (its value is the unique stable counting-sort permutation, so WHEN it
-runs is unobservable).
--}
+-- | Low-cardinality direct-indexed grouping fast path for dense Int key codes.
 module DataFrame.Internal.Grouping.Direct (
     directGroupThreshold,
     tryDirectGroupColumn,
@@ -59,17 +38,11 @@ import DataFrame.Internal.Control.Concurrent (
     splitChunkRange,
  )
 
-{- | Largest key code DOMAIN (single-key value range, or the product of per-key
-domains for a fused multi-key code) the direct grouping path accepts. A @2^20@-slot
-histogram is 8MB; the low-cardinality questions sit far below it (id4 range 100,
-id6 range 1e5). Wider domains fall back to the hash group-by.
--}
+-- | Largest key code domain the direct grouping path accepts.
 directGroupThreshold :: Int
 directGroupThreshold = 1048576
 
-{- | The grouping layout the hash path also produces: @rowToGroup@, the
-group-sorted @valueIndices@, the @offsets@ prefix array, and the group count.
--}
+-- | The grouping layout the hash path also produces.
 data DirectGrouping = DirectGrouping
     { dgRowToGroup :: !(VU.Vector Int)
     , dgValueIndices :: !(VU.Vector Int)
@@ -77,10 +50,7 @@ data DirectGrouping = DirectGrouping
     , dgNGroups :: !Int
     }
 
-{- | Take the direct path if the (single) key column is a clean non-null unboxed
-@Int@ column with a small value range. Returns 'Nothing' to fall back to the
-hash group-by on anything else (boxed/text keys, nullable, wide ranges, empty).
--}
+-- | Take the direct path for a clean small-range Int key, else 'Nothing'.
 tryDirectGroupColumn :: Column -> Maybe DirectGrouping
 tryDirectGroupColumn (UnboxedColumn Nothing (v :: VU.Vector a))
     | Just Refl <- testEquality (typeRep @a) (typeRep @Int)
@@ -125,38 +95,17 @@ combineRanges ((a0, b0) : rest) = foldr (\(a, b) (ma, mb) -> (min ma a, max mb b
 shouldPar :: Int -> Bool
 shouldPar = shouldParallelize parThreshold
 
-{- | Contiguous per-worker row ranges: one chunk per capability above the
-parallel threshold, a single chunk otherwise (the sequential fallback runs the
-same code on the calling thread).
--}
+-- | Contiguous per-worker row ranges, one chunk per capability when parallel.
 rowChunks :: Int -> [(Int, Int)]
 rowChunks = chunksFor parThreshold
 
-{- | Like 'rowChunks' but over the code domain (parallel merge/seed passes),
-which pays for a fan-out at a much lower width than the row passes do.
--}
+-- | Like 'rowChunks' but over the code domain.
 codeSlices :: Int -> [(Int, Int)]
 codeSlices = chunksFor 4096
 
-{- | Run each action on its own thread and collect the results in order;
-rethrow the first failure. A single action runs on the calling thread.
--}
+-- un each action on its own thread and collect results in order.
 
--------------------------------------------------------------------------------
--- Full grouping (eager valueIndices): compatibility entry point
--------------------------------------------------------------------------------
-
-{- | Build the grouping by counting sort on a per-row code in @[0, card)@.
-Returns 'Nothing' when any row's code falls outside @[0, card)@ (fall back to
-hashing).
-
-@mkGroups counts@ must return a dense group id for every code with a nonzero
-count (other slots are never read; occupied codes must get distinct ids) and
-the group count; it decides group order.
-
-Equivalent to 'directLayoutLazy' plus a forced 'visFromRowToGroup'; kept for
-callers that want the whole layout eagerly.
--}
+-- | Build the grouping by counting sort on a per-row code in @[0, card)@.
 groupCodesMaybe ::
     (Int -> Int) ->
     Int ->
@@ -168,19 +117,7 @@ groupCodesMaybe codeAt n card mkGroups = do
     let !vis = visFromRowToGroup n nGroups offs rtg
     Just (DirectGrouping rtg vis offs nGroups)
 
--------------------------------------------------------------------------------
--- Eager layout without placement: rowToGroup + offsets + group rep rows
--------------------------------------------------------------------------------
-
-{- | The layout every aggregation needs, WITHOUT the O(n) stable placement:
-@(rowToGroup, offsets, groupRepRows, nGroups)@, all four computed eagerly.
-@groupRepRows[g]@ is the first original row of group @g@ (what
-@valueIndices[offsets[g]]@ evaluates to). Pair with 'visFromRowToGroup' for a
-deferred @valueIndices@. Returns 'Nothing' when any row's code falls outside
-@[0, card)@.
-
-@mkGroups@ contract as in 'groupCodesMaybe'.
--}
+-- | The layout every aggregation needs, without the O(n) stable placement.
 directLayoutLazy ::
     (Int -> Int) ->
     Int ->
@@ -193,9 +130,7 @@ directLayoutLazy codeAt n card mkGroups
     | otherwise = unsafePerformIO (layoutNarrow codeAt n card mkGroups)
 {-# NOINLINE directLayoutLazy #-}
 
-{- | Narrow domains (and the sequential small-@n@ fallback): per-chunk direct
-histograms with first-occurrence tracking, merged over code slices.
--}
+-- | Narrow domains: per-chunk histograms with first-occurrence tracking.
 layoutNarrow ::
     (Int -> Int) ->
     Int ->
@@ -218,10 +153,7 @@ layoutNarrow codeAt n card mkGroups = do
             firstRow <- VU.unsafeFreeze firstRowM
             finishLayout codeAt n card mkGroups counts firstRow
 
-{- | Histogram one row chunk into a private @card@-slot count, recording the
-chunk's first row of each code, and reporting invalid codes (third component
-'False'; the arrays are then abandoned).
--}
+-- | Histogram one row chunk into a private count, recording first rows.
 histFirstChunk ::
     (Int -> Int) ->
     Int ->
@@ -245,11 +177,7 @@ histFirstChunk codeAt card lo hi = do
     ok <- go lo
     pure (acc, firstV, ok)
 
-{- | @totals[c] = Σ_w counts_w[c]@ and @firstRow[c]@ = the first chunk's first
-occurrence (chunks are in row order, so that IS the global first row of @c@),
-over one code slice. Every @totals@ slot is written; @firstRow[c]@ only where
-the count is nonzero (never read otherwise).
--}
+-- | Merge per-chunk counts and first rows over one slice of the code domain.
 mergeSlice ::
     [(VUM.IOVector Int, VUM.IOVector Int)] ->
     VUM.IOVector Int ->
@@ -272,11 +200,7 @@ mergeSlice partials totals firstRow lo hi = go lo
             VUM.unsafeWrite totals c s
             go (c + 1)
 
-{- | Wide domains: two-level radix. Rows are bucketed by the top code bits
-(cache-resident cursors) as packed @(code, row)@ words; each bucket's slice —
-in original row order — yields its exact per-code counts and first rows from an
-L1-resident table. No placement pass runs here.
--}
+-- | Wide domains: a two-level radix over packed @(code, row)@ words.
 layoutWide ::
     (Int -> Int) ->
     Int ->
@@ -299,10 +223,7 @@ layoutWide codeAt n card mkGroups = do
             firstRow <- VU.unsafeFreeze firstRowM
             finishLayout codeAt n card mkGroups counts firstRow
 
-{- | Shared tail of 'directLayoutLazy': group mapping, offsets, representative
-rows gathered through the code-to-group table, and the parallel @rowToGroup@
-pass (one sequential read of the codes, one table lookup each).
--}
+-- | Shared tail of 'directLayoutLazy': mapping, offsets and representatives.
 finishLayout ::
     (Int -> Int) ->
     Int ->
@@ -327,8 +248,7 @@ finishLayout codeAt n card mkGroups counts firstRow = do
     repLoop 0
     reps <- VU.unsafeFreeze repsM
     rtgM <- VUM.unsafeNew n
-    -- A fully occupied ascending domain maps every code to itself; skipping
-    -- the per-row random table lookup then leaves one sequential read+write.
+    -- An identity code map lets us skip the per-row table lookup.
     let identity = isIdentityMap codeToGroup
     _ <-
         forkJoin
@@ -351,9 +271,7 @@ isIdentityMap m = go 0
         | VU.unsafeIndex m i /= i = False
         | otherwise = go (i + 1)
 
-{- | Exclusive prefix scan of per-group counts (gathered through @codeToGroup@)
-into the offsets array of length @nGroups + 1@.
--}
+-- | Exclusive prefix scan of per-group counts into the offsets array.
 scanOffsets :: VU.Vector Int -> VU.Vector Int -> Int -> IO (VU.Vector Int)
 scanOffsets counts codeToGroup nGroups = do
     let !card = VU.length counts
@@ -400,19 +318,7 @@ rtgChunkIdentity codeAt rtgM lo hi = go lo
             VUM.unsafeWrite rtgM i (codeAt i)
             go (i + 1)
 
--------------------------------------------------------------------------------
--- Deferred stable placement: valueIndices from rowToGroup
--------------------------------------------------------------------------------
-
-{- | The unique stable counting-sort permutation of @rowToGroup@: rows sorted by
-group id, original order within each group — exactly what the eager engines'
-placement pass produces. Pure (integer bookkeeping only, deterministic), so it
-can sit under a lazy 'DataFrame.Internal.DataFrame.valueIndices' field.
-
-Preconditions (all guaranteed by the grouping paths): @rtg@ has length @n@ with
-every value in @[0, nGroups)@, and @offs@ is the group-count prefix array of
-length @nGroups + 1@ with @offs[nGroups] == n@.
--}
+-- | The unique stable counting-sort permutation of @rowToGroup@.
 visFromRowToGroup ::
     Int -> Int -> VU.Vector Int -> VU.Vector Int -> VU.Vector Int
 visFromRowToGroup n nGroups offs rtg
@@ -421,9 +327,7 @@ visFromRowToGroup n nGroups offs rtg
     | otherwise = unsafePerformIO (visNarrow n nGroups offs rtg)
 {-# NOINLINE visFromRowToGroup #-}
 
-{- | Narrow group domains: per-chunk group histograms prefix-summed (chunk
-order) into disjoint cursors seeded from @offs@, then parallel stable placement.
--}
+-- | Narrow group domains: per-chunk histograms, then parallel stable placement.
 visNarrow :: Int -> Int -> VU.Vector Int -> VU.Vector Int -> IO (VU.Vector Int)
 visNarrow n nGroups offs rtg = do
     let chunks = rowChunks n
@@ -441,8 +345,7 @@ visNarrow n nGroups offs rtg = do
                 go lo
             | (lo, hi) <- chunks
             ]
-    -- Rewrite each chunk histogram into its write cursor:
-    -- cursor_w[g] = offs[g] + Σ_{w'<w} hist_w'[g].
+    -- Each chunk histogram becomes its write cursor: offs[g] + earlier chunks.
     _ <-
         forkJoin
             [ let seed !g
@@ -474,10 +377,7 @@ visNarrow n nGroups offs rtg = do
             ]
     VU.unsafeFreeze visM
 
-{- | Wide group domains: two-level radix. Group ids ascend with buckets, so the
-bucket-sorted layout written at @offs@-seeded cursors IS @valueIndices@ — each
-bucket writes one contiguous region.
--}
+-- | Wide group domains: two-level radix placement into @valueIndices@.
 visWide :: Int -> Int -> VU.Vector Int -> VU.Vector Int -> IO (VU.Vector Int)
 visWide n nGroups offs rtg = do
     mPacked <- packBucketed False (VU.unsafeIndex rtg) n nGroups
@@ -492,9 +392,7 @@ visWide n nGroups offs rtg = do
                 (placeBucketOffsPar shift nGroups bucketStart offs packed visM)
             VU.unsafeFreeze visM
 
-{- | Stable placement of one bucket's packed slice at cursors seeded straight
-from the group offsets (the bucket's groups own a contiguous @vis@ region).
--}
+-- | Stable placement of one bucket's packed slice at offset-seeded cursors.
 placeBucketOffs ::
     Int ->
     Int ->
@@ -527,10 +425,7 @@ placeBucketOffs shift card bucketStart offs (PackedBuckets packed) visM b = do
                 place (pos + 1)
     place s
 
-{- | 'placeBucketOffs' for an oversized bucket: per-sub-chunk histograms
-prefix-summed (sub-chunks in row order) onto the offset-seeded cursors keep the
-placement identical to the serial walk.
--}
+-- | 'placeBucketOffs' for an oversized bucket, split into sub-chunks.
 placeBucketOffsPar ::
     Int ->
     Int ->
@@ -577,22 +472,11 @@ placeBucketOffsPar shift card bucketStart offs pb visM b = do
             ]
     pure ()
 
--------------------------------------------------------------------------------
--- Two-level radix plumbing
--------------------------------------------------------------------------------
-
-{- | Above this code-domain size the parallel passes switch to the two-level
-radix engine; below it, per-worker direct tables stay cache-resident and are
-faster (no bucket store).
--}
+-- | Code-domain size above which parallel passes use two-level radix.
 twoLevelCardThreshold :: Int
 twoLevelCardThreshold = 1024
 
-{- | The two-level engine packs @(code, row)@ into one machine word: row in the
-low 'packShift' bits, code above them. Codes are capped at 'directGroupThreshold'
-(@2^20@) by every caller, so the packed value stays well within 63 bits; the
-guards in 'useTwoLevel' keep the narrow engine for anything larger.
--}
+-- | The two-level engine packs @(code, row)@ into one machine word.
 packShift :: Int
 packShift = 40
 
@@ -617,21 +501,13 @@ ceilLog2 x
     | x <= 1 = 0
     | otherwise = 64 - countLeadingZeros (x - 1)
 
-{- | The bucket store: rows partitioned by the top code bits, each bucket
-holding packed @(code, row)@ words in original row order.
--}
+-- | The bucket store: rows partitioned by the top code bits.
 newtype PackedBuckets = PackedBuckets (VUM.IOVector Int)
 
 packedVec :: PackedBuckets -> VUM.IOVector Int
 packedVec (PackedBuckets v) = v
 
-{- | Partition rows into ~@2^'bucketBits'@ buckets by the top bits of their
-code, as packed @(code, row)@ words: per-chunk bucket histograms (validating
-every code when asked), prefix-summed in (bucket, chunk) order into disjoint
-cursors, then a parallel scatter. Chunks are processed in row order, so every
-bucket keeps its rows in ascending original row order. Returns 'Nothing' iff
-validation was requested and some code fell outside @[0, card)@.
--}
+-- | Partition rows into buckets by top code bits as packed words.
 packBucketed ::
     Bool ->
     (Int -> Int) ->
@@ -671,10 +547,7 @@ packBucketed validate codeAt n card = do
                     ]
             pure (Just (shift, bucketStart, PackedBuckets packed))
 
-{- | Histogram one row chunk by bucket (top code bits) into a private
-@nBuckets@-slot count; with @validate@, report 'False' as soon as any code
-escapes @[0, card)@ (the counts are then abandoned).
--}
+-- | Histogram one row chunk by bucket (top code bits) into a private count.
 bucketHist ::
     Bool ->
     (Int -> Int) ->
@@ -701,7 +574,7 @@ bucketHist validate codeAt card shift nBuckets lo hi = do
     ok <- go lo
     pure (acc, ok)
 
--- | Scatter one row chunk's packed @(code, row)@ words through its bucket cursor.
+-- | Scatter one row chunk's packed words through its bucket cursor.
 scatterPacked ::
     (Int -> Int) ->
     Int ->
@@ -722,12 +595,7 @@ scatterPacked codeAt shift cursor packed lo hi = go lo
             VUM.unsafeWrite cursor b (pos + 1)
             go (i + 1)
 
-{- | Drive one action per bucket: buckets far above the fair per-worker share
-run first through @big@ (internally parallel, one at a time), the rest are
-pulled off a shared counter by one worker per capability. Every bucket —
-including empty ones — is visited exactly once, so per-bucket passes may rely
-on covering their whole output slice.
--}
+-- | Drive one action per bucket, with oversized buckets run first.
 overBuckets :: VU.Vector Int -> Int -> (Int -> IO ()) -> (Int -> IO ()) -> IO ()
 overBuckets bucketStart n small big = do
     let !nBuckets = VU.length bucketStart - 1
@@ -737,11 +605,7 @@ overBuckets bucketStart n small big = do
     pooledIndices capabilities nBuckets $ \b ->
         when (size b < bigCut) (small b)
 
-{- | One bucket's exact per-code counts and first rows from its (row-ordered)
-packed slice, via an L1-resident table spanning only the bucket's code range.
-Writes the bucket's whole slice of @counts@ (zeros included); @firstRow@ only
-where the count is nonzero.
--}
+-- | One bucket's exact per-code counts and first rows from its packed slice.
 countFirstBucket ::
     Int ->
     Int ->
@@ -840,10 +704,7 @@ subHist (PackedBuckets packed) base range lo hi = do
                 go (pos + 1)
     go lo
 
-{- | The ascending-code group order: walk the counts in code order, assigning a
-dense group id to each non-empty code (empty codes get no id and no output
-group). The single-Int-key path keeps its groups in ascending value order.
--}
+-- | The ascending-code group order: dense ids for non-empty codes.
 ascendingCodeGroups :: VU.Vector Int -> (VU.Vector Int, Int)
 ascendingCodeGroups counts = runST $ do
     let !card = VU.length counts

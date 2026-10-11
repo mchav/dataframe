@@ -41,9 +41,7 @@ import DataFrame.Typed.Schema (
  )
 import DataFrame.Typed.Types (TypedDataFrame (..))
 
-{- | Retrieve a column as a boxed 'Vector', with the type determined by
-the schema. The column must exist (enforced at compile time).
--}
+-- | Retrieve a column as a boxed 'Vector', typed by the schema.
 columnAsVector ::
     forall name cols a.
     ( KnownSymbol name
@@ -71,10 +69,7 @@ columnAsList (TDF df) =
   where
     colName = T.pack (symbolVal (Proxy @name))
 
-{- | Retrieve a column coerced to an unboxed 'Int' vector, named by type
-application. The column must exist and be numeric — both are compile-time
-checks via 'SafeLookup', so this is total (no 'Either', no runtime throw).
--}
+-- | Retrieve a column as an unboxed 'Int' vector, checked at compile time.
 columnAsIntVector ::
     forall name cols a.
     ( KnownSymbol name
@@ -90,7 +85,7 @@ columnAsIntVector (TDF df) = either throw id (D.columnAsIntVector (Col @a colNam
   where
     colName = T.pack (symbolVal (Proxy @name))
 
--- | Retrieve a column coerced to an unboxed 'Double' vector. See 'columnAsIntVector'.
+-- | Retrieve a column as an unboxed 'Double' vector. See 'columnAsIntVector'.
 columnAsDoubleVector ::
     forall name cols a.
     ( KnownSymbol name
@@ -107,7 +102,7 @@ columnAsDoubleVector (TDF df) =
   where
     colName = T.pack (symbolVal (Proxy @name))
 
--- | Retrieve a column coerced to an unboxed 'Float' vector. See 'columnAsIntVector'.
+-- | Retrieve a column as an unboxed 'Float' vector. See 'columnAsIntVector'.
 columnAsFloatVector ::
     forall name cols a.
     ( KnownSymbol name
@@ -124,9 +119,7 @@ columnAsFloatVector (TDF df) =
   where
     colName = T.pack (symbolVal (Proxy @name))
 
-{- | Retrieve a column as an unboxed vector of its own element type. The column
-must exist and be unboxable — both compile-time checks, so this is total.
--}
+-- | Retrieve a column as an unboxed vector of its own element type.
 columnAsUnboxedVector ::
     forall name cols a.
     ( KnownSymbol name
@@ -141,22 +134,19 @@ columnAsUnboxedVector (TDF df) =
   where
     colName = T.pack (symbolVal (Proxy @name))
 
-{- | Convert every column to 'Double' and transpose into a row-major matrix.
-Total: 'AllColumnsReal' proves at compile time that every column is numeric and
-unboxed, so the conversion cannot fail.
--}
+-- | Convert every column to 'Double' as a row-major matrix; total.
 toDoubleMatrix ::
     (AllColumnsReal "toDoubleMatrix" cols) =>
     TypedDataFrame cols -> V.Vector (VU.Vector Double)
 toDoubleMatrix (TDF df) = either throw id (D.toDoubleMatrix df)
 
--- | Convert every column to 'Float' and transpose into a row-major matrix. See 'toDoubleMatrix'.
+-- | Every column as 'Float', row-major. See 'toDoubleMatrix'.
 toFloatMatrix ::
     (AllColumnsReal "toFloatMatrix" cols) =>
     TypedDataFrame cols -> V.Vector (VU.Vector Float)
 toFloatMatrix (TDF df) = either throw id (D.toFloatMatrix df)
 
--- | Convert every column to 'Int' and transpose into a row-major matrix. See 'toDoubleMatrix'.
+-- | Every column as 'Int', row-major. See 'toDoubleMatrix'.
 toIntMatrix ::
     (AllColumnsReal "toIntMatrix" cols) =>
     TypedDataFrame cols -> V.Vector (VU.Vector Int)

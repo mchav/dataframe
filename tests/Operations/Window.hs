@@ -13,7 +13,7 @@ import Data.Function ((&))
 import DataFrame.Expression.Operators
 import Test.HUnit
 
--- Similar to example discussed in https://www.sumsar.net/blog/pandas-feels-clunky-when-coming-from-r/
+-- Similar to the example in sumsar.net's pandas-feels-clunky-from-r post.
 purchases :: D.DataFrame
 purchases =
     D.fromColumns
@@ -184,7 +184,7 @@ mixedGlobalAndOverTest =
         Nothing -> error "deviation column not found"
         Just c -> DI.toList @Double c
 
--- | Example from https://www.sumsar.net/blog/pandas-feels-clunky-when-coming-from-r/
+-- | Example from the sumsar.net pandas-feels-clunky-from-r post.
 blogPostExampleGlobal :: Test
 blogPostExampleGlobal =
     TestCase
@@ -202,8 +202,7 @@ blogPostExampleGlobal =
             & D.groupBy ["country"]
             & D.aggregate [F.sum (amount - discount) `as` "total"]
             & D.sortBy [D.Asc (F.col @T.Text "country")]
-    -- Global median = 60, threshold = 600 → removes 5000 and 800
-    -- France: (30-1)+(40-2)+(35-1) = 101, UK: (50-2)+(60-3) = 105, US: (100-5)+(200-10) = 285
+    -- Global median 60 and threshold 600 remove 5000 and 800.
     expected =
         D.fromColumns
             [ ("country", DI.fromList (["France", "UK", "US"] :: [T.Text]))

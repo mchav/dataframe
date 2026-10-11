@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | End-to-end smoke test and benchmark for the Lazy streaming API:
+{- | Benchmark for the Lazy streaming API:
      generate a CSV then run five Lazy queries over it.
 
      Usage:
@@ -35,10 +35,6 @@ import System.IO (
  )
 import System.Random.Stateful
 
--- ---------------------------------------------------------------------------
--- Defaults
--- ---------------------------------------------------------------------------
-
 defaultRows :: Int
 defaultRows = 1_000_000_000
 
@@ -48,10 +44,6 @@ defaultFile = (<> "/lazy_1b.csv") <$> getTemporaryDirectory
 -- Rows written per Builder flush to disk.
 chunkSize :: Int
 chunkSize = 500_000
-
--- ---------------------------------------------------------------------------
--- Argument parsing
--- ---------------------------------------------------------------------------
 
 data Opts = Opts
     { optRows :: Int
@@ -70,16 +62,7 @@ parseArgs defFile = go (Opts defaultRows defFile False)
     go opts ("--skip-gen" : rest) = go opts{optSkipGen = True} rest
     go _ (flag : _) = Left $ "unknown flag: " ++ flag
 
--- ---------------------------------------------------------------------------
--- CSV generation
--- ---------------------------------------------------------------------------
-
-{- | Write @n@ rows of schema
-
-       id (Int), x (Double), y (Double), category (Text: A/B/C/D)
-
-     to @path@ using a streaming Builder, keeping heap usage constant.
--}
+-- | Stream @n@ rows of a four-column CSV to @path@ with constant heap.
 generateCsv :: FilePath -> Int -> IO ()
 generateCsv path n = do
     g <- newIOGenM =<< newStdGen
@@ -146,10 +129,6 @@ catChar 1 = Builder.char7 'B'
 catChar 2 = Builder.char7 'C'
 catChar _ = Builder.char7 'D'
 
--- ---------------------------------------------------------------------------
--- Lazy queries
--- ---------------------------------------------------------------------------
-
 runQuery :: String -> IO D.DataFrame -> IO ()
 runQuery label action = do
     putStrLn $ "\n── " ++ label
@@ -161,10 +140,6 @@ runQuery label action = do
     putStrLn $ "   columns       : " ++ show cols
     putStrLn $ "   time          : " ++ showDiff t0 t1
     when (rows > 0 && rows <= 30) $ print df
-
--- ---------------------------------------------------------------------------
--- Main
--- ---------------------------------------------------------------------------
 
 main :: IO ()
 main = do
@@ -244,10 +219,6 @@ main = do
         $ L.scanCsv schema pathT
 
     putStrLn "\nDone."
-
--- ---------------------------------------------------------------------------
--- Formatting helpers
--- ---------------------------------------------------------------------------
 
 showDiff :: UTCTime -> UTCTime -> String
 showDiff t0 t1 = show (diffUTCTime t1 t0)

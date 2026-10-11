@@ -1,18 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 
-{- | Chunk-parallel extraction (Round-2 WS-E2): the data-row range is split
-into contiguous, newline-aligned chunks (alignment is by construction —
-chunks are row ranges over the quote-resolved delimiter index), each
-worker runs every column's 'ColumnPlan' over its chunk with right-sized
-builders, and the merger splices the results ('concatColumns' /
-'mergeTextChunksPar'). Inference classifies its sample once, globally,
-before fan-out; when chunks resolve different types the merger re-parses
-only the narrower-typed chunks.
-
-Parallelism requires the executable to be linked with @-threaded@ and run
-with @+RTS -N@; otherwise ('getNumCapabilities' == 1) the sequential path
-runs. Inputs under 4 MB are always read sequentially.
--}
+-- | Chunk-parallel column extraction over newline-aligned row ranges.
 module DataFrame.IO.CSV.Fast.Parallel (
     buildAllColumns,
     autoChunkCount,
@@ -41,11 +29,7 @@ import DataFrame.Operations.Typing (SafeReadMode)
 parallelThresholdBytes :: Int
 parallelThresholdBytes = 4 * 1024 * 1024
 
-{- | Chunk count for an automatic read: four chunks per capability (the
-worker pool bounds concurrency at the capability count; the extra chunks
-absorb straggler imbalance), or the sequential path (1) on a single
-capability or a small input.
--}
+-- | Chunk count for an automatic read, 1 when sequential.
 autoChunkCount :: Int -> IO Int
 autoChunkCount contentLen = do
     caps <- getNumCapabilities
@@ -68,11 +52,7 @@ mergePassCols width ps@(PassText{} : _) =
     mergeTextChunksPar width [tc | PassText tc <- ps]
 mergePassCols _ ps = pure $! concatColumns [c | PassFull c <- ps]
 
-{- | Build every column, fanning the row range out over @nChunks@ chunks
-on a capability-wide worker pool (sequentially when @nChunks <= 1@). Same
-result as the sequential path by construction; see the chunk-determinism
-tests and property.
--}
+-- | Build every column, fanning the row range out over @nChunks@.
 buildAllColumns ::
     Int -> ColumnEnv -> [(T.Text, Int)] -> IO [(Column, Bool)]
 buildAllColumns nChunks env wanted
@@ -91,16 +71,9 @@ buildAllColumns nChunks env wanted
         traceMarkerIO "fastcsv:join-done"
         let byCol = L.transpose perChunk
         mapM_ (mapM_ (\cc -> cc `seq` pure ())) byCol
-        -- Reset the major-GC trigger here, where the copyable live set is
-        -- small (chunk payloads are large objects). Otherwise the heap
-        -- doubling crosses its threshold mid-merge and a ~0.5s gen-1
-        -- collection lands at the worst point of the read.
+        -- Reset the major-GC trigger while the copyable live set is small.
         performMajorGC
-        -- Merge in parallel too (chunk-level inside each column, pooled
-        -- across columns), forcing each spliced column here so no memcpy
-        -- is deferred to the final forceDataFrame walk. 'evaluate' resolves
-        -- the plan dispatch now, so a schema task is a closure over its own
-        -- column's data only — never 'env'.
+        -- Merge in parallel too, forcing each spliced column here.
         tasks <-
             mapM
                 (\(wp, cps) -> evaluate (mergeTask width env ranges wp cps))
@@ -177,9 +150,7 @@ runChunk env plans range@(off, _) = mapM (uncurry build) plans
         PlanChain _ nspec steps checkAllNull ->
             CCChain <$> runChainChunk cenv nspec steps checkAllNull col
 
-{- | Splice one column's chunk results back together, resolving chunk-level
-type promotion. Mirrors 'buildColumn' for the single-chunk case.
--}
+-- | Splice one column's chunk results back together.
 mergeColumn ::
     Int ->
     ColumnEnv ->
@@ -195,12 +166,7 @@ mergeColumn width env name plan col parts = case plan of
         c <- mergeChain width env nspec steps col [(r, oc) | (r, CCChain oc) <- parts]
         pure (finishMode mode (dictCompactColumn c), False)
 
-{- | Merge chain-plan chunks. The candidate type starts at the widest chunk
-resolution; any chunk that resolved narrower is re-parsed at the candidate
-step, and a re-parse failure escalates the candidate further down the
-chain (exactly the rows the sequential pass would have failed on). The
-final 'StepText' never fails, so this terminates.
--}
+-- | Merge chain-plan chunks, re-parsing narrower chunks as needed.
 mergeChain ::
     Int ->
     ColumnEnv ->

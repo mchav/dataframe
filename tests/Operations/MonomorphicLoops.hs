@@ -3,9 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | The per-type loops in 'mapColumn', 'imapColumn', 'zipWithColumns' and the
-folds, checked against list references, plus how each function treats nulls.
--}
+-- | Per-type column loops checked against list references and null handling.
 module Operations.MonomorphicLoops where
 
 import Control.Exception (throw)
@@ -165,10 +163,7 @@ nullableCases =
             take n (cycle [Just 1.5, Nothing, Just (-0.0), Just (0 / 0)]) :: [Maybe Double]
     ]
 
-{- Functions at the element type over a column with nulls: f never runs on a
-null row (its storage is a zero or an error thunk), null rows stay null, a
-Maybe result's Nothing becomes null, and folds and searches skip null rows.
--}
+-- Functions over a column with nulls: f never runs on a null row.
 nullSemantics :: [Test]
 nullSemantics =
     [ eq

@@ -1,16 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 
--- Custom Setup hook for dataframe-fusion.
---
--- Two responsibilities:
---   1. Run `cargo build --release` for the dfusion-bridge staticlib before
---      Cabal's configure step looks for it (preConf), and again before the
---      build step in case the Rust source has changed.
---   2. Inject the absolute path of the staticlib into every component's
---      extraLibDirs at confHook time. We can't put a relative path in the
---      cabal file because `ghc-pkg` rejects it at registration; ${pkgroot}
---      is resolved too late for the configure-time library lookup.
+-- Custom Setup: builds the dfusion-bridge staticlib, adds it to extraLibDirs.
 
 import Data.Bifunctor (second)
 import Distribution.Compiler (PerCompilerFlavor (..))
@@ -94,10 +85,7 @@ runCargo phase = do
             hPutStrLn stderr err
             exitFailure
 
-{- | Locate cargo on PATH or under ~/.cargo/bin. If neither is found,
-install the stable Rust toolchain via rustup and return the path to
-the freshly installed cargo.
--}
+-- | Find cargo on PATH or in ~/.cargo/bin, installing Rust if absent.
 ensureCargo :: String -> IO FilePath
 ensureCargo phase = do
     mCargo <- findExecutable "cargo"

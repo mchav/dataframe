@@ -8,11 +8,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- | AdaBoost (SAMME) over short, sample-weighted classification trees. The
-weighted-Gini stump fitter here is self-contained (it reuses the CART feature
-encoding but not the unweighted CART recursion), so the existing decision-tree
-path is untouched. 'predict' is the arg-max of weighted votes.
--}
+-- | AdaBoost (SAMME) over short, sample-weighted classification trees.
 module DataFrame.Boosting.AdaBoost (
     module DataFrame.Model,
     AdaBoostConfig (..),
@@ -204,9 +200,7 @@ gini cw =
 minimum3 :: (Ord a) => [(a, b, c)] -> (a, b, c)
 minimum3 = foldr1 (\x@(a, _, _) y@(b, _, _) -> if a <= b then x else y)
 
-{- | Compile to an arg-max-of-weighted-votes expression over the class set:
-@argmax_c Σ_m αₘ·[stumpₘ = c]@.
--}
+-- | Compile to an arg-max-of-weighted-votes expression over the class set.
 adaBoostExpr :: (Columnable a, Ord a) => AdaBoostModel a -> Expr a
 adaBoostExpr m = argMaxExpr (zip classes scores)
   where

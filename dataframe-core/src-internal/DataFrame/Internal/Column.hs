@@ -1,17 +1,4 @@
-{- |
-Umbrella re-export of the column implementation. The module is split by
-concern:
-
-* "DataFrame.Internal.Column.Types" — type-level machinery ('Rep', 'SBool', ...)
-* "DataFrame.Internal.Column.Base" — the 'Column' GADT and core definitions
-* "DataFrame.Internal.Column.Bitmap" — the validity bitmap and its helpers
-* "DataFrame.Internal.Column.Properties" — predicates and introspection
-* "DataFrame.Internal.Column.Conversion" — vector\/list conversions
-* "DataFrame.Internal.Column.Operations" — bulk transformations
-
-Import this module to get the whole surface; import a submodule directly when
-you only need one layer.
--}
+-- | Umbrella re-export of the column implementation, split by concern.
 module DataFrame.Internal.Column (
     module DataFrame.Internal.Column.Base,
     module DataFrame.Internal.Column.Bitmap,

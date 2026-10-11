@@ -183,18 +183,14 @@ range (start, end) d =
   where
     (r, c) = dataframeDimensions d
     start' = clip start 0 r
-    -- Clamp both endpoints before subtracting: end - start' on an unclamped
-    -- end wraps for very negative values and reopens the range.
+    -- Clamp both endpoints first: an unclamped very negative end wraps.
     end' = clip end start' r
     n' = end' - start'
 
 clip :: Int -> Int -> Int -> Int
 clip n left right = min right $ max n left
 
-{- | O(n * k) Filter rows by a given condition.
-
-> filter "x" even df
--}
+-- | O(n * k) Filter rows by a given condition.
 filter ::
     forall a.
     (Columnable a) =>
@@ -277,17 +273,11 @@ filterByVector filterColumnName column condition df = case testEquality (typeRep
                 , dataframeDimensions = (VG.length ixs, snd (dataframeDimensions df))
                 }
 
-{- | O(k) a version of filter where the predicate comes first.
-
-> filterBy even "x" df
--}
+-- | O(k) A version of filter where the predicate comes first.
 filterBy :: (Columnable a) => (a -> Bool) -> Expr a -> DataFrame -> DataFrame
 filterBy = flip filter
 
-{- | O(k) filters the dataframe with a boolean expression.
-
-> filterWhere (F.col @Int x + F.col y F.> 5) df
--}
+-- | O(k) Filter the dataframe with a boolean expression.
 filterWhere :: Expr Bool -> DataFrame -> DataFrame
 filterWhere expr df =
     let
@@ -307,10 +297,7 @@ filterWhere expr df =
             , dataframeDimensions = (VU.length indexes, c')
             }
 
-{- | O(k) removes all rows with `Nothing` in a given column from the dataframe.
-
-> filterJust "col" df
--}
+-- | O(k) Remove all rows with Nothing in a given column.
 filterJust :: T.Text -> DataFrame -> DataFrame
 filterJust colName df = case getColumn colName df of
     Nothing ->
@@ -326,10 +313,7 @@ filterJust colName df = case getColumn colName df of
         _ -> df
     Just _ -> df
 
-{- | O(k) returns all rows with `Nothing` in a give column.
-
-> filterNothing "col" df
--}
+-- | O(k) Return all rows with Nothing in a given column.
 filterNothing :: T.Text -> DataFrame -> DataFrame
 filterNothing colName df = case getColumn colName df of
     Nothing ->
@@ -343,32 +327,19 @@ filterNothing colName df = case getColumn colName df of
         _ -> df
     _ -> df
 
-{- | O(n * k) removes all rows with `Nothing` from the dataframe.
-
-> filterAllJust df
--}
+-- | O(n * k) Remove all rows with Nothing from the dataframe.
 filterAllJust :: DataFrame -> DataFrame
 filterAllJust df = foldr filterJust df (columnNames df)
 
-{- | O(n * k) keeps any row with a null value.
-
-> filterAllNothing df
--}
+-- | O(n * k) Keep any row with a null value.
 filterAllNothing :: DataFrame -> DataFrame
 filterAllNothing df = foldr filterNothing df (columnNames df)
 
-{- | O(k) cuts the dataframe in a cube of size (a, b) where
-  a is the length and b is the width.
-
-> cube (10, 5) df
--}
+-- | O(k) Cut the dataframe to a cube of size (length, width).
 cube :: (Int, Int) -> DataFrame -> DataFrame
 cube (len, width) = take len . selectBy [ColumnIndexRange (0, width - 1)]
 
-{- | O(n) Selects a number of columns in a given dataframe.
-
-> select ["name", "age"] df
--}
+-- | O(n) Select a number of columns in a given dataframe.
 select ::
     [T.Text] ->
     DataFrame ->
@@ -397,42 +368,23 @@ data SelectionCriteria
     | ColumnIndexRange (Int, Int)
     | ColumnName T.Text
 
-{- | Criteria for selecting a column by name.
-
-> selectBy [byName "Age"] df
-
-equivalent to:
-
-> select ["Age"] df
--}
+-- | Criteria for selecting a column by name.
 byName :: T.Text -> SelectionCriteria
 byName = ColumnName
 
-{- | Criteria for selecting columns whose property satisfies given predicate.
-
-> selectBy [byProperty isNumeric] df
--}
+-- | Criteria for selecting columns whose property satisfies a predicate.
 byProperty :: (Column -> Bool) -> SelectionCriteria
 byProperty = ColumnProperty
 
-{- | Criteria for selecting columns whose name satisfies given predicate.
-
-> selectBy [byNameProperty (T.isPrefixOf "weight")] df
--}
+-- | Criteria for selecting columns whose name satisfies a predicate.
 byNameProperty :: (T.Text -> Bool) -> SelectionCriteria
 byNameProperty = ColumnNameProperty
 
-{- | Criteria for selecting columns whose names are in the given lexicographic range (inclusive).
-
-> selectBy [byNameRange ("a", "c")] df
--}
+-- | Criteria for selecting columns whose names are in a lexicographic range.
 byNameRange :: (T.Text, T.Text) -> SelectionCriteria
 byNameRange = ColumnTextRange
 
-{- | Criteria for selecting columns whose indices are in the given (inclusive) range.
-
-> selectBy [byIndexRange (0, 5)] df
--}
+-- | Criteria for selecting columns whose indices are in an inclusive range.
 byIndexRange :: (Int, Int) -> SelectionCriteria
 byIndexRange = ColumnIndexRange
 
@@ -455,10 +407,7 @@ selectBy xs df = select finalSelection df
       where
         ixs = V.ifoldl' (\acc' i c -> if f c then i : acc' else acc') [] (columns df)
 
-{- | O(k * n) select rows by index
-
-> selectRows [0, 2, 4] df
--}
+-- | O(k * n) Select rows by index.
 selectRows :: [Int] -> DataFrame -> DataFrame
 selectRows ixs df =
     df
@@ -468,10 +417,7 @@ selectRows ixs df =
   where
     ixs' = VU.fromList ixs
 
-{- | O(n) inverse of select
-
-> exclude ["Name"] df
--}
+-- | O(n) Inverse of select.
 exclude ::
     [T.Text] ->
     DataFrame ->
@@ -480,15 +426,7 @@ exclude cs df =
     let keysToKeep = columnNames df L.\\ cs
      in select keysToKeep df
 
-{- | Sample a dataframe. The double parameter must be between 0 and 1 (inclusive).
-
-==== __Example__
-@
-ghci> import System.Random
-ghci> D.sample (mkStdGen 137) 0.1 df
-
-@
--}
+-- | Sample a dataframe; the fraction must be between 0 and 1 inclusive.
 sample :: (RandomGen g) => g -> Double -> DataFrame -> DataFrame
 sample pureGen p df =
     let
@@ -500,15 +438,7 @@ sample pureGen p df =
             & filterWhere (cRand .>=. Lit (1 - p))
             & exclude [name cRand]
 
-{- | Split a dataset into two. The first in the tuple gets a sample of p (0 <= p <= 1) and the second gets (1 - p). This is useful for creating test and train splits.
-
-==== __Example__
-@
-ghci> import System.Random
-ghci> D.randomSplit (mkStdGen 137) 0.9 df
-
-@
--}
+-- | Split a dataset in two: a sample of fraction p and the remainder.
 randomSplit ::
     (RandomGen g) => g -> Double -> DataFrame -> (DataFrame, DataFrame)
 randomSplit pureGen p df =
@@ -526,15 +456,7 @@ randomSplit pureGen p df =
             & exclude [name cRand]
         )
 
-{- | Creates n folds of a dataframe.
-
-==== __Example__
-@
-ghci> import System.Random
-ghci> D.kFolds (mkStdGen 137) 5 df
-
-@
--}
+-- | Create n folds of a dataframe.
 kFolds :: (RandomGen g) => g -> Int -> DataFrame -> [DataFrame]
 kFolds pureGen folds df =
     let
@@ -573,14 +495,7 @@ rowsAtIndices ixs df =
         , dataframeDimensions = (VU.length ixs, snd (dataframeDimensions df))
         }
 
-{- | Sample a dataframe, preserving per-stratum proportions.
-
-==== __Example__
-@
-ghci> import System.Random
-ghci> D.stratifiedSample (mkStdGen 42) 0.8 "label" df
-@
--}
+-- | Sample a dataframe, preserving per-stratum proportions.
 stratifiedSample ::
     forall a g.
     (SplittableGen g, Columnable a) =>
@@ -599,14 +514,7 @@ stratifiedSample gen p strataCol df =
              in sample g1 p stratum <> go g2 rest
      in go gen groups
 
-{- | Split a dataframe into two, preserving per-stratum proportions.
-
-==== __Example__
-@
-ghci> import System.Random
-ghci> D.stratifiedSplit (mkStdGen 42) 0.8 "label" df
-@
--}
+-- | Split a dataframe into two, preserving per-stratum proportions.
 stratifiedSplit ::
     forall a g.
     (SplittableGen g, Columnable a) =>

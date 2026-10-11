@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Behavior pins for chunk-parallel extraction: a chunked read must be
-indistinguishable from the sequential one — same column types (promotion
-resolved across chunks), same values, and same errors.
--}
+-- | Chunked reads must match the sequential read.
 module Operations.ChunkParallel (tests) where
 
 import qualified Data.Map as M
@@ -55,8 +52,7 @@ expectColumn what name df expected = case getColumn name df of
     Nothing -> assertFailure (what <> ": column missing")
     Just col -> assertEqual what expected col
 
--- A 200-row mixed dataset: nullable ints, doubles, quoted text with
--- embedded separators/newlines/doubled quotes, bools, nullable dates.
+-- A 200-row mixed dataset with quoted text, bools, nulls and dates.
 mixedBody :: T.Text
 mixedBody = "i,d,t,b,dt\n" <> T.concat (map row [0 .. 199 :: Int])
   where
@@ -84,8 +80,7 @@ testParallelMatchesSequentialMixed =
     TestLabel "par_matches_seq_mixed" . TestCase $
         assertChunkInvariant "mixed nulls+quoted" defaultReadOptions mixedBody
 
--- A Double cell far past the sample, in the last chunk: every chunk that
--- resolved Int must be re-parsed as Double by the merger.
+-- A Double cell in the last chunk forces Int chunks to be re-parsed.
 testPromotionAcrossChunks :: Test
 testPromotionAcrossChunks = TestLabel "par_promotion_int_double" . TestCase $ do
     let body =
@@ -100,8 +95,7 @@ testPromotionAcrossChunks = TestLabel "par_promotion_int_double" . TestCase $ do
         df
         (DI.fromList @Double ([fromIntegral k | k <- [0 .. 189 :: Int]] <> [190.5]))
 
--- A Bool cell in the last chunk of an Int column: candidate escalates past
--- Double (the bool cell fails it) all the way to Text.
+-- A Bool cell in the last chunk of an Int column escalates to Text.
 testDemotionToTextAcrossChunks :: Test
 testDemotionToTextAcrossChunks = TestLabel "par_demotion_text" . TestCase $ do
     let body =
@@ -129,8 +123,7 @@ testAllNullColumnAcrossChunks = TestLabel "par_all_null" . TestCase $ do
         df
         (DI.fromList @(Maybe T.Text) (replicate 200 Nothing))
 
--- All-null sample (NoAssumption), data only in the last chunk: all-null
--- chunks must be re-parsed at the type the data chunk resolved.
+-- Data only in the last chunk: all-null chunks must be re-parsed.
 testLateDataAfterAllNullSample :: Test
 testLateDataAfterAllNullSample = TestLabel "par_late_bool" . TestCase $ do
     let cell k
@@ -152,8 +145,7 @@ testLateDataAfterAllNullSample = TestLabel "par_late_bool" . TestCase $ do
             ]
         )
 
--- Schema + NoSafeRead failure in a late chunk: same error, same row index
--- as the sequential read.
+-- A late schema failure reports the same row as the sequential read.
 testSchemaErrorSameRowAsSequential :: Test
 testSchemaErrorSameRowAsSequential = TestLabel "par_schema_error" . TestCase $ do
     let body =
@@ -238,8 +230,7 @@ testUnclosedQuoteAcrossChunks = TestLabel "par_unclosed_quote" . TestCase $ do
         Left D.CsvUnclosedQuote -> pure ()
         other -> assertFailure ("expected CsvUnclosedQuote, got " <> show other)
 
--- The parallel byte-level merge wraps the merged buffer as 'PackedText'
--- (no Text spine), an RSS win; values stay identical to the sequential read.
+-- The parallel merge wraps the buffer as 'PackedText', values unchanged.
 testParallelTextFreezesPacked :: Test
 testParallelTextFreezesPacked = TestLabel "par_text_freezes_packed" . TestCase $ do
     let body =
@@ -254,7 +245,7 @@ testParallelTextFreezesPacked = TestLabel "par_text_freezes_packed" . TestCase $
         Just col -> do
             assertBool "parallel text column is PackedText" (DI.isPackedText col)
             assertEqual
-                "parallel text values byte-identical"
+                "parallel text values equal"
                 (DI.fromList @T.Text ["t" <> T.pack (show k) | k <- [0 .. 199 :: Int]])
                 col
 

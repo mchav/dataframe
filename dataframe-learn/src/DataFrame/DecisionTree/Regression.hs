@@ -2,10 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 
-{- | Variance-reduction (weighted-SSE) regression trees over the CART feature
-machinery; leaves predict the weighted mean of their rows. 'fitRegTree' lets
-gradient boosting refit on residuals without re-extracting features.
--}
+-- | Variance-reduction (weighted-SSE) regression trees.
 module DataFrame.DecisionTree.Regression (
     RegTreeConfig (..),
     defaultRegTreeConfig,
@@ -51,9 +48,7 @@ data RegFit = RegFit
     , rfFitted :: !(VU.Vector Double)
     }
 
-{- | Fit on pre-extracted features, a target vector, and optional per-row
-weights (length @n@). Used by gradient boosting on residual targets.
--}
+-- | Fit on pre-extracted features, a target vector and optional weights.
 fitRegTree ::
     RegTreeConfig ->
     V.Vector CartFeature ->
@@ -118,9 +113,7 @@ fitRegTree cfg feats y mw = RegFit (toTree root) inSample
                 ]
         (red, split) = maximumByFst candidates
 
-    {- Best (threshold, null side) for feature @fj@ at this node. The sweep
-    covers non-null rows; each threshold is scored twice, with the node's null
-    rows added to the left and to the right. -}
+    -- Best (threshold, null side) for feature @fj@ at this node.
     bestThreshold fj sorted nNode totW totSY totSY2 nodeSSE =
         [(r, (fj, thr, dir)) | (thr, dir, r) <- maybeToList (go 0 0 0 0 Nothing)]
       where
@@ -130,8 +123,7 @@ fitRegTree cfg feats y mw = RegFit (toTree root) inSample
         (pW, pSY, pSY2) = moments sorted
         (nW, nSY, nSY2) = (totW - pW, totSY - pSY, totSY2 - pSY2)
         hasNulls = nNull > 0
-        -- Last split position to try. With nulls, putting every non-null row
-        -- left is a valid null vs non-null split; without nulls it splits nothing.
+        -- Last split to try; without nulls the final row splits nothing.
         lastK = if hasNulls then m - 1 else m - 2
         score nl wl syl syl2 =
             let wr = totW - wl
@@ -177,7 +169,7 @@ fitRegTree cfg feats y mw = RegFit (toTree root) inSample
 safeDiv :: Double -> Double -> Double
 safeDiv a b = if b == 0 then 0 else a / b
 
--- | Weighted SSE of a node from its Σy, Σy², and total weight: @Σy² − (Σy)²/w@.
+-- | Weighted SSE of a node from its sums and total weight.
 sse :: Double -> Double -> Double -> Double
 sse sumY sumSq w = sumSq - safeDiv (sumY * sumY) w
 
@@ -189,9 +181,7 @@ toTree :: FitNode -> Tree Double
 toTree (FLeaf v _) = Leaf v
 toTree (FBranch c l r) = Branch c (toTree l) (toTree r)
 
-{- | Force a subtree to WHNF throughout so the spark scoring the sibling has
-substantial work to evaluate; pure and value-preserving (cf. 'Tao').
--}
+-- | Force a subtree to WHNF throughout; pure and value-preserving.
 forceTree :: FitNode -> ()
 forceTree (FLeaf v _) = v `seq` ()
 forceTree (FBranch _ l r) = forceTree l `seq` forceTree r

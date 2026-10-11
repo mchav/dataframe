@@ -1,31 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 
-{- |
-Module      : DataFrame.IO.Persistent.Schema
-License     : MIT
-
-Template Haskell that reads a SQLite table's schema __at compile time__ and
-generates either a typed-schema type synonym ('declareTable') or a @persistent@
-entity ('declareEntity'). Both replace the hand-written @persistLowerCase@ +
-@derivePersistentDataFrame@ boilerplate.
-
-'declareTable' emits only the schema /type/. You read into it with the generic
-'DataFrame.IO.Persistent.Read.readTableTyped', so the database and table are
-runtime values and the same schema can be reused across databases.
-
-@
--- Typed schema, checked at compile time:
-\$('declareTable' "chinook.db" "artists")
--- generates: type ArtistsSchema = '[ '("ArtistId", Int), '("Name", Maybe Text)]
--- read any database/table into it:
---   readTableTyped \@ArtistsSchema "chinook.db" "artists" :: IO (TypedDataFrame ArtistsSchema)
-
--- Persistent entity: full Filter DSL, write-back, no hand-written schema.
-\$('declareEntity' "chinook.db" "artists")
--- then: runSqlite "chinook.db" (selectToDataFrame [ArtistsName ==. Just "Accept"] [])
-@
--}
+-- | Template Haskell that reads a SQLite schema at compile time.
 module DataFrame.IO.Persistent.Schema (
     -- * Typed schema
     declareTable,
@@ -55,10 +31,7 @@ import Database.Persist.TH (mkPersist, sqlSettings)
 import DataFrame.IO.Persistent.Schema.Common
 import DataFrame.IO.Persistent.Schema.Introspect
 
-{- | Read @table@ from the SQLite database at @path@ and emit a typed schema
-synonym, @type \<Table\>Schema = '[ '(name, ty), ...]@. Read into it with
-'DataFrame.IO.Persistent.Read.readTableTyped'.
--}
+-- | Emit a typed schema synonym for a SQLite table.
 declareTable :: FilePath -> String -> Q [Dec]
 declareTable = declareTableWith defaultDeclareOptions
 
@@ -69,14 +42,12 @@ declareTableWith opts path table = do
     warnOnNumeric cols
     schemaDecl opts (T.pack table) cols
 
-{- | Like 'declareTable' but from an explicit column list, so __no database is
-opened at build time__ (use in CI / cross-compilation / sdist consumers).
--}
+-- | Like 'declareTable' but from an explicit column list, opening no database.
 declareTableFromSchema :: [ColumnInfo] -> String -> Q [Dec]
 declareTableFromSchema cols name =
     schemaDecl defaultDeclareOptions (T.pack name) cols
 
--- | Emit @type \<Table\>Schema = '[ '(name, ty), ...]@ for the selected columns.
+-- | Emit @type \<Table\>Schema = '[ '(name, ty), ...]@ for chosen columns.
 schemaDecl :: DeclareOptions -> Text -> [ColumnInfo] -> Q [Dec]
 schemaDecl opts table cols0 = do
     let cols = selectColumns opts cols0
@@ -109,10 +80,7 @@ wrapMaybe :: Bool -> Type -> Type
 wrapMaybe True ty = ConT ''Maybe `AppT` ty
 wrapMaybe False ty = ty
 
-{- | Read @table@ at compile time and generate a @persistent@ entity for it
-(via 'mkPersist'), giving the full @persistent@ typed-'Filter' DSL with no
-hand-written schema. Load it with 'DataFrame.IO.Persistent.Read.selectToDataFrame'.
--}
+-- | Generate a @persistent@ entity for a SQLite table at compile time.
 declareEntity :: FilePath -> String -> Q [Dec]
 declareEntity = declareEntityWith defaultDeclareOptions
 
@@ -130,16 +98,13 @@ parseEntityDefs dsl = case snd (parse lowerCaseSettings [(Nothing, dsl)]) of
     Left errs -> fail ("declareEntity: could not build entity definition:\n" <> show errs)
     Right defs -> pure defs
 
-{- | Render the @persistLowerCase@ DSL text for an entity. An integer primary key
-becomes the @Id@ field; every other column is a field bound to its DB name.
--}
+-- | Render the @persistLowerCase@ DSL text for an entity.
 renderEntityDsl :: DeclareOptions -> Text -> Text -> [ColumnInfo] -> Text
 renderEntityDsl opts ent table cols =
     T.unlines ((ent <> " sql=" <> table) : idLines <> map (renderField opts) fields)
   where
     (pks, others) = partition (isIntPk opts) cols
-    -- Rename persistent's default (ToBackendKey-enabled) key column rather than
-    -- declaring a natural key, so generated entities keep fromSqlKey/ToBackendKey.
+    -- Rename the default key column so entities keep fromSqlKey/ToBackendKey.
     (idLines, fields) = case pks of
         [pk] -> (["    Id sql=" <> ciName pk], others)
         _ -> ([], cols)

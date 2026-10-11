@@ -4,15 +4,7 @@ module DataFrame.Typed.Util (
 
 import Data.Char (isUpper, toLower)
 
-{- | Convert a camelCase identifier to snake_case.
-
->>> camelToSnake "orderId"
-"order_id"
->>> camelToSnake "amountUS"
-"amount_u_s"
->>> camelToSnake "region"
-"region"
--}
+-- | Convert a camelCase identifier to snake_case.
 camelToSnake :: String -> String
 camelToSnake [] = []
 camelToSnake (c : cs) = toLower c : go cs

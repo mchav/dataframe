@@ -3,11 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | Kernel PCA with an RBF kernel, solved on a set of landmark points (Nyström).
-Exact kernel PCA when the landmark count covers every row, a principled
-approximation otherwise. 'fit' trains the model; the projection is exposed as
-'kernelPCAExprs' / 'kernelPcaTransform' (a transformer, so no 'Predict').
--}
+-- | Kernel PCA with an RBF kernel, solved on Nystrom landmark points.
 module DataFrame.PCA.Kernel (
     module DataFrame.Model,
     KernelPCAConfig (..),
@@ -49,9 +45,7 @@ defaultKernelPCAConfig =
         , kpcaSeed = 0
         }
 
-{- | A fitted kernel PCA. Each component is @Σ_l βₗ·K(x, landmarkₗ) + cᵢ@ with an
-RBF kernel of bandwidth 'kpcaGammaUsed'.
--}
+-- | A fitted kernel PCA using an RBF kernel on landmark points.
 data KernelPCAModel = KernelPCAModel
     { kpcaLandmarks :: !(V.Vector (VU.Vector Double))
     , kpcaBetas :: !(V.Vector (VU.Vector Double))

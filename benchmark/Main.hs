@@ -16,11 +16,6 @@ import DataFrame.Operations.Join
 import System.Process hiding (env)
 import System.Random.Stateful
 
-{- | Criterion's 'nf' and 'env' force benchmark inputs/results to normal form
-via 'NFData'. The core library intentionally dropped its @instance NFData
-DataFrame@ in favour of 'forceDataFrame', so we provide a thin orphan here
-(scoped to the benchmark) that reuses it.
--}
 instance NFData D.DataFrame where
     rnf df = forceDataFrame df `seq` ()
 
@@ -108,10 +103,7 @@ parseChipotleTSV = void $ D.readTsv "./data/chipotle.tsv"
 parseMeasurementsTXT :: IO ()
 parseMeasurementsTXT = parseFile "./data/measurements.txt"
 
-{- | Generate a pair of dataframes for a 1:1 join scenario.
-  Left has keys [0..n-1], right has keys [0..n-1] shuffled.
-  overlap controls what fraction of keys appear in both sides.
--}
+-- | Two dataframes for a 1:1 join; overlap is the share of shared keys.
 mkOneToOne :: Int -> Double -> IO (D.DataFrame, D.DataFrame)
 mkOneToOne n overlap = do
     g <- newIOGenM =<< newStdGen
@@ -134,9 +126,7 @@ mkOneToOne n overlap = do
                 ]
     return (leftDf, rightDf)
 
-{- | Generate a pair of dataframes for a many-to-many join scenario.
-  Keys are drawn from [0..cardinality-1], so rows share keys.
--}
+-- | Two dataframes for a many-to-many join with keys in [0..cardinality-1].
 mkManyToMany :: Int -> Int -> Int -> IO (D.DataFrame, D.DataFrame)
 mkManyToMany leftRows rightRows cardinality = do
     g <- newIOGenM =<< newStdGen
@@ -157,11 +147,7 @@ mkManyToMany leftRows rightRows cardinality = do
                 ]
     return (leftDf, rightDf)
 
-{- | Generate a pair of dataframes for a many-to-one join
-  (fact table joining a dimension table).
-  Left has n rows with keys drawn from [0..dimSize-1].
-  Right has exactly dimSize rows with unique keys.
--}
+-- | Fact table and dimension table (unique keys) for a many-to-one join.
 mkManyToOne :: Int -> Int -> IO (D.DataFrame, D.DataFrame)
 mkManyToOne factRows dimSize = do
     g <- newIOGenM =<< newStdGen

@@ -6,31 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- |
-Module      : DataFrame.Typed.Lazy
-Copyright   : (c) 2024 - 2026 Michael Chavinda
-License     : MIT
-Stability   : experimental
-
-Type-safe lazy query pipelines: compile-time schema tracking ('TypedDataFrame')
-with the deferred execution of 'LazyDataFrame'. Queries build a phantom-typed
-logical plan; execution is deferred until 'run'.
-
-@
-{\-\# LANGUAGE DataKinds, TypeApplications, TypeOperators \#-\}
-import qualified DataFrame.Typed.Lazy as TL
-import DataFrame.Typed (Column)
-
-type Schema = '[ '(\"id\", Int), '(\"name\", Text), '(\"score\", Double)]
-
-main = do
-    let query = TL.scanCsv \@Schema \"data.csv\"
-              & TL.filter (TL.col \@\"score\" TL..>. TL.lit 0.5)
-              & TL.select \@'[\"id\", \"name\"]
-    df <- TL.run query   -- TypedDataFrame '[ '(\"id\", Int), '(\"name\", Text)]
-    print df
-@
--}
+-- | Type-safe lazy query pipelines with compile-time schema tracking.
 module DataFrame.Typed.Lazy (
     -- * Core type
     TypedLazyDataFrame,
@@ -226,10 +202,7 @@ fullOuterJoin ::
     TypedLazyDataFrame (FullOuterJoinSchema '[key] left right)
 fullOuterJoin = joinOn @key FULL_OUTER
 
-{- | Runtime delegation shared by the typed joins. The lazy backend joins on a
-single key whose name is the same in both schemas; the result schema is
-computed by the caller's join-specific type family.
--}
+-- | Runtime delegation shared by the typed joins.
 joinOn ::
     forall (key :: Symbol) left right out.
     (KnownSymbol key) =>

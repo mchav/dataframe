@@ -4,11 +4,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- | Logistic regression: binary and one-vs-rest multiclass over the FISTA
-solver. 'fit' trains a 'LogisticModel'; 'predict' is the arg-max class decision.
-Per-class margins and (normalized) probabilities stay available as named
-auxiliary expressions.
--}
+-- | Logistic regression: binary and one-vs-rest multiclass via FISTA.
 module DataFrame.LinearModel.Logistic (
     module DataFrame.Model,
     LogisticConfig (..),
@@ -50,9 +46,7 @@ newtype LogisticConfig = LogisticConfig {lgSolver :: SolverConfig}
 defaultLogisticConfig :: LogisticConfig
 defaultLogisticConfig = LogisticConfig defaultSolverConfig
 
-{- | A fitted (one-vs-rest) logistic model: parallel vectors of class labels and
-their binary sub-models. 'lgModels' carries sklearn's per-class @coef_@.
--}
+-- | A fitted one-vs-rest logistic model of class labels and sub-models.
 data LogisticModel a = LogisticModel
     { lgClasses :: !(V.Vector a)
     , lgModels :: !(V.Vector LinearModel)
@@ -67,7 +61,7 @@ instance (Columnable a, Ord a) => Predict (LogisticModel a) where
     type Prediction (LogisticModel a) = Expr a
     predict m = argMaxExpr (labelledMargins m)
 
--- | Fit one-vs-rest logistic regression; the target column supplies the classes.
+-- | Fit one-vs-rest logistic regression; the target supplies the classes.
 fitLogistic ::
     (Columnable a, Ord a) =>
     LogisticConfig -> Expr a -> DataFrame -> LogisticModel a
@@ -83,22 +77,17 @@ fitLogistic (LogisticConfig cfg) target df =
         let labels =
                 VU.generate (V.length ys) (\i -> if ys V.! i == c then 1 else -1)
          in fitL1Logistic cfg mat labels nameVec
-    -- Binary one-vs-rest fits two sign-mirrored models; solve once and negate.
-    -- Multiclass fits the per-class binary problems in parallel.
+    -- Binary fits two sign-mirrored models; solve once and negate.
     models = case classes of
         [c0, _c1] -> let m0 = fitOne c0 in [m0, negateModel m0]
         _ -> map fitOne classes `using` parList forceModel
 
-{- | Sign-flip a fitted binary model (the other one-vs-rest class in a 2-class
-problem is its exact mirror).
--}
+-- | Sign-flip a fitted binary model.
 negateModel :: LinearModel -> LinearModel
 negateModel m =
     m{lmWeights = VU.map negate (lmWeights m), lmIntercept = negate (lmIntercept m)}
 
-{- | Force a fitted model's solver work by evaluating its (unboxed, strict)
-weight vector, so 'parList' actually runs the per-class fits in parallel.
--}
+-- | Force a fitted model's weight vector so per-class fits run in parallel.
 forceModel :: Strategy LinearModel
 forceModel m = lmWeights m `seq` rseq m
 

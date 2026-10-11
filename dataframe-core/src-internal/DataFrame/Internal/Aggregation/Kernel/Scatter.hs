@@ -5,19 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | The group-range scatter-accumulate reduction kernel: reduces a value column
-over the grouped layout @(valueIndices, offsets)@.
-
-Sequential and parallel are the same algorithm at different row counts, so they
-live together. 'scatterReducePar' cuts the GROUP axis into @caps@ ranges of
-roughly equal row count and lets workers write disjoint slots of one shared
-output — no per-worker accumulator, no merge — which keeps each group's
-accumulation order identical to 'scatterReduce' and the results byte-identical
-at any @-N@. Below 'parThreshold' it delegates to 'scatterReduce' directly.
-
-Contrast "DataFrame.Internal.Aggregation.Kernel.Dense", which scatters off
-@rowToGroup@ with no gather but needs a small dense group domain.
--}
+-- | The group-range scatter-accumulate reduction kernel over grouped layout.
 module DataFrame.Internal.Aggregation.Kernel.Scatter (
     scatterReduce,
     scatterReducePar,
@@ -54,10 +42,7 @@ import DataFrame.Internal.Control.Concurrent (
     shouldParallelize,
  )
 
-{- $shared
-Also used by "DataFrame.Internal.Aggregation.Kernel.Moments", which partitions
-the group axis the same way.
--}
+-- $shared Also used by the Moments kernel, which partitions groups alike.
 
 -- | Whether to fan out at this row count.
 shouldPar :: Int -> Bool
@@ -265,12 +250,7 @@ scatterReducePar red vis offs nGroups col
         _ -> Nothing
 {-# NOINLINE scatterReducePar #-}
 
-{- | Monomorphic entry points: the 'testEquality' dispatch above only yields an
-unsafe coercion, so a direct call to the polymorphic 'reduceParTyped' there
-would stay at the abstract element type and never meet its SPECIALIZE rules;
-calling through these fixed-type wrappers (the coercion lands on the argument)
-does.
--}
+-- | Monomorphic entry points for the 'testEquality' dispatch above.
 reduceParInt ::
     Reduction -> VU.Vector Int -> VU.Vector Int -> Int -> VU.Vector Int -> Column
 reduceParInt red vis offs nGroups v = reduceParTyped red vis offs nGroups v intIdent
@@ -307,10 +287,7 @@ reduceParTyped ::
     VU.Vector a ->
     Idents a ->
     Column
-{- The SPECIALIZE pragmas matter: without them the @realToFrac@ in the
-mean/var kernels survives to runtime as a dictionary call through
-'Rational' (the Double->Double/Int->Double rewrite rules only fire once the
-type is concrete), costing ~4x on the whole pass. -}
+-- SPECIALIZE lets @realToFrac@ resolve at a concrete type (~4x faster).
 {-# SPECIALIZE reduceParTyped ::
     Reduction ->
     VU.Vector Int ->
@@ -349,13 +326,7 @@ reduceParTyped red vis offs nGroups v idents =
                 fromUnboxedVector (unsafePerformIO (varPar True vis offs nGroups v caps bounds))
 {-# INLINEABLE reduceParTyped #-}
 
-{- | For each group in @[gs, ge)@, fold the group's rows (in @valueIndices@
-order, i.e. ascending original-row order) into an accumulator held in
-registers, then hand the final accumulator to @done@ exactly once. Keeping the
-running state out of memory leaves one write per group instead of a
-read-modify-write per row; the per-group fold order is unchanged, so results
-stay byte-identical to the row-wise variant.
--}
+-- | Fold each group's rows into a register accumulator, then hand it on.
 overGroupsAcc ::
     VU.Vector Int ->
     VU.Vector Int ->
@@ -484,8 +455,7 @@ varPar ::
 varPar takeSqrt vis offs nGroups v caps bounds = do
     out <- VUM.replicate nGroups (0 :: Double)
     parallelBounds_ caps bounds $ \gs ge ->
-        -- Per-group Welford state (count, mean, M2) carried in registers; the
-        -- update order per group is the same ascending row order as before.
+        -- Per-group Welford state (count, mean, M2) is carried in registers.
         let grp !g
                 | g >= ge = pure ()
                 | otherwise = do
@@ -508,19 +478,7 @@ varPar takeSqrt vis offs nGroups v caps bounds = do
     VU.unsafeFreeze out
 {-# INLINE varPar #-}
 
--------------------------------------------------------------------------------
--- Parallel fused max(a) - min(b) (Q7 at wide group domains)
--------------------------------------------------------------------------------
-
-{- | Fused @max a - min b@ over the group-range layout: ONE traversal of
-@valueIndices@ accumulating both extrema, parallel by disjoint group range with
-no cross-worker merge. min/max are order-independent, so the result is
-byte-identical to running the two gather extrema passes separately; the fusion
-halves the index traffic. 'Nothing' below the parallel threshold or unless both
-columns are clean unboxed and same-typed (Int/Int keeps the Int result of the
-interpreter; Double/Double the Double one) — the caller then keeps its two-pass
-fallback.
--}
+-- | Fused @max a - min b@ over the group-range layout in one traversal.
 maxMinusMinScatterPar ::
     VU.Vector Int -> VU.Vector Int -> Int -> Column -> Column -> Maybe Column
 maxMinusMinScatterPar vis offs nGroups ca cb
@@ -541,9 +499,7 @@ maxMinusMinScatterPar vis offs nGroups ca cb
     !bounds = groupRangeBounds offs nGroups caps
 {-# NOINLINE maxMinusMinScatterPar #-}
 
-{- | Monomorphic entry points (see 'reduceParInt' for why the 'testEquality'
-dispatch needs them).
--}
+-- | Monomorphic entry points for the 'testEquality' dispatch.
 maxMinusMinParInt ::
     VU.Vector Int ->
     VU.Vector Int ->
@@ -615,8 +571,7 @@ maxMinusMinPar ::
 maxMinusMinPar maxSeed minSeed vis offs nGroups va vb caps bounds = do
     out <- VUM.new nGroups
     parallelBounds_ caps bounds $ \gs ge ->
-        -- Both extrema carried in registers per group; one traversal of the
-        -- shared index slice reads both value columns.
+        -- Both extrema live in registers; one traversal reads both columns.
         let grp !g
                 | g >= ge = pure ()
                 | otherwise = do
@@ -635,31 +590,10 @@ maxMinusMinPar maxSeed minSeed vis offs nGroups va vb caps bounds = do
          in grp gs
     VU.unsafeFreeze out
 
--------------------------------------------------------------------------------
--- Streaming (rowToGroup-scatter) kernels: no valueIndices, no placement pass
--------------------------------------------------------------------------------
-
-{- | Group-count cap for the FUSED streaming rtg-scatter kernels
-('DataFrame.Internal.Aggregation.Kernel.Moments.momentStreamPar',
-'DataFrame.Internal.Aggregation.Kernel.Fused.runFusedAggs'). Above
-'DataFrame.Internal.Grouping.Direct.directThreshold' the per-worker accumulator
-arrays overflow cache, so a SINGLE streaming reduction loses to a gather pass —
-the per-expression dispatch keeps that threshold. A fused multi-reduction pass
-amortizes those misses across all its reductions AND avoids the deferred
-@valueIndices@ placement entirely, which flips the comparison (measured at 1e6
-groups / 1e8 rows on -N16: rowToGroup 0.4s + fused 3-sum stream 1.4s, against
-placement 1.1s + fused gather 1.05s), so the fused cap extends to
-'directGroupThreshold' — every direct-grouped frame can stream. Wider
-groupings are necessarily hash-path (eager @valueIndices@) and use the fused
-GATHER kernel ('DataFrame.Internal.Aggregation.Kernel.Fused.runGatherAggs')
-instead. Memory: @capabilities * nGroups@ words per accumulator array, at most
-~128MB transient at -N16.
--}
+-- | Group-count cap for the fused streaming scatter kernels.
 streamGroupCap :: Int
 streamGroupCap = 1048576
 
-{- | Near-equal contiguous slices of the group domain for parallel merges.
-Below 4096 groups (or single-capability) the merge stays on one thread.
--}
+-- | Near-equal contiguous slices of the group domain for parallel merges.
 groupSlices :: Int -> [(Int, Int)]
 groupSlices = chunksFor 4096

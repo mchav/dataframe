@@ -1,13 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- |
-Module      : DataFrame.TH.CSV
-License     : MIT
-
-CSV-file-based 'DataFrame.TH' splices. Splits out the CSV ingest path so
-@dataframe-th@ stays IO-agnostic.
--}
+-- | Splices that derive column bindings from a CSV file.
 module DataFrame.TH.CSV (
     declareColumnsFromCsvFile,
     declareColumnsFromCsvWithOpts,
@@ -25,10 +19,7 @@ import System.IO (IOMode (ReadMode), withFile)
 import qualified DataFrame.IO.CSV as CSV
 import DataFrame.TH.Records (declareColumns, declareSchemaValues)
 
-{- | Splice a binding for every column of the 'DataFrame' read from a CSV
-file. Each binding has type @Expr T@ where @T@ is the inferred column
-type.
--}
+-- | Splice an @Expr T@ binding for every column of a CSV file.
 declareColumnsFromCsvFile :: String -> DecsQ
 declareColumnsFromCsvFile path = do
     df <-

@@ -17,7 +17,7 @@ import qualified Data.Vector.Unboxed as VU
 import System.Random (mkStdGen, randomR)
 import Test.HUnit
 
--- Generate n points with d features, each value uniform in [-1, 1], from a seed.
+-- Generate n points of d features, each uniform in [-1, 1], from a seed.
 syntheticPoints :: Int -> Int -> Int -> V.Vector (VU.Vector Double)
 syntheticPoints seed n d =
     let (rows, _) = foldr step ([], mkStdGen seed) [1 .. n]
@@ -65,8 +65,7 @@ predictStandardized :: VU.Vector Double -> Double -> VU.Vector Double -> Double
 predictStandardized w b x =
     if dotProduct w x + b > 0 then 1 else -1
 
--- Average binary logistic loss at (w, b); the branch on @margin@ keeps
--- @log(1 + exp(-margin))@ numerically stable.
+-- Average binary logistic loss at (w, b), computed stably via @margin@.
 logisticLoss ::
     V.Vector (VU.Vector Double) ->
     VU.Vector Double ->
@@ -505,8 +504,7 @@ testA13MaxIterOne = TestCase $ do
         badB = isNaN (lmIntercept m1) || isInfinite (lmIntercept m1)
     assertBool "no NaN/Inf after one iteration" (not (badW || badB))
 
--- Generate two correlated features f0, f1 with correlation ρ, plus
--- noise features f2..f7. Truth is sign(f0 + f1).
+-- Features f0, f1 correlated by ρ plus noise f2..f7; truth is sign(f0 + f1).
 correlatedPairData ::
     Int -> Double -> (V.Vector (VU.Vector Double), VU.Vector Double)
 correlatedPairData seed rho =

@@ -1,8 +1,4 @@
-{- | Bundled, pretty-printing evaluation summaries: a labelled confusion matrix
-and scikit-learn-style regression / classification reports. The @*Expr@ variants
-take a model's prediction expression and a truth column directly, so a full
-report is a one-liner after fitting.
--}
+-- | Pretty-printing evaluation summaries: confusion matrix and reports.
 module DataFrame.Metrics.Report (
     ConfusionMatrix (..),
     confusionMatrix,
@@ -37,7 +33,7 @@ import DataFrame.Metrics (
     rmse,
  )
 
--- | A labelled confusion matrix: class order plus row-major @actual×predicted@.
+-- | A labelled confusion matrix: class order plus row-major counts.
 data ConfusionMatrix = ConfusionMatrix
     { cmClasses :: ![Double]
     , cmCounts :: ![[Int]]
@@ -115,9 +111,7 @@ data ClassStats = ClassStats
     }
     deriving (Eq, Show)
 
-{- | A scikit-learn-style classification report: per-class stats plus accuracy
-and macro/weighted F1.
--}
+-- | A scikit-learn-style classification report.
 data ClassificationReport = ClassificationReport
     { crPerClass :: ![(Double, ClassStats)]
     , crAccuracy :: !Double

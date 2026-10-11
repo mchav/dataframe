@@ -2,14 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 
-{- |
-Module      : DataFrame.IO.Persistent.Schema.Common
-License     : MIT
-
-Shared options, name mangling, type mapping, and compile-time introspection used
-by both the typed-schema splice (@declareTable@) and the entity splice
-(@declareEntity@) in "DataFrame.IO.Persistent.Schema".
--}
+-- | Shared options, name mangling, type mapping, and introspection for splices.
 module DataFrame.IO.Persistent.Schema.Common (
     -- * Options
     DeclareOptions (..),
@@ -52,30 +45,23 @@ import Language.Haskell.TH.Syntax (addDependentFile, runIO)
 import Data.ByteString (ByteString)
 import DataFrame.IO.Persistent.Schema.Introspect
 
-{- | Knobs shared by 'DataFrame.IO.Persistent.Schema.declareTable' and
-'DataFrame.IO.Persistent.Schema.declareEntity'. Start from
-'defaultDeclareOptions' and override fields with record syntax.
--}
+-- | Options shared by 'declareTable' and 'declareEntity'.
 data DeclareOptions = DeclareOptions
     { honorNotNull :: Bool
-    {- ^ @True@ (default): @NOT NULL@ columns are non-null, others @Maybe@.
-    @False@: every column is treated as nullable.
-    -}
+    -- ^ @True@ (default): @NOT NULL@ columns are non-null, others @Maybe@.
     , typeOverride :: Text -> Text -> Maybe HaskellType
-    {- ^ Given @(rawColumnName, declaredSqliteType)@, optionally override the
-    inferred Haskell type. Default: never override.
-    -}
+    -- ^ Override the inferred Haskell type for a column; default is none.
     , includeColumns :: Maybe [Text]
     -- ^ Restrict to these raw columns (@Nothing@ = all).
     , excludeColumns :: [Text]
     -- ^ Drop these raw columns (applied after 'includeColumns').
     , schemaTypeName :: Maybe String
-    -- ^ Override the generated schema type-synonym name (default @\<Table\>Schema@).
+    -- ^ Override the generated schema type name (default @\<Table\>Schema@).
     , entityName :: Maybe String
     -- ^ Override the generated entity name (default PascalCased table).
     }
 
--- | Sensible defaults: honor @NOT NULL@, no overrides, all columns, derived names.
+-- | Sensible defaults: honor @NOT NULL@, no overrides, all columns.
 defaultDeclareOptions :: DeclareOptions
 defaultDeclareOptions =
     DeclareOptions
@@ -87,9 +73,7 @@ defaultDeclareOptions =
         , entityName = Nothing
         }
 
-{- | Introspect a table at compile time: register the DB as a dependency (so a
-schema change forces a rebuild), then fail helpfully if it can't be read.
--}
+-- | Introspect a table at compile time, failing helpfully if unreadable.
 introspectQ :: FilePath -> String -> Q [ColumnInfo]
 introspectQ path table = do
     addDependentFile path
@@ -178,7 +162,7 @@ schemaTypeNameOf opts table = fromMaybe (pascalCase table <> "Schema") (schemaTy
 entityNameOf :: DeclareOptions -> Text -> String
 entityNameOf opts table = fromMaybe (pascalCase table) (entityName opts)
 
--- | Turn a raw column name into a valid lowercase-initial @persistent@ field name.
+-- | Turn a raw column name into a valid lowercase @persistent@ field name.
 fieldIdentifier :: Text -> Text
 fieldIdentifier raw = T.pack (lowerFirst (ensureLetter cleaned))
   where

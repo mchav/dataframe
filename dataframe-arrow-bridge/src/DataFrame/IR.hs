@@ -7,9 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Intermediate Representation for DataFrame query plans.
-  JSON-decodable plan tree + interpreter.
--}
+-- | JSON-decodable query plan tree and its interpreter.
 module DataFrame.IR (
     PlanNode (..),
     AggSpec (..),
@@ -65,10 +63,6 @@ import qualified DataFrame.Operations.Subset as Subset
 import DataFrame.Operations.Transformations (derive)
 import DataFrame.Schema (Schema, makeSchema, schemaType)
 
--- ---------------------------------------------------------------------------
--- IR types
--- ---------------------------------------------------------------------------
-
 data AggSpec = AggSpec
     { aggName :: T.Text
     , aggFn :: T.Text
@@ -96,7 +90,7 @@ data PlanNode
     | Drop Int PlanNode
     | DropLast Int PlanNode
     | Range Int Int PlanNode
-    | -- | joinType ("inner"|"left"|"right"|"outer"), shared key columns, left, right
+    | -- | joinType ("inner"|"left"|"right"|"outer"), key columns, left, right
       Join T.Text [T.Text] PlanNode PlanNode
     | Describe PlanNode
     | -- | first column, second column, child plan
@@ -106,17 +100,10 @@ data PlanNode
     | ReadJson FilePath
     | -- | path, separator (single character), child plan; runs as a terminal op
       WriteCsv FilePath PlanNode
-    | {- | path, schema (column name → type-tag map). Reads via the lazy
-      engine with predicate / projection pushdown; subsequent ops
-      currently still run eagerly on the materialized result.
-      -}
+    | -- | path, schema map; reads via the lazy engine with pushdown
       ScanCsv FilePath [(T.Text, T.Text)]
     | ScanParquet FilePath [(T.Text, T.Text)]
     deriving (Show)
-
--- ---------------------------------------------------------------------------
--- JSON decoding
--- ---------------------------------------------------------------------------
 
 instance FromJSON AggSpec where
     parseJSON = withObject "AggSpec" $ \o ->
@@ -250,9 +237,7 @@ executePlan _reader (ScanParquet path schemaPairs) = do
     schema <- buildSchema schemaPairs
     Lazy.runDataFrame (Lazy.scanParquet schema (T.pack path))
 
-{- | Build a SortOrder from a column's runtime type.
-Uses type dispatch to recover Ord for known column types.
--}
+-- | Build a SortOrder from a column's runtime type.
 mkSortOrder :: Bool -> T.Text -> Column -> SortOrder
 mkSortOrder isAsc name col = dispatchType (columnTypeRep col)
   where

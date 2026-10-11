@@ -2,13 +2,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
 
-{- | Per-field microbenchmark for "DataFrame.Internal.Parsing.Fast"
-against the reference parsers (WS-B exit criterion: parseDoubleField
->= 5x Data.Text.Read.double on doubles_100mb-shaped fields).
-
-Style follows benchmarks/csv: monotonic-clock wall over a strict fold,
-best of 5 runs, ns/field plus speedup printed per pairing.
--}
+-- | Per-field microbenchmark of the fast parsers against the reference ones.
 module Main (main) where
 
 import qualified Data.ByteString.Char8 as C
@@ -37,9 +31,7 @@ mix64 z0 =
         z2 = (z1 `xor` (z1 `shiftR` 33)) * 0xC4CEB9FE1A85EC53
      in z2 `xor` (z2 `shiftR` 33)
 
-{- | Round-trip-precision doubles, the doubles_100mb shape
-(full 17-significant-digit mantissas from @show@).
--}
+-- | Round-trip-precision doubles in the doubles_100mb shape.
 doubleFields :: V.Vector C.ByteString
 doubleFields = V.generate fieldCount gen
   where
@@ -93,8 +85,7 @@ forceT = V.foldl' (\ !acc t -> acc + T.length t) 0
 bench :: V.Vector a -> (a -> Double) -> IO Double
 bench fields step = minimum <$> mapM run [1 .. 5 :: Int]
   where
-    -- Seed the accumulator with the run index so the fold cannot be
-    -- floated out and shared between the five runs.
+    -- Seed the fold with the run index so it is not shared between runs.
     run k = do
         t0 <- getMonotonicTimeNSec
         let !s = V.foldl' (\ !acc f -> acc + step f) (fromIntegral k) fields

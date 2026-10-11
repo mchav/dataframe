@@ -22,16 +22,11 @@ import Data.Word (Word16, Word32, Word64, Word8)
 
 type Columnable' a = (Typeable a, Show a, Eq a)
 
-{- | Inline replacement for @Data.These.These@ to keep @dataframe-core@ free
-of the @these@ package dependency. Only the three constructors and the
-derived classes are used internally.
--}
+-- | Inline replacement for @Data.These.These@, avoiding the @these@ package.
 data These a b = This a | That b | These a b
     deriving (Eq, Ord, Show, Read, Functor, Foldable, Traversable)
 
-{- | A type with column representations used to select the
-"right" representation when specializing the `toColumn` function.
--}
+-- | Column representations used to select the right 'toColumn' behaviour.
 data Rep
     = RBoxed
     | RUnboxed
@@ -136,9 +131,7 @@ sFloating = sbool @(FloatingTypes a)
 
 type FloatingIf a = When (FloatingTypes a) (Real a, Fractional a)
 
-{- | Numeric type promotion: resolves the common type for mixed arithmetic.
-Double dominates over Float/Int; Float dominates over Int; same types stay unchanged.
--}
+-- | Numeric type promotion: resolves the common type for mixed arithmetic.
 type family Promote (a :: Type) (b :: Type) :: Type where
     Promote a a = a
     Promote Double _ = Double
@@ -151,9 +144,7 @@ type family Promote (a :: Type) (b :: Type) :: Type where
     Promote _ Int32 = Int32
     Promote a _ = a
 
-{- | Like 'Promote', but integral × integral → Double for use with './' .
-Double\/Float still dominate; any two integral types (same or mixed) become Double.
--}
+-- | Like 'Promote' but integral by integral gives Double, for './'.
 type family PromoteDiv (a :: Type) (b :: Type) :: Type where
     PromoteDiv Double _ = Double
     PromoteDiv _ Double = Double

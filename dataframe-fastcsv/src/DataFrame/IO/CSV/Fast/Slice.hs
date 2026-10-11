@@ -1,10 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | Field-slice resolution for the fast CSV reader: maps @(row, col)@ to a
-byte range of the input (quote-stripped, CR-stripped, optionally trimmed)
-without materializing any intermediate value. 'extractField' is the legacy
-Text materialization used for headers, inference samples and cold paths.
--}
+-- | Maps @(row, col)@ to a byte range of the input without copying.
 module DataFrame.IO.CSV.Fast.Slice (
     FieldCtx (..),
     FieldLayout (..),
@@ -34,14 +30,9 @@ import DataFrame.IO.CSV.Fast.Index (cr, quote)
 
 -- | How @(row, col)@ resolves to delimiter byte positions.
 data FieldLayout
-    = {- | Flat delimiter positions + row-end ordinals: the shape the scanner
-      emits. Handles ragged and blank rows; 8 bytes per delimiter.
-      -}
+    = -- | Flat delimiter positions plus row-end ordinals.
       LayoutFlat !(VS.Vector CSize) !(VS.Vector Int)
-    | {- | Uniform-stride rows: byte start per row plus 'Word16' deltas of
-      each field-end from its row start (@deltas ! (r*stride + col)@).
-      Built by 'compactRows'; ~3.5x smaller than the flat index.
-      -}
+    | -- | Uniform-stride rows with 'Word16' field-end deltas.
       LayoutRows !(VS.Vector Int) !(VS.Vector Word16) !Int
 
 -- | Everything needed to resolve a field slice, shared by all columns.
@@ -100,12 +91,7 @@ compactRows contentLen delims rowEnds stride
   where
     totalRows = VS.length rowEnds
 
-{- | Resolve field @col@ of row @r@ and continue with @k start end quoted@.
-Quoted fields yield the bytes between the outer quotes (embedded @\"\"@ is
-NOT unescaped here); a trailing @\\r@ is stripped first; a column beyond the
-row's field count (ragged short row) yields the empty slice. CPS so the hot
-loops never box the bounds.
--}
+-- | Resolve field @col@ of row @r@ and continue with its byte range.
 {-# INLINE withFieldSlice #-}
 withFieldSlice :: FieldCtx -> Int -> Int -> (Int -> Int -> Bool -> r) -> r
 withFieldSlice ctx r col k = case fcLayout ctx of
@@ -159,10 +145,7 @@ withFieldSlice ctx r col k = case fcLayout ctx of
                 then k (fieldStart + 1) (fieldEnd - 1) True
                 else k fieldStart fieldEnd False
 
-{- | 'withFieldSlice' with the trim knob applied: when 'fcTrim' is set,
-unquoted slices have ASCII whitespace stripped from both ends before the
-continuation runs. This is the slice the typed parsers and null tests see.
--}
+-- | 'withFieldSlice' with the trim knob applied.
 {-# INLINE withParseSlice #-}
 withParseSlice :: FieldCtx -> Int -> Int -> (Int -> Int -> r) -> r
 withParseSlice ctx r col k =
@@ -205,12 +188,7 @@ sliceBS bs s e = BSU.unsafeTake (e - s) (BSU.unsafeDrop s bs)
 decodeSlice :: BS.ByteString -> Int -> Int -> Text
 decodeSlice bs s e = TextEncoding.decodeUtf8Lenient (sliceBS bs s e)
 
-{- | Extract field @col@ of row @r@ as a 'Text' with the original fastcsv
-semantics: quotes stripped and @\"\"@ unescaped for quoted fields, optional
-'Text.strip' (full Unicode) for unquoted fields when 'fcTrim' is set.
-Used for header names, inference samples and the legacy (EitherRead /
-unsupported-schema) column paths.
--}
+-- | Extract field @col@ of row @r@ as a 'Text'.
 {-# INLINE extractField #-}
 extractField :: FieldCtx -> Int -> Int -> Text
 extractField ctx r col =
@@ -221,10 +199,7 @@ extractField ctx r col =
                 (if fcTrim ctx then Text.strip else id)
                     (decodeSlice (fcBS ctx) s e)
 
-{- | RFC 4180 inner-quote unescape: @\"\"@ → @\"@.  'Text.replace' on a
-two-char needle does a single linear pass and is allocation-free when
-no doubled quote is present (short-circuits at the first miss).
--}
+-- | RFC 4180 inner-quote unescape.
 {-# INLINE unescapeDoubledQuotes #-}
 unescapeDoubledQuotes :: Text -> Text
 unescapeDoubledQuotes t
@@ -234,9 +209,7 @@ unescapeDoubledQuotes t
     doubledQuote = Text.pack "\"\""
     singleQuote = Text.singleton '"'
 
-{- | Strip a leading UTF-8 BOM (EF BB BF) if present. Returns the trimmed
-vector and the number of bytes removed (0 or 3).
--}
+-- | Strip a leading UTF-8 BOM, returning the vector and bytes removed.
 {-# INLINE stripBom #-}
 stripBom :: VS.Vector Word8 -> (VS.Vector Word8, Int)
 stripBom v

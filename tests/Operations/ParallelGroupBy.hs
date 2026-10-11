@@ -1,14 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | The parallel-grouping correctness gate. Every case asserts that the
-parallel partitioned grouping ('groupByPar') produces a 'Grouped' value
-bit-for-bit identical to the sequential reference ('groupBySeq') —
-'valueIndices', 'offsets' and 'rowToGroup' all equal — and that aggregating
-through both yields the same result. Covered: single/multi key, Int/Text/Double
-keys, heavy hash collisions, null patterns, and row counts straddling the
-parallel threshold.
--}
+-- | Parallel grouping must be bit-for-bit identical to the sequential one.
 module Operations.ParallelGroupBy where
 
 import qualified Data.ByteString as BS
@@ -83,9 +76,7 @@ keySets =
     , ["ki", "kt", "kd", "kn"]
     ]
 
-{- | Sizes straddling the 200k parallel threshold (the parallel path only kicks
-in for the larger ones at runtime, but 'groupByPar' is exercised on all).
--}
+-- | Sizes straddling the 200k parallel threshold.
 sizes :: [Int]
 sizes = [1, 50, 4999, 200001, 350000]
 
@@ -127,12 +118,7 @@ collisionParity =
                 (groupByPar ["k1", "k2"] collisionFrame)
             )
 
-{- | The Q9 regression family: six derived/sum aggregations that together form
-the moment sufficient statistics (count, Sx, Sy, Sxx, Syy, Sxy). The fused
-'momentScatter' path must produce the same numbers as a deterministic oracle
-computed from the raw data, at both -N1 and -N8 (parallel==sequential). The
-input has columns the derive step turns into v1*v1, v1*v2, v2*v2.
--}
+-- | Frame for the moment-statistics aggregations checked against an oracle.
 momentFrame :: Int -> DD.DataFrame
 momentFrame n =
     D.fromColumns
@@ -171,11 +157,7 @@ momentParity n =
             (momentResult groupBySeq n)
             (momentResult groupByPar n)
 
-{- | Independent oracle: recompute the six moment sums per group with plain
-@Data.Map@ folds in original-row order and check the aggregated frame matches.
-This pins the fused kernel against a non-scatter reference (counts exact, sums
-fold in the same row order so they are byte-identical).
--}
+-- | Oracle recomputing the six moment sums per group with plain Map folds.
 momentOracle :: Int -> Test
 momentOracle n =
     TestCase $ do
@@ -189,14 +171,7 @@ momentOracle n =
                 Nothing -> -1
         assertEqual ("oracle group-row count n=" ++ show n) refN outN
 
-{- | The low-cardinality DIRECT-INDEXED grouping fast path
-('DataFrame.Internal.Grouping.Direct') fires from 'D.groupBy' on a single clean
-small-range Int key. It emits groups in ascending key-value order rather than the
-hash path's order, so we cannot compare index structures directly; instead we
-assert it produces the SAME per-key aggregate values as the hash 'groupBySeq'
-reference. The per-group v-sum, count, min and max are exact integers, so they
-must match the hash path's results key-for-key (independent of group order).
--}
+-- | Direct-indexed grouping must give the same per-key aggregates as hashing.
 directGroupAggMatches :: Int -> Test
 directGroupAggMatches n =
     TestCase $
@@ -216,9 +191,7 @@ directGroupAggMatches n =
                 (keyedAgg hashRes)
                 (keyedAgg directRes)
 
-{- | Read an aggregated frame keyed on @ki@ into a 'M.Map' from key to the four
-aggregate values, so two frames can be compared independent of group order.
--}
+-- | Read an aggregated frame into a Map keyed by group, ignoring group order.
 keyedAgg :: DD.DataFrame -> M.Map Int (Int, Int, Int, Int)
 keyedAgg res =
     M.fromList
@@ -238,10 +211,7 @@ packedCol ts =
         Text arr _ _ = TE.decodeUtf8 bytes
      in DI.PackedText Nothing (mkPackedContiguous (arr :: A.Array) (VU.fromList offs))
 
-{- | Skewed packed-text keys: most rows share a few hot keys, so the partitioned
-path links repeats to earlier rows and one partition swells. Filtering first
-gives the selection layout.
--}
+-- | Skewed packed-text keys with a few hot keys, grouped in parallel.
 skewedTextParity :: Bool -> Test
 skewedTextParity filtered = TestCase $ do
     let n = 300000

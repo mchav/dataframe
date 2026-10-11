@@ -3,18 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
-{- |
-A plotly-express-style one-shot plotting API for terminal output.
-
-Each chart kind has a small record spec (with sensible defaults) and a
-single render function. Customise plots by record-update on the spec:
-
-@
-bar ((mkBar "Sex") { y = Just "Survived" }) titanic
-bar ((mkBar "ocean_proximity")
-      { y = Just "median_house_value", agg = Mean }) housing
-@
--}
+-- | A plotly-express-style one-shot plotting API for terminal output.
 module DataFrame.Display.Terminal.Plot (
     -- * Aggregation
     Agg (..),
@@ -55,11 +44,7 @@ module DataFrame.Display.Terminal.Plot (
 
     -- * Deprecated legacy entry points
 
-    {- |
-    These shims delegate to the parametrized API. They are kept for
-    one release to ease migration; prefer the spec-based functions
-    above for new code.
-    -}
+    -- Deprecated shims that delegate to the parametrized API.
     plotHistogram,
     plotScatter,
     plotBars,
@@ -92,15 +77,7 @@ import DataFrame.Internal.DataFrame (DataFrame (..), columnNames)
 import Granite (Plot, defPlot)
 import qualified Granite
 
--- ---------------------------------------------------------------------------
--- Bar
--- ---------------------------------------------------------------------------
-
-{- | Bar-chart specification.
-
-@x@ is required; everything else has a default. When @y@ is @Nothing@ the
-chart counts rows per group; otherwise @y@ is aggregated using @agg@.
--}
+-- | Bar-chart specification; @x@ is required and everything else defaults.
 data Bar = Bar
     { x :: T.Text
     -- ^ Grouping (categorical) column.
@@ -142,10 +119,6 @@ bar spec df = do
         cfg = spec.plot{Granite.plotTitle = t}
     T.putStrLn $ Granite.bars rows' cfg
 
--- ---------------------------------------------------------------------------
--- Histogram
--- ---------------------------------------------------------------------------
-
 -- | Histogram specification for a numeric column.
 data Histogram = Histogram
     { x :: T.Text
@@ -174,10 +147,6 @@ histogram spec df = do
             Nothing -> "histogram of " <> spec.x
         cfg = spec.plot{Granite.plotTitle = t}
     T.putStrLn $ Granite.histogram (Granite.bins spec.bins lo hi) values cfg
-
--- ---------------------------------------------------------------------------
--- Scatter
--- ---------------------------------------------------------------------------
 
 -- | Scatter-plot specification.
 data Scatter = Scatter
@@ -220,10 +189,6 @@ scatter spec df = do
                     ]
             T.putStrLn $ Granite.scatter series cfg
 
--- ---------------------------------------------------------------------------
--- Line
--- ---------------------------------------------------------------------------
-
 -- | Line-chart specification: one x column, one or more y series.
 data Line = Line
     { x :: T.Text
@@ -255,20 +220,12 @@ line spec df = do
         return (col, zip xVals values)
     T.putStrLn $ Granite.lineGraph seriesData cfg
 
--- ---------------------------------------------------------------------------
--- Pie
--- ---------------------------------------------------------------------------
-
 -- | Pie-chart specification.
 data Pie = Pie
     { values :: T.Text
-    {- ^ Slice-defining column. For 'Count', categorical; for the
-    numeric aggs, the value column.
-    -}
+    -- ^ Slice-defining column: categorical for 'Count', else the value column.
     , names :: Maybe T.Text
-    {- ^ Optional label column. If @Nothing@, slices are labelled by
-    the value column directly (for 'Count') or by row index.
-    -}
+    -- ^ Optional label column; otherwise slices are labelled by value or index.
     , agg :: Agg
     , topN :: Maybe Int
     , title :: Maybe T.Text
@@ -307,10 +264,6 @@ pie spec df = do
         rows' = maybe rows (`groupWithOtherForPie` rows) spec.topN
     T.putStrLn $ Granite.pie rows' cfg
 
--- ---------------------------------------------------------------------------
--- Box
--- ---------------------------------------------------------------------------
-
 -- | Box-plot specification across one or more numeric columns.
 data Box = Box
     { y :: [T.Text]
@@ -335,13 +288,7 @@ box spec df = do
     boxData <- forM spec.y $ \col -> return (col, extractNumericColumn col df)
     T.putStrLn $ Granite.boxPlot boxData cfg
 
--- ---------------------------------------------------------------------------
--- Whole-frame plots
--- ---------------------------------------------------------------------------
-
-{- | Heatmap of all numeric columns in the dataframe; each numeric column
-becomes a column of the matrix.
--}
+-- | Heatmap of all numeric columns in the dataframe.
 heatmap :: (HasCallStack) => DataFrame -> IO ()
 heatmap df = do
     let numericCols = filter (isNumericColumn df) (columnNames df)
@@ -370,18 +317,10 @@ correlationMatrix df = do
             stdY = sqrt $ sum [(b - meanY) ^ (2 :: Int) | b <- ys] / n
          in covXY / (stdX * stdY)
 
--- ---------------------------------------------------------------------------
--- Title helper
--- ---------------------------------------------------------------------------
-
 autoTitle :: Agg -> Maybe T.Text -> T.Text -> T.Text
 autoTitle Count _ groupCol = "count by " <> groupCol
 autoTitle a (Just yCol) groupCol = aggLabel a <> "(" <> yCol <> ") by " <> groupCol
 autoTitle a Nothing groupCol = aggLabel a <> " by " <> groupCol
-
--- ---------------------------------------------------------------------------
--- Deprecated legacy entry points
--- ---------------------------------------------------------------------------
 
 -- | Use 'histogram' with 'mkHistogram' instead.
 plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO ()
@@ -415,10 +354,7 @@ plotBoxPlots :: (HasCallStack) => [T.Text] -> DataFrame -> IO ()
 plotBoxPlots ys = box (mkBox ys)
 {-# DEPRECATED plotBoxPlots "use 'box (mkBox cols)' instead" #-}
 
-{- | Stacked-bar plot: one bar per category, segments from the listed value
-columns. Kept as a direct passthrough to granite — has no spec record
-because no aggregation is involved (segments are summed per category).
--}
+-- | Stacked-bar plot with one bar per category, passed straight to granite.
 plotStackedBars :: (HasCallStack) => T.Text -> [T.Text] -> DataFrame -> IO ()
 plotStackedBars categoryCol valueColumns df = do
     let categories = extractStringColumn categoryCol df

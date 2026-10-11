@@ -14,11 +14,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- |
-Conversions between 'Column' and ordinary vectors\/lists, plus the typed
-extraction functions ('toVector', 'toDoubleVector', ...) that recover a
-column's element type.
--}
+-- | Conversions between 'Column' and vectors or lists, plus typed extraction.
 module DataFrame.Internal.Column.Conversion where
 
 import qualified Data.Text as T
@@ -51,63 +47,26 @@ import DataFrame.Internal.Data.PackedText (packedIndexText, packedLength)
 import System.Random (RandomGen, UniformRange, uniformR)
 import Type.Reflection (TypeRep, Typeable, typeRep, type (:~:) (Refl))
 
-{- | O(n) Convert a vector to a column. Automatically picks the best representation of a vector to store the underlying data in.
-
-__Examples:__
-
-@
-> import qualified Data.Vector as V
-> fromVector (VB.fromList [(1 :: Int), 2, 3, 4])
-[1,2,3,4]
-@
--}
+-- | O(n) Convert a vector to a column, picking the best representation.
 fromVector ::
     forall a.
     (Columnable a, ColumnifyRep (KindOf a) a) =>
     VB.Vector a -> Column
 fromVector = toColumnRep @(KindOf a)
 
-{- | O(n) Convert an unboxed vector to a column. This avoids the extra conversion if you already have the data in an unboxed vector.
-
-__Examples:__
-
-@
-> import qualified Data.Vector.Unboxed as V
-> fromUnboxedVector (VB.fromList [(1 :: Int), 2, 3, 4])
-[1,2,3,4]
-@
--}
+-- | O(n) Convert an unboxed vector to a column.
 fromUnboxedVector ::
     forall a. (Columnable a, VU.Unbox a) => VU.Vector a -> Column
 fromUnboxedVector = UnboxedColumn Nothing
 
-{- | O(n) Convert a list to a column. Automatically picks the best representation of a vector to store the underlying data in.
-
-__Examples:__
-
-@
-> fromList [(1 :: Int), 2, 3, 4]
-[1,2,3,4]
-@
--}
+-- | O(n) Convert a list to a column, picking the best representation.
 fromList ::
     forall a.
     (Columnable a, ColumnifyRep (KindOf a) a) =>
     [a] -> Column
 fromList = toColumnRep @(KindOf a) . VB.fromList
 
-{- | O(n) Create a column of random elements within a range.
-
-Takes a random number generator, a length, and a lower and upper bound for the random values.
-
-__Examples:__
-
-@
-> import System.Random (mkStdGen)
-> mkRandom (mkStdGen 42) 4 0 10
-[4,2,6,5]
-@
--}
+-- | O(n) Create a column of random elements within a range.
 mkRandom ::
     (RandomGen g, Columnable a, ColumnifyRep (KindOf a) a, UniformRange a) =>
     g -> Int -> a -> a -> Column
@@ -120,33 +79,13 @@ mkRandom pureGen k lo hi = fromList $ go pureGen k
          in
             v : go g' (n - 1)
 
-{- | O(n) Converts a column to a list. Throws an exception if the wrong type is specified.
-
-__Examples:__
-
-@
-> column = fromList [(1 :: Int), 2, 3, 4]
-> toList @Int column
-[1,2,3,4]
-> toList @Double column
-exception: ...
-@
--}
+-- | O(n) Convert a column to a list; throws if the type is wrong.
 toList :: forall a. (Columnable a) => Column -> [a]
 toList xs = case toVector @a xs of
     Left err -> throw err
     Right val -> VB.toList val
 
-{- | Type-safe conversion of a column to a vector of element type @a@ (specify via
-type application); 'Left' 'TypeMismatchException' when the column's type differs,
-or when asking for @a@ from a column that has nulls (ask for @Maybe a@).
-
->>> toVector @Int @VU.Vector column
-Right (unboxed vector of Ints)
-
->>> toVector @Text @VB.Vector column
-Right (boxed vector of Text)
--}
+-- | Type-safe conversion of a column to a vector of element type @a@.
 toVector ::
     forall a v.
     (VG.Vector v a, Columnable a) => Column -> Either DataFrameException (v a)
@@ -222,10 +161,7 @@ nullsMismatch =
 
 -- Some common types we will use for numerical computing.
 
-{- | Convert a column to an unboxed 'Double' vector, coercing numeric types
-('realToFrac' for floats, 'fromIntegral' for integrals; nulls become @NaN@).
-'Left' 'TypeMismatchException' when the column is not numeric.
--}
+-- | Convert a column to an unboxed 'Double' vector, coercing numeric types.
 toDoubleVector :: Column -> Either DataFrameException (VU.Vector Double)
 toDoubleVector column =
     case column of
@@ -273,10 +209,7 @@ toDoubleVector column =
                             }
                         )
 
-{- | Convert a column to an unboxed 'Float' vector, coercing numeric types (nulls
-become @NaN@); 'Left' 'TypeMismatchException' when not numeric. Converting from
-'Double' may lose precision.
--}
+-- | Convert a column to an unboxed 'Float' vector, coercing numeric types.
 toFloatVector :: Column -> Either DataFrameException (VU.Vector Float)
 toFloatVector column =
     case column of
@@ -338,10 +271,7 @@ toFloatVector column =
                             }
                         )
 
-{- | Convert a column to an unboxed 'Int' vector, coercing numeric types
-(floats are 'round'ed via banker's rounding); 'Left' 'TypeMismatchException'
-when the column is not numeric. Does not support nullable columns.
--}
+-- | Convert a column to an unboxed 'Int' vector, coercing numeric types.
 toIntVector :: Column -> Either DataFrameException (VU.Vector Int)
 toIntVector column =
     case column of
@@ -376,11 +306,7 @@ toIntVector column =
                             }
                         )
 
-{- | Widen an integral vector to 'Int', or 'Nothing' for a non-integral type.
-Each width is matched to its concrete type first so @fromIntegral@ compiles to
-one primop; through the 'Integral' dictionary it goes via 'Integer', about 5x
-slower and allocating per element.
--}
+-- | Widen an integral vector to 'Int', or 'Nothing' if not integral.
 widenToInt ::
     forall a. (Columnable a, VU.Unbox a) => VU.Vector a -> Maybe (VU.Vector Int)
 widenToInt v
@@ -436,9 +362,7 @@ toUnboxedVector column =
                     )
 {-# INLINE toUnboxedVector #-}
 
--- Shared finaliser for the two parseUnboxedColumn* helpers.  Freezes
--- the mutable data vector, and only materialises the bitmap when the
--- column actually had nulls.
+-- Freezes the data vector; builds the bitmap only if the column had nulls.
 {-# INLINE finalizeParseResult #-}
 finalizeParseResult ::
     (VU.Unbox a) =>

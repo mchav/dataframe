@@ -24,8 +24,6 @@ base =
 withZ :: D.DataFrame
 withZ = D.derive "z" (F.col @Int "x" + F.col "y") base
 
--- ── insertColumn ──────────────────────────────────────────────────────────────
-
 -- Inserting a new column must not wipe provenance of existing derived columns.
 insertPreservesProvenance :: Test
 insertPreservesProvenance =
@@ -52,8 +50,6 @@ insertOverwriteDropsOwnExpr =
             assertBool
                 "sibling column w expression should be preserved"
                 (M.member "w" (DI.derivingExpressions df3))
-
--- ── derive ────────────────────────────────────────────────────────────────────
 
 -- derive adds the expression to derivingExpressions.
 deriveTracksExpression :: Test
@@ -86,8 +82,6 @@ deriveOverwriteReplacesExpression =
                 (M.size (DI.derivingExpressions df))
             )
 
--- ── deriveWithExpr ────────────────────────────────────────────────────────────
-
 -- deriveWithExpr should also track the expression.
 deriveWithExprTracksExpression :: Test
 deriveWithExprTracksExpression =
@@ -97,8 +91,6 @@ deriveWithExprTracksExpression =
                 "deriveWithExpr should record z in derivingExpressions"
                 (M.member "z" (DI.derivingExpressions df))
             )
-
--- ── showDerivedExpressions ────────────────────────────────────────────────────
 
 -- A frame with no derived columns returns identity provenance for each column.
 showDerivedEmpty :: Test
@@ -118,8 +110,6 @@ showDerivedContainsName =
             "showDerivedExpressions should include the derived column name"
             ("z" `elem` map fst (D.showDerivedExpressions withZ))
         )
-
--- ── Semigroup (<>) provenance propagation ─────────────────────────────────────
 
 -- Vertical merge preserves expressions from both sides.
 semiGroupPreservesLeft :: Test
@@ -171,8 +161,6 @@ emptyWithSemiGroup =
             "empty <> withZ should keep z's expression"
             (M.member "z" (DI.derivingExpressions (D.empty <> withZ)))
         )
-
--- ── Horizontal merge (|||) provenance propagation ────────────────────────────
 
 horizontalMergePreservesLeft :: Test
 horizontalMergePreservesLeft =

@@ -3,11 +3,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | The typed column passes (Round-2 WS-E1): each pass walks one column's
-delimiter slices and appends parsed values straight into a WS-C builder —
-no per-field 'Data.Text.Text' and no deferred re-parse. Text bytes are
-memcpy'd into a shared buffer, only for Text-typed columns.
--}
+-- | Typed column passes that append parsed values straight into builders.
 module DataFrame.IO.CSV.Fast.Passes (
     ColumnEnv (..),
     NullSpec (..),
@@ -111,9 +107,7 @@ isNullText :: NullSpec -> T.Text -> Bool
 isNullText NullEmpty t = T.null t
 isNullText (NullMissing _ toks) t = isNullishOrMissing toks t
 
-{- | What a pass produced: a finished 'Column', or a raw text chunk that the
-merger splices at the byte level (no per-chunk 'T.Text' materialization).
--}
+-- | What a pass produced: a finished 'Column' or a raw text chunk.
 data PassCol = PassFull !Column | PassText !TextChunk
 
 -- | Finish one 'PassCol' on its own (the single-chunk \/ sequential case).
@@ -128,9 +122,7 @@ rowAt :: ColumnEnv -> Int -> Int
 rowAt env = VS.unsafeIndex (ceRows env)
 {-# INLINE rowAt #-}
 
-{- | One pass appending unboxed values; @nullOnFail@ turns parse failures
-into nulls (schema + 'MaybeRead') instead of aborting (inference demotion).
--}
+-- | One pass appending unboxed values, nulling parse failures if asked.
 {-# INLINE unboxedPass #-}
 unboxedPass ::
     (Columnable a, VU.Unbox a) =>
@@ -146,8 +138,7 @@ unboxedPass env nspec col nullOnFail nullVal parser = do
         bs = fcBS ctx
         !(I# n) = ceNumRow env
     b <- stToIO (newNumBuilder nullVal (ceNumRow env))
-    -- Loop counter is Int#: join points are not worker/wrapper'd, so a
-    -- boxed counter would allocate on every iteration.
+    -- Int# counter: a boxed one would allocate on every iteration.
     let go :: Int# -> IO PassResult
         go i
             | isTrue# (i >=# n) =
@@ -176,11 +167,7 @@ boolPass :: ColumnEnv -> NullSpec -> Int -> Bool -> IO PassResult
 boolPass env nspec col nullOnFail =
     unboxedPass env nspec col nullOnFail False parseBoolFieldSlice
 
-{- | Text pass (never fails): raw bytes are memcpy'd into the shared
-builder buffer; only quoted fields containing a doubled quote, and the
-legacy trim knob, take the decode path. Returns the raw chunk; 'T.Text'
-values materialize once, when the merger splices the chunks.
--}
+-- | Text pass: copies raw bytes into the shared builder buffer.
 textPass :: ColumnEnv -> NullSpec -> Int -> IO TextChunk
 textPass env nspec col = do
     let ctx = ceCtx env

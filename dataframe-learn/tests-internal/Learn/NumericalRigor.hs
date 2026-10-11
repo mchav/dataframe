@@ -2,10 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Numerical-rigor suite: gradient checks (cat 4), reproducibility of the
-stochastic models (cat 16), and statistical properties of the RNG and splitters
-(cat 5). Every test is constructed to FAIL on a real bug.
--}
+-- | Numerical-rigor suite: gradient checks, reproducibility, RNG properties.
 module Learn.NumericalRigor (tests) where
 
 import qualified DataFrame.Functions as F
@@ -28,12 +25,6 @@ import qualified Data.Vector.Unboxed as VU
 import System.Random (mkStdGen)
 import Test.HUnit
 
--- ---------------------------------------------------------------------------
--- Independent reference loss VALUE functions. The library exposes only the
--- gradient 'slGradZ'; these reconstruct the scalar value so the finite
--- difference is computed independently of the analytic gradient.
--- ---------------------------------------------------------------------------
-
 -- | @½ (z - y)²@  (squaredLoss).
 squaredValue :: Double -> Double -> Double
 squaredValue y z = 0.5 * (z - y) * (z - y)
@@ -55,10 +46,7 @@ centralDiff ::
     (Double -> Double -> Double) -> Double -> Double -> Double -> Double
 centralDiff f eps y z = (f y (z + eps) - f y (z - eps)) / (2 * eps)
 
-{- | Gradient-check one 'SmoothLoss' against its reference value fn over a grid
-of @(y, z)@ points. Fails if the analytic gradient differs from the finite
-difference anywhere beyond @tol@.
--}
+-- | Gradient-check one SmoothLoss against its reference over a grid of points.
 gradCheck ::
     String ->
     SmoothLoss ->
@@ -95,14 +83,11 @@ testSquaredGradient = gradCheck "squared" squaredLoss squaredValue 1e-5
 testLogisticGradient :: Test
 testLogisticGradient = gradCheck "logistic" logisticLoss logisticValue 1e-5
 
--- | The squared-hinge gradient @-2y·max(0,1-yz)@ checked against (max 0 (1-yz))².
+-- | The squared-hinge gradient checked against its closed form.
 testSqHingeGradient :: Test
 testSqHingeGradient = gradCheck "squared_hinge" sqHingeLoss sqHingeValue 1e-5
 
-{- | Sign sanity that a self-referential check can't pass: where the loss rises
-in @z@ the gradient must be positive (and vice versa). Catches a flipped-sign
-gradient even with the right magnitude.
--}
+-- | Sign sanity: where the loss rises in z the gradient must be positive.
 testGradientSigns :: Test
 testGradientSigns = TestCase $ do
     assertBool
@@ -124,12 +109,6 @@ testGradientSigns = TestCase $ do
         "sqHinge satisfied margin: grad==0"
         (slGradZ sqHingeLoss 1.0 5.0 == 0)
 
--- ---------------------------------------------------------------------------
--- Statistical / distributional tests (cat 5). Tolerances are CI-derived from
--- the sample size (N = 100k → 6σ band ~ 5e-3). A broken sampler — constant or
--- biased — falls well outside.
--- ---------------------------------------------------------------------------
-
 -- | Draw @n@ uniforms threading the generator; returns the sample list.
 drawUniforms :: Int -> Gen -> [Double]
 drawUniforms n g0 = go n g0 []
@@ -145,10 +124,7 @@ variance xs =
     let m = mean xs
      in sum [(x - m) * (x - m) | x <- xs] / fromIntegral (length xs)
 
-{- | @nextDouble@ is ~uniform on [0,1): mean ≈ 0.5 and variance ≈ 1/12, each
-within a 6σ CI for 100k samples, AND every draw is in [0,1). A constant or
-out-of-range sampler fails; a biased one (mean drifts) fails.
--}
+-- | nextDouble is roughly uniform on [0,1): mean, variance and range checks.
 testUniformDistribution :: Test
 testUniformDistribution = TestCase $ do
     let n = 100000 :: Int
@@ -165,10 +141,7 @@ testUniformDistribution = TestCase $ do
         (abs (v - 1 / 12) <= 0.01)
     assertBool "uniform actually varies" (maximum xs - minimum xs > 0.9)
 
-{- | Box-Muller @gaussianVector@ produces standard normals: sample mean ≈ 0 and
-variance ≈ 1 over 100k draws (6σ band ~ 2e-2). Catches a Box-Muller bug that
-shifts the mean or scales the variance.
--}
+-- | Box-Muller gaussianVector yields standard normals: mean near 0, variance 1.
 testGaussianMoments :: Test
 testGaussianMoments = TestCase $ do
     let n = 100000 :: Int
@@ -192,10 +165,7 @@ testGaussianMoments = TestCase $ do
         ("gaussian |x|>2 frequency ~0.0455, got " ++ show tail2)
         (abs (tail2 - 0.0455) <= 0.01)
 
-{- | @randomSplit frac@ over many seeds: the realized train fraction matches
-@frac@ within a binomial CI, and train+test always sums to the input row count
-(cat 2 invariant). A split that loses/dupes rows, or ignores @frac@, fails.
--}
+-- | randomSplit train fraction matches frac and train plus test sums to input.
 testSplitProportions :: Test
 testSplitProportions = TestCase $ do
     let nRows = 4000
@@ -225,10 +195,7 @@ testSplitProportions = TestCase $ do
         )
         seeds
 
-{- | k-means inertia on a clean, well-separated blob is stable across seeds and
-never beats the true within-cluster sum of squares of the generating partition.
-A broken inertia would report values below the optimum or wildly seed-dependent.
--}
+-- | k-means inertia is seed-stable and never beats the generating partition.
 testKMeansInertiaStable :: Test
 testKMeansInertiaStable = TestCase $ do
     let
@@ -269,12 +236,6 @@ testKMeansInertiaStable = TestCase $ do
         )
         (worst - best <= 1e-6 + 1e-3 * optimum)
 
--- ---------------------------------------------------------------------------
--- Reproducibility tests (cat 16). Each compares two fits with the same seed
--- (determinism) and asserts a different seed CAN change the model, so a
--- constant-returning stub wouldn't pass.
--- ---------------------------------------------------------------------------
-
 blobsDF :: D.DataFrame
 blobsDF =
     D.fromColumns
@@ -296,10 +257,7 @@ spreadDF =
         , ("b", DI.fromList ([0, 1, 0, 10, 11, 10, 0, 1, 0, 10, 11, 10] :: [Double]))
         ]
 
-{- | k-means: same seed → identical KMeansModel (Eq derived); a different seed
-on a multi-blob frame CAN yield different centers (the seed actually drives
-k-means++ init). Single-init so the seed is not washed out by nInit restarts.
--}
+-- | k-means: same seed gives an identical model; a different seed can differ.
 testKMeansReproducible :: Test
 testKMeansReproducible = TestCase $ do
     let cfg s = defaultKMeansConfig{kmK = 4, kmNInit = 1, kmMaxIter = 1, kmSeed = s}
@@ -312,9 +270,7 @@ testKMeansReproducible = TestCase $ do
         anyDiffer = any (\s -> centersFor s /= base) [2, 3, 5, 7, 11, 13]
     assertBool "k-means: a different seed changes the model" anyDiffer
 
-{- | GMM: same seed → identical GMMModel (Eq derived); a different seed CAN move
-the fitted means (seed drives the responsibility init via sampleIndices).
--}
+-- | GMM: same seed gives an identical model; a different seed can move means.
 testGMMReproducible :: Test
 testGMMReproducible = TestCase $ do
     let cfg s = defaultGMMConfig{gmmK = 2, gmmMaxIter = 1, gmmSeed = s}
@@ -327,10 +283,7 @@ testGMMReproducible = TestCase $ do
         anyDiffer = any (\s -> meansFor s /= base) [2, 3, 4, 5, 6, 7, 8]
     assertBool "GMM: a different seed changes the means" anyDiffer
 
-{- | RFF-SVM: same seed → identical random projection AND identical fitted SVC
-coefficients; a different seed changes the random Fourier features. The model
-type only derives Show, so compare representative numeric fields directly.
--}
+-- | RFF-SVM: same seed gives identical projection and SVC coefficients.
 testRFFReproducible :: Test
 testRFFReproducible = TestCase $ do
     let clsDF =
@@ -350,14 +303,6 @@ testRFFReproducible = TestCase $ do
         anyDiffer = any (\s -> projFor s /= base) [1, 2, 3, 6, 7, 8]
     assertBool "RFF: a different seed changes the projection" anyDiffer
 
--- ---------------------------------------------------------------------------
--- randomSplit determinism + row-count invariant (cat 16 + 2).
--- ---------------------------------------------------------------------------
-
-{- | @randomSplit@ with the same seed is bit-identical (compared via the
-prettyPrinted frames), preserves total rows, and a different seed CAN change the
-partition.
--}
 testSplitReproducible :: Test
 testSplitReproducible = TestCase $ do
     let df = D.fromColumns [("x", DI.fromList [1 .. 200 :: Int])]
@@ -374,11 +319,6 @@ testSplitReproducible = TestCase $ do
         anyDiffer = any (\s -> trainFor s /= base) [1, 2, 3, 7, 99]
     assertBool "randomSplit: a different seed changes the partition" anyDiffer
 
--- ---------------------------------------------------------------------------
--- A self-consistency sanity for the helpers above so a broken reference value
--- fn cannot make the gradient checks vacuous: the reference squared value must
--- actually be ½(z-y)² at a known point.
--- ---------------------------------------------------------------------------
 testReferenceValueSanity :: Test
 testReferenceValueSanity = TestCase $ do
     assertBool

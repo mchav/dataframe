@@ -254,9 +254,7 @@ instance BinaryOp NullOr where
 
 -- Nullable-aware arithmetic operators
 
-{- | Nullable-aware addition. Works for all combinations of nullable\/non-nullable operands.
-@col \@Int "x" .+ col \@(Maybe Int) "y"  -- :: Expr (Maybe Int)@
--}
+-- | Nullable-aware addition for nullable and non-nullable operands.
 (.+) ::
     ( NumericWidenOp (BaseType a) (BaseType b)
     , NullLift2Op a b (Promote (BaseType a) (BaseType b)) (WidenResult a b)
@@ -300,12 +298,9 @@ instance BinaryOp NullOr where
     Expr (WidenResultDiv a b)
 (./) = lift2Decorated (applyNull2 (divArithOp (/))) "nulldiv" (Just "./") False 7
 
--- Nullable-aware comparison operators (three-valued logic: Nothing if either operand is Nothing)
+-- Three-valued comparisons: Nothing if either operand is Nothing.
 
-{- | Nullable-aware equality. Widens numeric operands to their common type,
-so @Expr Double .== Expr Int@ typechecks. Returns @Maybe Bool@ when either
-operand is nullable.
--}
+-- | Nullable-aware equality that widens numeric operands to a common type.
 (.==) ::
     ( NumericWidenOp (BaseType a) (BaseType b)
     , NullLift2Op a b Bool (NullCmpResult a b)
@@ -349,9 +344,7 @@ operand is nullable.
     Expr (NullCmpResult a b)
 (.>) = Binary NullGt
 
-{- | Nullable-aware less-than-or-equal. Widens numeric operands to their
-common type, so @Expr Double .<= Expr Int@ typechecks.
--}
+-- | Nullable-aware less-than-or-equal that widens numeric operands.
 (.<=) ::
     ( NumericWidenOp (BaseType a) (BaseType b)
     , NullLift2Op a b Bool (NullCmpResult a b)
@@ -362,7 +355,7 @@ common type, so @Expr Double .<= Expr Int@ typechecks.
     Expr (NullCmpResult a b)
 (.<=) = Binary NullLeq
 
--- | Nullable-aware greater-than-or-equal. Widens numeric operands to their common type.
+-- | Nullable-aware greater-than-or-equal that widens numeric operands.
 (.>=) ::
     ( NumericWidenOp (BaseType a) (BaseType b)
     , NullLift2Op a b Bool (NullCmpResult a b)
@@ -379,7 +372,7 @@ common type, so @Expr Double .<= Expr Int@ typechecks.
 (.||.) :: Expr Bool -> Expr Bool -> Expr Bool
 (.||.) = lift2Decorated (||) "or" (Just ".||.") True 2
 
--- | Nullable-aware logical AND. Returns @Maybe Bool@ when either operand is nullable.
+-- | Nullable-aware logical AND, giving @Maybe Bool@ if either side is nullable.
 (.&&) ::
     (NullableCmpOp a b (NullCmpResult a b), BaseType a ~ Bool) =>
     Expr a ->
@@ -387,7 +380,7 @@ common type, so @Expr Double .<= Expr Int@ typechecks.
     Expr (NullCmpResult a b)
 (.&&) = Binary NullAnd
 
--- | Nullable-aware logical OR. Returns @Maybe Bool@ when either operand is nullable.
+-- | Nullable-aware logical OR, giving @Maybe Bool@ if either side is nullable.
 (.||) ::
     (NullableCmpOp a b (NullCmpResult a b), BaseType a ~ Bool) =>
     Expr a ->

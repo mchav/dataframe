@@ -23,14 +23,7 @@ import DataFrame.IO.Parquet.Encoding (
  )
 import DataFrame.Internal.Binary (littleEndianWord32)
 
--- ---------------------------------------------------------------------------
--- Level readers
--- ---------------------------------------------------------------------------
-
-{- | Convert a 'Word32' level vector to an 'Int' level vector while counting
-how many entries equal @maxDef@. Single pass; allocates a single
-'VU.Vector Int' of length @VU.length raw@.
--}
+-- | Convert a 'Word32' level vector to 'Int', counting @maxDef@ entries.
 convertAndCount :: Int -> VU.Vector Word32 -> (VU.Vector Int, Int)
 convertAndCount maxDef raw = runST $ do
     let !n = VU.length raw
@@ -65,8 +58,7 @@ readLevelsV1 n maxDef maxRep bs =
         (defVec, nPresent, afterDef) = decodeLevelBlock bwDef n afterRep
      in (defVec, repVec, nPresent, afterDef)
   where
-    -- For rep block we don't need nPresent; we still get one cheaply.
-    -- No levels to read: the non-nullable, non-repeated paths never look at them.
+    -- No levels to read: non-nullable, non-repeated paths never use them.
     decodeLevelBlock 0 n' buf = (VU.empty, n' * fromEnum (maxDef == 0), buf)
     decodeLevelBlock bw n' buf =
         let blockLen = fromIntegral (littleEndianWord32 (BS.take 4 buf)) :: Int
@@ -107,10 +99,7 @@ readLevelsV2 n maxDef maxRep repLen defLen bs =
                  in convertAndCount maxDef raw
      in (defVec, repVec, nPresent, afterDefBytes)
 
-{- | Stitch a singly-nested list column (@maxRep == 1@) from vector-format
-definition and repetition levels plus a compact present-values vector.
-Returns one @Maybe [Maybe a]@ per top-level row.
--}
+-- | Stitch a singly-nested list column from levels and present values.
 stitchList ::
     Int ->
     VU.Vector Int ->
@@ -124,9 +113,7 @@ stitchList maxDef repVec defVec values =
     toRow ((_, d, _) : _) | d == 0 = Nothing
     toRow grp = Just [v | (_, _, v) <- grp]
 
-{- | Stitch a doubly-nested list column (@maxRep == 2@).
-@defT1@ is the def threshold at which the depth-1 element is present.
--}
+-- | Stitch a doubly-nested list column (@maxRep == 2@).
 stitchList2 ::
     Int ->
     Int ->
@@ -147,10 +134,7 @@ stitchList2 defT1 maxDef repVec defVec values =
     toLeaf [] = Nothing
     toLeaf ((_, _, v) : _) = v
 
-{- | Stitch a triply-nested list column (@maxRep == 3@).
-@defT1@ and @defT2@ are the def thresholds for depth-1 and depth-2
-elements respectively.
--}
+-- | Stitch a triply-nested list column (@maxRep == 3@).
 stitchList3 ::
     Int ->
     Int ->
@@ -175,14 +159,7 @@ stitchList3 defT1 defT2 maxDef repVec defVec values =
     toLeaf [] = Nothing
     toLeaf ((_, _, v) : _) = v
 
--- ---------------------------------------------------------------------------
--- Internal helpers
--- ---------------------------------------------------------------------------
-
-{- | Zip rep and def level vectors with a present-values vector, tagging each
-position as @Just value@ (when @def == maxDef@) or @Nothing@.
-Returns a flat list of @(rep, def, Maybe a)@ triplets for row-splitting.
--}
+-- | Zip rep and def levels with present values into triplets.
 pairWithValsV ::
     Int ->
     VU.Vector Int ->
@@ -201,9 +178,7 @@ pairWithValsV maxDef repVec defVec values = go 0 0
                     then (r, d, Just (VB.unsafeIndex values j)) : go (i + 1) (j + 1)
                     else (r, d, Nothing) : go (i + 1) j
 
-{- | Group a flat triplet list into rows.
-A new group begins whenever @rep <= bound@.
--}
+-- | Group a flat triplet list into rows.
 splitAtRepBound :: Int -> [(Int, Int, Maybe a)] -> [[(Int, Int, Maybe a)]]
 splitAtRepBound _ [] = []
 splitAtRepBound bound (t : ts) =

@@ -1,12 +1,4 @@
-{- |
-Module      : DataFrame.IO.Persistent.Read.Sqlite
-License     : MIT
-
-A minimal direct-SQLite query that returns result column /names/ alongside the
-values. @persistent@'s @rawQuery@ drops the names, so for arbitrary @readSql@
-queries we prepare the statement ourselves and read @sqlite3_column_name@, which
-works even for aliased expressions and empty result sets.
--}
+-- | Direct SQLite query that returns result column names with the values.
 module DataFrame.IO.Persistent.Read.Sqlite (
     runNamedQuery,
 ) where
@@ -31,17 +23,14 @@ import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..))
 import Foreign.Ptr (Ptr)
 
--- @sqlite3_column_count@ / @sqlite3_column_name@ are not re-exported by
--- @Database.Sqlite@, so we bind them directly against the statement pointer.
+-- @Database.Sqlite@ does not re-export these, so they are bound directly.
 foreign import ccall unsafe "sqlite3_column_count"
     c_sqlite3_column_count :: Ptr () -> IO CInt
 
 foreign import ccall unsafe "sqlite3_column_name"
     c_sqlite3_column_name :: Ptr () -> CInt -> IO CString
 
-{- | Run @sql@ (with bound @params@) against the database at @dbPath@ and return
-the result column names together with every row's values.
--}
+-- | Run @sql@ with bound params and return column names and every row.
 runNamedQuery :: Text -> Text -> [PersistValue] -> IO ([Text], [[PersistValue]])
 runNamedQuery dbPath sql params =
     bracket (open dbPath) close $ \conn ->

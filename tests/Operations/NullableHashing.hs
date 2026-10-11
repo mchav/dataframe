@@ -1,14 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- |
-Regression tests for null-aware row hashing and row extraction.
-
-`Nothing` in a nullable unboxed column must be a distinct value from any
-`Just x` (so @distinct@/@groupBy@/joins do not merge them), and `toRowList`
-must round-trip nulls faithfully. These pin the bug surfaced by the
-category-theory set-algebra laws, where @Nothing@ was stored as an
-uninitialised int and collided with @Just 0@.
--}
+-- | Regression tests for null-aware row hashing and row extraction.
 module Operations.NullableHashing where
 
 import qualified DataFrame as D
@@ -81,11 +73,7 @@ toRowListRoundTripPreservesNull =
         rebuilt = D.fromRows ["k"] (map (map snd) (toRowList df))
      in TestCase (assertEqual "toRowList round-trip preserves nulls" df rebuilt)
 
-{- | Hash robustness: @distinct@ must preserve every row of a dense grid of
-small integers across several columns. A weak per-step hash collides badly on
-adjacent integers and merges distinct rows; grouping trusts hash equality, so
-this guards that the hash spreads such keys.
--}
+-- | distinct must preserve every row of a dense grid of small integers.
 denseIntGridNoCollisions :: Test
 denseIntGridNoCollisions =
     let d = [-4 .. 4 :: Int]
@@ -103,10 +91,7 @@ denseIntGridNoCollisions =
                 (fst (D.dimensions (D.distinct df)))
             )
 
-{- | Join-hash robustness: a self inner-join on a dense grid of unique integer
-keys must return exactly one match per row. Joins match purely by hash, so a
-weak hash that collides distinct keys would emit spurious cross-matches.
--}
+-- | A self inner-join on a dense unique-key grid returns one match per row.
 joinDenseGridNoCollisions :: Test
 joinDenseGridNoCollisions =
     let d = [-4 .. 4 :: Int]

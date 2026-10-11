@@ -8,17 +8,11 @@ import DataFrame.Display.Terminal.PrettyPrint (RenderFormat (..))
 import qualified DataFrame.Internal.DataFrame as D
 
 data DisplayOptions = DisplayOptions
-    { {-- | Controls truncation on all three axes (rows, columns, cell width).
-      --
-      --   * 'Nothing' renders every row and column at full width.
-      --   * 'Just cfg' caps each axis whose limit in @cfg@ is positive.
-      --}
-      displayTruncate :: Maybe D.TruncateConfig
+    { displayTruncate :: Maybe D.TruncateConfig
+    -- ^ 'Nothing' shows everything; 'Just cfg' caps rows, columns, widths.
     }
 
-{- | Defaults aimed at terminal use: 10 rows, plus the standard column and cell
-caps from 'D.defaultTruncateConfig'.
--}
+-- | Terminal defaults: 10 rows plus the standard column and cell caps.
 defaultDisplayOptions :: DisplayOptions
 defaultDisplayOptions =
     DisplayOptions

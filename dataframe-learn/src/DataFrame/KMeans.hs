@@ -4,11 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | k-means clustering (Lloyd's algorithm with k-means++ seeding and multiple
-restarts). 'fit' trains a 'KMeansModel' (inspectable centres); 'predict' is the
-arg-min cluster assignment. Per-cluster distance features are available via
-'kmeansDistanceExprs' / 'kmeansTransform'.
--}
+-- | k-means clustering (Lloyd with k-means++ seeding and restarts).
 module DataFrame.KMeans (
     module DataFrame.Model,
     KMeansConfig (..),
@@ -82,9 +78,7 @@ fitKMeans cfg features df = best
 genSeeds :: Gen -> [Gen]
 genSeeds g = let (g1, g2) = splitGen g in g1 : genSeeds g2
 
-{- | One k-means run: k-means++ seeding then Lloyd iterations. Returns
-@(centers, labels, inertia, nIter)@.
--}
+-- | One k-means run: k-means++ seeding then Lloyd iterations.
 lloyd ::
     KMeansConfig ->
     Int ->

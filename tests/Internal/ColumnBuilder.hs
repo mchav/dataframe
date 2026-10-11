@@ -100,7 +100,6 @@ expectedColumn xs
     | otherwise = fromVector (VB.fromList (catMaybes xs))
 
 -- Read a text column back as a Maybe list, respecting the bitmap.
--- Ingest now freezes text to 'PackedText'; materialize to the boxed form.
 columnTexts :: Column -> [Maybe T.Text]
 columnTexts c@(PackedText _ _) = columnTexts (materializePacked c)
 columnTexts (BoxedColumn mb (v :: VB.Vector b)) =
@@ -191,8 +190,7 @@ multibyteTextRoundTrip = TestCase $ do
         (map Just ts)
         (columnTexts (buildTextColumn (map Just ts)))
 
--- A multibyte sequence split across two fields: the whole buffer is valid
--- UTF-8 but each field alone is not. Both must lenient-decode to U+FFFD.
+-- A multibyte sequence split across fields must lenient-decode to U+FFFD.
 splitMultibyteAcrossFields :: Test
 splitMultibyteAcrossFields = TestCase $ do
     let fields = [[0xC2], [0x80]]

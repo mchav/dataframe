@@ -81,9 +81,7 @@ testOLS = TestCase $ do
         truth = interpD regDF (F.col @Double "y")
     assertBool "OLS expr matches y" (and (zipWith (close 1e-6) preds truth))
 
-{- | A regression frame whose feature column @x@ is stored as @Int@; the target
-@y@ is @Double@. Fitting must reject the Int feature at the boundary.
--}
+-- | Regression frame whose feature x is stored as Int.
 intFeatureDF :: D.DataFrame
 intFeatureDF =
     D.fromColumns
@@ -91,9 +89,7 @@ intFeatureDF =
         , ("y", DI.fromList @Double [2, 4, 6, 8, 10, 12, 14, 16])
         ]
 
-{- | The fit boundary mandates Double: a non-Double feature column is a fit-time
-error (naming the column and pointing at the fix), not a silent coercion.
--}
+-- | A non-Double feature column is a fit-time error, not a silent coercion.
 testFitRequiresDouble :: Test
 testFitRequiresDouble = TestCase $ do
     let m = fit defaultLinearConfig (F.col @Double "y") intFeatureDF
@@ -106,9 +102,7 @@ testFitRequiresDouble = TestCase $ do
             assertBool "error names the offending column x" ("x" `isInfixOf` msg)
         Right _ -> assertFailure "expected a Double-input error for the Int feature column"
 
-{- | A regression frame whose feature @x@ is nullable (@Maybe Double@). Fitting
-must reject it rather than letting nulls poison the solve into NaN.
--}
+-- | Regression frame whose feature x is nullable.
 nullableFeatureDF :: D.DataFrame
 nullableFeatureDF =
     D.fromColumns
@@ -116,9 +110,7 @@ nullableFeatureDF =
         , ("y", DI.fromList @Double [2, 4, 6, 8, 10, 12, 14, 16])
         ]
 
-{- | The fit boundary rejects a nullable (Maybe Double) input column with an
-actionable error, instead of silently producing NaN coefficients.
--}
+-- | Fitting rejects a nullable input column with an actionable error.
 testFitRejectsNullable :: Test
 testFitRejectsNullable = TestCase $ do
     let m = fit defaultLinearConfig (F.col @Double "y") nullableFeatureDF
@@ -151,9 +143,7 @@ testLogistic = TestCase $ do
     let probs = logisticProbExprs m
     assertBool "prob exprs present for both classes" (M.size probs == 2)
 
-{- | Logistic regression must work with any enum label type, not just Int —
-multiclass classification into a user-defined sum type.
--}
+-- | Logistic regression must work with any enum label type, not just Int.
 testLogisticEnumLabel :: Test
 testLogisticEnumLabel = TestCase $ do
     let m = fit defaultLogisticConfig (F.col @Flower "flower") flowerDF

@@ -1,7 +1,4 @@
-{- | A minimal Wadler/Leijen-style document combinator and width-aware renderer.
-A 'Doc' describes a layout abstractly; 'render' chooses where soft breaks become
-newlines to fit a target width. 'Group' lays a region flat when it fits.
--}
+-- | A minimal Wadler/Leijen-style document combinator and width-aware renderer.
 module DataFrame.Internal.Display.Pretty (
     Doc,
     text,
@@ -38,9 +35,7 @@ instance Monoid Doc where
 text :: String -> Doc
 text = Text
 
-{- | A soft break: a single space when its enclosing 'group' fits the width,
-otherwise a newline + current indentation.
--}
+-- | A soft break: a space when its group fits the width, else a newline.
 line :: Doc
 line = Line
 
@@ -74,10 +69,7 @@ punctuate sep (d : ds) = (d <> sep) : punctuate sep ds
 parens :: Doc -> Doc
 parens d = Text "(" <> d <> Text ")"
 
-{- | Render @d@ bare when it fits flat on the current line, wrapped in parens when
-it must break across lines. Keeps operator grouping unambiguous once a
-sub-expression wraps, without parenthesis noise on one-line expressions.
--}
+-- | Render @d@ bare when it fits flat, in parens when it must break.
 parensWhenBroken :: Doc -> Doc
 parensWhenBroken d = Group (Alt d (parens d))
 

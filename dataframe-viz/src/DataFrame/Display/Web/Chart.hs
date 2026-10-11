@@ -1,30 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{- |
-A composable, expression-based grammar of graphics over the untyped 'Expr'.
-Charts are built by piping combinators and rendered to interactive Vega-Lite.
-
-@
-import qualified DataFrame.Display.Web.Chart as Plt
-import DataFrame.Functions (col)
-
-Plt.showChart
-  ( Plt.chart df
-      |> Plt.mark Plt.Point
-      |> Plt.enc Plt.X (col \@Double "age")
-      |> Plt.enc Plt.Y (col \@Double "fare")
-      |> Plt.enc Plt.Color (col \@Text "class")
-  )
-@
-
-The element type of each encoded expression determines the Vega-Lite field
-type (numeric → quantitative, date/time → temporal, otherwise nominal). A bare
-column expression encodes that column; any other expression is materialised
-with the core interpreter and inlined under the channel's name.
-
-For the schema-checked typed variant see "DataFrame.Display.Web.Chart.Typed".
--}
+-- | Composable expression-based grammar of graphics rendered to Vega-Lite.
 module DataFrame.Display.Web.Chart (
     -- * Chart
     Chart,
@@ -96,13 +73,7 @@ import DataFrame.Internal.Column (Columnable)
 import DataFrame.Internal.DataFrame (DataFrame)
 import DataFrame.Internal.Expression (Expr)
 
--- ---------------------------------------------------------------------------
--- Chart builder
--- ---------------------------------------------------------------------------
-
-{- | An in-progress chart: the source frame, a mark, channel encodings, the
-data fields to inline, transforms, and (for layered charts) sub-layers.
--}
+-- | An in-progress chart: frame, mark, encodings, transforms, and layers.
 data Chart = Chart
     { chDf :: DataFrame
     , chMark :: Mark
@@ -123,9 +94,7 @@ chart df = Chart df Point [] [] [] Nothing 600 400 []
 mark :: Mark -> Chart -> Chart
 mark m c = c{chMark = m}
 
-{- | Encode an expression on a channel. The field type is inferred from the
-expression's element type; use 'encAs' to override.
--}
+-- | Encode an expression on a channel, inferring the field type.
 enc :: (Columnable a) => Channel -> Expr a -> Chart -> Chart
 enc ch e c =
     let rf = resolveField (chDf c) (channelName ch) e
@@ -139,9 +108,7 @@ encAs ch e ft c =
         ce = chanEnc ch (rfName rf) ft
      in c{chEncs = setChannel ce (chEncs c), chFields = chFields c ++ [rf]}
 
-{- | Apply a declarative aggregation to a channel (computed by Vega-Lite). For
-'Count' the field is dropped, matching Vega-Lite's fieldless count.
--}
+-- | Apply a Vega-Lite aggregation to a channel.
 aggregateOn :: Channel -> Agg -> Chart -> Chart
 aggregateOn ch a =
     withChannel
@@ -158,18 +125,11 @@ binX, binY :: Chart -> Chart
 binX = withChannel X (\e -> e{ceBin = True})
 binY = withChannel Y (\e -> e{ceBin = True})
 
-{- | Put a channel on a log scale. Like all channel modifiers, apply it
-after 'enc' on the same channel ('enc' replaces the whole encoding).
--}
+-- | Put a channel on a log scale; apply it after 'enc'.
 logScale :: Channel -> Chart -> Chart
 logScale ch = withScale ch (\s -> s{scaleType = Just LogS})
 
-{- | Anchor (@True@) or release (@False@) a channel's scale at zero.
-Vega-Lite includes zero on quantitative scales by default, which squashes
-data far from the origin (e.g. geographic coordinates) against the chart
-edge; @includeZero X False@ lets the axis fit the data instead. Apply it
-after 'enc' on the same channel ('enc' replaces the whole encoding).
--}
+-- | Anchor or release a channel's scale at zero; apply it after 'enc'.
 includeZero :: Channel -> Bool -> Chart -> Chart
 includeZero ch b = withScale ch (\s -> s{scaleZero = Just b})
 
@@ -190,9 +150,7 @@ title t c = c{chTitle = Just t}
 size :: Int -> Int -> Chart -> Chart
 size w h c = c{chW = w, chH = h}
 
-{- | Overlay several charts that share data into a single layered chart. The
-title and size of the first layer are used for the container.
--}
+-- | Overlay several charts that share data into one layered chart.
 layer :: [Chart] -> Chart
 layer [] = error "DataFrame.Display.Web.Chart.layer: empty layer list"
 layer cs@(c0 : _) =
@@ -201,9 +159,7 @@ layer cs@(c0 : _) =
         , chFields = concatMap chFields cs
         }
 
-{- | Add a regression (least-squares) line over the chart, fitting @y@ on @x@.
-Produces a layered chart: the original marks plus a fitted line.
--}
+-- | Add a least-squares regression line fitting @y@ on @x@.
 regression :: (Columnable a, Columnable b) => Expr a -> Expr b -> Chart -> Chart
 regression xE yE c =
     let rfx = resolveField (chDf c) "x" xE
@@ -222,9 +178,7 @@ regression xE yE c =
                 }
      in withData{chLayers = [points, lineLayer]}
 
-{- | Kernel-density estimate of an expression, drawn as an area. Replaces the
-chart's mark and encodings with the density curve (Vega-Lite @density@).
--}
+-- | Kernel-density estimate of an expression, drawn as an area.
 density :: (Columnable a) => Expr a -> Chart -> Chart
 density e c =
     let rf = resolveField (chDf c) "value" e
@@ -238,11 +192,7 @@ density e c =
                 ]
             }
 
--- ---------------------------------------------------------------------------
--- Rendering
--- ---------------------------------------------------------------------------
-
--- | The Vega-Lite spec as an aeson 'Value' (escape hatch for advanced use / hvega).
+-- | The Vega-Lite spec as an aeson 'Value' (escape hatch, e.g. for hvega).
 toVegaSpec :: Chart -> Value
 toVegaSpec c = specToValue (allFields c) (toVLSpec c)
 
@@ -255,10 +205,6 @@ showChart :: Chart -> IO ()
 showChart c = do
     rowCountWarning (allFields c)
     showInDefaultBrowser (toHtml c)
-
--- ---------------------------------------------------------------------------
--- One-shot convenience plots (the simple single-line path)
--- ---------------------------------------------------------------------------
 
 -- | Scatter plot of two expressions. Axes fit the data (no zero anchor).
 scatter ::
@@ -301,10 +247,6 @@ pie cE df = showChart (chart df & mark Arc & enc Color cE & aggregateOn Theta Co
 -- | Box-and-whisker plot of a numeric expression.
 box :: (Columnable a) => Expr a -> DataFrame -> IO ()
 box yE df = showChart (chart df & mark Boxplot & enc Y yE)
-
--- ---------------------------------------------------------------------------
--- Internals
--- ---------------------------------------------------------------------------
 
 -- | Replace any existing encoding on the same channel (last write wins).
 setChannel :: ChannelEnc -> [ChannelEnc] -> [ChannelEnc]

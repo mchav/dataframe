@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | CSV reading and writing for dataframes. A strict, single-pass
-RFC 4180 scanner (cassava-compatible) parses fields into typed column
-builders; ragged rows are padded with nulls and extra fields dropped.
--}
+-- | Strict single-pass RFC 4180 CSV reading and writing for dataframes.
 module DataFrame.IO.CSV (
     -- * Reading
     readCsv,
@@ -46,43 +43,16 @@ import DataFrame.IO.CSV.Internal.Read (decodeCsvStrict)
 import DataFrame.Internal.DataFrame (DataFrame (..), toSeparated)
 import DataFrame.Schema (Schema, elements)
 
-{- | Read CSV file from path and load it into a dataframe.
-
-==== __Example__
-@
-ghci> D.readCsv ".\/data\/taxi.csv"
-
-@
--}
+-- | Read a CSV file from a path into a dataframe.
 readCsv :: FilePath -> IO DataFrame
 readCsv = readSeparated defaultReadOptions
 
-{- | A reader the lazy scan can drive: 'readSeparated' here, or
-@fastReadCsvWithOpts@ from @dataframe-fastcsv@. The scan owns the
-'ReadOptions', so every reader it accepts honours the projection it asks
-for.
-
-==== __Example__
-@
-myReader :: CsvReader
-myReader opts path = D.readCsvWithOpts opts path
-@
--}
+-- | A reader the lazy scan can drive, such as 'readSeparated'.
 type CsvReader = ReadOptions -> FilePath -> IO DataFrame
 
 type CsvBytesReader = ReadOptions -> BS.ByteString -> IO DataFrame
 
-{- | Read options a scan derives from its 'Schema': the schema assigns the
-column types /and/ selects the columns, so a scan reads only what its
-schema names — the same contract as @scanParquet@.
-
-==== __Example__
-@
-ghci> schema = D.makeSchema [("id", D.schemaType \@Int), ("name", D.schemaType \@Text)]
-ghci> D.readCsvWithOpts (schemaReadOptions schema) ".\/data\/customers.csv"
-
-@
--}
+-- | Read options derived from a 'Schema', which sets types and columns.
 schemaReadOptions :: Schema -> ReadOptions
 schemaReadOptions schema =
     defaultReadOptions
@@ -91,16 +61,7 @@ schemaReadOptions schema =
         , readColumns = Just (M.keys (elements schema))
         }
 
-{- | Schema-driven CSV reader. Coerces each column to the type declared
-in 'Schema'; columns absent from the schema fall back to inference and are
-still returned. To read /only/ the schema's columns, pass
-'schemaReadOptions' to 'readCsvWithOpts'.
-
-@
-import qualified DataFrame as D
-df <- D.readCsvWithSchema schema "input.csv"
-@
--}
+-- | Read a CSV, coercing columns to the types declared in a 'Schema'.
 readCsvWithSchema :: Schema -> FilePath -> IO DataFrame
 readCsvWithSchema schema =
     readSeparated
@@ -111,36 +72,15 @@ readCsvWithSchema schema =
                     (typeSpec defaultReadOptions)
             }
 
-{- | Read CSV file from path and load it into a dataframe.
-
-==== __Example__
-@
-ghci> D.readCsvWithOpts ".\/data\/taxi.csv" (D.defaultReadOptions { dateFormat = "%d/%-m/%-Y" })
-
-@
--}
+-- | Read a CSV file from a path using the given 'ReadOptions'.
 readCsvWithOpts :: ReadOptions -> FilePath -> IO DataFrame
 readCsvWithOpts = readSeparated
 
-{- | Read TSV (tab separated) file from path and load it into a dataframe.
-
-==== __Example__
-@
-ghci> D.readTsv ".\/data\/taxi.tsv"
-
-@
--}
+-- | Read a tab-separated file into a dataframe.
 readTsv :: FilePath -> IO DataFrame
 readTsv = readSeparated (defaultReadOptions{columnSeparator = '\t'})
 
-{- | Read text file with specified delimiter into a dataframe.
-
-==== __Example__
-@
-ghci> D.readSeparated (D.defaultReadOptions { columnSeparator = ';' }) ".\/data\/taxi.txt"
-
-@
--}
+-- | Read a text file with a chosen delimiter into a dataframe.
 readSeparated :: ReadOptions -> FilePath -> IO DataFrame
 readSeparated opts path = do
     validateReadOptions opts
@@ -148,52 +88,23 @@ readSeparated opts path = do
     csvData <- stripUtf8Bom <$> BS.readFile path
     decodeSeparatedStrict opts csvData
 
-{- | Decode in-memory CSV bytes into a dataframe. The result is fully
-forced. (Note: unlike 'readSeparated', no UTF-8 BOM is stripped.)
-
-==== __Example__
-@
-ghci> D.decodeSeparated D.defaultReadOptions "id,name\\n1,Ada\\n"
-
-@
--}
+-- | Decode in-memory CSV bytes into a fully forced dataframe.
 decodeSeparated :: ReadOptions -> BL.ByteString -> IO DataFrame
 decodeSeparated opts csvData = decodeSeparatedStrict opts (BL.toStrict csvData)
 
-{- | Decode a strict in-memory CSV buffer into a dataframe. The result is
-fully forced. As with 'decodeSeparated', this function does not strip a UTF-8
-BOM; callers reading the start of a file should strip it first.
--}
+-- | Decode a strict in-memory CSV buffer into a fully forced dataframe.
 decodeSeparatedStrict :: CsvBytesReader
 decodeSeparatedStrict = decodeCsvStrict
 
-{- | Write a dataframe to a comma-separated file.
-
-==== __Example__
-@
-ghci> D.writeCsv ".\/out.csv" df
-@
--}
+-- | Write a dataframe to a comma-separated file.
 writeCsv :: FilePath -> DataFrame -> IO ()
 writeCsv = writeSeparated ','
 
-{- | Write a dataframe to a tab-separated file.
-
-==== __Example__
-@
-ghci> D.writeTsv ".\/out.tsv" df
-@
--}
+-- | Write a dataframe to a tab-separated file.
 writeTsv :: FilePath -> DataFrame -> IO ()
 writeTsv = writeSeparated '\t'
 
-{- | Write a dataframe to a file using the given field separator.
-
-==== __Example__
-@
-ghci> D.writeSeparated ';' ".\/out.txt" df
-@
--}
+-- | Write a dataframe to a file using the given field separator.
 writeSeparated ::
     -- | Separator
     Char ->
@@ -203,41 +114,18 @@ writeSeparated ::
     IO ()
 writeSeparated c filepath df = TIO.writeFile filepath (toSeparated c df)
 
-{- | Parse a CSV string into a DataFrame using default options.
-
-==== __Example__
-@
-ghci> D.fromCsv "id,name\\n1,Ada\\n"
-Right (DataFrame ...)
-
-@
--}
+-- | Parse a CSV string into a DataFrame using default options.
 fromCsv :: String -> IO (Either String DataFrame)
 fromCsv s = do
     let bs = BL.fromStrict (TE.encodeUtf8 (T.pack s))
     (Right <$> decodeSeparated defaultReadOptions bs)
         `catch` (\(e :: SomeException) -> pure (Left (show e)))
 
-{- | Parse a lazy 'ByteString' containing CSV data into a DataFrame using
-default options.
-
-==== __Example__
-@
-ghci> D.fromCsvBytes "id,name\\n1,Ada\\n"
-
-@
--}
+-- | Parse a lazy 'ByteString' of CSV data using default options.
 fromCsvBytes :: BL.ByteString -> IO DataFrame
 fromCsvBytes = decodeSeparated defaultReadOptions
 
-{- | Strip one layer of double-quote delimiters from a field, if present.
-
-==== __Example__
->>> stripQuotes "\"hello\""
-"hello"
->>> stripQuotes "hello"
-"hello"
--}
+-- | Strip one layer of double-quote delimiters from a field, if present.
 stripQuotes :: T.Text -> T.Text
 stripQuotes txt =
     case T.uncons txt of

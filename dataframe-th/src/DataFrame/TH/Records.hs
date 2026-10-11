@@ -4,15 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- |
-Module      : DataFrame.TH.Records
-License     : MIT
-
-Record-based 'DataFrame' splices — the IO-agnostic core of the
-'DataFrame.TH' family. Splices that read CSV / Parquet files at compile
-time live in @DataFrame.TH.CSV@ (in @dataframe-csv-th@) and
-@DataFrame.TH.Parquet@ (in @dataframe-parquet-th@).
--}
+-- | Record-based 'DataFrame' splices, the IO-agnostic core of 'DataFrame.TH'.
 module DataFrame.TH.Records (
     -- * Declare one binding per column
     declareColumns,
@@ -132,10 +124,7 @@ columnSpecs df =
      in forM (zip names types) $ \(colName, tyStr) ->
             (,) colName <$> typeFromString (words tyStr)
 
-{- | Splice a binding for every column of @df@, named after the column.
-Column names that are not valid Haskell identifiers are sanitized
-(see 'DataFrame.Functions.sanitize').
--}
+-- | Splice a binding for every column of @df@, named after the column.
 declareColumns :: DataFrame -> DecsQ
 declareColumns = declareColumnsWithPrefix' Nothing
 
@@ -154,21 +143,7 @@ declareColumnsWithPrefix' prefix df = do
         val <- valD (varP n) (normalB [|col $(TH.lift raw)|]) []
         pure [sig, val]
 
-{- | Splice a runtime 'Schema' for @df@, along with 'Expr' refs
-all named @<prefix><item>@.
-
-The schema is bound to @\<prefix\>Schema@ and each accessor to
-@\<prefix\>\<ColumnName\>@, where the column name is camel-cased.
-
-@
-\$(declareSchemaValues "housing" df)
--- emits:
---   housingSchema       :: Schema
---   housingSchema       = makeSchema [("median_income", SType (Proxy :: Proxy Double)), ...]
---   housingMedianIncome :: Expr Double
---   housingMedianIncome = col "median_income"
-@
--}
+-- | Splice a runtime 'Schema' for @df@ along with per-column 'Expr' refs.
 declareSchemaValues :: String -> DataFrame -> DecsQ
 declareSchemaValues prefix df = do
     validatePrefix prefix

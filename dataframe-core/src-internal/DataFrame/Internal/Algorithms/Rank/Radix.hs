@@ -1,10 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Stable rank of a set of group representatives by ascending unsigned hash
-order. Shared by the sequential and parallel group-by canonical-ordering steps
-so they stay bit-for-bit identical. @O(ng)@ stable LSD radix sort.
--}
+-- | Stable rank of group representatives by ascending unsigned hash.
 module DataFrame.Internal.Algorithms.Rank.Radix (
     rankByHash,
     sortKey,
@@ -17,10 +14,7 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 import Data.Word (Word64)
 
-{- | Unsigned sort key of a hash: ascending 'Word64' order of @sortKey h@ equals
-ascending signed-'Int' order of @h@. Reinterpreted to 'Int' for the byte-wise
-radix passes (the byte mask makes the sign extension irrelevant).
--}
+-- | Unsigned sort key of a hash, ordering like signed 'Int'.
 sortKey :: Int -> Int
 sortKey h = fromIntegral (fromIntegral h + 0x8000000000000000 :: Word64)
 {-# INLINE sortKey #-}

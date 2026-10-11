@@ -3,11 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
-{- |
-A plotly-express-style one-shot plotting API for HTML output: the string-keyed
-convenience tier emitting interactive Vega-Lite charts. For the composable
-expression-based grammar see "DataFrame.Display.Web.Chart" and its @.Typed@.
--}
+-- | Plotly-express-style one-shot plotting API emitting Vega-Lite HTML.
 module DataFrame.Display.Web.Plot (
     -- * Aggregation
     Agg (..),
@@ -108,10 +104,6 @@ import DataFrame.Display.Internal.VegaLite (
 import qualified DataFrame.Display.Internal.VegaLite as VL
 import DataFrame.Internal.DataFrame (DataFrame, columnNames)
 
--- ---------------------------------------------------------------------------
--- Layout
--- ---------------------------------------------------------------------------
-
 -- | Display dimensions for the chart, in pixels.
 data Size = Size {width :: Int, height :: Int}
 
@@ -137,10 +129,6 @@ renderSpec sz fields spec = do
 -- | Pin a channel's zero anchor explicitly, on or off.
 anchorZero :: Bool -> VL.ChannelEnc -> VL.ChannelEnc
 anchorZero b e = e{VL.ceScale = VL.defaultScale{VL.scaleZero = Just b}}
-
--- ---------------------------------------------------------------------------
--- Bar
--- ---------------------------------------------------------------------------
 
 data Bar = Bar
     { x :: T.Text
@@ -182,10 +170,6 @@ bar spec df = do
                 }
     renderSpec spec.size fields vlSpec
 
--- ---------------------------------------------------------------------------
--- Histogram
--- ---------------------------------------------------------------------------
-
 data Histogram = Histogram
     { x :: T.Text
     , bins :: Int
@@ -224,14 +208,7 @@ histogram spec df = do
                 }
     renderSpec spec.size fields vlSpec
 
--- ---------------------------------------------------------------------------
--- Scatter
--- ---------------------------------------------------------------------------
-
-{- | 'includeZero' anchors both axes at zero. Off by default so the axes fit
-the data — otherwise points far from the origin (e.g. geographic coordinates)
-get squashed against the chart edge.
--}
+-- | Scatter spec; 'includeZero' anchors both axes at zero (off by default).
 data Scatter = Scatter
     { x :: T.Text
     , y :: T.Text
@@ -269,14 +246,7 @@ scatter spec df = do
                 }
     renderSpec spec.size fields vlSpec
 
--- ---------------------------------------------------------------------------
--- Line
--- ---------------------------------------------------------------------------
-
-{- | 'includeZero' anchors the axes at zero (Vega-Lite's own default). Off
-by default so the axes fit the data — a line is position-encoded, so a
-forced zero baseline only squashes series far from the origin.
--}
+-- | Line spec; 'includeZero' anchors the axes at zero and is off by default.
 data Line = Line
     { x :: T.Text
     , y :: [T.Text]
@@ -318,10 +288,6 @@ line spec df = do
                 , vlTitle = Just chartTitle
                 }
     renderSpec spec.size fields vlSpec
-
--- ---------------------------------------------------------------------------
--- Pie
--- ---------------------------------------------------------------------------
 
 data Pie = Pie
     { values :: T.Text
@@ -369,10 +335,6 @@ pie spec df = do
                 }
     renderSpec spec.size fields vlSpec
 
--- ---------------------------------------------------------------------------
--- Box
--- ---------------------------------------------------------------------------
-
 data Box = Box
     { y :: [T.Text]
     , title :: Maybe T.Text
@@ -404,31 +366,17 @@ box spec df = do
                 }
     renderSpec spec.size fields vlSpec
 
--- ---------------------------------------------------------------------------
--- Whole-frame helpers
--- ---------------------------------------------------------------------------
-
-{- | Concatenate a histogram for every numeric column in the frame. Useful
-as a one-shot exploratory summary.
--}
+-- | Concatenate a histogram for every numeric column in the frame.
 allHistograms :: (HasCallStack) => DataFrame -> IO String
 allHistograms df = do
     let cols = filter (isNumericColumn df) (columnNames df)
     xs <- forM cols $ \c -> histogram (mkHistogram c) df
     return $ L.intercalate "\n" xs
 
--- ---------------------------------------------------------------------------
--- Title helper
--- ---------------------------------------------------------------------------
-
 autoTitle :: Agg -> Maybe T.Text -> T.Text -> T.Text
 autoTitle Count _ groupCol = "count by " <> groupCol
 autoTitle a (Just yCol) groupCol = aggLabel a <> "(" <> yCol <> ") by " <> groupCol
 autoTitle a Nothing groupCol = aggLabel a <> " by " <> groupCol
-
--- ---------------------------------------------------------------------------
--- Deprecated legacy entry points
--- ---------------------------------------------------------------------------
 
 plotHistogram :: (HasCallStack) => T.Text -> DataFrame -> IO String
 plotHistogram c = histogram (mkHistogram c)
@@ -455,10 +403,6 @@ plotPie c mLabel =
 plotBoxPlots :: (HasCallStack) => [T.Text] -> DataFrame -> IO String
 plotBoxPlots ys = box (mkBox ys)
 {-# DEPRECATED plotBoxPlots "use 'box (mkBox cols)' instead" #-}
-
--- ---------------------------------------------------------------------------
--- Browser launcher
--- ---------------------------------------------------------------------------
 
 -- | Windows launches via a shell: 'start' is a cmd builtin.
 showInDefaultBrowser :: String -> IO ()

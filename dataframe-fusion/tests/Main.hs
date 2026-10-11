@@ -122,7 +122,7 @@ main = do
                     assertEqual "row count after sort" 4 (Core.nRows df)
                 , TestLabel "groupBy + aggregate produces one row per key" $ TestCase $ do
                     fdf <- scan
-                    -- group by name, sum scores (each name unique here, so 4 groups)
+                    -- group by name, sum scores (4 unique names)
                     fdf' <-
                         Fusion.aggregate
                             (Fusion.as @"total" (Fusion.sum (Fusion.col @"score")))
@@ -135,7 +135,7 @@ main = do
                     fdf2 <- scanDepts
                     joined <- Fusion.innerJoin "id" "id" fdf fdf2
                     df <- thaw <$> Fusion.run joined
-                    -- 3 ids in depts.csv match against 4 ids in smoke.csv -> 3 rows
+                    -- 3 of the 4 ids in smoke.csv match depts.csv
                     assertEqual "row count after inner join" 3 (Core.nRows df)
                 ]
 

@@ -8,29 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | JSON wire format for 'Expr' values.
-
-  The Python bindings build expression trees as JSON; this module decodes them
-  back into 'Expr' GADTs (typed) and encodes them in the reverse direction
-  (used for shipping fitted decision trees back to Python).
-
-  Encoded shape:
-
-  > { "node": "col"   , "out_type": "double", "name": "x" }
-  > { "node": "lit"   , "out_type": "int"   , "value": 42 }
-  > { "node": "unary" , "out_type": "double", "op": "toDouble"
-  >                   , "arg_type": "int"   , "arg": <expr> }
-  > { "node": "binary", "out_type": "bool"  , "op": "leq"
-  >                   , "arg_type": "double", "lhs": <expr>, "rhs": <expr> }
-  > { "node": "if"    , "out_type": "text"  , "cond": <expr>
-  >                   , "then": <expr>, "else": <expr> }
-
-  Operator names follow 'binaryName' / 'unaryName' from
-  "DataFrame.Internal.Expression". Nullable variants ("nulladd", "nullor", …)
-  are accepted on decode and treated as their non-null equivalents — Python
-  data crosses the FFI boundary as non-null Arrow buffers, so this is lossless
-  for the supported workflow.
--}
+-- | JSON wire format for 'Expr' values, decoding and encoding.
 module DataFrame.IR.ExprJson (
     SomeExpr (..),
     encodeExpr,
@@ -139,7 +117,7 @@ withTypeTag t k = case t of
     "string" -> k (Proxy @String)
     _ -> fail $ "DataFrame.IR.ExprJson: unknown type tag: " <> T.unpack t
 
--- | A tag whose type has the class evidence @dict@ provides; @what@ names it in errors.
+-- | A tag whose type has the class evidence @dict@ provides.
 withClassTag ::
     forall c r.
     (forall a. (Columnable a) => Maybe (Dict (c a))) ->
@@ -195,10 +173,7 @@ withRealUnboxTypeTag ::
     Aeson.Parser r
 withRealUnboxTypeTag = withClassTag @RealUnbox realUnboxDict "Real+Unbox (variance/median)"
 
-{- | Encode an 'Expr' to a JSON value. Returns 'Left' on unsupported
-constructors (Agg, Over, CastWith, CastExprWith) or unsupported operator
-names (binaryUdf, unaryUdf, …).
--}
+-- | Encode an 'Expr' to JSON, failing on unsupported constructors or operators.
 encodeExpr :: forall a. (Columnable a) => Expr a -> Either String Aeson.Value
 encodeExpr expr = case expr of
     Col name -> do
@@ -346,7 +321,7 @@ encodeLit v
         Left $
             "DataFrame.IR.ExprJson.encodeLit: unsupported type: " <> show (typeRep @a)
 
--- | Map a 'binaryName' string to a wire-format op name. Errors on opaque UDF names.
+-- | Map a 'binaryName' string to a wire-format op name.
 recognizeBinary :: T.Text -> Either String T.Text
 recognizeBinary n = case n of
     "add" -> Right "add"
@@ -378,7 +353,7 @@ recognizeBinary n = case n of
             "DataFrame.IR.ExprJson: unsupported binary op (cannot serialize): "
                 <> T.unpack other
 
--- | Map a 'unaryName' string to a wire-format op name. Errors on opaque UDF names.
+-- | Map a 'unaryName' string to a wire-format op name.
 recognizeUnary :: T.Text -> Either String T.Text
 recognizeUnary n = case n of
     "not" -> Right "not"
@@ -405,9 +380,7 @@ recognizeUnary n = case n of
             "DataFrame.IR.ExprJson: unsupported unary op (cannot serialize): "
                 <> T.unpack other
 
-{- | Decode a JSON value into a 'SomeExpr'. The output type comes from the
-@out_type@ field on the root node.
--}
+-- | Decode a JSON value into a 'SomeExpr' using the root @out_type@.
 decodeExprAny :: Aeson.Value -> Either String SomeExpr
 decodeExprAny = Aeson.parseEither parseSomeExpr
 
@@ -679,10 +652,7 @@ parseBinary op outType argType rawLhs rawRhs = case op of
     "nullor" -> parseBinary "or" outType argType rawLhs rawRhs
     other -> fail $ "DataFrame.IR.ExprJson: unsupported binary op: " <> T.unpack other
 
-{- | Decode an aggregation node. Dispatches on the stored aggregation name to the
-matching 'DataFrame.Functions' builder, picking the type-tag dispatcher demanded
-by that builder's constraints.
--}
+-- | Decode an aggregation node by dispatching on its stored aggregation name.
 parseAgg :: T.Text -> T.Text -> T.Text -> Aeson.Value -> Aeson.Parser SomeExpr
 parseAgg aggName outType argType rawArg = case aggName of
     "count" -> do

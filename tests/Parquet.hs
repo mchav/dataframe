@@ -353,10 +353,6 @@ littleEndianWord32RoundTrip =
   where
     value = 0xA1B2C3D4 :: Word32
 
--- ---------------------------------------------------------------------------
--- Group 1: Plain variant
--- ---------------------------------------------------------------------------
-
 allTypesTinyPagesPlain :: Test
 allTypesTinyPagesPlain =
     TestCase
@@ -371,15 +367,7 @@ allTypesTinyPagesPlain =
             )
         )
 
--- ---------------------------------------------------------------------------
--- Group 2: Compression codecs (unsupported → error tests)
--- ---------------------------------------------------------------------------
-
--- TODO: LZ4 and LZ4_RAW compression are not yet implemented. When support
--- is added via a Haskell lz4 binding, hadoopLz4Compressed,
--- hadoopLz4CompressedLarger, nonHadoopLz4Compressed, lz4RawCompressed, and
--- lz4RawCompressedLarger should all change from assertExpectException to
--- assertEqual checking their respective row/column dimensions.
+-- TODO: Once LZ4/LZ4_RAW are implemented, the lz4 tests become assertEqual.
 hadoopLz4Compressed :: Test
 hadoopLz4Compressed =
     TestCase
@@ -425,9 +413,7 @@ lz4RawCompressedLarger =
             (D.readParquet "./tests/data/lz4_raw_compressed_larger.parquet")
         )
 
--- Was: assertExpectException "concatenatedGzipMembers" "12" ...
--- The old parser failed with a ZLIB size error. The new decompressor
--- handles concatenated gzip members correctly.
+-- The decompressor now handles concatenated gzip members.
 concatenatedGzipMembers :: Test
 concatenatedGzipMembers =
     TestCase
@@ -442,9 +428,7 @@ concatenatedGzipMembers =
             )
         )
 
--- TODO: BROTLI compression is not yet implemented. When a Haskell brotli
--- binding is added, change this to assertEqual checking the actual
--- dimensions of large_string_map.brotli.parquet.
+-- TODO: BROTLI is not implemented; change this to assertEqual once it is.
 largeBrotliMap :: Test
 largeBrotliMap =
     TestCase
@@ -454,18 +438,7 @@ largeBrotliMap =
             (D.readParquet "./tests/data/large_string_map.brotli.parquet")
         )
 
--- ---------------------------------------------------------------------------
--- Group 3: Delta / RLE encodings (unsupported → error tests)
--- ---------------------------------------------------------------------------
-
--- Was: assertExpectException "deltaBinaryPacked" "EDELTA_BINARY_PACKED" ...
--- The new parser's error includes the encoding name "DELTA_BINARY_PACKED"
--- without the old "E" prefix used in the previous error format.
--- TODO: When DELTA_BINARY_PACKED (encoding id=5) is implemented, change
--- this to assertEqual checking actual dimensions. The encoding stores
--- integer data as bit-packed deltas and is common for monotonically
--- increasing columns (row IDs, timestamps):
--- https://parquet.apache.org/docs/file-format/data-pages/encodings/#delta-encoding-delta_binary_packed--5
+-- TODO: Once DELTA_BINARY_PACKED is implemented, assert actual dimensions.
 deltaBinaryPacked :: Test
 deltaBinaryPacked =
     TestCase
@@ -475,12 +448,7 @@ deltaBinaryPacked =
             (D.readParquet "./tests/data/delta_binary_packed.parquet")
         )
 
--- Was: assertExpectException "deltaByteArray" "EDELTA_BYTE_ARRAY" ...
--- Same reason as deltaBinaryPacked: new error format drops the "E" prefix.
--- TODO: When DELTA_BYTE_ARRAY (encoding id=7) is implemented, change this
--- to assertEqual checking actual dimensions. The encoding prefix-differences
--- consecutive string values, reducing storage for sorted byte arrays:
--- https://parquet.apache.org/docs/file-format/data-pages/encodings/#delta-strings-delta_byte_array--7
+-- TODO: Once DELTA_BYTE_ARRAY is implemented, assert actual dimensions.
 deltaByteArray :: Test
 deltaByteArray =
     TestCase
@@ -490,12 +458,7 @@ deltaByteArray =
             (D.readParquet "./tests/data/delta_byte_array.parquet")
         )
 
--- Was: assertExpectException "deltaEncodingOptionalColumn" "EDELTA_BINARY_PACKED" ...
--- The first column that errors in this file uses DELTA_BYTE_ARRAY encoding,
--- so we match the broader "unsupported encoding" substring instead.
--- TODO: Once DELTA_BINARY_PACKED and DELTA_BYTE_ARRAY are both implemented,
--- change this to assertEqual checking the actual row count of
--- delta_encoding_optional_column.parquet.
+-- TODO: Once both DELTA encodings are implemented, assert the row count.
 deltaEncodingOptionalColumn :: Test
 deltaEncodingOptionalColumn =
     TestCase
@@ -505,10 +468,7 @@ deltaEncodingOptionalColumn =
             (D.readParquet "./tests/data/delta_encoding_optional_column.parquet")
         )
 
--- Was: assertExpectException "deltaEncodingRequiredColumn" "EDELTA_BINARY_PACKED" ...
--- Same as deltaEncodingOptionalColumn: first failing column uses DELTA_BYTE_ARRAY.
--- TODO: Same as deltaEncodingOptionalColumn — change to assertEqual once
--- DELTA_BINARY_PACKED and DELTA_BYTE_ARRAY encodings are both supported.
+-- TODO: Once both DELTA encodings are implemented, change to assertEqual.
 deltaEncodingRequiredColumn :: Test
 deltaEncodingRequiredColumn =
     TestCase
@@ -518,14 +478,7 @@ deltaEncodingRequiredColumn =
             (D.readParquet "./tests/data/delta_encoding_required_column.parquet")
         )
 
--- Was: assertExpectException "deltaLengthByteArray" "ZSTD" ...
--- The old parser failed during ZSTD decompression. The new parser
--- detects the unsupported DELTA_LENGTH_BYTE_ARRAY encoding before decompression.
--- TODO: When DELTA_LENGTH_BYTE_ARRAY (encoding id=6) is implemented, change
--- this to assertEqual checking actual dimensions. The encoding stores a
--- delta-encoded list of byte-array lengths followed by the raw concatenated
--- values:
--- https://parquet.apache.org/docs/file-format/data-pages/encodings/#delta-length-byte-array-delta_length_byte_array--6
+-- TODO: Once DELTA_LENGTH_BYTE_ARRAY is implemented, assert dimensions.
 deltaLengthByteArray :: Test
 deltaLengthByteArray =
     TestCase
@@ -535,13 +488,7 @@ deltaLengthByteArray =
             (D.readParquet "./tests/data/delta_length_byte_array.parquet")
         )
 
--- Was: assertExpectException "rleBooleanEncoding" "Zlib" ...
--- The old parser failed during Zlib decompression. The new parser
--- detects the unsupported RLE boolean encoding before reaching decompression.
--- TODO: When RLE/Bit-Packing Hybrid (encoding id=3, bit-width=1) is
--- implemented for BOOLEAN columns, change this to assertEqual checking the
--- actual decoded boolean values. The encoding is spec-valid for BOOLEAN:
--- https://parquet.apache.org/docs/file-format/data-pages/encodings/#run-length-encoding--bit-packing-hybrid-rle--3
+-- TODO: Once RLE boolean encoding is implemented, assert the decoded values.
 rleBooleanEncoding :: Test
 rleBooleanEncoding =
     TestCase
@@ -551,15 +498,7 @@ rleBooleanEncoding =
             (D.readParquet "./tests/data/rle_boolean_encoding.parquet")
         )
 
--- Was: assertExpectException "dictPageOffsetZero" "Unknown kv" ...
--- The old parser reported "Unknown kv" for a bad key-value field. The new
--- Pinch-based page-header parser reports "Field 1 is absent" for the
--- malformed page header in this file.
--- TODO: Investigate whether dict-page-offset-zero.parquet can be read
--- successfully with a more lenient page-header parser. If the missing
--- mandatory field can be treated as a per-page soft error rather than
--- aborting the whole read, this test would change to assertEqual
--- checking actual dimensions.
+-- TODO: Check whether a lenient page-header parser can read this file.
 dictPageOffsetZero :: Test
 dictPageOffsetZero =
     TestCase
@@ -569,22 +508,7 @@ dictPageOffsetZero =
             (D.readParquet "./tests/data/dict-page-offset-zero.parquet")
         )
 
--- ---------------------------------------------------------------------------
--- Group 4: Data Page V2 (unsupported → error tests)
--- ---------------------------------------------------------------------------
-
--- Was: assertExpectException "datapageV2Snappy" "InvalidOffset" ...
--- The old parser failed with an offset validation error. The new parser
--- first encounters the unsupported RLE encoding used by data-page-v2.
--- TODO: Full Data Page V2 support requires two changes:
---   1. RLE/Bit-Packing Hybrid (id=3, bit-width=1) for BOOLEAN values
---      (shared with rleBooleanEncoding above).
---   2. Parsing DataPageHeaderV2's in-line level streams: in v2, definition
---      and repetition levels are stored uncompressed before the (optionally
---      compressed) value bytes, with lengths given by
---      definition_levels_byte_length and repetition_levels_byte_length.
--- Once both are done, change to assertEqual checking actual dimensions:
--- https://parquet.apache.org/docs/file-format/data-pages/
+-- TODO: Data Page V2 needs RLE booleans and in-line level stream parsing.
 datapageV2Snappy :: Test
 datapageV2Snappy =
     TestCase
@@ -594,19 +518,7 @@ datapageV2Snappy =
             (D.readParquet "./tests/data/datapage_v2.snappy.parquet")
         )
 
--- Was: assertExpectException "datapageV2EmptyDatapage" "UnexpectedEOF" ...
--- The old Snappy decompressor raised "UnexpectedEOF". The new Snappy
--- library raises "EmptyInput" when given zero-length compressed data.
--- The v2 page structure is parsed correctly: readLevelsV2V strips the
--- in-line level streams before decompression, leaving an empty value
--- payload (BS.empty) for a page with 0 values. The Snappy decompressor
--- then raises "EmptyInput" because it is handed zero bytes.
--- TODO: An empty data page (0 values) is valid and should contribute
--- 0 rows without raising an error. The fix is a single guard in the
--- DATA_PAGE_V2 branch of readPages (Page.hs): short-circuit
--- decompressData when compValBytes is empty, returning BS.empty
--- directly. Once fixed, change this to assertEqual checking the
--- total expected row count of the file.
+-- TODO: Guard empty V2 data pages in readPages so they yield 0 rows.
 datapageV2EmptyDatapage :: Test
 datapageV2EmptyDatapage =
     TestCase
@@ -616,9 +528,7 @@ datapageV2EmptyDatapage =
             (D.readParquet "./tests/data/datapage_v2_empty_datapage.snappy.parquet")
         )
 
--- Was: assertExpectException "pageV2EmptyCompressed" "10" ...
--- The old parser failed on empty compressed page-v2 blocks. The new parser
--- treats empty compressed data as zero-value pages and reads all 10 rows.
+-- Empty compressed page-v2 data is treated as zero-value pages.
 pageV2EmptyCompressed :: Test
 pageV2EmptyCompressed =
     TestCase
@@ -632,10 +542,6 @@ pageV2EmptyCompressed =
                 )
             )
         )
-
--- ---------------------------------------------------------------------------
--- Group 5: Checksum files (all read successfully)
--- ---------------------------------------------------------------------------
 
 datapageV1UncompressedChecksum :: Test
 datapageV1UncompressedChecksum =
@@ -693,12 +599,7 @@ rleDictSnappyChecksum =
             )
         )
 
--- TODO: CRC checksum validation is not yet implemented; corrupt page
--- checksums are silently ignored. When validation is added, consider a
--- validateChecksums :: Bool field in ParquetReadOptions (default False)
--- so callers can opt in. Once implemented, datapageV1CorruptChecksum and
--- rleDictUncompressedCorruptChecksum should change to assertExpectException
--- checking for a checksum mismatch error.
+-- TODO: CRC checksum validation is not implemented; corrupt ones are ignored.
 datapageV1CorruptChecksum :: Test
 datapageV1CorruptChecksum =
     TestCase
@@ -726,10 +627,6 @@ rleDictUncompressedCorruptChecksum =
                 )
             )
         )
-
--- ---------------------------------------------------------------------------
--- Group 6: NULL handling
--- ---------------------------------------------------------------------------
 
 nullsSnappy :: Test
 nullsSnappy =
@@ -797,10 +694,6 @@ nanInStats =
             )
         )
 
--- ---------------------------------------------------------------------------
--- Group 7: Decimal types
--- ---------------------------------------------------------------------------
-
 int32Decimal :: Test
 int32Decimal =
     TestCase
@@ -847,16 +740,7 @@ byteArrayDecimal =
             )
         )
 
--- Was: assertExpectException "fixedLengthDecimal" "FIXED_LEN_BYTE_ARRAY" ...
--- The old parser recognised FIXED_LEN_BYTE_ARRAY as a physical type but
--- had no page decoder for it; reading data from such a column threw an
--- error at the decoding stage. The new parser's fixedLenByteArrayDecoder
--- reads the raw bytes and surfaces them as a text column.
--- TODO: When the DECIMAL logical type is properly decoded for
--- FIXED_LEN_BYTE_ARRAY columns, replace this dimension-only check with a
--- value-level assertion verifying the actual decimal values (e.g. as
--- Scientific or Double). The raw-byte Text column should become a typed
--- numeric column.
+-- TODO: Once DECIMAL is decoded for FIXED_LEN_BYTE_ARRAY, assert values.
 fixedLengthDecimal :: Test
 fixedLengthDecimal =
     TestCase
@@ -868,11 +752,7 @@ fixedLengthDecimal =
             )
         )
 
--- Was: assertExpectException "fixedLengthDecimalLegacy" "FIXED_LEN_BYTE_ARRAY" ...
--- Same as fixedLengthDecimal: the old parser had no page decoder for
--- FIXED_LEN_BYTE_ARRAY; the new parser's fixedLenByteArrayDecoder handles it.
--- TODO: Same as fixedLengthDecimal — add a value-level assertion once
--- DECIMAL decoding over FIXED_LEN_BYTE_ARRAY is implemented.
+-- TODO: Add a value-level assertion once DECIMAL decoding is implemented.
 fixedLengthDecimalLegacy :: Test
 fixedLengthDecimalLegacy =
     TestCase
@@ -886,10 +766,6 @@ fixedLengthDecimalLegacy =
                 )
             )
         )
-
--- ---------------------------------------------------------------------------
--- Group 8: Binary / fixed-length bytes
--- ---------------------------------------------------------------------------
 
 binaryFile :: Test
 binaryFile =
@@ -916,9 +792,7 @@ binaryTruncatedMinMax =
             )
         )
 
--- Was: assertExpectException "fixedLengthByteArray" "FIXED_LEN_BYTE_ARRAY" ...
--- Same as fixedLengthDecimal: the old parser had no page decoder for
--- FIXED_LEN_BYTE_ARRAY; the new parser's fixedLenByteArrayDecoder handles it.
+-- FIXED_LEN_BYTE_ARRAY is read by fixedLenByteArrayDecoder as raw text.
 fixedLengthByteArray :: Test
 fixedLengthByteArray =
     TestCase
@@ -929,10 +803,6 @@ fixedLengthByteArray =
                 (fmap D.dimensions (D.readParquet "./tests/data/fixed_length_byte_array.parquet"))
             )
         )
-
--- ---------------------------------------------------------------------------
--- Group 9: INT96 timestamps
--- ---------------------------------------------------------------------------
 
 int96FromSpark :: Test
 int96FromSpark =
@@ -945,13 +815,7 @@ int96FromSpark =
             )
         )
 
--- ---------------------------------------------------------------------------
--- Group 10: Metadata / index / bloom filters
--- ---------------------------------------------------------------------------
-
--- Was: assertExpectException "columnChunkKeyValueMetadata" "Unknown page header field" ...
--- The old parser rejected extra fields in page headers. Pinch ignores
--- unknown fields gracefully. This file contains 0 data rows.
+-- Unknown page header fields are ignored; this file has 0 data rows.
 columnChunkKeyValueMetadata :: Test
 columnChunkKeyValueMetadata =
     TestCase
@@ -994,15 +858,7 @@ dataIndexBloomEncodingWithLength =
             )
         )
 
--- Was: assertEqual "sortColumns" (3, 2) ...
--- The file contains two row groups, each storing 3 rows (6 rows total).
--- DuckDB's parquet-metadata output shows row_group_num_rows=3, which is
--- the count *per row group*, not the file total.row group*, not the file total.row group*, not the file total.row group*, not the file total.
--- https://github.com/apache/parquet-testing/blob/master/data/README.md#:~:text=sort_columns.parquet
--- The above link is to the repository the test parquet files comes from.
--- The table describes sort_columns.parquet as having two row groups.
--- The old parser only read the first row group (a bug). The new parser
--- reads all row groups and returns (6, 2) correctly.
+-- Two row groups of 3 rows each: all row groups are read, giving (6, 2).
 sortColumns :: Test
 sortColumns =
     TestCase
@@ -1014,9 +870,7 @@ sortColumns =
             )
         )
 
--- Was: assertExpectException "overflowI16PageCnt" "UNIMPLEMENTED" ...
--- The old parser used Int16 for page counts and overflowed on this file.
--- The new parser uses Int32 and reads all 40,000 rows correctly.
+-- The parser uses Int32 page counts and reads all 40,000 rows.
 overflowI16PageCnt :: Test
 overflowI16PageCnt =
     TestCase
@@ -1028,18 +882,7 @@ overflowI16PageCnt =
             )
         )
 
--- ---------------------------------------------------------------------------
--- Group 11: Nested / complex types and byte-stream-split
--- ---------------------------------------------------------------------------
-
--- Was: assertExpectException "byteStreamSplitZstd" "EBYTE_STREAM_SPLIT" ...
--- The new parser's error includes the encoding name "BYTE_STREAM_SPLIT"
--- without the old "E" prefix used in the previous error format.
--- TODO: When BYTE_STREAM_SPLIT (encoding id=9) is implemented, change this
--- to assertEqual checking actual dimensions. The encoding interleaves the
--- individual byte streams of multi-byte scalars to improve compression for
--- floating-point and other structured data:
--- https://parquet.apache.org/docs/file-format/data-pages/encodings/#byte-stream-split-byte_stream_split--9
+-- TODO: Once BYTE_STREAM_SPLIT is implemented, assert actual dimensions.
 byteStreamSplitZstd :: Test
 byteStreamSplitZstd =
     TestCase
@@ -1049,13 +892,7 @@ byteStreamSplitZstd =
             (D.readParquet "./tests/data/byte_stream_split.zstd.parquet")
         )
 
--- Was: assertExpectException "byteStreamSplitExtendedGzip" "FIXED_LEN_BYTE_ARRAY" ...
--- The old parser had no page decoder for FIXED_LEN_BYTE_ARRAY and threw
--- before ever inspecting the encoding. The new parser handles the physical
--- type but the BYTE_STREAM_SPLIT encoding used for values is not yet
--- implemented, so the error message shifts from the type to the encoding.
--- TODO: Same as byteStreamSplitZstd — change to assertEqual once
--- BYTE_STREAM_SPLIT encoding is supported.
+-- TODO: Change to assertEqual once BYTE_STREAM_SPLIT is supported.
 byteStreamSplitExtendedGzip :: Test
 byteStreamSplitExtendedGzip =
     TestCase
@@ -1065,18 +902,7 @@ byteStreamSplitExtendedGzip =
             (D.readParquet "./tests/data/byte_stream_split_extended.gzip.parquet")
         )
 
--- Was: assertExpectException "float16NonzerosAndNans" "PFIXED_LEN_BYTE_ARRAY" ...
--- The "PFIXED_LEN_BYTE_ARRAY" in the old error was the Show of the old
--- parser's ParquetType enum hitting a catch-all dispatch branch — it
--- recognised the physical type but had no decoder for it. The new parser's
--- fixedLenByteArrayDecoder reads 2-byte FIXED_LEN_BYTE_ARRAY (float16)
--- columns as raw-byte text; proper float16 value decoding is not yet
--- implemented.
--- TODO: When IEEE 754 half-precision (float16) decoding is implemented,
--- add a value-level assertion using hasElemType @Float (or a dedicated
--- Float16 type if one is introduced). Verify that the decoded values match
--- the known reference values for float16_nonzeros_and_nans.parquet.
--- The column should no longer be exposed as raw-byte Text.
+-- TODO: Once float16 decoding is implemented, assert the decoded values.
 float16NonzerosAndNans :: Test
 float16NonzerosAndNans =
     TestCase
@@ -1091,11 +917,7 @@ float16NonzerosAndNans =
             )
         )
 
--- Was: assertExpectException "float16ZerosAndNans" "PFIXED_LEN_BYTE_ARRAY" ...
--- Same as float16NonzerosAndNans: old parser had no decoder for the
--- FIXED_LEN_BYTE_ARRAY physical type; new parser reads raw bytes as text.
--- TODO: Same as float16NonzerosAndNans — add a value-level assertion once
--- float16 decoding is implemented.
+-- TODO: Add a value-level assertion once float16 decoding is implemented.
 float16ZerosAndNans :: Test
 float16ZerosAndNans =
     TestCase
@@ -1220,14 +1042,7 @@ repeatedPrimitiveNoList =
             )
         )
 
--- Was: assertExpectException "unknownLogicalType" "Unknown logical type" ...
--- The old parser raised a custom "Unknown logical type" message. The new
--- Pinch-based metadata parser raises "Field 16 is absent" for the
--- unrecognised LogicalType variant in this file.
--- TODO: If Pinch is extended to support forward-compatible decoding of
--- unknown union variants (treating unrecognised logical-type IDs as absent
--- rather than raising an error), change this to assertEqual where the file
--- parses successfully and the column falls back to its physical type.
+-- TODO: If Pinch decodes unknown union variants, assert a successful parse.
 unknownLogicalType :: Test
 unknownLogicalType =
     TestCase
@@ -1237,19 +1052,7 @@ unknownLogicalType =
             (D.readParquet "./tests/data/unknown-logical-type.parquet")
         )
 
--- ---------------------------------------------------------------------------
--- Group 12: Malformed files
--- ---------------------------------------------------------------------------
-
--- Was: assertExpectException "nationDictMalformed" "dict index count mismatch" ...
--- The old parser validated the dictionary entry count against data-page
--- indices and raised "dict index count mismatch". The new parser does not
--- replicate that check; the dictionary bytes happen to decode correctly
--- despite the metadata discrepancy, returning the complete 25-row dataset.
--- TODO: If a stricter dictionary-validation pass is added (checking that
--- the number of decoded entries matches num_values in the dictionary page
--- header), revert this to assertExpectException with a count-mismatch
--- substring.
+-- TODO: If stricter dictionary validation is added, expect a count mismatch.
 nationDictMalformed :: Test
 nationDictMalformed =
     TestCase
@@ -1321,11 +1124,7 @@ singleShardNoNulls =
             "score should NOT be nullable"
             (not (hasMissing (unsafeGetColumn "score" df)))
 
-{- | Nanosecond-precision timestamps (@TIMESTAMP(NANOS)@) must decode to the
-correct 'UTCTime'. Regression test for the unit-scaling bug where the NANOS
-multiplier @1_000_000 \`div\` 1_000_000_000@ truncated to 0, collapsing every
-value to the epoch.
--}
+-- | Nanosecond timestamps must decode to the correct UTCTime.
 timestampNanos :: Test
 timestampNanos = testBothReadParquetPaths $ \readParquet ->
     TestCase $

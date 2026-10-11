@@ -166,8 +166,7 @@ deriveDataFrameToEntity entityName = do
 -- | Generate the rowToEntity expression
 generateRowToEntity :: Name -> [(Name, Bang, Type)] -> Q Exp
 generateRowToEntity conName fields = do
-    -- This is a simplified implementation
-    -- In practice, you'd need to extract values from the DataFrame
+    -- Simplified: a real version must extract values from the DataFrame
     [|Left "Auto-generated rowToEntity not fully implemented"|]
 
 -- | Derive both instances at once

@@ -25,7 +25,7 @@ testData =
         , ("test8", DI.fromList ['a' .. 'z'])
         ]
 
--- Adding a boxed vector to an empty dataframe creates a new column boxed containing the vector elements.
+-- Adding a boxed vector to an empty dataframe creates a boxed column.
 addBoxedColumn :: Test
 addBoxedColumn =
     TestCase
@@ -53,7 +53,7 @@ addBoxedColumn' =
             )
         )
 
--- Adding an boxed vector with an unboxable type (Int/Double) to an empty dataframe creates a new column boxed containing the vector elements.
+-- Adding a boxed vector of an unboxable type creates a boxed column.
 addUnboxedColumn :: Test
 addUnboxedColumn =
     TestCase
@@ -72,7 +72,7 @@ addUnboxedColumn' =
             (DI.getColumn "new" $ D.insertColumn "new" (DI.fromList [1 :: Int, 2, 3]) D.empty)
         )
 
--- Adding a column with less values than the current DF dimensions adds column with optionals.
+-- Adding a column with fewer values than the frame adds optionals.
 addSmallerColumnBoxed :: Test
 addSmallerColumnBoxed =
     TestCase

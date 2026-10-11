@@ -27,8 +27,7 @@ run = do
     -- -- Sampling the dataframe
     print $ D.take 5 raw
 
-    -- Transform the data from a raw string into
-    -- respective types (throws error on failure)
+    -- Parse the raw strings into their types (throws on failure)
     let df = execFrameM raw $ do
             _ <- deriveM "quantity" (F.ifThenElse (order_id .==. 1) (quantity + 2) quantity)
             -- Custom parsing: drop dollar sign and parse price as double

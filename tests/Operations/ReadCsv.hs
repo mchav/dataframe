@@ -91,9 +91,7 @@ specifyTypesSampleSize =
                 assertFailure
                     "expected UnboxedColumn for 'girls' via fallback InferFromSample 10"
 
--- File: a,b,c header; row "1,2,3,EXTRA"
--- Total delimiters: 3 + 4 = 7; 7 div 3 = 2, numRow=1
--- Row-1 strides 3,4,5 → "1","2","3" — EXTRA (stride 6) is never accessed
+-- Row "1,2,3,EXTRA": the extra cell (stride 6) is never accessed.
 testExtraFields :: Test
 testExtraFields = TestLabel "malformed_extra_fields" $ TestCase $ do
     df <- readCsvNoInfer ("./tests/data/unstable_csv/" <> "extra_fields.csv")
@@ -107,9 +105,7 @@ testExtraFields = TestLabel "malformed_extra_fields" $ TestCase $ do
                 (D.fromList @T.Text ["3"])
                 col
 
--- Inference + EitherRead: first rows of "score" are clean ints, later rows are
--- "abc" / empty / "N/A". The sample is limited to the clean prefix so the
--- assumption is Int; non-parsing later rows become Left carrying raw text.
+-- Inference + EitherRead: later non-parsing rows become Left with raw text.
 eitherReadCsvInference :: Test
 eitherReadCsvInference = TestLabel "csv_eitherRead_inference" $ TestCase $ do
     df <-
@@ -149,8 +145,7 @@ eitherReadCsvInference = TestLabel "csv_eitherRead_inference" $ TestCase $ do
                 expectedId
                 col
         Nothing -> assertFailure "id column missing"
-    -- 'name' has a row containing "N/A"; under EitherRead the text is just
-    -- a value so it lands in Right. Empty cells would become Left "".
+    -- Under EitherRead 'name' text is just a value, so it lands in Right.
     let expectedName :: Column
         expectedName =
             D.fromList @(Either T.Text T.Text)
@@ -170,9 +165,7 @@ maybeReadCsv = TestLabel "csv_maybeRead" $ TestCase $ do
         D.readCsvWithOpts
             D.defaultReadOptions{D.safeRead = D.MaybeRead}
             "./tests/data/unstable_csv/either_read_mixed.csv"
-    -- "score" is not cleanly parseable as Int because "abc" fails; however the
-    -- BS inference walks all rows and falls back to Text when needed. The
-    -- relevant invariant for MaybeRead is that the column is nullable.
+    -- The invariant for MaybeRead is that the column is nullable.
     case getColumn "score" df of
         Just (UnboxedColumn (Just _) _) -> pure () -- Int with bitmap
         Just (BoxedColumn (Just _) _) -> pure () -- Text-backed with bitmap
@@ -184,8 +177,7 @@ maybeReadCsv = TestLabel "csv_maybeRead" $ TestCase $ do
                     <> " with no bitmap"
         Nothing -> assertFailure "score column missing"
 
--- NoSafeRead leaves columns un-bitmapped when every row parses (id column is
--- all ints) but falls back to a Text column for mixed rows like "score".
+-- NoSafeRead: all-int columns stay un-bitmapped; mixed rows fall back to Text.
 noSafeReadCsv :: Test
 noSafeReadCsv = TestLabel "csv_noSafeRead" $ TestCase $ do
     df <-
@@ -200,9 +192,7 @@ noSafeReadCsv = TestLabel "csv_noSafeRead" $ TestCase $ do
                     <> columnTypeString col
         Nothing -> assertFailure "id column missing"
 
--- Lazy CSV reader + EitherRead: goes through a different pipeline
--- (MutableColumn + null indices). Every row of 'id' parses cleanly, so the
--- column is @Either Text Int@ with every value in 'Right'.
+-- Lazy CSV reader + EitherRead: 'id' is @Either Text Int@ with all Right.
 lazyEitherReadCsv :: Test
 lazyEitherReadCsv = TestLabel "lazy_csv_eitherRead" $ TestCase $ do
     (df, _) <-
@@ -221,9 +211,7 @@ lazyEitherReadCsv = TestLabel "lazy_csv_eitherRead" $ TestCase $ do
                 col
         Nothing -> assertFailure "id column missing (lazy reader)"
 
--- Per-column overrides (eager): 'id' is strict Int (NoSafeRead), 'score' is
--- Either Text Int (EitherRead) recording the raw bytes for failures, 'name'
--- falls back to the default (MaybeRead) and becomes a nullable Text column.
+-- Per-column overrides (eager): 'id' strict Int, 'score' Either, 'name' Maybe.
 perColumnEagerOverrides :: Test
 perColumnEagerOverrides = TestLabel "csv_perColumnOverrides_eager" $ TestCase $ do
     df <-
@@ -265,9 +253,7 @@ perColumnEagerOverrides = TestLabel "csv_perColumnOverrides_eager" $ TestCase $ 
                 expectedScore
                 col
         Nothing -> assertFailure "score column missing"
-    -- 'name': default MaybeRead kicks in → nullable column (bitmap attached).
-    -- Every cell is non-empty so the bitmap is all-valid, but the optional
-    -- wrap is still applied.
+    -- 'name': default MaybeRead gives a nullable column with a bitmap.
     case getColumn "name" df of
         Just (BoxedColumn (Just _) _) -> pure ()
         Just (PackedText (Just _) _) -> pure ()
@@ -277,8 +263,7 @@ perColumnEagerOverrides = TestLabel "csv_perColumnOverrides_eager" $ TestCase $ 
                     <> columnTypeString col
         Nothing -> assertFailure "name column missing"
 
--- Per-column overrides (lazy): same configuration as the eager test, but
--- exercises the lazy freezer's resolution of per-column modes.
+-- Per-column overrides (lazy): same configuration as the eager test.
 perColumnLazyOverrides :: Test
 perColumnLazyOverrides = TestLabel "csv_perColumnOverrides_lazy" $ TestCase $ do
     (df, _) <-
@@ -300,9 +285,7 @@ perColumnLazyOverrides = TestLabel "csv_perColumnOverrides_lazy" $ TestCase $ do
                 "lazy NoSafeRead override for 'id' → bare UnboxedColumn, got "
                     <> columnTypeString col
         Nothing -> assertFailure "id column missing (lazy)"
-    -- EitherRead on 'score': every row is Right (first row was '10' → Int
-    -- builder), though rows that failed parsing are captured as Left via the
-    -- nulls list. We only assert the column is Boxed-of-Either.
+    -- EitherRead on 'score': we only assert the column is Boxed-of-Either.
     case getColumn "score" df of
         Just (BoxedColumn Nothing _) -> pure ()
         Just col ->
@@ -311,8 +294,7 @@ perColumnLazyOverrides = TestLabel "csv_perColumnOverrides_lazy" $ TestCase $ do
                     <> columnTypeString col
         Nothing -> assertFailure "score column missing (lazy)"
 
--- Default=NoSafeRead, override single column 'score' → MaybeRead.
--- 'id' and 'name' keep the NoSafeRead default; 'score' becomes nullable.
+-- Default NoSafeRead with 'score' overridden to MaybeRead (nullable).
 overrideNoSafeReadDefaultWithMaybeRead :: Test
 overrideNoSafeReadDefaultWithMaybeRead =
     TestLabel "csv_override_noSafeRead_default_MaybeRead" $ TestCase $ do
@@ -334,17 +316,14 @@ overrideNoSafeReadDefaultWithMaybeRead =
         -- 'score': MaybeRead override → nullable (bitmap present).
         case getColumn "score" df of
             Just (UnboxedColumn (Just _) _) -> pure () -- Int with bitmap
-            Just (BoxedColumn (Just _) _) -> pure () -- fallback Text with bitmap
+            Just (BoxedColumn (Just _) _) -> pure ()
             Just (PackedText (Just _) _) -> pure () -- packed Text with bitmap
             Just col ->
                 assertFailure $
                     "'score' MaybeRead override should yield nullable column, got "
                         <> columnTypeString col
             Nothing -> assertFailure "score column missing"
-        -- 'name': NoSafeRead default → Text; may have bitmap when data has
-        -- null cells (row 8 has "N/A" which is in missingIndicators).
-        -- ensureOptional is NOT forced, but a bitmap is still created when
-        -- the builder detects actual nulls.
+        -- 'name': NoSafeRead default; a bitmap appears only if nulls exist.
         case getColumn "name" df of
             Just (BoxedColumn _ _) -> pure ()
             Just (PackedText _ _) -> pure ()
@@ -519,8 +498,7 @@ perColumnLazyOverridesCellLevel =
                     "lazy 'id' NoSafeRead → bare UnboxedColumn, got "
                         <> columnTypeString col
             Nothing -> assertFailure "id missing (lazy)"
-        -- 'score': EitherRead override → BoxedColumn of Either values.
-        -- Lazy reader infers Int from first row; rows that fail become Left.
+        -- 'score': EitherRead override gives BoxedColumn of Either values.
         case getColumn "score" df of
             Just (BoxedColumn Nothing _) -> pure ()
             Just col ->

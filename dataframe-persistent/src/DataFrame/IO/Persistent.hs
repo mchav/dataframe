@@ -176,7 +176,7 @@ createColumnsFromEntities config entities = do
     let columns = map (createColumnFromEntityData allColumnData) allColNames
     return columns
 
--- | Create a single column by extracting and combining data for a specific column name
+-- | Create a single column by combining the data for one column name
 createColumnFromEntityData :: [[(Text, SomeColumn)]] -> Text -> DFCol.Column
 createColumnFromEntityData allEntityData colName =
     -- Find all matching columns for this name
@@ -194,8 +194,7 @@ createColumnFromEntityData allEntityData colName =
 concatSomeColumns :: [SomeColumn] -> DFCol.Column
 concatSomeColumns [] = DFCol.fromList ([] :: [Text])
 concatSomeColumns (SomeColumn (firstVec :: V.Vector a) : rest) =
-    -- Since all columns for a given field should have the same type,
-    -- we can safely extract and concatenate them
+    -- All columns for a field share a type, so concatenating is safe.
     let vectors = firstVec : map extractSameType rest
         extractSameType (SomeColumn v) = unsafeCoerce v :: V.Vector a
         combined = V.concat vectors
@@ -231,7 +230,7 @@ persistFieldsToColumns ::
     (PersistEntity record) => record -> [(Text, SomeColumn)]
 persistFieldsToColumns record =
     let persistValues = toPersistFields record
-        -- Get entity definition using proxy - pass the record value to get the correct type
+        -- Entity definition, taken from the record value's type
         fieldNames =
             map (unFieldNameHS . fieldHaskell) $ getEntityFields $ entityDef (Just record)
         fieldPairs = zip fieldNames persistValues
@@ -252,11 +251,11 @@ persistValueToSomeColumn pval = case pval of
     PersistDay d -> SomeColumn (V.singleton d)
     PersistTimeOfDay tod -> SomeColumn (V.singleton tod)
     PersistUTCTime utc -> SomeColumn (V.singleton utc)
-    PersistNull -> SomeColumn (V.singleton ("" :: Text)) -- Handle nulls as empty text
-    PersistList vals -> SomeColumn (V.singleton (T.pack $ show vals)) -- Convert list to string representation
-    PersistMap m -> SomeColumn (V.singleton (T.pack $ show m)) -- Convert map to string representation
-    PersistObjectId oid -> SomeColumn (V.singleton (T.pack $ show oid)) -- Convert ObjectId to string
-    PersistArray vals -> SomeColumn (V.singleton (T.pack $ show vals)) -- Convert array to string representation
+    PersistNull -> SomeColumn (V.singleton ("" :: Text)) -- nulls as empty text
+    PersistList vals -> SomeColumn (V.singleton (T.pack $ show vals))
+    PersistMap m -> SomeColumn (V.singleton (T.pack $ show m))
+    PersistObjectId oid -> SomeColumn (V.singleton (T.pack $ show oid))
+    PersistArray vals -> SomeColumn (V.singleton (T.pack $ show vals))
     PersistLiteral_ _ bs -> SomeColumn (V.singleton bs) -- Use the raw bytes
 
 -- | Convert columns back to entity (helper for implementations)

@@ -6,11 +6,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-{- | Typed column transformations: the @apply@\/@derive@ family and
-default-valued inserts, plus the horizontal merge @('|||')@. Schema changes are
-tracked at the type level (e.g. 'applyColumn' rewrites a column's element type
-via 'SetColumnType').
--}
+-- | Typed column transformations that track schema changes in the types.
 module DataFrame.Typed.Apply (
     applyColumn,
     applyMany,
@@ -50,14 +46,7 @@ import DataFrame.Typed.Schema (
  )
 import DataFrame.Typed.Types (TExpr (..), TypedDataFrame (..))
 
-{- | Map a function over a column, rewriting its element type from @a@ to @b@.
-The schema's entry for @name@ is updated via 'SetColumnType'.
-
-@
-df' = applyColumn \@\"age\" (show :: Int -> String) df
--- the \"age\" column is now String-typed
-@
--}
+-- | Map a function over a column, rewriting its element type from @a@ to @b@.
 applyColumn ::
     forall name a b cols.
     ( KnownSymbol name
@@ -89,10 +78,7 @@ safeApply f (TDF df) = fmap unsafeFreeze (D.safeApply f colName df)
   where
     colName = T.pack (symbolVal (Proxy @name))
 
-{- | Apply a type-preserving function to several columns at once. Every named
-column must already share the element type @a@ (enforced by
-'AssertAllColumnsHaveType').
--}
+-- | Apply a type-preserving function to several columns at once.
 applyMany ::
     forall (names :: [Symbol]) a cols.
     (AllKnownSymbol names, Columnable a, AssertAllColumnsHaveType names a cols) =>
@@ -101,14 +87,7 @@ applyMany ::
     TypedDataFrame cols
 applyMany f (TDF df) = TDF (D.applyMany f (symbolVals @names) df)
 
-{- | Apply a function to a target column only on rows where a condition holds on
-a filter column. Both columns are named by type application; the target keeps
-its type.
-
-@
-applyWhere \@\"flagged\" \@\"score\" id (* 2) df
-@
--}
+-- | Apply a function to a target column on rows passing a condition.
 applyWhere ::
     forall filterName targetName a b cols.
     ( KnownSymbol filterName
@@ -145,9 +124,7 @@ applyAtIndex i f (TDF df) = TDF (D.applyAtIndex i f colName df)
   where
     colName = T.pack (symbolVal (Proxy @name))
 
-{- | Derive a new column and also return a typed reference to it. The returned
-expression lives in the extended schema, so it can feed later operations.
--}
+-- | Derive a new column and also return a typed reference to it.
 deriveWithExpr ::
     forall name a cols.
     ( KnownSymbol name
@@ -206,10 +183,7 @@ insertUnboxedVector vec (TDF df) =
   where
     colName = T.pack (symbolVal (Proxy @name))
 
-{- | Horizontal merge: place two DataFrames side by side. The schemas must be
-disjoint (no shared column names), enforced by 'AssertDisjoint'; the result
-schema is their concatenation.
--}
+-- | Horizontal merge: place two DataFrames with disjoint schemas side by side.
 (|||) ::
     (AssertDisjoint left right) =>
     TypedDataFrame left ->

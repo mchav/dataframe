@@ -4,10 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Driver for the default CSV reader: a single strict scan feeding
-per-column sinks, with cassava-parity semantics. Ragged rows pad
-trailing columns with null, drop extra fields, and force the result.
--}
+-- | Driver for the default CSV reader: one strict scan feeding column sinks.
 module DataFrame.IO.CSV.Internal.Read (decodeCsvStrict) where
 
 import qualified Data.ByteString as BS
@@ -142,10 +139,7 @@ decodeCsvStrict opts bs = do
             forceDataFrame
                 (parseWithTypes resolveMode (schemaTypeMap (typeSpec opts)) df)
 
-{- | Resolve a column's sink: EitherRead and to-be-inferred columns
-collect raw slices; schema'd Int/Double parse straight into builders;
-every other schema type builds Text ('parseWithTypes' converts after).
--}
+-- | Resolve a column's sink from its schema type or inference.
 newSink ::
     ReadOptions -> (T.Text -> SafeReadMode) -> Int -> T.Text -> IO Sink
 newSink opts resolveMode rowHint name

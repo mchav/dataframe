@@ -4,11 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- |
-Mutable-column ingest helpers used by CSV readers. Kept out of
-@DataFrame.Internal.Column@ so that the core column type does not need to
-depend on @DataFrame.Internal.Parsing@.
--}
+-- | Mutable-column ingest helpers used by the CSV readers.
 module DataFrame.IO.Internal.MutableColumn (
     writeColumn,
     freezeColumn',

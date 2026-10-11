@@ -1,11 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Round-2 (S2) pins for the single-pass inference lattice and the
-Int -> Double promotion path: sample classification via the WS-B byte
-parsers, prefix promotion instead of full-column re-parse, and the
-byte-level missing-token test in the default reader's inferred path.
--}
+-- | Pins for the single-pass inference lattice and Int to Double promotion.
 module Operations.Inference where
 
 import qualified Data.ByteString as BS
@@ -29,9 +25,7 @@ assumeBytes = D.makeParsingAssumptionBytes "%Y-%m-%d" . V.fromList
 assumeText :: [Maybe T.Text] -> D.ParsingAssumption
 assumeText = D.makeParsingAssumption "%Y-%m-%d" . V.fromList
 
--- The candidate-mask priorities reproduce the documented fallback order:
--- Bool, then Int (only when the Double mask agrees), Double, Date, Text;
--- an all-null sample stays NoAssumption.
+-- Candidate-mask priorities reproduce the documented fallback order.
 latticePriorities :: Test
 latticePriorities = TestCase $ do
     let cases =
@@ -55,9 +49,7 @@ latticePriorities = TestCase $ do
         )
         cases
 
--- Pinned new behavior (WS-B parser semantics in the sample): an
--- overflowing integer clears the Int candidate instead of wrapping, so
--- the column classifies (and parses) as Double.
+-- An overflowing integer clears the Int candidate, so the column is Double.
 latticeOverflowIntIsDouble :: Test
 latticeOverflowIntIsDouble = TestCase $ do
     assertEqual
@@ -69,17 +61,13 @@ latticeOverflowIntIsDouble = TestCase $ do
         D.DoubleAssumption
         (assumeText [Just "9223372036854775808"])
 
--- Pinned new behavior: byte-level strip-tolerant classification accepts
--- ASCII-padded numerics (the strip-equivalent unification, audit
--- divergence #2), where the old Text-path sample rejected " 42" as
--- Double and demoted to Text.
+-- Byte-level strip-tolerant classification accepts ASCII-padded numerics.
 latticePaddedIntIsInt :: Test
 latticePaddedIntIsInt =
     TestCase
         (assertEqual "padded int" D.IntAssumption (assumeText [Just " 42 "]))
 
--- End-to-end: an overflowing cell inside the sample now yields a Double
--- column with the correctly converted value (old: silently wrapped Int).
+-- An overflowing cell inside the sample yields a Double column.
 parseOverflowIntsAsDoubles :: Test
 parseOverflowIntsAsDoubles =
     let beforeParse = ["9223372036854775808", "1", "2"] :: [T.Text]
@@ -90,8 +78,7 @@ parseOverflowIntsAsDoubles =
                 DI.fromVector (V.fromList beforeParse)
      in TestCase (assertEqual "overflow -> Double column" expected actual)
 
--- Promotion: a Double cell far past the sample converts the built Int
--- prefix in place; values must equal a from-scratch Double parse.
+-- A Double cell far past the sample promotes the built Int prefix in place.
 promoteIntPrefixToDouble :: Test
 promoteIntPrefixToDouble =
     let ints = map (T.pack . show) ([1 .. 150] :: [Int])
@@ -104,8 +91,7 @@ promoteIntPrefixToDouble =
                 $ DI.fromVector (V.fromList beforeParse)
      in TestCase (assertEqual "Int prefix promoted to Double" expected actual)
 
--- An overflowing integer past the sample triggers promotion with its
--- true Double value (the old Text-path Int parse silently wrapped it).
+-- An overflowing integer past the sample promotes with its true value.
 promoteOverflowPastSample :: Test
 promoteOverflowPastSample =
     let ints = map (T.pack . show) ([1 .. 30] :: [Int])
@@ -141,8 +127,7 @@ promotionPreservesNulls =
                 DI.fromVector (V.fromList beforeParse)
      in TestCase (assertEqual "nulls survive promotion" expected actual)
 
--- A cell that parses as neither Int nor Double demotes the whole column
--- to Text with every raw cell preserved (re-extracted, not re-parsed).
+-- A cell parsing as neither Int nor Double demotes the column to Text.
 promotionDemotesToText :: Test
 promotionDemotesToText =
     let beforeParse = map (T.pack . show) ([1 .. 30] :: [Int]) ++ ["abc"]
@@ -153,8 +138,7 @@ promotionDemotesToText =
                 $ DI.fromVector (V.fromList beforeParse)
      in TestCase (assertEqual "demotes to Text, raw values kept" expected actual)
 
--- Default (cassava) reader, inferred path: the same promotion runs over
--- the retained raw bytes.
+-- Default (cassava) reader, inferred path: promotion runs over raw bytes.
 readerPromotesIntColumn :: Test
 readerPromotesIntColumn = TestCase $ do
     let csv =
@@ -170,8 +154,7 @@ readerPromotesIntColumn = TestCase $ do
         Just col -> assertEqual "reader Int->Double promotion" expected col
         Nothing -> assertFailure "column x missing"
 
--- Default reader: canonical missing tokens null the cell through the
--- byte-level fast path, exactly as the Text-decode check did.
+-- Default reader: canonical missing tokens null the cell via the fast path.
 readerCanonicalMissingTokens :: Test
 readerCanonicalMissingTokens = TestCase $ do
     let csv = "x,y\nNA,1\nnan,2\nNothing,3\n ,4\nNULL,5\n"
@@ -185,8 +168,7 @@ readerCanonicalMissingTokens = TestCase $ do
         Just col -> assertEqual "int column" expectedY col
         Nothing -> assertFailure "column y missing"
 
--- A custom missing list replaces (not extends) the canonical one: "NA"
--- must then survive as text.
+-- A custom missing list replaces the canonical one, so "NA" stays text.
 readerCustomMissingTokens :: Test
 readerCustomMissingTokens = TestCase $ do
     let csv = "x\nfoo\nNA\n7\n"
@@ -199,8 +181,7 @@ readerCustomMissingTokens = TestCase $ do
         Just col -> assertEqual "custom list only" expected col
         Nothing -> assertFailure "column x missing"
 
--- Default reader date columns still parse (the WS-B fast date path is
--- bit-identical to readByteStringDate for %Y-%m-%d).
+-- Default reader date columns still parse via the fast date path.
 readerDatesStillParse :: Test
 readerDatesStillParse = TestCase $ do
     let csv = "d\n2024-01-01\n2024-01-02\n2024-01-03\n"

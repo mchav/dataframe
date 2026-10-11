@@ -1,13 +1,8 @@
-{- | Interpretable decision trees on DataFrames (CART refined by TAO). The
-curated public surface: classifier/regressor configs, fitted-model records,
-and their 'Fit'\/'Predict' instances.
--}
+-- | Interpretable decision trees on DataFrames (CART refined by TAO).
 module DataFrame.DecisionTree (
     -- * Estimators
 
-    {- | Fitted-model records with their @Fit@\/@Predict@ instances and the
-    estimator classes (via "DataFrame.Model").
-    -}
+    -- | Fitted-model records with their Fit and Predict instances.
     module DataFrame.DecisionTree.Model,
 
     -- * Classifier configuration

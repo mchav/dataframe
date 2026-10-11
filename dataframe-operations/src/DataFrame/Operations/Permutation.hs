@@ -83,10 +83,7 @@ mustFlipCompare :: SortOrder -> Bool
 mustFlipCompare (Asc _) = True
 mustFlipCompare (Desc _) = False
 
-{- | Materialize any compound sort expressions into synthetic columns on
-a working dataframe, returning rewritten 'SortOrder's that reference
-those columns by name.
--}
+-- | Materialize compound sort expressions into synthetic columns.
 prepareSortColumns :: [SortOrder] -> DataFrame -> ([SortOrder], DataFrame)
 prepareSortColumns = go 0
   where
@@ -109,10 +106,7 @@ materializeSortOrder i (Desc (e :: Expr a)) df =
 syntheticName :: Int -> T.Text
 syntheticName i = "__sortBy_synthetic_" <> T.pack (show i) <> "__"
 
-{- | O(k log n) Sorts the dataframe by a given row.
-
-> sortBy Ascending ["Age"] df
--}
+-- | O(k log n) Sort the dataframe by the given sort orders.
 sortBy ::
     [SortOrder] ->
     DataFrame ->
@@ -139,13 +133,7 @@ sortBy sortOrds df
     referenced = L.nub (concatMap sortOrderColumns sortOrds)
     missing = referenced L.\\ columnNames df
 
-{- | The rows a 'sortBy' would place at positions @[offset, offset + count)@,
-in that order. Only the leading @offset + count@ rows are kept while scanning,
-so a small window over a large frame costs O(n log k) comparisons rather than
-a full sort.
-
-> topBy 0 10 [Desc (F.col @Int "count")] df
--}
+-- | The rows a 'sortBy' would place at positions @[offset, offset + count)@.
 topBy :: Int -> Int -> [SortOrder] -> DataFrame -> DataFrame
 topBy offset count sortOrds df
     | not (null missing) =
@@ -180,7 +168,7 @@ topBy offset count sortOrds df
     referenced = L.nub (concatMap sortOrderColumns sortOrds)
     missing = referenced L.\\ columnNames df
 
--- | The @k@ smallest of @[0, n)@ under @cmp@, in no particular order (a bounded max-heap).
+-- | The @k@ smallest of @[0, n)@ under @cmp@, unordered (a bounded max-heap).
 smallestIndices :: (Int -> Int -> Ordering) -> Int -> Int -> VU.Vector Int
 smallestIndices cmp k n = runST $ do
     heap <- VUM.generate k id
@@ -217,9 +205,7 @@ sortIndicesOf cmp ixs = runST $ do
     VA.sortBy cmp mv
     VU.convert <$> VG.unsafeFreeze mv
 
-{- | Build a row-index comparator from a SortOrder and a DataFrame.
-The Ord dictionary is recovered from the SortOrder GADT.
--}
+-- | Build a row-index comparator from a SortOrder and a DataFrame.
 sortOrderComparator :: SortOrder -> DataFrame -> Int -> Int -> Ordering
 sortOrderComparator (Asc (Col name :: Expr a)) df =
     case unsafeGetColumn name df of
@@ -263,10 +249,7 @@ sortOrderComparator _ _ = error "Sorting on compound column"
 
 -- | Sort row indices using a comparator function.
 
-{- | Stable sort by one clean numeric column, by LSD radix over an
-order-preserving 64-bit key. Gives the same order as 'sortIndices' (also stable)
-without a comparator call per comparison. 'Nothing' for other columns.
--}
+-- | Stable LSD radix sort by one clean numeric column, else 'Nothing'.
 radixSortIndices :: SortOrder -> DataFrame -> Maybe (VU.Vector Int)
 radixSortIndices ord df = case ord of
     Asc (Col name) -> keysOf name False
@@ -276,8 +259,7 @@ radixSortIndices ord df = case ord of
     keysOf name desc = case unsafeGetColumn name df of
         UnboxedColumn Nothing (v :: VU.Vector b) -> do
             key <- orderKey @b
-            -- NaN has no consistent place in 'compare' order; leave it to the
-            -- comparison sort so the result does not change.
+            -- NaN has no 'compare' order; leave it to the comparison sort.
             case testEquality (typeRep @b) (typeRep @Double) of
                 Just Refl | VU.any isNaN v -> Nothing
                 _ -> Just ()
@@ -285,9 +267,7 @@ radixSortIndices ord df = case ord of
             Just (radixByKey (VU.map (flipIf . key) v))
         _ -> Nothing
 
-{- | An unsigned key whose order is the type's 'compare' order: integers flip
-the sign bit; doubles flip the sign bit of positives and every bit of negatives.
--}
+-- | An unsigned key whose order matches the type's 'compare' order.
 orderKey :: forall b. (Typeable b) => Maybe (b -> Word64)
 orderKey
     | Just Refl <- testEquality (typeRep @b) (typeRep @Int) = Just signed
@@ -309,7 +289,7 @@ orderKey
         let w = castDoubleToWord64 (if d == 0 then 0 else d)
          in if testBit w 63 then complement w else w `xor` 0x8000000000000000
 
--- | Row indices ordered by key, ties in row order. Skips bytes no key varies in.
+-- | Row indices ordered by key, ties in row order; skips constant bytes.
 radixByKey :: VU.Vector Word64 -> VU.Vector Int
 radixByKey keys
     | VU.null keys = VU.empty

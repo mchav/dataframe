@@ -3,10 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | An expression means what it computes for one row at a time. @If@ takes
-each row's value from the branch that row chooses and nothing from the other;
-a repeated subexpression may be computed once but never changes a result.
--}
+-- | An expression means what it computes for one row at a time.
 module Operations.RowWise (tests) where
 
 import Control.Exception (throw)

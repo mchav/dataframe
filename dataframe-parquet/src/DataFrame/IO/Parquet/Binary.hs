@@ -18,12 +18,7 @@ import qualified Foreign.Storable as Foreign
 readUVarInt :: BS.ByteString -> (Word64, BS.ByteString)
 readUVarInt xs = loop xs 0 0 0
   where
-    {-
-    Each input byte contributes:
-    - lower 7 payload bits
-    - The high bit (0x80) is the continuation flag: 1 = more bytes follow, 0 = last byte
-    Why the magic number 10: For a 64‑bit integer we need at most ceil(64 / 7) = 10 bytes
-    -}
+    -- The high bit flags continuation; 10 bytes cover a 64-bit integer.
     loop :: BS.ByteString -> Word64 -> Int -> Int -> (Word64, BS.ByteString)
     loop bs result _ 10 = (result, bs)
     loop xs' result shiftAmt i = case BS.uncons xs' of
@@ -113,9 +108,7 @@ readByteString' buf size =
         (fromIntegral size)
         ((`readSingleByte` buf) . fromIntegral)
 
-{- | Allocate a fixed-size buffer, repeat the action on each index.
-Fill it into the buffer to get a ByteString.
--}
+-- | Allocate a fixed-size buffer and fill it by repeating an action.
 fillByteStringByWord8 :: Int -> (Int -> IO Word8) -> IO BS.ByteString
 fillByteStringByWord8 size getByte = do
     bracketOnError

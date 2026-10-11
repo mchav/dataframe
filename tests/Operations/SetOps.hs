@@ -9,9 +9,7 @@ import qualified DataFrame.Internal.Column as DI
 
 import Test.HUnit
 
-{- | Sort by the integer key column so set results (which come out in
-hash-bucket order) can be compared deterministically.
--}
+-- | Sort by the integer key so hash-ordered set results compare stably.
 sortByA :: D.DataFrame -> D.DataFrame
 sortByA = D.sortBy [D.Asc (F.col @Int "A")]
 

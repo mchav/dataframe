@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Golden tests pinning the format of 'prettyPrint'/'prettyPrintWidth': flat
-@else if@ ladders, operator-precedence parenthesization, width-aware wrapping of
-commutative chains, and short expressions staying on one line.
--}
+-- | Golden tests pinning the format of prettyPrint and prettyPrintWidth.
 module PrettyPrint (tests) where
 
 import qualified Data.Text as T
@@ -72,7 +69,7 @@ tests =
         "boolean chain fits: no paren noise"
         "a + b .>=. c .&&. a .>. b"
         (prettyPrintWidth 80 ((a + b .>=. c) .&&. (a .>. b)))
-    , -- When a nested operand wraps, parens delimit it; flat operands stay bare.
+    , -- When a nested operand wraps, parens delimit it; flat ones stay bare.
       golden
         "wrapped operand gets parens"
         "(a + b + c\n  .>=. 0.0)\n  .&&. a .>. b"

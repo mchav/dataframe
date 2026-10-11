@@ -14,13 +14,7 @@ import Control.Exception (throw)
 import DataFrame.Core (DataFrame)
 import Torch
 
-{- | Convert a dataframe to a floating-point tensor of shape @[rows, columns]@
-(or @[rows]@ when single-column). Throws 'DataFrameException' if a column
-cannot be converted to float.
-
->>> toTensor df  -- where df has shape (100, 5)
-Tensor with shape [100, 5]
--}
+-- | Convert a dataframe to a floating-point tensor of shape [rows, columns].
 toTensor :: DataFrame -> Tensor
 toTensor df = case D.toFloatMatrix df of
     Left e -> throw e
@@ -31,13 +25,7 @@ toTensor df = case D.toFloatMatrix df of
          in
             reshape dims' (asTensor (flattenFeatures m))
 
-{- | Convert a dataframe to an integer tensor of shape @[rows, columns]@ (or
-@[rows]@ when single-column). Floating-point values are rounded. Throws
-'DataFrameException' if a column cannot be converted to int.
-
->>> toIntTensor featuresDf  -- where featuresDf has shape (100, 3)
-Tensor with shape [100, 3]
--}
+-- | Convert a dataframe to an integer tensor of shape [rows, columns].
 toIntTensor :: DataFrame -> Tensor
 toIntTensor df = case D.toIntMatrix df of
     Left e -> throw e

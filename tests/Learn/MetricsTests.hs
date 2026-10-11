@@ -119,9 +119,7 @@ testTransformCompose = TestCase $ do
     assertBool "pipeline produced a frame" (D.columnNames out /= [])
     assertBool "pipeline has pc1 column" ("pc1" `elem` D.columnNames out)
 
-{- | Mann-Whitney AUC from ranks computed over lists, the definition 'rocAuc'
-must reproduce bit for bit.
--}
+-- | Mann-Whitney AUC computed from ranks over lists, the reference for rocAuc.
 referenceAuc :: [Double] -> [Double] -> Double
 referenceAuc scores truth
     | nPos == 0 || nNeg == 0 = 0.5

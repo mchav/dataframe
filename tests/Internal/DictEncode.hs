@@ -1,13 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Correctness oracle for the dictionary-encode building block
-('DataFrame.Internal.Column.Encode'). A text column encodes to dense
-first-appearance @Int@ codes: two rows share a code iff their text is equal, the
-codes are a contiguous @0 .. card-1@ range in first-appearance order, packed and
-boxed Text encode identically, and the cap parameter bails past a cardinality.
-Pins the step that the group-by planner can route a text key through.
--}
+-- | Correctness oracle for dictionary-encoding text columns into dense codes.
 module Internal.DictEncode (tests) where
 
 import qualified Data.ByteString as B
@@ -56,9 +50,7 @@ packedFromTexts ts =
 boxedFromTexts :: [T.Text] -> DI.Column
 boxedFromTexts = DI.fromList
 
-{- | The reference dense first-appearance encoding computed with a plain
-'Data.Map': scan in row order, assign the next id to each new value.
--}
+-- | The reference first-appearance encoding, computed with a plain Map.
 oracleCodes :: [T.Text] -> ([Int], Int)
 oracleCodes ts = go ts M.empty 0 []
   where

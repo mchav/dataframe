@@ -6,11 +6,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- | Approximate RBF-kernel SVM via Random Fourier Features (Rahimi & Recht): map
-each row through @z(x) = √(2/D)·cos(W x + b)@ with @W ~ N(0, 2γI)@ (seeded), then
-fit a linear SVC in the random-feature space. 'predict' compiles to a closed
-@Σ_r β_r·cos(…)@ expression of size @O(D·d)@, independent of the row count.
--}
+-- | Approximate RBF-kernel SVM via Random Fourier Features.
 module DataFrame.SVM.RFF (
     module DataFrame.Model,
     RFFConfig (..),
@@ -58,9 +54,7 @@ defaultRFFConfig =
         , rffSeed = 0
         }
 
-{- | A fitted RFF SVM (binary). 'rffW' / 'rffB' are the random projection;
-'rffCoef' / 'rffIntercept' the linear SVC in feature space.
--}
+-- | A fitted binary RFF SVM: random projection plus a linear SVC.
 data RFFSVMModel a = RFFSVMModel
     { rffW :: !(V.Vector (VU.Vector Double))
     , rffB :: !(VU.Vector Double)

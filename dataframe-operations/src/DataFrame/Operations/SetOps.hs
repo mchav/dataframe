@@ -20,41 +20,23 @@ import DataFrame.Internal.DataFrame (
 import DataFrame.Operations.Aggregation (distinct, groupBy, selectIndices)
 import DataFrame.Operations.Merge ()
 
-{- | All rows that appear in either dataframe, deduplicated.
-
-@union a b@ is @distinct (a <> b)@: the set union of the two row sets.
--}
+-- | All rows that appear in either dataframe, deduplicated.
 union :: DataFrame -> DataFrame -> DataFrame
 union a b = distinct (a <> b)
 
-{- | Rows that appear in both dataframes, deduplicated.
-
-A row survives iff an equal row is present in each input.
--}
+-- | Rows that appear in both dataframes, deduplicated.
 intersect :: DataFrame -> DataFrame -> DataFrame
 intersect = setOp (&&)
 
-{- | Rows present in the left dataframe but absent from the right, deduplicated
-(the relational @EXCEPT@; the subobject complement of @a@ by @b@).
--}
+-- | Rows in the left dataframe but not the right, deduplicated.
 difference :: DataFrame -> DataFrame -> DataFrame
 difference = setOp (\inLeft inRight -> inLeft && not inRight)
 
-{- | Rows present in exactly one of the two dataframes, deduplicated.
-
-@symmetricDifference a b@ is @union (difference a b) (difference b a)@.
--}
+-- | Rows present in exactly one of the two dataframes, deduplicated.
 symmetricDifference :: DataFrame -> DataFrame -> DataFrame
 symmetricDifference a b = difference a b `union` difference b a
 
-{- | Core engine for 'intersect' and 'difference'.
-
-Concatenate the inputs, group by every column, and decide each group from
-whether it has a member on the left side (original-row index @< nRows a@) and/or
-the right side. The first member of a qualifying group is emitted as the
-representative row, which keeps the result deduplicated and, because group
-members come out in ascending row order, prefers the left dataframe's row.
--}
+-- | Core engine for 'intersect' and 'difference'.
 setOp :: (Bool -> Bool -> Bool) -> DataFrame -> DataFrame -> DataFrame
 setOp keep a b =
     selectIndices (VU.fromList chosen) combined

@@ -2,15 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Fitted column transforms as a composable monoid. A 'Transform' is a list of
-named output expressions; @s <> t@ means \"apply @s@, then @t@\", fusing @t@'s
-references to @s@'s outputs by simultaneous substitution. 'applyTransform' runs
-one against a frame; 'compileThrough' folds a transform into a model's
-prediction expression so the result is a single expression over the raw inputs.
-
-Every right-hand side must be row-wise (no aggregation/window), and within one
-transform each expression reads the original frame.
--}
+-- | Fitted column transforms as a composable monoid.
 module DataFrame.Transform (
     Transform (..),
     applyTransform,
@@ -56,9 +48,7 @@ instance Monoid Transform where
 applyTransform :: Transform -> DataFrame -> DataFrame
 applyTransform (Transform os) = deriveMany os
 
-{- | Fold a preprocessing transform into a model's prediction expression,
-yielding one expression over the transform's input columns.
--}
+-- | Fold a preprocessing transform into a model's prediction expression.
 compileThrough :: (Columnable a) => Transform -> Expr a -> Expr a
 compileThrough (Transform os) = substituteColumns (M.fromList os)
 

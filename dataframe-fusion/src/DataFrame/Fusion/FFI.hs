@@ -1,10 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 
-{- | Foreign-function imports for the @dfusion-bridge@ Rust staticlib.
-Pointers returned from Rust are owned by the caller and freed via
-'df_ctx_free' / 'df_plan_free'. On error the @df_*@ functions return
-null and set a thread-local message retrievable via 'df_last_error'.
--}
+-- | Foreign imports for the @dfusion-bridge@ Rust staticlib.
 module DataFrame.Fusion.FFI (
     DfCtx,
     DfPlan,
@@ -29,8 +25,7 @@ import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..))
 import Foreign.Ptr (FunPtr, Ptr)
 
--- Opaque handle types. Layout is irrelevant on the Haskell side; we only
--- ever pass the pointers through.
+-- Opaque handle types; only the pointers are passed through.
 data DfCtx
 data DfPlan
 

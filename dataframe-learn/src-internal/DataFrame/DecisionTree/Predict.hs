@@ -3,10 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Prediction, care-point identification, node validity, and tree loss. The
-batched, cache-aware variants resolve each branch condition's truth vector
-once per call instead of once per row.
--}
+-- | Prediction, care-point identification, node validity, and tree loss.
 module DataFrame.DecisionTree.Predict (
     predictWithTree,
     predictManyWithTree,
@@ -49,9 +46,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
 
-{- | A condition's truth vector over the DataFrame, or 'Nothing' on a
-type/interpret failure (callers default such rows to the left child).
--}
+-- | A condition's truth vector over the DataFrame, or Nothing on failure.
 branchBool :: DataFrame -> Expr Bool -> Maybe (VU.Vector Bool)
 branchBool df cond = case interpret @Bool df cond of
     Right (TColumn column) -> either (const Nothing) Just (toVector @Bool @VU.Vector column)
@@ -64,7 +59,7 @@ interpretLabelCol df target = case interpret @a df (Col target) of
     Right (TColumn column) -> either (const Nothing) Just (toVector @a column)
     _ -> Nothing
 
--- | Predict the label for a single row by walking a fixed tree (@True@ → left).
+-- | Predict the label for a single row by walking a fixed tree.
 predictWithTree ::
     forall a. (Columnable a) => T.Text -> DataFrame -> Int -> Tree a -> a
 predictWithTree _ _ _ (Leaf v) = v
@@ -80,9 +75,7 @@ predictManyWithTree ::
     forall a. (Columnable a) => Tree a -> DataFrame -> V.Vector Int -> V.Vector a
 predictManyWithTree = predictManyWithTreeCached @a M.empty
 
-{- | 'predictManyWithTree' resolving each branch condition through a 'CondCache'.
-Each condition is read at most once per call rather than once per row.
--}
+-- | predictManyWithTree resolving each branch through a CondCache.
 predictManyWithTreeCached ::
     forall a.
     (Columnable a) => CondCache -> Tree a -> DataFrame -> V.Vector Int -> V.Vector a
@@ -111,9 +104,7 @@ identifyCarePoints ::
     T.Text -> DataFrame -> V.Vector Int -> Tree a -> Tree a -> [CarePoint]
 identifyCarePoints = identifyCarePointsCached @a M.empty
 
-{- | Rows the parent must route to a specific child for the (fixed) subtrees to
-classify correctly; a 'CondCache' avoids re-interpreting subtree conditions.
--}
+-- | Rows the parent must route to a specific child for subtrees to classify.
 identifyCarePointsCached ::
     forall a.
     (Columnable a) =>
@@ -151,9 +142,7 @@ partitionIndices ::
     Expr Bool -> DataFrame -> V.Vector Int -> (V.Vector Int, V.Vector Int)
 partitionIndices = partitionIndicesCached M.empty
 
-{- | 'partitionIndices' resolving the condition through a 'CondCache'; a miss
-routes every index left (matching the uncached fallback).
--}
+-- | partitionIndices resolving the condition through a CondCache.
 partitionIndicesCached ::
     CondCache ->
     Expr Bool ->

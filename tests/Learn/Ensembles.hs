@@ -151,15 +151,7 @@ testGridSearch = TestCase $ do
     assertBool "best score high" (gsBestScore res > 0.99)
     assertEqual "all configs scored" 3 (length (gsAll res))
 
-{- | Logistic boosting must recover a known conditional probability, not merely
-rank it. A leaf set to the mean gradient instead of @Σg/Σh@ understeps every
-step by at least 4x, leaving probabilities shrunk toward the base rate while the
-ranking — and so any accuracy or AUC check — still looks healthy.
-
-Each @x@ carries a fixed 20 rows of which exactly @round (20 * trueP x)@ are
-positive, so the empirical conditional probability at every @x@ is 'trueP' and
-the target is separable in rank but not in value.
--}
+-- | Logistic boosting must recover a known conditional probability.
 sigmoidCurveDF :: D.DataFrame
 sigmoidCurveDF =
     D.fromColumns
@@ -251,7 +243,7 @@ testGBMBaseScore = TestCase $ do
         "base model still fits"
         (length (interpD gbmData (predict shifted)) == 40)
 
--- Sampling at 1 is inert; sampling below 1 changes the fit and is fixed by the seed.
+-- Sampling at 1 is inert; below 1 it changes the fit, fixed by the seed.
 testGBMSubsample :: Test
 testGBMSubsample = TestCase $ do
     let cfg = defaultGBConfig{gbNEstimators = 20, gbMaxDepth = 2}

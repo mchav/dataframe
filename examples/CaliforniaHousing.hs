@@ -31,7 +31,7 @@ $( D.declareColumnsFromCsvWithOpts
 
 run :: IO ()
 run = do
-    {- Feature ingestion and engineering -}
+    -- Feature ingestion and engineering
     df <- D.readCsv "../data/housing.csv"
 
     let meanTotalBedrooms = df |> D.meanMaybe total_bedrooms
@@ -50,7 +50,7 @@ run = do
         testFeatures = toTensor (test |> D.exclude [F.name median_house_value] |> normalizeFeatures)
         trainLabels = toTensor (D.select [F.name median_house_value] train)
 
-    {- Train the model -}
+    -- Train the model
     putStrLn "Training linear regression model..."
     init <-
         sample $
@@ -63,7 +63,7 @@ run = do
         (state', _) <- runStep state GD loss 0.1
         pure state'
 
-    {- Show predictions -}
+    -- Show predictions
     let predictionColumn = "predicted_house_value"
     let predictions =
             D.insert predictionColumn (asValue @[Float] (model trained testFeatures)) test

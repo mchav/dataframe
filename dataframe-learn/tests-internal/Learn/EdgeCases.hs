@@ -2,10 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Edge-case / degeneracy tests (category 7) and numerical-stability tests
-(category 8) for @dataframe-learn@. Each asserts the mathematically correct
-result or a specific documented degenerate behaviour — never "it ran".
--}
+-- | Edge-case and numerical-stability tests for dataframe-learn.
 module Learn.EdgeCases (tests) where
 
 import qualified Data.Map.Strict as M
@@ -32,8 +29,6 @@ import DataFrame.Internal.Statistics (correlation', meanSquaredError, variance')
 
 import Test.HUnit
 
--- Helpers (mirrors Learn.Models) --------------------------------------------
-
 interpD :: D.DataFrame -> Expr Double -> [Double]
 interpD df e = case interpret @Double df e of
     Right (TColumn c) -> either (const []) VU.toList (toVector @Double @VU.Vector c)
@@ -53,13 +48,7 @@ close tol a b = abs (a - b) <= tol
 finite :: Double -> Bool
 finite x = not (isNaN x) && not (isInfinite x)
 
--- ===========================================================================
--- Category 8: numerical stability
--- ===========================================================================
-
-{- logSumExp on a large-positive cluster: log(e^1000+e^1001+e^1002) =
-   1002 + log(e^-2+e^-1+1) ≈ 1002.40760596. A naive log.sum.map exp
-   overflows to +Inf here. -}
+-- logSumExp on a large positive cluster must not overflow to +Inf.
 testLogSumExpLargePositive :: Test
 testLogSumExpLargePositive = TestCase $ do
     let lse = logSumExp (VU.fromList [1000, 1001, 1002])
@@ -70,9 +59,7 @@ testLogSumExpLargePositive = TestCase $ do
         (close 1e-9 lse expected)
     assertBool "lse literal ~ 1002.40760596" (close 1e-7 lse 1002.4076059644443)
 
-{- logSumExp on a large-negative cluster: log(e^-1000+e^-1001+e^-1002) =
-   -1000 + log(1+e^-1+e^-2) ≈ -999.59239403. A naive impl underflows every
-   term to 0 -> log 0 = -Inf. -}
+-- logSumExp on a large negative cluster must not underflow to -Inf.
 testLogSumExpLargeNegative :: Test
 testLogSumExpLargeNegative = TestCase $ do
     let lse = logSumExp (VU.fromList [-1000, -1001, -1002])
@@ -83,14 +70,12 @@ testLogSumExpLargeNegative = TestCase $ do
         (close 1e-9 lse expected)
     assertBool "lse literal ~ -999.59239403" (close 1e-7 lse (-999.5923940355557))
 
-{- logSumExp of a single element is that element exactly (m + log 1). -}
+-- logSumExp of a single element is that element exactly.
 testLogSumExpSingleton :: Test
 testLogSumExpSingleton = TestCase $ do
     assertBool "lse [42] == 42" (close 0 (logSumExp (VU.fromList [42])) 42)
 
-{- sigmoid at extreme arguments must stay in [0,1] and not NaN/Inf:
-   sigmoid(1000) ≈ 1, sigmoid(-1000) ≈ 0. The stable branch avoids the
-   overflow a naive 1/(1+exp(-z)) hits. -}
+-- sigmoid at extreme arguments stays in [0,1] and finite.
 testSigmoidExtreme :: Test
 testSigmoidExtreme = TestCase $ do
     let sp = sigmoid 1000
@@ -106,9 +91,7 @@ testSigmoidExtreme = TestCase $ do
         "sigmoid antisymmetric at 3"
         (close 1e-12 (sigmoid (-3)) (1 - sigmoid 3))
 
-{- Variance of large-but-low-variance data [1e8+1,+2,+3]: true sample variance
-   is 1.0. A naive sum-of-squares formula loses all precision (catastrophic
-   cancellation); Welford keeps it ~1. -}
+-- Variance of large low-variance data is 1.0, not lost to cancellation.
 testVarianceCatastrophicCancellation :: Test
 testVarianceCatastrophicCancellation = TestCase $ do
     let xs = VU.fromList [1e8 + 1, 1e8 + 2, 1e8 + 3] :: VU.Vector Double
@@ -117,15 +100,13 @@ testVarianceCatastrophicCancellation = TestCase $ do
     assertBool "variance is positive" (v > 0)
     assertBool "variance of shifted {1,2,3} == 1.0" (close 1e-6 v 1.0)
 
-{- Variance of an identical column is exactly 0 (not a tiny negative from
-   cancellation). -}
+-- Variance of an identical column is exactly 0.
 testVarianceConstant :: Test
 testVarianceConstant = TestCase $ do
     let v = variance' (VU.replicate 100 (7.0 :: Double))
     assertEqual "variance of constant column is 0" 0 v
 
-{- Variance of fewer than two samples is defined to be 0 (computeVariance guard),
-   not NaN from a /0. -}
+-- Variance of fewer than two samples is 0, not NaN.
 testVarianceSingleton :: Test
 testVarianceSingleton = TestCase $ do
     assertEqual
@@ -133,8 +114,7 @@ testVarianceSingleton = TestCase $ do
         0
         (variance' (VU.fromList [3.5 :: Double]))
 
-{- Correlation of a perfectly linear pair is exactly +1 (and -1 reversed),
-   computed stably. y = 2x+1 over a spread of x. -}
+-- Correlation of a perfectly linear pair is exactly +1 (and -1 reversed).
 testCorrelationPerfect :: Test
 testCorrelationPerfect = TestCase $ do
     let xs = VU.fromList [1, 2, 3, 4, 5] :: VU.Vector Double
@@ -147,9 +127,7 @@ testCorrelationPerfect = TestCase $ do
         Just r -> assertBool "corr(x, -2x+1) == -1" (close 1e-9 r (-1))
         Nothing -> assertFailure "expected a correlation"
 
-{- Degeneracy: correlation against a constant column. The denominator is 0, so
-   the library returns Just NaN — this pins the actual (non-throwing) behaviour;
-   a future Nothing/0 would flag the contract change. -}
+-- Correlation against a constant column is Just NaN; pins current behaviour.
 testCorrelationConstantColumnIsNaN :: Test
 testCorrelationConstantColumnIsNaN = TestCase $ do
     let xs = VU.fromList [1, 2, 3, 4, 5] :: VU.Vector Double
@@ -161,7 +139,7 @@ testCorrelationConstantColumnIsNaN = TestCase $ do
                 (isNaN r)
         Nothing -> assertFailure "correlation' returned Nothing (contract changed)"
 
-{- correlation' on n<2 returns Nothing (guarded), not a NaN. -}
+-- correlation' on n<2 returns Nothing, not NaN.
 testCorrelationTooFew :: Test
 testCorrelationTooFew = TestCase $ do
     assertEqual
@@ -169,8 +147,7 @@ testCorrelationTooFew = TestCase $ do
         Nothing
         (correlation' (VU.fromList [1]) (VU.fromList [2]))
 
-{- meanSquaredError refuses length mismatches and empty inputs rather than
-   averaging over terms it never summed (or indexing out of bounds). -}
+-- meanSquaredError refuses length mismatches and empty inputs.
 testMeanSquaredErrorGuards :: Test
 testMeanSquaredErrorGuards = TestCase $ do
     assertEqual
@@ -190,13 +167,7 @@ testMeanSquaredErrorGuards = TestCase $ do
         (Just 4.0)
         (meanSquaredError (VU.fromList [0, 0]) (VU.fromList [2, 2]))
 
--- ===========================================================================
--- Category 8: stability inside the model expr layer
--- ===========================================================================
-
-{- Logistic probability expressions at extreme feature values (|x| ~ 1e6) must
-   remain finite and in [0,1]; a non-stable 1/(1+exp(-margin)) would overflow.
-   Also checks both one-vs-rest class probabilities are present. -}
+-- Logistic probabilities at extreme features stay finite and in [0,1].
 testLogisticProbsExtremeFeatures :: Test
 testLogisticProbsExtremeFeatures = TestCase $ do
     let trainDf =
@@ -217,13 +188,7 @@ testLogisticProbsExtremeFeatures = TestCase $ do
         "all logistic probabilities in [0,1]"
         (all (\p -> p >= 0 && p <= 1) allProbVals)
 
--- ===========================================================================
--- Category 7: edge cases / degeneracy on models
--- ===========================================================================
-
-{- One-row OLS (x=2, y=7): under-determined, so olsSolve falls back to
-   ridge(1e-8). The fit must interpolate the single point (predict 7 at x=2)
-   and never be NaN/Inf. -}
+-- One-row OLS falls back to ridge and interpolates the point, never NaN.
 testOLSOneRow :: Test
 testOLSOneRow = TestCase $ do
     let df =
@@ -238,9 +203,7 @@ testOLSOneRow = TestCase $ do
         "OLS fits the single training point"
         (case preds of [p] -> close 1e-3 p 7; _ -> False)
 
-{- All-identical labels in logistic regression: every row is class 1. There is
-   exactly one class, so predict must return that class for every row (no
-   division-by-zero, no crash, no spurious second class). -}
+-- Logistic regression with a single class predicts that class everywhere.
 testLogisticSingleClass :: Test
 testLogisticSingleClass = TestCase $ do
     let df =
@@ -255,9 +218,7 @@ testLogisticSingleClass = TestCase $ do
         [1, 1, 1, 1, 1]
         preds
 
-{- Perfectly separable logistic data plus a constant (zero-variance) feature:
-   the constant column is dropped, the informative one still separates, and
-   prediction recovers the labels exactly. -}
+-- A constant feature is dropped; the informative one still separates.
 testLogisticConstantFeatureIgnored :: Test
 testLogisticConstantFeatureIgnored = TestCase $ do
     let df =
@@ -273,9 +234,7 @@ testLogisticConstantFeatureIgnored = TestCase $ do
         [0, 0, 0, 0, 1, 1, 1, 1]
         preds
 
-{- Linear regression with an irrelevant constant feature: the constant column is
-   near-constant (variance 0) and must get a zero weight, while the informative
-   coefficient is recovered. y = 3x + 4 exactly. -}
+-- A constant feature gets zero weight; y = 3x + 4 is recovered exactly.
 testLinearConstantFeatureZeroWeight :: Test
 testLinearConstantFeatureZeroWeight = TestCase $ do
     let xs = [1, 2, 3, 4, 5, 6] :: [Double]
@@ -298,9 +257,7 @@ testLinearConstantFeatureZeroWeight = TestCase $ do
         "regression with constant feature still fits y=3x+4"
         (and (zipWith (close 1e-4) preds truth))
 
-{- k-means with k > n: the library clamps k = min k (max 1 n), so 3 rows with
-   kmK=10 must yield exactly 3 centres, in-range labels, and finite centres —
-   not a crash or degenerate centres. -}
+-- k-means with k > n clamps k, giving finite centres and in-range labels.
 testKMeansKGreaterThanN :: Test
 testKMeansKGreaterThanN = TestCase $ do
     let df =
@@ -318,9 +275,7 @@ testKMeansKGreaterThanN = TestCase $ do
         (all (VU.all finite) (V.toList (kmCenters m)))
     assertBool "k=n clustering has ~zero inertia" (close 1e-9 (kmInertia m) 0)
 
-{- k-means on an all-identical feature set: any clustering has inertia 0 and
-   centres equal that point, staying finite (no NaN from an empty cluster or a
-   zero distance sum in k-means++ sampling). -}
+-- k-means on identical points has inertia 0 and finite centres.
 testKMeansAllIdentical :: Test
 testKMeansAllIdentical = TestCase $ do
     let df =
@@ -337,9 +292,7 @@ testKMeansAllIdentical = TestCase $ do
     let assigns = interpI df (predict m)
     assertBool "assignments in [0,1]" (all (\l -> l >= 0 && l < 2) assigns)
 
-{- GMM with k > n: clamped like k-means (k = min k (max 1 n)). Two rows, gmmK=5
-   must yield 2 components, finite weights summing to ~1, and a finite log
-   likelihood -- not a crash or NaN. -}
+-- GMM with k > n clamps k; weights sum to ~1 and the likelihood is finite.
 testGMMKGreaterThanN :: Test
 testGMMKGreaterThanN = TestCase $ do
     let df =
@@ -354,9 +307,7 @@ testGMMKGreaterThanN = TestCase $ do
     assertBool "GMM weights sum to ~1" (close 1e-6 (VU.sum (gmmWeights m)) 1)
     assertBool "GMM log-likelihood finite" (finite (gmmLogLikelihood m))
 
-{- PCA on one informative axis plus a constant column: the constant's explained
-   ratio must be ~0 while ratios sum to ~1 and stay finite. Catches a
-   divide-by-zero in ratio normalisation when an eigenvalue is 0. -}
+-- PCA with a constant column: its explained ratio is ~0 and all are finite.
 testPCAConstantColumn :: Test
 testPCAConstantColumn = TestCase $ do
     let df =
@@ -381,9 +332,7 @@ testPCAConstantColumn = TestCase $ do
         "pca exprs finite on constant column"
         (all (all finite . interpD df) es)
 
-{- PCA on extreme-scale features (1e8-shifted), no standardisation: components
-   must stay unit-length and finite — catches cancellation in the covariance /
-   eigendecomposition at large magnitudes. -}
+-- PCA on extreme-scale features keeps components unit-length and finite.
 testPCAExtremeScale :: Test
 testPCAExtremeScale = TestCase $ do
     let df =
@@ -404,12 +353,7 @@ testPCAExtremeScale = TestCase $ do
         "explained ratio finite at 1e8 scale"
         (VU.all finite (pcaExplainedVarianceRatio m))
 
--- ===========================================================================
--- Category 7/8: linear-algebra degeneracy
--- ===========================================================================
-
-{- choleskySolve on a non-positive-definite (zero) matrix returns Nothing rather
-   than crashing or producing NaNs. A 2x2 all-zero matrix has a zero pivot. -}
+-- choleskySolve on a non-positive-definite matrix returns Nothing.
 testCholeskyNonPD :: Test
 testCholeskyNonPD = TestCase $ do
     assertEqual
@@ -417,17 +361,14 @@ testCholeskyNonPD = TestCase $ do
         Nothing
         (choleskySolve (mat [[0, 0], [0, 0]]) (VU.fromList [1, 1]))
 
-{- Jacobi eigendecomposition of a 1x1 matrix (one-column degenerate case):
-   eigenvalue is the single entry, eigenvector is [1] (sign-canonicalised). -}
+-- Jacobi on a 1x1 matrix: eigenvalue is the entry, eigenvector is [1].
 testJacobi1x1 :: Test
 testJacobi1x1 = TestCase $ do
     let (ev, vecs) = jacobiEigenSym (mat [[5]])
     assertBool "1x1 eigenvalue is the entry" (close 1e-12 (ev VU.! 0) 5)
     assertBool "1x1 eigenvector is [1]" (close 1e-12 ((vecs V.! 0) VU.! 0) 1)
 
-{- Jacobi on an identity matrix: both eigenvalues are exactly 1 and the result is
-   finite (the rotation angle code must not divide by zero when off-diagonals are
-   already 0). -}
+-- Jacobi on an identity matrix gives eigenvalues exactly 1, all finite.
 testJacobiIdentity :: Test
 testJacobiIdentity = TestCase $ do
     let (ev, vecs) = jacobiEigenSym (mat [[1, 0], [0, 1]])

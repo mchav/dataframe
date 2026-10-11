@@ -5,14 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | Gradient boosting of regression trees (Friedman). Trees are fitted to the
-negative gradient of the loss each round and accumulated with a shrinkage
-factor; squared error gives regression, logistic deviance gives binary
-classification. Split search runs on per-feature histograms (see
-'gbMaxBins'), so a tree costs O(rows) rather than a sweep per node.
-'predict' is the additive score; 'gbProbaExpr' /
-'gbDecisionExpr' give the classification probability / decision.
--}
+-- | Gradient boosting of regression trees on per-feature histograms.
 module DataFrame.Boosting.GBM (
     module DataFrame.Model,
     GBLoss (..),
@@ -58,24 +51,20 @@ data GBConfig = GBConfig
     , gbLearningRate :: !Double
     , gbMaxDepth :: !Int
     , gbMaxBins :: !Int
-    {- ^ Bins per feature for split finding. Features with at most this many
-    distinct values split exactly as on the raw values.
-    -}
+    -- ^ Bins per feature for split finding.
     , gbSeed :: !Int
     , gbL2 :: !Double
     -- ^ L2 penalty on leaf values (XGBoost's @lambda@).
     , gbMinChildWeight :: !Double
     -- ^ Smallest Hessian sum a leaf may have (XGBoost's @min_child_weight@).
     , gbFeatureGroups :: ![[T.Text]]
-    {- ^ Tree @m@ splits only on columns of group @m mod (number of groups)@.
-    Empty: every tree may use every column.
-    -}
+    -- ^ Column groups: tree m splits only on group m mod the group count.
     , gbBaseScore :: !(Maybe (Expr Double))
-    -- ^ Boost from these per-row scores instead of a constant; the prediction adds them back.
+    -- ^ Per-row scores to boost from instead of a constant.
     , gbSubsample :: !Double
-    -- ^ Fraction of rows each tree is fitted on (1 = all); drawn per tree from 'gbSeed'.
+    -- ^ Fraction of rows each tree is fitted on (1 = all).
     , gbColsample :: !Double
-    -- ^ Fraction of the allowed features each tree may split on (1 = all); drawn per tree from 'gbSeed'.
+    -- ^ Fraction of allowed features each tree may split on (1 = all).
     }
     deriving (Show)
 
@@ -96,10 +85,7 @@ defaultGBConfig =
         , gbColsample = 1
         }
 
-{- | A fitted gradient-boosting model. 'gbInit' is the constant initial score
-(mean, or log-odds for classification); 'gbTrees' are the staged regression
-trees.
--}
+-- | A fitted gradient-boosting model: initial score plus staged trees.
 data GBModel = GBModel
     { gbInit :: !Double
     , gbTrees :: !(V.Vector (Tree Double))
@@ -119,7 +105,7 @@ instance Predict GBModel where
     type Prediction GBModel = Expr Double
     predict = gbExpr
 
--- | Fit a gradient-boosting ensemble predicting @target@ from the other columns.
+-- | Fit a gradient-boosting ensemble predicting the target column.
 fitGBM :: GBConfig -> Expr Double -> DataFrame -> GBModel
 fitGBM cfg target@(Col name) df =
     GBModel
@@ -269,7 +255,7 @@ gbProbaExpr m = F.lit 1 / (F.lit 1 + exp (negate (gbExpr m)))
 gbDecisionExpr :: GBModel -> Expr Bool
 gbDecisionExpr m = gbExpr m .>. F.lit 0
 
--- | A uniformly chosen subset of the given size fraction (at least one element), in order.
+-- | A uniformly chosen subset of the given size fraction, in order.
 keepFraction :: Double -> StdGen -> VU.Vector Int -> VU.Vector Int
 keepFraction frac g xs =
     let k = max 1 (round (frac * fromIntegral (VU.length xs)))

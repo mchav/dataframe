@@ -2,10 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Golden semantics for the default CSV reader, pinned against the
-cassava-based oracle (2026-06-12) before the strict-scanner rewrite.
-Ragged-row cases encode the one intentional change: pad-with-null (audit D6).
--}
+-- | Golden semantics for the default CSV reader, pinned against the old oracle.
 module IO.CsvGolden (tests) where
 
 import qualified Data.ByteString as BS
@@ -586,8 +583,7 @@ dupHeaders = TestLabel "dup_headers" $ TestCase $ do
     assertEqual "dims" (2, 2) (dataframeDimensions df)
     assertEqual "index map" [("a", 1)] (M.toList (columnIndices df))
 
--- Ingest pin: a string column freezes to a shared-buffer 'PackedText'
--- (no per-row boxed Text header), while values stay byte-identical.
+-- Ingest pin: string columns freeze to a shared-buffer 'PackedText'.
 textFreezesPacked :: Test
 textFreezesPacked = TestLabel "text_freezes_packed" $ TestCase $ do
     df <- decodeSeparated defaultReadOptions (BL.fromStrict "a,b\n1,x\n2,y\n")
@@ -595,7 +591,7 @@ textFreezesPacked = TestLabel "text_freezes_packed" $ TestCase $ do
         Nothing -> assertFailure "missing text column"
         Just col -> do
             assertBool "text column is PackedText" (DI.isPackedText col)
-            assertEqual "values byte-identical" (texts ["x", "y"]) col
+            assertEqual "values equal" (texts ["x", "y"]) col
 
 tests :: [Test]
 tests = dupHeaders : textFreezesPacked : map goldenCase goldenCases

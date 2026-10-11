@@ -1,11 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | Packed-text payload + byte-slice primitives. A 'PackedTextData' shares one
-UTF-8 byte buffer across all rows of a string column, with @n+1@ row offsets, so
-no per-row 'Data.Text.Text' header is materialized until decode is demanded.
-Offsets and selection vectors are stored 'Int32' whenever their values fit
-(Arrow-style), halving the per-row footprint of large string columns.
--}
+-- | Packed-text payload and byte-slice primitives over one shared buffer.
 module DataFrame.Internal.Data.PackedText (
     PackedTextData (..),
     PackedOffsets (..),
@@ -47,9 +42,7 @@ import DataFrame.Internal.Data.PackedText.Utf8 (
  )
 import System.IO.Unsafe (unsafePerformIO)
 
-{- | Row byte-offsets, physically 'Int32' when every value fits (total buffer
-bytes < 2^31) and 'Int' otherwise. Values are non-negative byte positions.
--}
+-- | Row byte-offsets, 'Int32' when every value fits and 'Int' otherwise.
 data PackedOffsets
     = Offs32 {-# UNPACK #-} !(VU.Vector Int32)
     | Offs64 {-# UNPACK #-} !(VU.Vector Int)
@@ -66,9 +59,7 @@ offCount (Offs32 v) = VU.length v
 offCount (Offs64 v) = VU.length v
 {-# INLINE offCount #-}
 
-{- | A selection layer mapping logical rows to base rows; @-1@ marks an
-invalid/null row. 'Int32' when the base row count fits.
--}
+-- | A selection layer mapping logical rows to base rows; @-1@ marks null.
 data PackedSel
     = Sel32 {-# UNPACK #-} !(VU.Vector Int32)
     | Sel64 {-# UNPACK #-} !(VU.Vector Int)
@@ -84,17 +75,7 @@ selLength (Sel32 v) = VU.length v
 selLength (Sel64 v) = VU.length v
 {-# INLINE selLength #-}
 
-{- | A shared UTF-8 byte buffer plus @n+1@ row offsets (base row @r@ spans bytes
-@[offsets!r, offsets!(r+1))@); validity lives in the column's bitmap. @ptSel@ is
-an optional selection layer letting a gather/join/sort result share the buffer.
-
-@ptCanonicalSel@ marks a selection that is a canonical dictionary encoding:
-equal byte slices always map to the same base row (codes). Set by dictionary
-compaction; preserved by gather/take over an already-canonical selection (a
-row keeps its code); 'False' for a gather over an unselected base, where two
-logical rows can select different but equal-byted base rows. Grouping keys on
-codes directly when it holds.
--}
+-- | A shared UTF-8 byte buffer plus @n+1@ row offsets and optional selection.
 data PackedTextData = PackedTextData
     { ptBytes :: {-# UNPACK #-} !A.Array
     , ptOffsets :: !PackedOffsets
@@ -113,9 +94,7 @@ mkOffsets offs
     | otherwise = Offs64 offs
 {-# INLINE mkOffsets #-}
 
-{- | Narrow an 'Int' base-row vector (@-1@ sentinels allowed) when the base
-row count fits in 'Int32'.
--}
+-- | Narrow an 'Int' base-row vector to 'Int32' when the row count fits.
 mkSel :: Int -> VU.Vector Int -> PackedSel
 mkSel base rows
     | base <= int32Max = Sel32 (VU.map fromIntegral rows)
@@ -132,24 +111,14 @@ mkPackedContiguous32 :: A.Array -> VU.Vector Int32 -> PackedTextData
 mkPackedContiguous32 arr offs = PackedTextData arr (Offs32 offs) Nothing False
 {-# INLINE mkPackedContiguous32 #-}
 
-{- | Reindex a packed payload by a selection vector, sharing the byte buffer;
-logical row @i@ becomes base row @indices!i@. A negative or out-of-range index
-decodes to the empty slice. Composes with an existing selection; canonicality
-survives composition (a kept row keeps its code) but not a first selection
-over the unselected base.
--}
+-- | Reindex a packed payload by a selection vector, sharing the byte buffer.
 packedGather :: VU.Vector Int -> PackedTextData -> PackedTextData
 packedGather indices (PackedTextData arr offs msel canon) =
     let !base = offCount offs - 1
         canon' = case msel of
             Nothing -> False
             Just _ -> canon
-        {- Base row for logical output row i composes any existing selection;
-        only the SELECTOR is rebuilt (the byte buffer and offsets are shared
-        untouched — a canonical dict column keeps its bytes). Each (source
-        width x output width) shape runs a monomorphic closure-free kernel,
-        generated directly at its final 'mkSel' width (one parallel pass).
-        Same values and widths as the historical closure-driven build. -}
+        -- Only the selector is rebuilt; bytes and offsets stay shared.
         sel' = case msel of
             Nothing
                 | base <= int32Max -> Sel32 (gatherBaseTo32 indices base)
@@ -162,8 +131,7 @@ packedGather indices (PackedTextData arr offs msel canon) =
                 | otherwise -> Sel64 (gatherSel64To64 indices s base)
      in PackedTextData arr offs (Just sel') canon'
 
--- Monomorphic 'packedGather' selector kernels. All reproduce exactly
--- @clamp r = if r >= 0 && r < base then r else -1@ over the composed pick.
+-- Monomorphic 'packedGather' selector kernels; out-of-range picks give -1.
 
 gatherBaseTo32 :: VU.Vector Int -> Int -> VU.Vector Int32
 gatherBaseTo32 indices !base =
@@ -227,18 +195,9 @@ gatherSel64To64 indices s !base =
                     else -1
 {-# NOINLINE gatherSel64To64 #-}
 
-{- | Selector generate over 'parallelChunks_': one contiguous index chunk per
-capability written into disjoint slices of one buffer — element @i@ depends
-only on @f i@, so the result is bit-identical to 'VU.generate' at any @-N@.
-Same policy as 'DataFrame.Internal.Column.Operations.parGenerateUnboxed', which
-sits above this module.
--}
+-- elector generate over 'parallelChunks_', one chunk per capability.
 
-{- | 'parGenSel' with an INLINE body: each monomorphic NOINLINE kernel above
-gets its own copy of the fill loop with the pick function inlined — no unknown
-closure call (or boxed result allocation) per element. Bit-identical results;
-callers must be NOINLINE so the 'unsafePerformIO' runs once per call.
--}
+-- | 'parGenSel' with an INLINE body so each kernel inlines its pick function.
 parGenSelInline :: (VU.Unbox c) => Int -> (Int -> c) -> VU.Vector c
 parGenSelInline n f
     | not (shouldParallelize parThreshold n) = VU.generate n f
@@ -265,10 +224,7 @@ parGenSel n f
         VU.unsafeFreeze mv
 {-# NOINLINE parGenSel #-}
 
-{- | Take the first @k@ logical rows, sharing the byte buffer via a capped
-selection layer. O(k), no byte copy or decode — cheap @take@/display on a
-large packed column.
--}
+-- | Take the first @k@ logical rows, sharing the byte buffer, in O(k).
 packedTake :: Int -> PackedTextData -> PackedTextData
 packedTake k (PackedTextData arr offs msel canon) =
     let !base = offCount offs - 1
@@ -292,7 +248,7 @@ packedLength (PackedTextData _ offs Nothing _) = offCount offs - 1
 packedLength (PackedTextData _ _ (Just sel) _) = selLength sel
 {-# INLINE packedLength #-}
 
--- | Raw byte slice for logical row @i@: @(buffer, offset, length)@. The hot accessor.
+-- | Raw byte slice for logical row @i@: @(buffer, offset, length)@.
 packedSlice :: PackedTextData -> Int -> (A.Array, Int, Int)
 packedSlice p@(PackedTextData arr offs _ _) i =
     let !r = baseRow p i
@@ -302,18 +258,13 @@ packedSlice p@(PackedTextData arr offs _ _) i =
                 let o = offAt offs r in (arr, o, offAt offs (r + 1) - o)
 {-# INLINE packedSlice #-}
 
-{- | The shared buffer + contiguous @n+1@ offsets when the payload is the
-unselected base; a selected (gathered) payload returns 'Nothing' (its rows are
-non-contiguous). Lets contiguous consumers skip the selection indirection.
--}
+-- | The shared buffer and contiguous offsets when the payload is unselected.
 packedRowOffsets :: PackedTextData -> Maybe (A.Array, PackedOffsets)
 packedRowOffsets (PackedTextData arr offs Nothing _) = Just (arr, offs)
 packedRowOffsets _ = Nothing
 {-# INLINE packedRowOffsets #-}
 
-{- | On-demand single 'Data.Text.Text' for row @i@, using the same
-validate-or-lenient decode as the freeze path so output is bit-identical.
--}
+-- | On-demand single 'Data.Text.Text' for row @i@, similar to freeze.
 packedIndexText :: PackedTextData -> Int -> T.Text
 packedIndexText p i =
     let (arr, o, l) = packedSlice p i
@@ -328,10 +279,7 @@ decodeField arr o l
     | otherwise = lenientDecodeSlice arr o l
 {-# INLINE decodeField #-}
 
-{- | Byte-wise equality of two slices. UTF-8 is injective on valid scalar
-sequences and lenient decode is deterministic, so this agrees with
-@Text@'s '==' on the decoded values.
--}
+-- | Byte-wise equality of two slices, agreeing with 'Text' equality.
 sliceEqBytes :: A.Array -> Int -> Int -> A.Array -> Int -> Int -> Bool
 sliceEqBytes a ao al b bo bl
     | al /= bl = False
@@ -343,10 +291,7 @@ sliceEqBytes a ao al b bo bl
         | otherwise = False
 {-# INLINE sliceEqBytes #-}
 
-{- | Unsigned byte-lexicographic comparison (memcmp semantics). For
-well-formed UTF-8 this matches 'Data.Text.compare' exactly, since UTF-8
-byte order equals codepoint order for all valid scalars.
--}
+-- | Unsigned byte-lexicographic comparison of two slices (memcmp semantics).
 sliceCmpBytes :: A.Array -> Int -> Int -> A.Array -> Int -> Int -> Ordering
 sliceCmpBytes a ao al b bo bl = go 0
   where

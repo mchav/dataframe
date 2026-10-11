@@ -257,7 +257,7 @@ testPersistFieldsToColumns = TestCase $ do
     assertBool "Has age column" ("age" `elem` columnNames)
     assertBool "Has active column" ("active" `elem` columnNames)
 
-    -- Check that each column has exactly one value (since we're testing a single record)
+    -- Each column should hold exactly one value (a single record)
     let nameCol = lookup "name" columns
         ageCol = lookup "age" columns
         activeCol = lookup "active" columns

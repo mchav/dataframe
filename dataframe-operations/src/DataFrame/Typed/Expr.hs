@@ -14,32 +14,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-{- | Type-safe expression construction for typed DataFrames.
-
-Unlike the untyped @Expr a@ where column references are unchecked strings,
-'TExpr' ensures at compile time that:
-
-* Referenced columns exist in the schema
-* Column types match the expression type
-
-== Example
-
-@
-type Schema = '[ '(\"age\", Int), '(\"salary\", Double)]
-
--- This compiles:
-goodExpr :: TExpr Schema Double
-goodExpr = col \@\"salary\"
-
--- This gives a compile-time error (column not found):
-badExpr :: TExpr Schema Double
-badExpr = col \@\"nonexistent\"
-
--- This gives a compile-time error (type mismatch):
-wrongType :: TExpr Schema Int
-wrongType = col \@\"salary\"  -- salary is Double, not Int
-@
--}
+-- | Type-safe expression construction for typed DataFrames.
 module DataFrame.Typed.Expr (
     -- * Core typed expression type (re-exported from Types)
     TExpr (..),
@@ -174,16 +149,7 @@ import DataFrame.Typed.Schema (
 import DataFrame.Typed.Types (TExpr (..), TSortOrder (..))
 import Prelude hiding (maximum, minimum, sum)
 
-{- | Create a typed column reference. This is the key type-safety entry point.
-
-The column name must exist in @cols@ and its type must match @a@.
-Both checks happen at compile time via type families.
-
-@
-salary :: TExpr '[(\"salary\", Double)] Double
-salary = col \@\"salary\"
-@
--}
+-- | Create a typed column reference, checked against the schema.
 col ::
     forall (name :: Symbol) cols a.
     ( KnownSymbol name
@@ -194,13 +160,7 @@ col ::
     TExpr cols a
 col = TExpr (Col (T.pack (symbolVal (Proxy @name))))
 
-{- | Use a column name as an @OverloadedLabels@ label: @#age@ is sugar for
-@col \@\"age\"@. Enable @OverloadedLabels@ at the use site.
-
-@
-adults = filterWhere (#age .>=. lit 18) people
-@
--}
+-- | Use a column name as an @OverloadedLabels@ label such as @#age@.
 instance
     ( KnownSymbol name
     , a ~ SafeLookup name cols
@@ -211,9 +171,7 @@ instance
     where
     fromLabel = col @name
 
-{- | Create a literal expression. Valid for any schema since it
-references no columns.
--}
+-- | Create a literal expression, valid for any schema.
 lit :: (Columnable a) => a -> TExpr cols a
 lit = TExpr . Lit
 
@@ -223,9 +181,7 @@ ifThenElse ::
     TExpr cols Bool -> TExpr cols a -> TExpr cols a -> TExpr cols a
 ifThenElse (TExpr c) (TExpr t) (TExpr e) = TExpr (If c t e)
 
-{- | One branch of a chained conditional. The fallback goes last so a chain
-reads top-down: @caseWhen c1 a $ caseWhen c2 b $ orElse c@.
--}
+-- | One branch of a chained conditional; the fallback goes last.
 caseWhen ::
     (Columnable a) =>
     TExpr cols Bool -> TExpr cols a -> TExpr cols a -> TExpr cols a
@@ -281,10 +237,7 @@ lift2 ::
     (a -> b -> c) -> TExpr cols a -> TExpr cols b -> TExpr cols c
 lift2 f (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp f "binaryUdf" Nothing False 0) a b)
 
-{- | Typed 'nullLift': lift a unary function with nullable propagation.
-When the input is @Maybe a@, 'Nothing' short-circuits; when plain @a@, applies directly.
-The return type is inferred via 'NullLift1Result': no annotation needed.
--}
+-- | Typed 'nullLift': lift a unary function with nullable propagation.
 nullLift ::
     (NullLift1Op a r (NullLift1Result a r), Columnable (NullLift1Result a r)) =>
     (BaseType a -> r) ->
@@ -292,10 +245,7 @@ nullLift ::
     TExpr cols (NullLift1Result a r)
 nullLift f (TExpr e) = TExpr (Unary (MkUnaryOp (applyNull1 f) "nullLift" Nothing) e)
 
-{- | Typed 'nullLift2': lift a binary function with nullable propagation.
-Any 'Nothing' operand short-circuits to 'Nothing' in the result.
-The return type is inferred via 'NullLift2Result': no annotation needed.
--}
+-- | Typed 'nullLift2': lift a binary function with nullable propagation.
 nullLift2 ::
     (NullLift2Op a b r (NullLift2Result a b r), Columnable (NullLift2Result a b r)) =>
     (BaseType a -> BaseType b -> r) ->
@@ -369,7 +319,7 @@ infixr 8 .^^., .^^, .^., .^
 (.||.) :: TExpr cols Bool -> TExpr cols Bool -> TExpr cols Bool
 (.||.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (||) "or" (Just ".||.") True 2) a b)
 
--- | Nullable-aware logical AND. Returns @Maybe Bool@ when either operand is nullable.
+-- | Nullable-aware logical AND; @Maybe Bool@ when either operand is nullable.
 (.&&) ::
     (NullableCmpOp a b (NullCmpResult a b), BaseType a ~ Bool) =>
     TExpr cols a ->
@@ -378,7 +328,7 @@ infixr 8 .^^., .^^, .^., .^
 (.&&) (TExpr a) (TExpr b) =
     TExpr (Binary (MkBinaryOp (nullCmpOp (&&)) "nulland" (Just ".&&") True 3) a b)
 
--- | Nullable-aware logical OR. Returns @Maybe Bool@ when either operand is nullable.
+-- | Nullable-aware logical OR; @Maybe Bool@ when either operand is nullable.
 (.||) ::
     (NullableCmpOp a b (NullCmpResult a b), BaseType a ~ Bool) =>
     TExpr cols a ->
@@ -390,9 +340,7 @@ infixr 8 .^^., .^^, .^., .^
 infixl 6 .+, .-
 infixl 7 .*, ./
 
-{- | Nullable-aware addition. Works for all combinations of nullable\/non-nullable operands.
-@col \@\"x\" '.+' col \@\"y\"  -- :: TExpr cols (Maybe Int)  when y :: Maybe Int@
--}
+-- | Nullable-aware addition for nullable and non-nullable operands.
 (.+) ::
     ( NumericWidenOp (BaseType a) (BaseType b)
     , NullLift2Op a b (Promote (BaseType a) (BaseType b)) (WidenResult a b)
@@ -488,10 +436,7 @@ infixl 7 .*, ./
 (.^) (TExpr a) (TExpr b) =
     TExpr (Binary (MkBinaryOp (applyNull2 (^)) "pow" (Just ".^") False 8) a b)
 
-{- | Nullable-aware equality. Widens numeric operands to their common type,
-so @TExpr cols Double .== TExpr cols Int@ typechecks. Returns @Maybe Bool@
-when either operand is nullable.
--}
+-- | Nullable-aware equality that widens numeric operands to a common type.
 (.==) ::
     ( NumericWidenOp (BaseType a) (BaseType b)
     , NullLift2Op a b Bool (NullCmpResult a b)
@@ -530,7 +475,7 @@ when either operand is nullable.
     TExpr
         (Binary (MkBinaryOp (applyNull2 (widenCmpOp (<))) "lt" (Just "<") False 4) a b)
 
--- | Nullable-aware less-than-or-equal. Widens numeric operands to their common type.
+-- | Nullable-aware <=. Widens numeric operands to their common type.
 (.<=) ::
     ( NumericWidenOp (BaseType a) (BaseType b)
     , NullLift2Op a b Bool (NullCmpResult a b)
@@ -543,7 +488,7 @@ when either operand is nullable.
     TExpr
         (Binary (MkBinaryOp (applyNull2 (widenCmpOp (<=))) "leq" (Just "<=") False 4) a b)
 
--- | Nullable-aware greater-than-or-equal. Widens numeric operands to their common type.
+-- | Nullable-aware >=. Widens numeric operands to their common type.
 (.>=) ::
     ( NumericWidenOp (BaseType a) (BaseType b)
     , NullLift2Op a b Bool (NullCmpResult a b)
@@ -571,10 +516,6 @@ when either operand is nullable.
 
 not :: TExpr cols Bool -> TExpr cols Bool
 not (TExpr e) = TExpr (Unary (MkUnaryOp Prelude.not "not" (Just "!")) e)
-
--------------------------------------------------------------------------------
--- Aggregation combinators
--------------------------------------------------------------------------------
 
 sum :: (Columnable a, Num a) => TExpr cols a -> TExpr cols a
 sum (TExpr e) = TExpr (F.sum e)
@@ -607,10 +548,6 @@ over ::
     (Columnable a, AllKnownSymbol names, AssertAllPresent names cols) =>
     TExpr cols a -> TExpr cols a
 over (TExpr e) = TExpr{unTExpr = F.over (symbolVals @names) e}
-
--------------------------------------------------------------------------------
--- Cast / coercion expressions
--------------------------------------------------------------------------------
 
 castExpr ::
     forall b cols src.

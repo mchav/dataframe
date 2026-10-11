@@ -32,11 +32,7 @@ withRawCsv bytes =
         )
         removeFile
 
-{- | Regression for the @hIsEOF >> hGetSome@ interaction: the handle's 8 KiB
-buffer used to turn this 16 MiB input into more than two thousand parser and
-temporary-file calls. A path-only reader remains source-compatible and should
-now see one complete 64 MiB-or-EOF window.
--}
+-- | Regression: a path-only reader sees one complete 64 MiB-or-EOF window.
 streamingPathReaderFillsWindow :: Test
 streamingPathReaderFillsWindow =
     TestLabel "streaming_path_reader_fills_window" $ TestCase $ do
@@ -55,10 +51,7 @@ streamingPathReaderFillsWindow =
             assertEqual "all rows decoded" (rowCount, 1) (D.dataframeDimensions df)
             readIORef calls >>= assertEqual "one parser window" 1
 
-{- | A record newline exactly at the 64 MiB read boundary must not be lost or
-duplicated. The byte reader records only small observations, avoiding the cost
-of parsing the deliberately large payload.
--}
+-- | A record newline exactly at the 64 MiB read boundary must not be lost.
 streamingWindowBoundaryIsLossless :: Test
 streamingWindowBoundaryIsLossless =
     TestLabel "streaming_window_boundary_is_lossless" $ TestCase $ do
@@ -90,10 +83,7 @@ streamingWindowBoundaryIsLossless =
                 ]
                 actual
 
-{- | An LF inside a quoted field is data, not a record boundary. If the quoted
-record crosses a 64 MiB read boundary it must still reach the reader in one
-complete window.
--}
+-- | A quoted newline spanning a 64 MiB boundary stays in one window.
 streamingQuotedNewlineSpansWindow :: Test
 streamingQuotedNewlineSpansWindow =
     TestLabel "streaming_quoted_newline_spans_window" $ TestCase $ do
@@ -116,9 +106,7 @@ streamingQuotedNewlineSpansWindow =
                 [windowBytes + 1]
                 actual
 
-{- | The default in-memory streaming path strips a file BOM and agrees with an
-eager schema-projected read, including a final record without a newline.
--}
+-- | The default streaming path strips a BOM and matches an eager read.
 streamingDefaultMatchesEager :: Test
 streamingDefaultMatchesEager =
     TestLabel "streaming_default_matches_eager" $ TestCase $ do
@@ -136,9 +124,7 @@ streamingDefaultMatchesEager =
             streamed <- L.runDataFrame (L.scanCsvStreaming schema (T.pack path))
             assertEqual "streaming bytes reader matches eager reader" eager streamed
 
-{- | A parser failure happens on the producer thread; it must cross the queue
-and fail the consumer rather than leaving 'runDataFrame' blocked forever.
--}
+-- | A parser failure on the producer thread must fail the consumer.
 streamingReaderFailurePropagates :: Test
 streamingReaderFailurePropagates =
     TestLabel "streaming_reader_failure_propagates" $ TestCase $ do

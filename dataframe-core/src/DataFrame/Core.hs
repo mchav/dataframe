@@ -1,7 +1,4 @@
-{- | The curated public surface of @dataframe-core@: the interchange types
-('DataFrame', 'Column', 'Row', 'Expr'), element constraints, and the
-rendering/serialization verbs. Internal plumbing stays in @dataframe-core:internal@.
--}
+-- | The curated public surface of dataframe-core: types, constraints, verbs.
 module DataFrame.Core (
     -- * The DataFrame
     DataFrame,

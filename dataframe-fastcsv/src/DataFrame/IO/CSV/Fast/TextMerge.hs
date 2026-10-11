@@ -1,11 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | Parallel byte-level merge of per-chunk text columns: the byte copies
-and offset rebase fan out over the chunk list, so a large text column does
-not serialize the merge phase. Wraps the merged shared buffer + offsets as
-'PackedText' (no 'Data.Text.Text' spine, no eager UTF-8 validation), exactly
-as the pure 'mergeTextChunks' now produces.
--}
+-- | Parallel byte-level merge of per-chunk text columns.
 module DataFrame.IO.CSV.Fast.TextMerge (
     mergeTextChunksPar,
 ) where
@@ -32,10 +27,7 @@ import DataFrame.Internal.Data.PackedText (
     mkPackedContiguous32,
  )
 
-{- | Merge text chunks with @width@-way parallel byte copies + offset
-rebase, then wrap the shared buffer as 'PackedText'. Single chunks take
-the pure (zero-copy) path.
--}
+-- | Merge text chunks with parallel byte copies into a 'PackedText'.
 mergeTextChunksPar :: Int -> [TextChunk] -> IO Column
 mergeTextChunksPar _ [c] = pure $! mergeTextChunks [c]
 mergeTextChunksPar width cs = do
@@ -59,8 +51,7 @@ mergeTextChunksPar width cs = do
                     fill 1
                 | (c, bOff, rOff) <- zip3 cs byteOffs rowOffs
                 ]
-    -- The final width is known before allocation: Int32 offsets whenever
-    -- the merged buffer stays under 2^31 bytes (the common case).
+    -- Use Int32 offsets whenever the merged buffer stays under 2^31 bytes.
     packed <-
         if totalBytes <= fromIntegral (maxBound :: Int32)
             then do

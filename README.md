@@ -35,19 +35,33 @@
 
 # DataFrame
 
-Tabular data analysis in Haskell. Read CSV, Parquet, and JSON files, transform columns with a typed expression DSL, and optionally lock down your entire schema at the type level for compile-time safety.
+Tabular data analysis and symbolic AI in Haskell. Supports eager computation and lazy/deferred computation. API flexible enough to accomodate beginners to both data analysis or Haskell, and advanced type-safe pipeline.
 
-The library ships three API layers — all operating on the same underlying `DataFrame` type at runtime:
+## Features
 
-- **Untyped** (`import qualified DataFrame as D`) — string-based column names, great for exploration and scripting.
-- **Typed** (`import qualified DataFrame.Typed as T`) — phantom-type schema tracking with compile-time column validation.
-- **Monadic API** — write your transformation as a self contained pipeline.
+**I/O**: CSV, TSV, Parquet (Snappy, ZSTD, Gzip), JSON. Read Parquet from Hugging Face datasets (`hf://` URIs) via the `dataframe-huggingface` package. Column projection and predicate pushdown for Parquet reads.
+
+**Operations**: filter, select, derive, groupBy, aggregate, joins (inner, left, right, full outer), sort, sample, stratified sample, distinct, k-fold splits.
+
+**Expressions**: typed column references (`F.col @Double "x"`), arithmetic, comparisons, logical operators, nullable-aware three-valued logic (`.==`, `.&&`), string matching (`like`, `regex`), casting, and user-defined functions via `lift`/`lift2`.
+
+**Statistics**: mean, median, mode, variance, standard deviation, percentiles, inter-quartile range, correlation, skewness, frequency tables, imputation.
+
+**Plotting**: terminal plots (histogram, scatter, line, bar, box, pie, heatmap, stacked bar, correlation matrix) and interactive HTML plots.
+
+**Lazy engine**: streaming query execution for files that don't fit in memory. Rule-based optimizer with filter fusion, predicate pushdown, and dead column elimination. Pull-based executor with configurable batch sizes.
+
+**Interop**: Arrow C Data Interface for zero-copy round-trips with Python and Polars.
+
+**ML**: decision trees (TAO algorithm), feature synthesis, k-fold cross-validation, stratified sampling.
+
+**Notebooks**: IHaskell integration with [pre-built Binder examples](https://mybinder.org/v2/gh/mchav/ihaskell-dataframe/HEAD).
 
 > **This README is a runnable [scripths](https://github.com/DataHaskell/scripths) notebook.** Every Haskell block runs top-to-bottom in one shared session against the datasets in [`./data`](./data). Reproduce every output below with `scripths docs/base_scripts/base_readme.md -o README.md` from the repo root.
 
 ## Why this library?
 
-* Concise, declarative, composable data pipelines using the `|>` pipe operator.
+* Concise, declarative, composable data pipelines and machine learning.
 * Choose your level of type safety: keep it lightweight for quick analysis, or lock it down for production pipelines.
 * High performance from Haskell's optimizing compiler and an efficient columnar memory model based onn Apache Arrow.
 * Designed for interactivity: a custom REPL, IHaskell/Sabela notebook support, terminal and web plotting, and helpful error messages.
@@ -75,11 +89,6 @@ dataframe> df |> D.groupBy ["product"] |> ["total" .= F.countAll ]
 ```
 
 ## Quick Start
-
-Group sales by product and compute totals. The first block carries the
-`scripths` cabal directives; each later section imports what it needs where it
-first uses it. You can also drop the same code into an `Example.hs` and run it
-with `cabal run Example.hs` after adding a `#!/usr/bin/env cabal` header.
 
 ```haskell
 -- cabal: build-depends: dataframe, text
@@ -280,11 +289,6 @@ $(DT.deriveSchemaFromCsvFile "HousingSchema" "./data/housing.csv")
 
 ### Generate a schema (and a row bridge) from a record ADT
 
-When the canonical row shape lives in your code as a Haskell record,
-`deriveSchemaFromType` produces both the typed schema and a `HasSchema`
-instance that converts between `[Order]` and a `DataFrame` (or
-`TypedDataFrame OrderSchema`) at runtime:
-
 ```haskell
 import Data.Text (Text)
 import Data.Int (Int64)
@@ -461,26 +465,6 @@ DT.thaw (DT.filterAllJust stdf |> DT.derive @"scaled" (DT.col @"score" * DT.lit 
 > | -------------|-----------------|----------------- |
 > | a            | 1.0             | 100.0            |
 > | c            | 3.0             | 300.0            |
-
-## Features
-
-**I/O**: CSV, TSV, Parquet (Snappy, ZSTD, Gzip), JSON. Read Parquet from Hugging Face datasets (`hf://` URIs) via the `dataframe-huggingface` package. Column projection and predicate pushdown for Parquet reads.
-
-**Operations**: filter, select, derive, groupBy, aggregate, joins (inner, left, right, full outer), sort, sample, stratified sample, distinct, k-fold splits.
-
-**Expressions**: typed column references (`F.col @Double "x"`), arithmetic, comparisons, logical operators, nullable-aware three-valued logic (`.==`, `.&&`), string matching (`like`, `regex`), casting, and user-defined functions via `lift`/`lift2`.
-
-**Statistics**: mean, median, mode, variance, standard deviation, percentiles, inter-quartile range, correlation, skewness, frequency tables, imputation.
-
-**Plotting**: terminal plots (histogram, scatter, line, bar, box, pie, heatmap, stacked bar, correlation matrix) and interactive HTML plots.
-
-**Lazy engine**: streaming query execution for files that don't fit in memory. Rule-based optimizer with filter fusion, predicate pushdown, and dead column elimination. Pull-based executor with configurable batch sizes.
-
-**Interop**: Arrow C Data Interface for zero-copy round-trips with Python and Polars.
-
-**ML**: decision trees (TAO algorithm), feature synthesis, k-fold cross-validation, stratified sampling.
-
-**Notebooks**: IHaskell integration with [pre-built Binder examples](https://mybinder.org/v2/gh/mchav/ihaskell-dataframe/HEAD).
 
 ## Lazy Queries
 

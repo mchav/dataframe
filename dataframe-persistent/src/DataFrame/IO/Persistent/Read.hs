@@ -6,18 +6,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-{- |
-Module      : DataFrame.IO.Persistent.Read
-License     : MIT
-
-The runtime front door for loading SQLite into a 'DataFrame'. Mirrors the
-ergonomics of @readCsv@: point at a file and a table and get a 'DataFrame', with
-column types inferred from the SQLite schema. No Template Haskell, no entity
-boilerplate, and it works directly in GHCi.
-
-For compile-time typed schemas use "DataFrame.IO.Persistent.Schema"; for the
-@persistent@ entity path use "DataFrame.IO.Persistent".
--}
+-- | Runtime front door for loading SQLite tables into a 'DataFrame'.
 module DataFrame.IO.Persistent.Read (
     -- * Reading a whole table (types from the schema)
     readTable,
@@ -79,12 +68,10 @@ import DataFrame.Internal.DataFrame (DataFrame, fromColumns)
 import DataFrame.Typed.Schema (KnownSchema)
 import DataFrame.Typed.Types (TypedDataFrame)
 
-{- | A SQLite-side filter pushed into the generated @SELECT@. Build with
-'allRows' and the '&'-friendly combinators 'where_', 'limit', 'orderBy'.
--}
+-- | A SQLite-side filter pushed into the generated @SELECT@.
 data ReadQuery = ReadQuery
     { rqWhere :: Maybe Text
-    -- ^ A @WHERE@ body (without the @WHERE@ keyword); may contain @?@ placeholders.
+    -- ^ A @WHERE@ body (without the keyword); may contain @?@ placeholders.
     , rqParams :: [PersistValue]
     -- ^ Values bound to the placeholders in 'rqWhere'.
     , rqOrderBy :: Maybe Text
@@ -110,9 +97,7 @@ limit n q = q{rqLimit = Just n}
 orderBy :: Text -> ReadQuery -> ReadQuery
 orderBy clause q = q{rqOrderBy = Just clause}
 
-{- | Read an entire table into a 'DataFrame', inferring column types (and
-nullability) from the SQLite schema. The @pd.read_sql_table@ analogue.
--}
+-- | Read an entire table into a 'DataFrame', inferring column types.
 readTable :: FilePath -> Text -> IO DataFrame
 readTable path table = readTableWith path table allRows
 
@@ -122,9 +107,7 @@ readTableWith path table q = do
     readers <- columnReadersFor path table
     runSqlite (T.pack path) (readColumnsConn table readers q)
 
-{- | 'readTable' over an existing @persistent@ connection (any 'SqlBackend',
-so it shares a transaction with @fromPersistent@ / @insert@).
--}
+-- | 'readTable' over an existing @persistent@ connection.
 readTableConn :: (MonadResource m) => Text -> ReaderT SqlBackend m DataFrame
 readTableConn table = readTableConnWith table allRows
 
@@ -143,9 +126,7 @@ columnInfoReader :: ColumnInfo -> (Text, ColumnReader)
 columnInfoReader ci =
     (ciName ci, columnReaderFor (inferType (ciDeclType ci)) (not (ciNotNull ci)))
 
-{- | Run an arbitrary SQL query into a 'DataFrame'. Result columns keep their
-query names (aliases included); types are inferred from the returned values.
--}
+-- | Run an arbitrary SQL query into a 'DataFrame' with inferred types.
 readSql :: FilePath -> Text -> IO DataFrame
 readSql path sql = readSqlWith path sql []
 
@@ -155,17 +136,7 @@ readSqlWith path sql params = do
     (names, rows) <- runNamedQuery (T.pack path) sql params
     pure (assembleInferred names rows)
 
-{- | Read a whole table straight into a typed 'TypedDataFrame', validating the
-schema at the boundary. The schema is a /type argument/ while the database and
-table are ordinary values, so the same table name in two different databases is
-just two calls with the same @\@Schema@, no generated names to collide:
-
-@
-a <- readTableTyped \@ArtistsSchema "db1.sqlite" "artists"
-b <- readTableTyped \@ArtistsSchema "db2.sqlite" "artists"
--- ... then join a and b
-@
--}
+-- | Read a whole table into a typed dataframe, checking the schema.
 readTableTyped ::
     forall cols. (KnownSchema cols) => FilePath -> Text -> IO (TypedDataFrame cols)
 readTableTyped path table = readTable path table >>= freezeOrThrow
@@ -177,7 +148,7 @@ readTableTypedConn ::
     Text -> ReaderT SqlBackend m (TypedDataFrame cols)
 readTableTypedConn table = readTableConn table >>= freezeOrThrow
 
--- | Read an arbitrary query (e.g. a join) straight into a typed 'TypedDataFrame'.
+-- | Read an arbitrary query (e.g. a join) straight into a 'TypedDataFrame'.
 readSqlTyped ::
     forall cols. (KnownSchema cols) => FilePath -> Text -> IO (TypedDataFrame cols)
 readSqlTyped path sql = readSql path sql >>= freezeOrThrow
@@ -186,15 +157,11 @@ readSqlTyped path sql = readSql path sql >>= freezeOrThrow
 listTables :: FilePath -> IO [Text]
 listTables = introspectTableNames
 
-{- | 'listTables' over an existing connection (works on any backend, e.g. a
-PostgreSQL 'SqlBackend' opened with @withPostgresqlConn@).
--}
+-- | 'listTables' over an existing connection, on any backend.
 listTablesConn :: (MonadResource m) => ReaderT SqlBackend m [Text]
 listTablesConn = introspectTableNamesConn
 
-{- | A @describeColumns@-style summary of a table's schema (one row per column),
-read from the schema without scanning the data.
--}
+-- | Summarise a table's schema, one row per column, without scanning data.
 describeTable :: FilePath -> Text -> IO DataFrame
 describeTable path table = schemaFrame <$> introspectTable path (T.unpack table)
 
@@ -217,10 +184,7 @@ columnHaskellType c =
     let base = haskellTypeName (inferType (ciDeclType c))
      in if ciNotNull c then base else "Maybe " <> base
 
-{- | Load any @persistent@ entity into a 'DataFrame' without deriving an
-instance: filters give you the typed @persistent@ DSL, the rows are decoded
-generically. Powers the @declareEntity@ workflow.
--}
+-- | Load any @persistent@ entity into a 'DataFrame' without a derived instance.
 selectToDataFrame ::
     forall r m.
     ( MonadIO m
@@ -235,8 +199,7 @@ entitiesToDataFrame :: forall r. (PersistEntity r) => [Entity r] -> DataFrame
 entitiesToDataFrame ents =
     assembleInferred ("id" : entityFieldNames @r) (map entityRow ents)
 
--- @keyToValues@ decodes any key (single or backend) without a @ToBackendKey@
--- constraint; single-column keys (the common case) yield the @id@ column.
+-- @keyToValues@ decodes any key without a @ToBackendKey@ constraint.
 entityRow :: (PersistEntity r) => Entity r -> [PersistValue]
 entityRow (Entity k v) = keyToValues k ++ toPersistFields v
 
@@ -246,9 +209,7 @@ entityFieldNames =
         (unFieldNameHS . fieldHaskell)
         (getEntityFields (entityDef (Nothing :: Maybe r)))
 
-{- | The streaming engine behind every table reader: build the @SELECT@, fetch
-rows, transpose into columns, and apply each column's reader.
--}
+-- | Engine behind every table reader: build the @SELECT@, fetch, and decode.
 readColumnsConn ::
     (MonadResource m) =>
     Text -> [(Text, ColumnReader)] -> ReadQuery -> ReaderT SqlBackend m DataFrame
@@ -266,9 +227,7 @@ assembleInferred :: [Text] -> [[PersistValue]] -> DataFrame
 assembleInferred names rows =
     fromColumns (zip names (map inferColumn (cells (length names) rows)))
 
-{- | Transpose rows into per-column value lists, padding to @n@ empty columns
-when there are no rows (so column structure survives an empty result).
--}
+-- | Transpose rows into per-column lists, padding to @n@ columns when empty.
 cells :: Int -> [[PersistValue]] -> [[PersistValue]]
 cells n [] = replicate n []
 cells _ rows = transpose rows

@@ -21,9 +21,7 @@ module DataFrame.Operations.Join (
 
     -- * Low-level join kernels
 
-    {- | Reused by the lazy executor and the parallel-join tests; not a
-    stable public API (candidates for a future @Join.Internal@ split).
-    -}
+    -- | Reused by the lazy executor and tests; not a stable public API.
     buildHashColumn,
     buildCompactIndex,
     hashProbeKernel,
@@ -101,26 +99,16 @@ join LEFT xs right = leftJoin xs right
 join RIGHT xs right = rightJoin xs right
 join FULL_OUTER xs right = fullOuterJoin xs right
 
-{- | Build-side row count above which the single-threaded hash join gives way
-to sort-merge (single-threaded) or the parallel chunked-probe hash join when
-multiple capabilities are available (see 'shouldParallelizeJoin').
--}
+-- | Build-side row count above which the hash join switches strategy.
 joinStrategyThreshold :: Int
 joinStrategyThreshold = 500_000
 
-{- | Maps hash values to contiguous slices of original row indices. Indices
-live in one hash-sorted vector; an open-addressing linear-probe table (keyed
-by hash) records each run's offset and length. @-1@ starts mark empty slots.
--}
+-- | Maps hash values to contiguous slices of original row indices.
 data CompactIndex = CompactIndex
     { ciSortedIndices :: {-# UNPACK #-} !(VU.Vector Int)
     , ciKeys :: {-# UNPACK #-} !(VU.Vector Int)
     , ciRuns :: {-# UNPACK #-} !(VU.Vector Int)
-    {- ^ @(start, len)@ of each run packed 32/32 into one 'Int'; @-1@ = empty
-    slot. One vector instead of separate starts\/lens halves the table's
-    memory (a 1e8-row build side is a 2^28-slot table: 2.1GB instead of
-    4.3GB) and saves a random cache-line read per lookup hit.
-    -}
+    -- ^ @(start, len)@ of each run packed 32/32 into one 'Int'; @-1@ = empty.
     , ciMask :: {-# UNPACK #-} !Int
     }
 
@@ -139,12 +127,7 @@ ciRunLen :: Int -> Int
 ciRunLen !w = w .&. 0xFFFF_FFFF
 {-# INLINE ciRunLen #-}
 
-{- | Home slot of a hash: the top @log2 cap@ bits of a Fibonacci multiply.
-The row hash's final FxHash step is a multiply, which leaves its LOW bits
-poorly diffused (text keys cluster catastrophically: contiguous-pileup chains
-in the hundreds), so the table must never index by @h .&. mask@ directly.
-@shift@ is @64 - log2 cap@.
--}
+-- | Home slot of a hash: top bits of a Fibonacci multiply, not low bits.
 ciSlot :: Int -> Int -> Int
 ciSlot !shift !h =
     fromIntegral
@@ -156,9 +139,7 @@ ciShiftFor :: Int -> Int
 ciShiftFor !mask = 64 - popCount mask
 {-# INLINE ciShiftFor #-}
 
-{- | Look up a hash in the open-addressing table.
-Returns @(start, len)@ of the matching run, or @(-1, 0)@ on a miss.
--}
+-- | Look up a hash, returning the run's (start, len) or (-1, 0) on a miss.
 ciLookup :: CompactIndex -> Int -> (Int, Int)
 ciLookup ci !h = go (ciSlot shift h)
   where
@@ -176,9 +157,7 @@ ciLookup ci !h = go (ciSlot shift h)
                         else go ((slot + 1) .&. mask)
 {-# INLINE ciLookup #-}
 
-{- | Smallest power of two strictly greater than @n@, at least 2.
-Used to size the open-addressing table so the load factor stays below ~0.5.
--}
+-- | Smallest power of two strictly greater than @n@, at least 2.
 nextPow2Above :: Int -> Int
 nextPow2Above n = go 2
   where
@@ -186,10 +165,7 @@ nextPow2Above n = go 2
         | p > n = p
         | otherwise = go (p * 2)
 
-{- | Build a compact index from a vector of row hashes: sort by hash, scan for
-contiguous runs, insert each run into an open-addressing table. Capacity is
-sized for the worst case (every row distinct) so building never resizes.
--}
+-- | Build a compact index from row hashes by sorting and scanning for runs.
 buildCompactIndex :: VU.Vector Int -> CompactIndex
 buildCompactIndex hashes
     | VU.length hashes > 0x7FFF_FFFF =
@@ -232,9 +208,7 @@ findGroupEnd !v !h !j !n
     | otherwise = j
 {-# INLINE findGroupEnd #-}
 
-{- | Sort a hash vector, returning sorted hashes and their original indices.
-Sorts an index array keyed by hash, avoiding an intermediate pair vector.
--}
+-- | Sort a hash vector, returning sorted hashes and their original indices.
 sortWithIndices :: VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 sortWithIndices hashes = runST $ do
     let n = VU.length hashes
@@ -287,38 +261,13 @@ validatedKeyColIndices callPoint csSet df =
             [] -> M.elems $ M.restrictKeys columnIdxs csSet
             _ -> throw (ColumnsNotFoundException missingKeys callPoint (M.keys columnIdxs))
 
--- ============================================================
--- Inner Join
--- ============================================================
-
-{- | Performs an inner join on two dataframes using the specified key columns.
-Returns only rows where the key values exist in both dataframes.
-
-==== __Example__
-@
-ghci> df = D.fromColumns [("key", D.fromList ["K0", "K1", "K2", "K3"]), ("A", D.fromList ["A0", "A1", "A2", "A3"])]
-ghci> other = D.fromColumns [("key", D.fromList ["K0", "K1", "K2"]), ("B", D.fromList ["B0", "B1", "B2"])]
-ghci> D.innerJoin ["key"] df other
-
------------------
- key  |  A  |  B
-------|-----|----
- Text | Text| Text
-------|-----|----
- K0   | A0  | B0
- K1   | A1  | B1
- K2   | A2  | B2
-
-@
--}
+-- | Inner join on two dataframes using the specified key columns.
 innerJoin :: [T.Text] -> DataFrame -> DataFrame -> DataFrame
 innerJoin cs left right
     | D.null right || D.null left = D.empty
     | otherwise = innerJoinNonEmpty cs left right
 
--- Build the hash index on the smaller side and probe with the larger one;
--- the probe side is partitioned across cores, so probing the larger maximises
--- the parallel win.
+-- Build the hash index on the smaller side and probe with the larger one.
 innerJoinNonEmpty :: [T.Text] -> DataFrame -> DataFrame -> DataFrame
 innerJoinNonEmpty cs left right =
     let
@@ -347,20 +296,14 @@ innerJoinNonEmpty cs left right =
      in
         assembleInner csSet left right leftIxs rightIxs
 
-{- | Select the inner-join kernel: parallel chunked-probe hash join when the
-caller decided the probe side is large enough and multi-core, otherwise the
-sequential single-threaded hash kernel.
--}
+-- | Select the inner-join kernel: parallel probe when large, else sequential.
 innerKernel ::
     Bool -> VU.Vector Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 innerKernel True = parInnerKernel
 innerKernel False = hashInnerKernel
 {-# INLINE innerKernel #-}
 
-{- | Parallel inner-join kernel: build the 'CompactIndex' on @buildHashes@ once,
-then probe @probeHashes@ in parallel. Output is bit-for-bit identical to
-'hashInnerKernel' (probe-row order preserved).
--}
+-- | Parallel inner-join kernel: build the index once, probe in parallel.
 parInnerKernel ::
     VU.Vector Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 parInnerKernel probeHashes buildHashes =
@@ -370,9 +313,7 @@ parInnerKernel probeHashes buildHashes =
      in (pf, bf)
 {-# NOINLINE parInnerKernel #-}
 
-{- | The raw table fields of a 'CompactIndex', in the closure-free shape the
-parallel probe kernels consume.
--}
+-- | The raw table fields of a 'CompactIndex' for the parallel probe kernels.
 ciProbeTable :: CompactIndex -> ProbeTable
 ciProbeTable ci =
     ProbeTable
@@ -389,10 +330,7 @@ buildHashColumn keys df =
         keyIdxs = validatedKeyColIndices "buildHashColumn" csSet df
      in D.computeRowHashes keyIdxs df
 
-{- | Probe one batch of rows against a pre-built 'CompactIndex', returning
-@(probeExpandedIxs, buildExpandedIxs)@. Unlike 'hashInnerKernel' it neither
-builds the index nor guards cross-product size — the caller sizes batches.
--}
+-- | Probe a batch of rows against a pre-built 'CompactIndex'.
 hashProbeKernel ::
     -- | Built once from the full right\/build side.
     CompactIndex ->
@@ -456,14 +394,7 @@ hashProbeKernel ci probeHashes =
                 <*> VU.unsafeFreeze (VUM.slice 0 total bv)
      in (VU.force pFrozen, VU.force bFrozen)
 
-{- | Hash-based inner join kernel: build the index on @buildHashes@, probe with
-@probeHashes@, return @(probeExpandedIndices, buildExpandedIndices)@. Grows its
-output buffer dynamically rather than pre-allocating the full cross product.
--}
-
-{- | Output-row ceiling for a join kernel; exceeding it signals a cross-product
-explosion (e.g. low-cardinality keys).
--}
+-- | Output-row ceiling for a join kernel, guarding cross-product explosion.
 maxJoinOutputRows :: Int
 maxJoinOutputRows = 500_000_000
 
@@ -534,10 +465,7 @@ hashInnerKernel probeHashes buildHashes =
                 <*> VU.unsafeFreeze (VUM.slice 0 total bv)
      in (VU.force pFrozen, VU.force bFrozen)
 
-{- | Sort-merge inner join kernel: sort both sides by hash, walk in lockstep,
-return @(leftExpandedIndices, rightExpandedIndices)@. Grows its output buffer
-dynamically so low-cardinality cross products don't OOM.
--}
+-- | Sort-merge inner join kernel returning left and right expanded indices.
 sortMergeInnerKernel ::
     VU.Vector Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 sortMergeInnerKernel leftHashes rightHashes =
@@ -623,7 +551,7 @@ sortMergeInnerKernel leftHashes rightHashes =
                 <*> VU.unsafeFreeze (VUM.slice 0 total rv)
      in (VU.force lFrozen, VU.force rFrozen)
 
--- | Assemble the result DataFrame for an inner join from expanded index vectors.
+-- | Assemble the inner join result DataFrame from expanded index vectors.
 assembleInner ::
     S.Set T.Text ->
     DataFrame ->
@@ -673,32 +601,7 @@ assembleInner csSet left right leftIxs rightIxs =
             rightColNames
             baseDf
 
--- ============================================================
--- Left Join
--- ============================================================
-
-{- | Performs a left join on two dataframes using the specified key columns.
-Returns all rows from the left dataframe, with matching rows from the right dataframe.
-Non-matching rows will have Nothing/null values for columns from the right dataframe.
-
-==== __Example__
-@
-ghci> df = D.fromColumns [("key", D.fromList ["K0", "K1", "K2", "K3"]), ("A", D.fromList ["A0", "A1", "A2", "A3"])]
-ghci> other = D.fromColumns [("key", D.fromList ["K0", "K1", "K2"]), ("B", D.fromList ["B0", "B1", "B2"])]
-ghci> D.leftJoin ["key"] df other
-
-------------------------
- key  |  A  |     B
-------|-----|----------
- Text | Text| Maybe Text
-------|-----|----------
- K0   | A0  | Just "B0"
- K1   | A1  | Just "B1"
- K2   | A2  | Just "B2"
- K3   | A3  | Nothing
-
-@
--}
+-- | Left join on two dataframes, keeping every row from the left dataframe.
 leftJoin :: [T.Text] -> DataFrame -> DataFrame -> DataFrame
 leftJoin = leftJoinWithCallPoint "leftJoin"
 
@@ -709,8 +612,7 @@ leftJoinWithCallPoint callPoint cs left right
     | D.null left || D.nRows left == 0 = D.empty
     | otherwise = leftJoinNonEmpty callPoint cs left right
 
--- The right side is always the build side; the left is probed (and drives
--- parallelism). Unmatched right rows are marked with a @-1@ sentinel.
+-- The right side is the build side; unmatched right rows get a @-1@ sentinel.
 leftJoinNonEmpty :: T.Text -> [T.Text] -> DataFrame -> DataFrame -> DataFrame
 leftJoinNonEmpty callPoint cs left right =
     let
@@ -736,10 +638,7 @@ leftJoinNonEmpty callPoint cs left right =
      in
         assembleLeft csSet left right leftIxs rightIxs
 
-{- | Parallel left-join kernel: build the 'CompactIndex' on @rightHashes@ once,
-then probe @leftHashes@ in parallel. Bit-for-bit identical output to
-'hashLeftKernel' (left-row order preserved, @-1@ sentinel for misses).
--}
+-- | Parallel left-join kernel: build the index once, probe in parallel.
 parLeftKernel ::
     VU.Vector Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 parLeftKernel leftHashes rightHashes =
@@ -747,10 +646,7 @@ parLeftKernel leftHashes rightHashes =
      in unsafePerformIO (parLeftProbe (ciProbeTable ci) leftHashes)
 {-# NOINLINE parLeftKernel #-}
 
-{- | Hash-based left join kernel, returning @(leftExpandedIndices,
-rightExpandedIndices)@ with @-1@ marking unmatched right rows. Grows its output
-buffer dynamically rather than pre-allocating the full cross product.
--}
+-- | Hash-based left join kernel with @-1@ marking unmatched right rows.
 hashLeftKernel ::
     VU.Vector Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 hashLeftKernel leftHashes rightHashes = runST $ do
@@ -816,10 +712,7 @@ hashLeftKernel leftHashes rightHashes = runST $ do
         <$> VU.unsafeFreeze (VUM.slice 0 total lv)
         <*> VU.unsafeFreeze (VUM.slice 0 total rv)
 
-{- | Sort-merge left join kernel, returning @(leftExpandedIndices,
-rightExpandedIndices)@ with a @-1@ sentinel. Grows its output buffer
-dynamically so low-cardinality cross products don't OOM.
--}
+-- | Sort-merge left join kernel with a @-1@ sentinel for unmatched rows.
 sortMergeLeftKernel ::
     VU.Vector Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 sortMergeLeftKernel leftHashes rightHashes = runST $ do
@@ -919,9 +812,7 @@ sortMergeLeftKernel leftHashes rightHashes = runST $ do
         <$> VU.unsafeFreeze (VUM.slice 0 total lv)
         <*> VU.unsafeFreeze (VUM.slice 0 total rv)
 
-{- | Assemble the result DataFrame for a left join.
-Right index vectors use @-1@ sentinel, gathered via 'gatherWithSentinel'.
--}
+-- | Assemble the result DataFrame for a left join.
 assembleLeft ::
     S.Set T.Text ->
     DataFrame ->
@@ -970,26 +861,7 @@ assembleLeft csSet left right leftIxs rightIxs =
             rightColNames
             baseDf
 
-{- | Performs a right join on two dataframes using the specified key columns.
-Returns all rows from the right dataframe, with matching rows from the left dataframe.
-Non-matching rows will have Nothing/null values for columns from the left dataframe.
-
-==== __Example__
-@
-ghci> df = D.fromColumns [("key", D.fromList ["K0", "K1", "K2", "K3"]), ("A", D.fromList ["A0", "A1", "A2", "A3"])]
-ghci> other = D.fromColumns [("key", D.fromList ["K0", "K1"]), ("B", D.fromList ["B0", "B1"])]
-ghci> D.rightJoin ["key"] df other
-
------------------
- key  |  A  |  B
-------|-----|----
- Text | Text| Text
-------|-----|----
- K0   | A0  | B0
- K1   | A1  | B1
-
-@
--}
+-- | Right join on two dataframes, keeping every row from the right dataframe.
 rightJoin ::
     [T.Text] -> DataFrame -> DataFrame -> DataFrame
 rightJoin cs left right = leftJoinWithCallPoint "rightJoin" cs right left
@@ -1021,10 +893,7 @@ fullOuterJoinNonEmpty cs left right =
      in
         assembleFullOuter csSet left right leftIxs rightIxs
 
-{- | Hash-based full outer join kernel.
-Builds compact indices on both sides.
-Returns @(leftExpandedIndices, rightExpandedIndices)@ with @-1@ sentinels.
--}
+-- | Hash-based full outer join kernel with @-1@ sentinels.
 hashFullOuterKernel ::
     VU.Vector Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 hashFullOuterKernel leftHashes rightHashes = runST $ do
@@ -1134,9 +1003,7 @@ hashFullOuterKernel leftHashes rightHashes = runST $ do
 
     (,) <$> VU.unsafeFreeze lv <*> VU.unsafeFreeze rv
 
-{- | Sort-merge full outer join kernel.
-Returns @(leftExpandedIndices, rightExpandedIndices)@ with @-1@ sentinels.
--}
+-- | Sort-merge full outer join kernel with @-1@ sentinels.
 sortMergeFullOuterKernel ::
     VU.Vector Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 sortMergeFullOuterKernel leftHashes rightHashes = runST $ do
@@ -1202,9 +1069,7 @@ sortMergeFullOuterKernel leftHashes rightHashes = runST $ do
     fill 0 0 0
     (,) <$> VU.unsafeFreeze lv <*> VU.unsafeFreeze rv
 
-{- | Assemble the result DataFrame for a full outer join. Both index vectors
-use a @-1@ sentinel; key columns are coalesced (first non-null wins).
--}
+-- | Assemble the result DataFrame for a full outer join.
 assembleFullOuter ::
     S.Set T.Text ->
     DataFrame ->

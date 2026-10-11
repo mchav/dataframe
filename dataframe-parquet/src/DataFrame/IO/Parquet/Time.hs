@@ -42,8 +42,7 @@ julianDayToDay julianDay =
         year = 100 * b + d - 4800 + m `div` 10
      in fromGregorian year (fromIntegral month) (fromIntegral day)
 
--- I include this here even though it's unused because we'll likely use
--- it for the writer. Since int96 is deprecated this is only included for completeness anyway.
+-- Unused for now; kept for the writer since int96 is deprecated.
 utcTimeToInt96 :: UTCTime -> BS.ByteString
 utcTimeToInt96 (UTCTime day diffTime) =
     let julianDay = dayToJulianDay day

@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | TDD spec for the saturation worklist 'saturateCandidates' replacing the
-lazy generate-all 'boolExprsVec', which is kept as the behaviour-preservation
-oracle.
--}
+-- | Spec for the saturateCandidates worklist against the boolExprsVec oracle.
 module Worklist (tests, props) where
 
 import DataFrame.DecisionTree.CondVec (
@@ -38,9 +35,7 @@ import qualified Data.Vector.Unboxed as VU
 import Test.HUnit
 import Test.QuickCheck
 
--- Fixture: x = 0..5, y = 5..0 (anti-correlated), z scrambled (independent of both).
--- Note x>2 and y<3 share the truth vector [F,F,F,T,T,T], so the truth-vector mode
--- must collapse them; z gives a third column for non-consolidating cross-column combos.
+-- Fixture: x = 0..5, y = 5..0, z scrambled; x>2 and y<3 share a truth vector.
 fixtureDF :: D.DataFrame
 fixtureDF =
     D.fromColumns
@@ -63,8 +58,7 @@ yLt n = mat (F.col @Double "y" .<. F.lit n)
 zGt n = mat (F.col @Double "z" .>. F.lit n)
 zLt n = mat (F.col @Double "z" .<. F.lit n)
 
--- Same truth vector as 'xGt 2' ([F,F,F,T,T,T]) but eSize 4 vs 3 — a non-degenerate
--- truth-vector collision for the min-eSize representative rule.
+-- Same truth vector as 'xGt 2' but eSize 4 vs 3: a non-degenerate collision.
 notLe2 :: CondVec
 notLe2 = mat (F.not (F.col @Double "x" .<=. F.lit 2))
 
@@ -80,15 +74,14 @@ keySet = Set.fromList . map keyOf
 truthSet :: [CondVec] -> Set.Set [Bool]
 truthSet = Set.fromList . map (VU.toList . cvVec)
 
--- Mirrors 'evalWithPenaltyVec' (DecisionTree.hs): score = (#care-point errors, eSize),
--- depending only on the cached vector + size, so distinct same-vector same-size atoms tie.
+-- Mirrors 'evalWithPenaltyVec': score = (#care-point errors, eSize).
 penBy :: [Bool] -> CondVec -> (Int, Int)
 penBy lbls cv =
     ( length (filter id (zipWith (/=) lbls (VU.toList (cvVec cv))))
     , eSize (cvExpr cv)
     )
 
--- The candidate 'bestDiscreteCandidate' would select: the first 'minimumBy penalty' winner.
+-- The candidate 'bestDiscreteCandidate' would select (first minimumBy winner).
 argminKey :: [Bool] -> [CondVec] -> String
 argminKey lbls = keyOf . minimumBy (compare `on` penBy lbls)
 
@@ -99,13 +92,11 @@ ref d base = boolExprsVec base base 0 d
 base3 :: [CondVec]
 base3 = [xGt 2, xGt 4, yGt 2]
 
--- x>2 and y<3 share the truth vector [F,F,F,T,T,T], so truth-vector mode collapses
--- this 3-atom base to 2 distinct vectors while structural mode keeps all three.
+-- x>2 and y<3 share a truth vector, so truth-vector mode collapses this base.
 collBase :: [CondVec]
 collBase = [xGt 2, yLt 3, yGt 2]
 
--- Wider fixture (3 independent-ish columns, 10 rows) yielding many distinct truth
--- vectors — broader coverage for the truth-vector floor / dedup than the 6-row x/y fixture.
+-- Wider fixture (3 columns, 10 rows) with many distinct truth vectors.
 wideDF :: D.DataFrame
 wideDF =
     D.fromColumns
@@ -126,10 +117,6 @@ wideBase =
     , matW (F.col @Double "b" .<. F.lit 5)
     , matW (F.col @Double "c" .>=. F.lit 3)
     ]
-
-------------------------------------------------------------------------
--- HUnit cases
-------------------------------------------------------------------------
 
 tests :: [Test]
 tests =
@@ -330,10 +317,6 @@ tests =
                 (map keyOf (saturateCandidates TruthVector 1 fiber))
     ]
 
-------------------------------------------------------------------------
--- QuickCheck properties (over generated base pools and depths)
-------------------------------------------------------------------------
-
 genAtom :: Gen CondVec
 genAtom =
     elements
@@ -342,7 +325,7 @@ genAtom =
 genBase :: Gen [CondVec]
 genBase = choose (2, 5) >>= \k -> vectorOf k genAtom
 
--- Random label vector of the fixture's length (6 rows), for selection-preservation.
+-- Random label vector of the fixture's length (6 rows).
 genLabels :: Gen [Bool]
 genLabels = vectorOf 6 (elements [False, True])
 
@@ -361,7 +344,6 @@ prop_truthVectorFloor =
                 truthSet (saturateCandidates TruthVector d base) === truthSet (ref d base)
 
 -- The candidate set depends only on the base as a set, not its input order.
--- (Output order tracks input order — the byte-identity contract; see selection tests.)
 prop_orderInvariant :: Property
 prop_orderInvariant =
     forAllBlind genBase $ \base ->
@@ -371,8 +353,6 @@ prop_orderInvariant =
                     keySet (saturateCandidates Structural d base)
                         === keySet (saturateCandidates Structural d base')
 
--- The candidate the consumer's 'minimumBy penaltyCV' selects is byte-identical to the oracle's,
--- for any label vector (d >= 2 so combinations exist). This is the model-preservation contract.
 prop_selectionPreserved :: Property
 prop_selectionPreserved =
     forAllBlind genBase $ \base ->
@@ -381,10 +361,6 @@ prop_selectionPreserved =
                 counterexample (show (map keyOf base, lbls, d)) $
                     argminKey lbls (saturateCandidates Structural d base)
                         === argminKey lbls (ref d base)
-
--- The full output (order included) is byte-identical to the deduped oracle, at every depth.
--- Subsumes selection-preservation for ANY (cvVec,eSize)-penalty, and stresses the
--- frontier:=admitted optimisation past the depth where it could first diverge.
 prop_orderMatchesOracle :: Property
 prop_orderMatchesOracle =
     forAllBlind genBase $ \base ->
@@ -393,8 +369,7 @@ prop_orderMatchesOracle =
                 map keyOf (saturateCandidates Structural d base)
                     === map keyOf (nubBy ((==) `on` keyOf) (ref d base))
 
--- The structural key faithfully represents the 'eqExpr' quotient on the candidate domain
--- (atoms and their AND/OR products): show.normalize merges exactly what eqExpr merges.
+-- The structural key represents the 'eqExpr' quotient on atoms and products.
 genCand :: Gen CondVec
 genCand =
     oneof

@@ -2,10 +2,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
 
-{- | Non-backtracking @Int@ slice parser, bit-compatible with
-@readByteStringInt@: grammar @WS* sign? digit+ WS*@, whole slice consumed,
-'Nothing' on 64-bit overflow.
--}
+-- | Non-backtracking @Int@ slice parser matching @readByteStringInt@.
 module DataFrame.Internal.Parsing.Fast.Int (parseIntField#) where
 
 import qualified Data.ByteString as BS
@@ -15,9 +12,7 @@ import GHC.Exts (Int (..), Int#)
 
 import DataFrame.Internal.Parsing.Fast.Common
 
-{- | Result is @(# ok, value #)@ with @ok@ 0 or 1. Caller guarantees
-@0 <= start <= end <= length buf@.
--}
+-- | Result is @(# ok, value #)@ with @ok@ 0 or 1.
 parseIntField# :: BS.ByteString -> Int -> Int -> (# Int#, Int# #)
 parseIntField# bs start end0
     | i0 >= end = none

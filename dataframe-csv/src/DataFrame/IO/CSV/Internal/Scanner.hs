@@ -1,12 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | RFC 4180 field scanner for the default CSV reader (Round-2 WS-D).
-One pass over a strict 'BS.ByteString'; cassava-parity semantics pinned
-by the @IO.CsvGolden@ suite: quotes open fields only at the first byte,
-a double quote inside an unquoted field is an error, garbage after a
-closing quote is an error, an unclosed quote consumes to EOF, and rows
-end at @\\n@, @\\r\\n@ or a lone @\\r@.
--}
+-- | RFC 4180 field scanner for the default CSV reader.
 module DataFrame.IO.CSV.Internal.Scanner (
     Term,
     termSep,
@@ -44,11 +38,7 @@ parseError :: Int -> String -> a
 parseError off what =
     error ("CSV Parse Error: " ++ what ++ " at byte " ++ show off)
 
-{- | Scan one field starting at @pos@ and continue with
-@k contentStart contentEnd needsUnescape term nextPos@. Quoted fields
-yield the bytes between the outer quotes; @needsUnescape@ is set when
-the content contains doubled quotes ('unescapeQuotes' collapses them).
--}
+-- | Scan one field at @pos@ and pass its content bounds to a continuation.
 {-# INLINE withField #-}
 withField ::
     BS.ByteString ->
@@ -88,25 +78,20 @@ withField bs !len !sep !pos k
                 | b == quote -> parseError i "stray double quote in unquoted field"
                 | otherwise -> unquoted (i + 1)
     quoted !i !unesc
-        | i >= len = k (pos + 1) len unesc termEof len -- unclosed: rest of input
+        | i >= len = k (pos + 1) len unesc termEof len -- unclosed quote
         | BSU.unsafeIndex bs i == quote =
             if i + 1 < len && BSU.unsafeIndex bs (i + 1) == quote
                 then quoted (i + 2) True
                 else finish (pos + 1) i unesc (i + 1)
         | otherwise = quoted (i + 1) unesc
 
-{- | Whether the record starting at @pos@ is a blank record (a single
-empty field, quoted or not, then end of row) — cassava drops these.
-Assumes @pos < len@. Errors propagate from 'withField'.
--}
+-- | Whether the record at @pos@ is a blank record, which cassava drops.
 {-# INLINE isBlankRecordAt #-}
 isBlankRecordAt :: BS.ByteString -> Int -> Word8 -> Int -> Bool
 isBlankRecordAt bs !len !sep !pos =
     withField bs len sep pos (\cs ce _ term _ -> cs == ce && term /= termSep)
 
-{- | Collapse doubled quotes (@\"\"@ → @\"@) in @[s, e)@ into a fresh strict
-'BS.ByteString'. Every quote in the range is the first of a pair.
--}
+-- | Collapse doubled quotes in a range into a fresh strict ByteString.
 unescapeQuotes :: BS.ByteString -> Int -> Int -> BS.ByteString
 unescapeQuotes bs !s !e = BSI.unsafeCreateUptoN (e - s) (go s 0)
   where
@@ -117,10 +102,7 @@ unescapeQuotes bs !s !e = BSI.unsafeCreateUptoN (e - s) (go s 0)
             pokeByteOff (dst :: Ptr Word8) j w
             if w == quote then go (i + 2) (j + 1) dst else go (i + 1) (j + 1) dst
 
-{- | Strip with @Data.ByteString.Char8.strip@ semantics (Latin-1
-whitespace: HT..CR, space and NBSP 0xA0) and continue with the
-stripped range.
--}
+-- | Strip Latin-1 whitespace like ByteString strip and continue with the range.
 {-# INLINE withStripC8 #-}
 withStripC8 :: BS.ByteString -> Int -> Int -> (Int -> Int -> r) -> r
 withStripC8 bs !s0 !e0 k = k s e
@@ -135,10 +117,7 @@ withStripC8 bs !s0 !e0 k = k s e
         | i > s && isC8Space (BSU.unsafeIndex bs (i - 1)) = skipB (i - 1)
         | otherwise = i
 
-{- | Strip ASCII whitespace (the ASCII subset of @Data.Text.strip@) and
-continue with the stripped range. Callers must fall back to a full
-'Data.Text.strip' when the stripped range still has non-ASCII edges.
--}
+-- | Strip ASCII whitespace and continue with the stripped range.
 {-# INLINE withStripAscii #-}
 withStripAscii :: BS.ByteString -> Int -> Int -> (Int -> Int -> r) -> r
 withStripAscii bs !s0 !e0 k = k s e

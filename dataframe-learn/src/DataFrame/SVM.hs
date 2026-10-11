@@ -4,10 +4,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- | Linear support vector classification: L2-regularized squared hinge via
-FISTA (sklearn's LinearSVC default). 'fit' trains a one-vs-rest 'LinearSVCModel';
-'predict' is the arg-max class margin (no @predict_proba@, as in sklearn).
--}
+-- | Linear support vector classification via FISTA (squared hinge, L2).
 module DataFrame.SVM (
     module DataFrame.Model,
     LinearSVCModel (..),
@@ -37,7 +34,7 @@ import DataFrame.LinearSolver (LinearModel (..), SolverConfig (..), fitProx)
 import DataFrame.LinearSolver.Loss (sqHingeLoss)
 import DataFrame.Model
 
--- | Hyper-parameters. @svcC@ is the inverse regularization strength (sklearn @C@).
+-- | Hyper-parameters; svcC is the inverse regularization strength.
 data SVCConfig = SVCConfig
     { svcC :: !Double
     , svcMaxIter :: !Int

@@ -3,14 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Evaluation metrics for fitted models. The everyday entry point is
-'evaluate', which applies a model's prediction expression and a truth column to
-a frame and folds a metric — no manual @interpret@/extract plumbing. Metrics are
-plain functions (@type Metric = Vector -> Vector -> Double@), so you pass @mse@
-or @accuracy@ directly. Classification metrics handle multiclass via 'Average';
-'classificationReport' / 'regressionReport' bundle the common numbers with a
-scikit-learn-style 'Show'.
--}
+-- | Evaluation metrics for fitted models.
 module DataFrame.Metrics (
     -- * Metric type + evaluation
     Metric,
@@ -58,11 +51,7 @@ import DataFrame.Operations.Transformations (derive)
 -- | A metric maps predictions and ground truth to a scalar score.
 type Metric = VU.Vector Double -> VU.Vector Double -> Double
 
-{- | Evaluate a model's prediction expression against a truth column on a frame.
-
-> evaluate rmse (linearExpr model) (F.col @Double "target") df
-> evaluate accuracy (logisticDecisionExpr model) (F.col @Double "label") df
--}
+-- | Evaluate a model's prediction expression against a truth column.
 evaluate :: Metric -> Expr Double -> Expr Double -> DataFrame -> Double
 evaluate metric predExpr truthExpr df =
     metric (columnOf df predExpr) (columnOf df truthExpr)
@@ -77,9 +66,7 @@ columnOf df e = case interpret @Double df e of
     Right (TColumn c) -> fromRight VU.empty (toVector @Double @VU.Vector c)
     Left err -> throw err
 
-{- | Compared pairs: 'VU.zipWith' truncates to the shorter vector, so every
-mean below divides by this, never by the length of 'truth' alone.
--}
+-- | Number of compared pairs, the shorter of the two vectors' lengths.
 nCompared :: VU.Vector Double -> VU.Vector Double -> Double
 nCompared preds truth = fromIntegral (min (VU.length preds) (VU.length truth))
 
@@ -224,9 +211,7 @@ recall = averaged recOf
 f1 :: Average -> VU.Vector Double -> VU.Vector Double -> Double
 f1 = averaged f1Of
 
-{- | Binary ROC-AUC (Mann–Whitney). @scores@ are predicted probabilities, @truth@
-is @0@/@1@. Tied scores share their average rank.
--}
+-- | Binary ROC-AUC (Mann-Whitney), tied scores sharing their average rank.
 rocAuc :: VU.Vector Double -> VU.Vector Double -> Double
 rocAuc scores truth
     | nPos == 0 || nNeg == 0 = 0.5

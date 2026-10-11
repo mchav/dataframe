@@ -2,11 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Tests for the typed CSV reader: a write\/read round-trip matches the untyped
-reader, a wrong schema surfaces as 'Left' via 'readCsvWithError', and the
-throwing 'readCsv' raises a 'DataFrameException'. The Parquet reader uses the
-identical freeze-on-read path.
--}
+-- | Tests for the typed CSV reader: round-trip, wrong schema, throwing reads.
 module Typed.IOReaders (tests) where
 
 import Control.Exception (evaluate, try)
@@ -62,9 +58,7 @@ wrongSchemaThrows = TestCase $ withSystemTempFile "typed_throw.csv" $ \fp h -> d
             IO (Either DataFrameException Int)
     assertBool "wrong schema => throws DataFrameException" (isLeft r)
 
-{- | The schema is the read specification: only its columns are fetched, out
-of a file that holds more.
--}
+-- | The schema is the read specification: only its columns are fetched.
 typedReadProjects :: Test
 typedReadProjects = TestCase $ withSystemTempFile "typed_proj.csv" $ \fp h -> do
     hClose h
@@ -73,9 +67,7 @@ typedReadProjects = TestCase $ withSystemTempFile "typed_proj.csv" $ \fp h -> do
     assertEqual "only the schema's column is read" ["g"] (D.columnNames narrow)
     assertEqual "rows intact" (3, 1) (D.dimensions narrow)
 
-{- | The schema's types win over inference: a column of digits declared 'Text'
-comes back as 'Text', which a plain read would have called 'Int'.
--}
+-- | The schema's types win over inference.
 typedReadSharesTypes :: Test
 typedReadSharesTypes = TestCase $ withSystemTempFile "typed_types.csv" $ \fp h -> do
     hClose h

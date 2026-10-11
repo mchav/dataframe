@@ -200,10 +200,7 @@ summarizeOptional =
             )
         )
 
-{- | A sliced column's bitmap keeps whole bytes, so its trailing bits still
-describe rows past the end of the slice. Counting non-null rows has to stop
-at the column's length rather than fold the whole byte vector.
--}
+-- | A sliced nullable column must count non-null rows only up to its length.
 sixteenNullableRows :: D.DataFrame
 sixteenNullableRows =
     D.fromColumns
@@ -234,8 +231,7 @@ countAfterRange =
             )
         )
 
--- allMissing folds the same bitmap, so it needs the same length cutoff: the
--- padding bits of a sliced all-null column would otherwise read as present.
+-- allMissing folds the same bitmap, so it needs the same length cutoff.
 allMissingAfterSlice :: Test
 allMissingAfterSlice =
     TestCase

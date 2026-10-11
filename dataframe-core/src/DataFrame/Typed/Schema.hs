@@ -88,10 +88,7 @@ type family Lookup (name :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
         TypeError
             ('Text "Column '" ':<>: 'Text name ':<>: 'Text "' not found in schema")
 
-{- | Like 'Lookup', but returns a harmless fallback ('Int') instead of
-'TypeError' when the column is not found.  Use together with
-'AssertPresent' so the error fires exactly once.
--}
+-- | Like 'Lookup' but falls back to 'Int' instead of a 'TypeError'.
 type family SafeLookup (name :: Symbol) (cols :: [(Symbol, Type)]) :: Type where
     SafeLookup name ('(name, a) ': _) = a
     SafeLookup name (_ ': rest) = SafeLookup name rest
@@ -253,12 +250,7 @@ type family
         TypeError
             ('Text "Column '" ':<>: 'Text name ':<>: 'Text "' not found in schema")
 
-{- | Assert that each join key has the same element type in both schemas,
-modulo 'Maybe'-wrapping on either side (the runtime join matches a nullable
-key column against a plain one). Use together with 'AssertAllPresent', which
-reports keys missing from either schema; absent keys are skipped here so the
-error fires exactly once.
--}
+-- | Assert each join key has the same element type in both schemas.
 type family
     AssertKeyTypesMatch
         (keys :: [Symbol])
@@ -326,7 +318,7 @@ type family
         , AssertAllColumnsHaveType ns a cols
         )
 
--- | Is @a@ a real, unboxed numeric type — i.e. a valid numeric-column element?
+-- | Is @a@ a real, unboxed numeric type?
 type family IsRealType (a :: Type) :: Bool where
     IsRealType Int = 'True
     IsRealType Int8 = 'True
@@ -342,11 +334,7 @@ type family IsRealType (a :: Type) :: Bool where
     IsRealType Float = 'True
     IsRealType _ = 'False
 
-{- | Emit a readable compile error when the column named @name@ is not a
-real-number type, naming the calling function @fn@, the column, and the type it
-actually has. Used by the numeric extractors so a wrong column type reads as a
-repairable message rather than a bare @No instance for Real …@.
--}
+-- | Emit a readable compile error when a column is not a real-number type.
 type family AssertRealColumn (fn :: Symbol) (name :: Symbol) (a :: Type) :: Constraint where
     AssertRealColumn fn name a = AssertRealColumnGo fn name a (IsRealType a)
 
@@ -364,11 +352,7 @@ type family
                 ':<>: 'ShowType a
             )
 
-{- | Constraint that every column in the schema is a real (numeric), unboxed
-type. Lets the whole-frame matrix extractors ('toDoubleMatrix' and friends) be
-total — a non-numeric or nullable column is a compile error (with the offending
-column named, via 'AssertRealColumn'), not a runtime 'Left'.
--}
+-- | Constraint that every column in the schema is a real unboxed type.
 type family AllColumnsReal (fn :: Symbol) (cols :: [(Symbol, Type)]) :: Constraint where
     AllColumnsReal fn '[] = ()
     AllColumnsReal fn ('(n, a) ': rest) =
@@ -387,21 +371,13 @@ type family AllDouble (cols :: [(Symbol, Type)]) :: Constraint where
                 ':$$: 'Text "Convert it (toDouble) or drop it before fitting."
             )
 
-{- | Strip 'Maybe' from all columns. Used by 'filterAllJust'.
-
-@'("x", (Maybe Double)@ becomes @'("x", Double@.))
-@'("y", Int@ stays @'("y", Int@.))
--}
+-- | Strip 'Maybe' from all columns; used by 'filterAllJust'.
 type family StripAllMaybe (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
     StripAllMaybe '[] = '[]
     StripAllMaybe ('(n, Maybe a) ': rest) = '(n, a) ': StripAllMaybe rest
     StripAllMaybe ('(n, a) ': rest) = '(n, a) ': StripAllMaybe rest
 
-{- | Strip 'Maybe' from a single named column. Used by 'filterJust'.
-
-@StripMaybeAt "x" '[ '("x", Maybe Double), '("y", Int)]@
-  = @'[ '("x", Double), '("y", Int)]@
--}
+-- | Strip 'Maybe' from a single named column; used by 'filterJust'.
 type family StripMaybeAt (name :: Symbol) (cols :: [(Symbol, Type)]) :: [(Symbol, Type)] where
     StripMaybeAt name ('(name, Maybe a) ': rest) = '(name, a) ': rest
     StripMaybeAt name ('(name, a) ': rest) = '(name, a) ': rest
@@ -635,19 +611,11 @@ instance
         (T.pack (symbolVal (Proxy @name)), someTypeRep (Proxy @a))
             : schemaEvidence @rest
 
-{- | The column names a schema declares, in schema order. Pass it to a reader's
-options to fetch only those columns:
-
-@
-D.readCsvWithOpts
-    D.defaultReadOptions{D.readColumns = Just (schemaColumnNames \@(Schema Customer))}
-    "customers.csv"
-@
--}
+-- | The column names a schema declares, in schema order.
 schemaColumnNames :: forall cols. (KnownSchema cols) => [T.Text]
 schemaColumnNames = map fst (schemaEvidence @cols)
 
--- | A class that provides a list of 'Text' values for a type-level list of Symbols.
+-- | A class giving a list of 'Text' values for a type-level list of Symbols.
 class AllKnownSymbol (names :: [Symbol]) where
     symbolVals :: [T.Text]
 

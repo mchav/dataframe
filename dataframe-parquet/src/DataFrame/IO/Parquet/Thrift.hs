@@ -12,8 +12,7 @@ import GHC.TypeLits (KnownNat)
 import Pinch (Enumeration, Field, Pinchable (..))
 import qualified Pinch
 
--- Primitive Parquet Types
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L32
+-- Primitive Parquet Types (parquet.thrift#L32)
 data ThriftType
     = BOOLEAN (Enumeration 0)
     | INT32 (Enumeration 1)
@@ -27,7 +26,7 @@ data ThriftType
 
 instance Pinchable ThriftType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L183
+-- parquet.thrift#L183
 data FieldRepetitionType
     = REQUIRED (Enumeration 0)
     | OPTIONAL (Enumeration 1)
@@ -36,11 +35,11 @@ data FieldRepetitionType
 
 instance Pinchable FieldRepetitionType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L203
+-- parquet.thrift#L203
 data Encoding
     = PLAIN (Enumeration 0)
     | -- GROUP_VAR_INT Encoding was never used
-      -- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L578
+      -- parquet.thrift#L578
       PLAIN_DICTIONARY (Enumeration 2)
     | RLE (Enumeration 3)
     | BIT_PACKED (Enumeration 4)
@@ -53,7 +52,7 @@ data Encoding
 
 instance Pinchable Encoding
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L244
+-- parquet.thrift#L244
 data CompressionCodec
     = UNCOMPRESSED (Enumeration 0)
     | SNAPPY (Enumeration 1)
@@ -67,7 +66,7 @@ data CompressionCodec
 
 instance Pinchable CompressionCodec
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L261
+-- parquet.thrift#L261
 data PageType
     = DATA_PAGE (Enumeration 0)
     | INDEX_PAGE (Enumeration 1)
@@ -77,7 +76,7 @@ data PageType
 
 instance Pinchable PageType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L271
+-- parquet.thrift#L271
 data BoundaryOrder
     = UNORDERED (Enumeration 0)
     | ASCENDING (Enumeration 1)
@@ -86,12 +85,9 @@ data BoundaryOrder
 
 instance Pinchable BoundaryOrder
 
--- Logical type annotations
--- Empty structs can't use deriving Generic with Pinch, so we use a unit-like workaround.
--- We represent empty structs as a newtype over () with a manual Pinchable instance.
+-- Logical type annotations; empty structs use manual Pinchable instances.
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L283
--- struct StringType {}
+-- parquet.thrift#L283: struct StringType {}
 data StringType = StringType deriving (Eq, Show)
 instance Pinchable StringType where
     type Tag StringType = Pinch.TStruct
@@ -158,7 +154,7 @@ instance Pinchable VariantType where
     pinch _ = Pinch.struct []
     unpinch _ = pure VariantType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L290
+-- parquet.thrift#L290
 data TimeUnit
     = MILLIS (Field 1 MilliSeconds)
     | MICROS (Field 2 MicroSeconds)
@@ -185,7 +181,7 @@ instance Pinchable NanoSeconds where
     pinch _ = Pinch.struct []
     unpinch _ = pure NanoSeconds
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L317
+-- parquet.thrift#L317
 data DecimalType
     = DecimalType
     { decimal_scale :: Field 1 Int32
@@ -195,7 +191,7 @@ data DecimalType
 
 instance Pinchable DecimalType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L328
+-- parquet.thrift#L328
 data IntType
     = IntType
     { int_bitWidth :: Field 1 Int8
@@ -205,7 +201,7 @@ data IntType
 
 instance Pinchable IntType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L338
+-- parquet.thrift#L338
 data TimeType
     = TimeType
     { time_isAdjustedToUTC :: Field 1 Bool
@@ -215,7 +211,7 @@ data TimeType
 
 instance Pinchable TimeType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L349
+-- parquet.thrift#L349
 data TimestampType
     = TimestampType
     { timestamp_isAdjustedToUTC :: Field 1 Bool
@@ -225,8 +221,7 @@ data TimestampType
 
 instance Pinchable TimestampType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L360
--- union LogicalType
+-- parquet.thrift#L360: union LogicalType
 data LogicalType
     = LT_STRING (Field 1 StringType)
     | LT_MAP (Field 2 MapType)
@@ -247,7 +242,7 @@ data LogicalType
 
 instance Pinchable LogicalType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L270
+-- parquet.thrift#L270
 data ConvertedType
     = UTF8 (Enumeration 0)
     | MAP (Enumeration 1)
@@ -275,10 +270,10 @@ data ConvertedType
 
 instance Pinchable ConvertedType
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L505
+-- parquet.thrift#L505
 data SchemaElement
     = SchemaElement
-    { schematype :: Field 1 (Maybe ThriftType) -- called just type in parquet.thrift
+    { schematype :: Field 1 (Maybe ThriftType) -- named type upstream
     , type_length :: Field 2 (Maybe Int32)
     , repetition_type :: Field 3 (Maybe FieldRepetitionType)
     , name :: Field 4 Text
@@ -293,7 +288,7 @@ data SchemaElement
 
 instance Pinchable SchemaElement
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L560
+-- parquet.thrift#L560
 data Statistics
     = Statistics
     { stats_max :: Field 1 (Maybe ByteString)
@@ -309,7 +304,7 @@ data Statistics
 
 instance Pinchable Statistics
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L600
+-- parquet.thrift#L600
 data PageEncodingStats
     = PageEncodingStats
     { pes_page_type :: Field 1 PageType
@@ -320,7 +315,7 @@ data PageEncodingStats
 
 instance Pinchable PageEncodingStats
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L614
+-- parquet.thrift#L614
 data ColumnMetaData
     = ColumnMetaData
     { cmd_type :: Field 1 ThriftType
@@ -343,14 +338,14 @@ data ColumnMetaData
 
 instance Pinchable ColumnMetaData
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L875
+-- parquet.thrift#L875
 data EncryptionWithFooterKey = EncryptionWithFooterKey deriving (Eq, Show)
 instance Pinchable EncryptionWithFooterKey where
     type Tag EncryptionWithFooterKey = Pinch.TStruct
     pinch _ = Pinch.struct []
     unpinch _ = pure EncryptionWithFooterKey
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L883
+-- parquet.thrift#L883
 data EncryptionWithColumnKey
     = EncryptionWithColumnKey
     { ewck_path_in_schema :: Field 1 [Text]
@@ -360,8 +355,7 @@ data EncryptionWithColumnKey
 
 instance Pinchable EncryptionWithColumnKey
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L893
--- union ColumnCryptoMetaData
+-- parquet.thrift#L893: union ColumnCryptoMetaData
 data ColumnCryptoMetaData
     = CCM_ENCRYPTION_WITH_FOOTER_KEY (Field 1 EncryptionWithFooterKey)
     | CCM_ENCRYPTION_WITH_COLUMN_KEY (Field 2 EncryptionWithColumnKey)
@@ -369,7 +363,7 @@ data ColumnCryptoMetaData
 
 instance Pinchable ColumnCryptoMetaData
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L899
+-- parquet.thrift#L899
 data ColumnChunk
     = ColumnChunk
     { cc_file_path :: Field 1 (Maybe Text)
@@ -386,7 +380,7 @@ data ColumnChunk
 
 instance Pinchable ColumnChunk
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L940
+-- parquet.thrift#L940
 data SortingColumn
     = SortingColumn
     { sc_column_idx :: Field 1 Int32
@@ -397,7 +391,7 @@ data SortingColumn
 
 instance Pinchable SortingColumn
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L958
+-- parquet.thrift#L958
 data RowGroup
     = RowGroup
     { rg_columns :: Field 1 [ColumnChunk]
@@ -412,7 +406,7 @@ data RowGroup
 
 instance Pinchable RowGroup
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L980
+-- parquet.thrift#L980
 data KeyValue
     = KeyValue
     { kv_key :: Field 1 Text
@@ -422,8 +416,7 @@ data KeyValue
 
 instance Pinchable KeyValue
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L990
--- union ColumnOrder
+-- parquet.thrift#L990: union ColumnOrder
 newtype ColumnOrder
     = TYPE_ORDER (Field 1 TypeDefinedOrder)
     deriving (Eq, Show, Generic)
@@ -437,7 +430,7 @@ instance Pinchable TypeDefinedOrder where
     pinch _ = Pinch.struct []
     unpinch _ = pure TypeDefinedOrder
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L1094
+-- parquet.thrift#L1094
 data AesGcmV1
     = AesGcmV1
     { aes_gcm_v1_aad_prefix :: Field 1 (Maybe ByteString)
@@ -448,7 +441,7 @@ data AesGcmV1
 
 instance Pinchable AesGcmV1
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L1107
+-- parquet.thrift#L1107
 data AesGcmCtrV1
     = AesGcmCtrV1
     { aes_gcm_ctr_v1_aad_prefix :: Field 1 (Maybe ByteString)
@@ -459,8 +452,7 @@ data AesGcmCtrV1
 
 instance Pinchable AesGcmCtrV1
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L1118
--- union EncryptionAlgorithm
+-- parquet.thrift#L1118: union EncryptionAlgorithm
 data EncryptionAlgorithm
     = AES_GCM_V1 (Field 1 AesGcmV1)
     | AES_GCM_CTR_V1 (Field 2 AesGcmCtrV1)
@@ -468,7 +460,7 @@ data EncryptionAlgorithm
 
 instance Pinchable EncryptionAlgorithm
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L1001
+-- parquet.thrift#L1001
 data PageLocation
     = PageLocation
     { pl_offset :: Field 1 Int64
@@ -479,7 +471,7 @@ data PageLocation
 
 instance Pinchable PageLocation
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L1017
+-- parquet.thrift#L1017
 data OffsetIndex
     = OffsetIndex
     { oi_page_locations :: Field 1 [PageLocation]
@@ -489,7 +481,7 @@ data OffsetIndex
 
 instance Pinchable OffsetIndex
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L1033
+-- parquet.thrift#L1033
 data ColumnIndex
     = ColumnIndex
     { ci_null_pages :: Field 1 [Bool]
@@ -504,7 +496,7 @@ data ColumnIndex
 
 instance Pinchable ColumnIndex
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L1248
+-- parquet.thrift#L1248
 data DataPageHeader
     = DataPageHeader
     { dph_num_values :: Field 1 Int32
@@ -563,7 +555,7 @@ data PageHeader
 
 instance Pinchable PageHeader
 
--- https://github.com/apache/parquet-format/blob/master/src/main/thrift/parquet.thrift#L1277
+-- parquet.thrift#L1277
 data FileMetadata
     = FileMetadata
     { version :: Field 1 Int32

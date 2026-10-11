@@ -26,7 +26,7 @@ $( DT.deriveSchemaFromCsvFileWith
     "./data/titanic/test.csv"
  )
 
--- Survived is Maybe Int (safeRead = MaybeRead); prediction is Int (model output).
+-- Survived is Maybe Int (safeRead = MaybeRead); prediction is Int.
 type RawPredSchema =
     '[ '("Survived", Maybe Int), '("prediction", Int)]
 
@@ -124,9 +124,7 @@ extractTitle fullName =
         (w : _) -> T.dropEnd 1 w
         [] -> ""
 
-{- | Compute binary classification accuracy from a DataFrame containing
-  "Survived" and "prediction" columns.
--}
+-- | Binary classification accuracy from "Survived" and "prediction" columns.
 computeAccuracy :: D.DataFrame -> Double
 computeAccuracy df =
     let tdf =

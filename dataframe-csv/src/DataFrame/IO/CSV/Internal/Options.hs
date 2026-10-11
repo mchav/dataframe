@@ -1,9 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Configuration types for the CSV readers. Re-exported through
-"DataFrame.IO.CSV"; shared by the default reader, @dataframe-fastcsv@
-and @dataframe-lazy@.
--}
+-- | Configuration types for the CSV readers.
 module DataFrame.IO.CSV.Internal.Options (
     HeaderSpec (..),
     TypeSpec (..),
@@ -30,14 +27,7 @@ import DataFrame.Errors (DataFrameException (ColumnsNotFoundException))
 import DataFrame.Operations.Typing (SafeReadMode (..))
 import DataFrame.Schema (SchemaType)
 
-{- | Where a reader's column names come from.
-
-==== __Example__
-@
-ghci> D.readCsvWithOpts D.defaultReadOptions{D.headerSpec = D.ProvideNames ["a", "b"]} "no_header.csv"
-
-@
--}
+-- | Where a reader's column names come from.
 data HeaderSpec
     = NoHeader
     | -- | Take names from the first row (the default).
@@ -46,42 +36,22 @@ data HeaderSpec
       ProvideNames [T.Text]
     deriving (Eq, Show)
 
-{- | How a reader decides each column's type.
-
-==== __Example__
-@
-ghci> D.readCsvWithOpts D.defaultReadOptions{D.typeSpec = D.InferFromSample 500} "wide.csv"
-
-@
--}
+-- | How a reader decides each column's type.
 data TypeSpec
     = -- | Infer each column's type from the first @n@ rows.
       InferFromSample Int
-    | {- | Pin the listed columns to their given types; fall back to the
-      nested 'TypeSpec' for the rest.
-      -}
+    | -- | Pin the listed columns to their given types, with a fallback.
       SpecifyTypes [(T.Text, SchemaType)] TypeSpec
     | -- | Every column is read as 'Data.Text.Text', no inference at all.
       NoInference
 
-{- | How the fast reader should treat a row whose field count does not
-match the header row.  Only consulted by @dataframe-fastcsv@; the pure
-Haskell reader always pads short rows with nulls and drops extras.
--}
+-- | How the fast reader treats a row with the wrong field count.
 data RaggedRowPolicy
-    = {- | Fill missing cells with nulls; silently drop extras.
-      Matches pandas / polars lenient defaults.
-      -}
+    = -- | Fill missing cells with nulls and silently drop extras.
       PadWithNull
-    | {- | Fill missing cells with nulls; silently drop extras.  Alias
-      kept for ergonomic naming when the caller only cares about the
-      "don't raise, just forget the extras" half of 'PadWithNull'.
-      -}
+    | -- | Alias of 'PadWithNull' for callers who only care about extras.
       Truncate
-    | {- | Raise a 'DataFrame.IO.CSV.Fast.CsvParseError' on any row whose
-      field count differs from the header.  Matches polars' strict
-      schema-bound mode.
-      -}
+    | -- | Raise a 'CsvParseError' on any row whose field count differs.
       RaiseOnRagged
     deriving (Eq, Show)
 
@@ -89,9 +59,7 @@ data RaggedRowPolicy
 data UnclosedQuotePolicy
     = -- | Raise a 'DataFrame.IO.CSV.Fast.CsvParseError'.  Default.
       RaiseOnUnclosedQuote
-    | {- | Return whatever rows were parsed before the stray quote; the
-      remainder is silently dropped.
-      -}
+    | -- | Return the rows parsed before the stray quote; drop the rest.
       BestEffort
     deriving (Eq, Show)
 
@@ -102,96 +70,39 @@ data ReadOptions = ReadOptions
     , typeSpec :: TypeSpec
     -- ^ Whether/how to infer types. (default: InferFromSample 100)
     , safeRead :: SafeReadMode
-    {- ^ Default 'SafeReadMode' for columns without an entry in
-    'safeReadOverrides'. (default: 'NoSafeRead')
-    -}
+    -- ^ Default 'SafeReadMode' for columns without an override.
     , safeReadOverrides :: [(T.Text, SafeReadMode)]
     -- ^ Per-column 'SafeReadMode' overrides; takes precedence over 'safeRead'.
     , dateFormat :: String
-    {- ^ Format of date fields as recognized by the Data.Time.Format module.
-
-    __Examples:__
-
-    @
-    > parseTimeM True defaultTimeLocale "%Y/%-m/%-d" "2010/3/04" :: Maybe Day
-    Just 2010-03-04
-    > parseTimeM True defaultTimeLocale "%d/%-m/%-Y" "04/3/2010" :: Maybe Day
-    Just 2010-03-04
-    @
-    -}
+    -- ^ Format of date fields, as recognized by Data.Time.Format.
     , columnSeparator :: Char
     -- ^ Character that separates column values.
     , numRowsToRead :: Maybe Int
-    {- ^ Maximum number of data rows to read ('Nothing' = all).
-
-    __Example:__
-
-    @
-    ghci> D.readCsvWithOpts D.defaultReadOptions{D.numRowsToRead = Just 5} "big.csv"
-    @
-    -}
+    -- ^ Maximum number of data rows to read ('Nothing' = all).
     , readColumns :: Maybe [T.Text]
-    {- ^ Columns to read ('Nothing' = all). Unselected columns are never
-    decoded, parsed or allocated; the returned frame carries the selected
-    columns in the order given here. Naming a column the file does not have
-    raises a 'ColumnsNotFoundException'.
-
-    __Example:__
-
-    @
-    ghci> D.readCsvWithOpts D.defaultReadOptions{D.readColumns = Just ["id", "name"]} "customers.csv"
-    @
-    -}
+    -- ^ Columns to read ('Nothing' = all); unselected ones are never decoded.
     , missingIndicators :: [T.Text]
     -- ^ Values that should be read as `Nothing`.
     , fastCsvOnRaggedRow :: RaggedRowPolicy
-    {- ^ @dataframe-fastcsv@: how to treat rows with a non-header field count.
-    (default: 'PadWithNull')
-    -}
+    -- ^ @dataframe-fastcsv@: how to treat rows with a non-header field count.
     , fastCsvOnUnclosedQuote :: UnclosedQuotePolicy
-    {- ^ @dataframe-fastcsv@: how to treat an unclosed quoted field at EOF.
-    (default: 'RaiseOnUnclosedQuote')
-    -}
+    -- ^ @dataframe-fastcsv@: how to treat an unclosed quoted field at EOF.
     , fastCsvTrimUnquoted :: Bool
-    {- ^ @dataframe-fastcsv@: if 'True', leading/trailing whitespace is
-    stripped from unquoted fields after decoding.  RFC 4180 preserves
-    this whitespace, and that is the default ('False').
-    -}
+    -- ^ @dataframe-fastcsv@: strip whitespace from unquoted fields if True.
     }
 
-{- | Whether a 'TypeSpec' still infers types from a sample, once any
-'SpecifyTypes' fallback chain is followed to its end.
-
-==== __Example__
->>> shouldInferFromSample (InferFromSample 100)
-True
->>> shouldInferFromSample NoInference
-False
--}
+-- | Whether a 'TypeSpec' still infers types from a sample.
 shouldInferFromSample :: TypeSpec -> Bool
 shouldInferFromSample (InferFromSample _) = True
 shouldInferFromSample (SpecifyTypes _ fallback) = shouldInferFromSample fallback
 shouldInferFromSample _ = False
 
-{- | The explicit column\/type pairs a 'TypeSpec' declares, if any.
-
-==== __Example__
->>> :set -XTypeApplications
->>> M.toList (schemaTypeMap (SpecifyTypes [("id", schemaType @Int)] (InferFromSample 100)))
-[("id",Int)]
--}
+-- | The explicit column/type pairs a 'TypeSpec' declares, if any.
 schemaTypeMap :: TypeSpec -> M.Map T.Text SchemaType
 schemaTypeMap (SpecifyTypes xs _) = M.fromList xs
 schemaTypeMap _ = M.empty
 
-{- | A 'ReadOptions' value that contradicts itself, with every problem listed.
-Thrown by 'validateReadOptions'; see 'readOptionsErrors' for the check
-without the exception.
-
-==== __Example__
->>> show (InvalidReadOptions ["readColumns is an empty selection; omit it to read every column"])
-"Invalid ReadOptions:\n  - readColumns is an empty selection; omit it to read every column"
--}
+-- | A 'ReadOptions' value that contradicts itself, listing every problem.
 newtype InvalidReadOptions = InvalidReadOptions [T.Text]
 
 instance Show InvalidReadOptions where
@@ -201,16 +112,7 @@ instance Show InvalidReadOptions where
 
 instance Exception InvalidReadOptions
 
-{- | Everything self-contradictory about @opts@, judged without looking at a
-file. A type or safe-read override naming an unread column is redundant, not
-contradictory, and is not reported.
-
-==== __Example__
->>> readOptionsErrors defaultReadOptions{readColumns = Just []}
-["readColumns is an empty selection; omit it to read every column"]
->>> readOptionsErrors defaultReadOptions
-[]
--}
+-- | Everything self-contradictory about @opts@, judged without a file.
 readOptionsErrors :: ReadOptions -> [T.Text]
 readOptionsErrors opts =
     concat
@@ -237,32 +139,14 @@ readOptionsErrors opts =
   where
     dups = maybe [] (\cs -> L.nub (cs L.\\ L.nub cs)) (readColumns opts)
 
-{- | Throw 'InvalidReadOptions' if @opts@ contradicts itself. Both readers
-call this before opening the file.
-
-==== __Example__
-@
-ghci> D.validateReadOptions D.defaultReadOptions{D.readColumns = Just []}
-*** Exception: Invalid ReadOptions:
-  - readColumns is an empty selection; omit it to read every column
-@
--}
+-- | Throw 'InvalidReadOptions' if @opts@ contradicts itself.
 validateReadOptions :: ReadOptions -> IO ()
 validateReadOptions opts =
     unless (null problems) (throwIO (InvalidReadOptions problems))
   where
     problems = readOptionsErrors opts
 
-{- | Resolve 'readColumns' against a file's header names: the columns to
-build, each paired with its field index within a row. 'Nothing' keeps every
-column in file order; a selection keeps the order it was written in.
-
-==== __Example__
->>> resolveSelection defaultReadOptions{readColumns = Just ["b", "a"]} ["a", "b", "c"]
-[("b",1),("a",0)]
->>> resolveSelection defaultReadOptions ["a", "b"]
-[("a",0),("b",1)]
--}
+-- | Resolve 'readColumns' against header names to (name, field index) pairs.
 resolveSelection :: ReadOptions -> [T.Text] -> [(T.Text, Int)]
 resolveSelection opts names = case readColumns opts of
     Nothing -> indexed
@@ -273,29 +157,13 @@ resolveSelection opts names = case readColumns opts of
     indexed = zip names [0 ..]
     fieldIndex = M.fromList indexed
 
-{- | The sample size a 'TypeSpec' infers from, once any 'SpecifyTypes'
-fallback chain is followed to its end. @0@ when the chain ends in
-'NoInference'.
-
-==== __Example__
->>> typeInferenceSampleSize (InferFromSample 100)
-100
->>> typeInferenceSampleSize NoInference
-0
--}
+-- | The sample size a 'TypeSpec' infers from; 0 if it never infers.
 typeInferenceSampleSize :: TypeSpec -> Int
 typeInferenceSampleSize (InferFromSample n) = n
 typeInferenceSampleSize (SpecifyTypes _ fallback) = typeInferenceSampleSize fallback
 typeInferenceSampleSize _ = 0
 
-{- | The default 'ReadOptions': infer types from a 100-row sample, treat the
-first row as a header, read every row and every column.
-
-==== __Example__
-@
-ghci> D.readCsvWithOpts D.defaultReadOptions{D.columnSeparator = ';'} "data.csv"
-@
--}
+-- | The default 'ReadOptions': infer from 100 rows, header row, all data.
 defaultReadOptions :: ReadOptions
 defaultReadOptions =
     ReadOptions

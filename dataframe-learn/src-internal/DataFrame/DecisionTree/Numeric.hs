@@ -5,12 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Numeric split candidates: per-column Double expressions, arithmetic
-expansion, and threshold conditions. Nullable columns also contribute an
-@isNothing@ candidate, so missingness is splittable directly rather than
-only via the null-routing of value splits. 'numericCondVecs' materializes
-the pool with one interpret per distinct expression.
--}
+-- | Numeric split candidates: expressions, arithmetic expansion, thresholds.
 module DataFrame.DecisionTree.Numeric (
     NumExpr (..),
     numExprCols,
@@ -133,9 +128,7 @@ condsFromExpr (NMaybeDouble e) t =
         (F.fromMaybe False)
         [e .<= F.lit t, e .>= F.lit t, e .< F.lit t, e .> F.lit t]
 
-{- | Percentile thresholds for a value list: sort once, index each percentile.
-Shared by 'generateNumericConds' and 'numericCondVecs' for identical results.
--}
+-- | Percentile thresholds for a value list: sort once, index each percentile.
 percentilesOf :: [Int] -> [Double] -> [Double]
 percentilesOf ps valsList
     | n == 0 = []
@@ -155,10 +148,7 @@ interpretMaybeDoubleCol df e = case interpret @(Maybe Double) df e of
     Right (TColumn column) -> either (const Nothing) Just (toVector @(Maybe Double) column)
     _ -> Nothing
 
-{- | Materialize the numeric pool with one interpret per distinct expression,
-deriving each threshold/operator truth vector by direct comparison.
-Byte-identical to materializing 'numericConditions' one at a time.
--}
+-- | Materialize the numeric pool with one interpret per distinct expression.
 numericCondVecs :: TreeConfig -> DataFrame -> DataFrame -> [CondVec]
 numericCondVecs cfg dfGen df =
     concatMap forExpr (numericExprsWithTerms (synthConfig cfg) dfGen)
@@ -199,10 +189,7 @@ maybeCondsAt e mvals n t =
   where
     gen p = VU.generate n (\i -> maybe False p (mvals V.! i))
 
-{- | Arithmetic candidate expansion, generated already-deduped: each round
-combines @frontier × base@ and admits only normalized-novel candidates.
-Produces @base@ plus @maxExprDepth-1@ combination rounds.
--}
+-- | Arithmetic candidate expansion, generated already-deduped.
 numericExprsWithTerms :: SynthConfig -> DataFrame -> [NumExpr]
 numericExprsWithTerms cfg df
     | not (enableArithOps cfg) = base

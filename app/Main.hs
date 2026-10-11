@@ -34,10 +34,8 @@ main = do
         cabalFile = cacheDir </> "df-repl.cabal"
         mainFile = cacheDir </> "Main.hs"
 
-    -- Ensure the directory is a valid Cabal project with a local target to repl into.
     ensureBoilerplate projectFile cabalFile mainFile
 
-    -- Keep your ghci script updated (weekly).
     shouldDownload <- needsUpdate ghciScript
     when shouldDownload $ do
         putStrLn "\ESC[92mDownloading latest version of dataframe config...\ESC[0m"

@@ -67,24 +67,7 @@ import DataFrame.Operations.Transformations (ImputeOp (..), imputeCore)
 import Text.Printf (printf)
 import Type.Reflection (typeRep)
 
-{- | Show a frequency table for a categorical feaure.
-
-__Examples:__
-
-@
-ghci> df <- D.readCsv ".\/data\/housing.csv"
-
-ghci> D.frequencies "ocean_proximity" df
-
----------------------------------------------------------------------
-   Statistic    | <1H OCEAN | INLAND | ISLAND | NEAR BAY | NEAR OCEAN
-----------------|-----------|--------|--------|----------|-----------
-      Text      |    Any    |  Any   |  Any   |   Any    |    Any
-----------------|-----------|--------|--------|----------|-----------
- Count          | 9136      | 6551   | 5      | 2290     | 2658
- Percentage (%) | 44.26%    | 31.74% | 0.02%  | 11.09%   | 12.88%
-@
--}
+-- | Show a frequency table for a categorical feature.
 frequencies ::
     forall a. (Columnable a, Ord a) => Expr a -> DataFrame -> DataFrame
 frequencies expr df =
@@ -144,7 +127,7 @@ median expr df = case interpret df expr of
         Left e -> throw e
         Right xs -> median' xs
 
--- | Calculates the median of a given column (containing optional values) as a standalone value.
+-- | The median of a column of optional values, as a standalone value.
 medianMaybe ::
     forall a. (Columnable a, Real a) => Expr (Maybe a) -> DataFrame -> Double
 medianMaybe (Col name) df =
@@ -218,7 +201,7 @@ variance expr df = case interpret df expr of
         Left e -> throw e
         Right xs -> variance' xs
 
--- | Calculates the inter-quartile range of a given column as a standalone value.
+-- | The inter-quartile range of a column as a standalone value.
 interQuartileRange ::
     forall a. (Columnable a, Real a, VU.Unbox a) => Expr a -> DataFrame -> Double
 interQuartileRange (Col name) df = case columnAsUnboxedVector (Col @a name) df of
@@ -230,7 +213,7 @@ interQuartileRange expr df = case interpret df expr of
         Left e -> throw e
         Right xs -> interQuartileRange' xs
 
--- | Calculates the Pearson's correlation coefficient between two given columns as a standalone value.
+-- | Pearson's correlation coefficient of two columns, as a standalone value.
 correlation :: T.Text -> T.Text -> DataFrame -> Maybe Double
 correlation first second df = do
     f <- _getColumnAsDouble first df
@@ -271,50 +254,14 @@ sum (Col name) df = case getColumn name df of
         Just Refl -> VG.sum column
         Nothing -> 0
     Just (PackedText _ _) -> 0
-    Just (MergedColumn _ _) -> 0 -- matches the old eager These column (type never Num)
+    Just (MergedColumn _ _) -> 0 -- matches the old eager These column
 sum expr df = case interpret df expr of
     Left e -> throw e
     Right (TColumn xs) -> case toVector @a @V.Vector xs of
         Left e -> throw e
         Right xs' -> VG.sum xs'
 
-{- | /O(n)/ Impute missing values in a column using a derived scalar.
-
-Given
-
-* an expression @f :: 'Expr' b -> 'Expr' b@ that, when interpreted over a
-  non-nullable column, produces the same value in every row (for example a
-  mean, median, or other aggregate), and
-* a nullable column @'Expr' ('Maybe' b)@
-
-this function:
-
-1. Drops all @Nothing@ values from the target column.
-2. Interprets @f@ on the remaining non-null values.
-3. Checks that the resulting column contains a single repeated value.
-4. Uses that value to impute all @Nothing@s in the original column.
-
-==== __Throws__
-
-* 'DataFrameException' - if the column does not exist, is empty,
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> let df =
-...       D.fromColumns
-...         [ ("age", D.fromList [Just 10, Nothing, Just 20 :: Maybe Int]) ]
->>>
->>> -- Impute missing ages with the mean of the observed ages
->>> D.imputeWith F.mean "age" df
--- age
--- ----
--- 10
--- 15
--- 20
-@
--}
+-- | /O(n)/ Impute missing values in a column using a derived scalar.
 instance {-# OVERLAPPING #-} (Columnable b) => ImputeOp (Maybe b) where
     runImpute = imputeCore
 

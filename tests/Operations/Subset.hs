@@ -60,8 +60,7 @@ prop_rangeClampsToBounds df a b =
     fst (dataframeDimensions (D.range (a, b) df)) == expected
   where
     rows = fst (dataframeDimensions df)
-    -- Rows in [a, b) that actually exist. Clamps before subtracting so the
-    -- oracle itself cannot overflow on extreme endpoints.
+    -- Rows in [a, b) that exist; clamps before subtracting to avoid overflow.
     lo = min (max a 0) rows
     hi = min (max b lo) rows
     expected = hi - lo
@@ -142,7 +141,7 @@ unit_stratifiedSplit_singleRowStratum =
                 (fst $ dataframeDimensions tinyDf)
                 (fst (dataframeDimensions tr) + fst (dataframeDimensions va))
 
--- | Count occurrences of a label in a column, expressed as a fraction of total rows.
+-- | Count of a label in a column, as a fraction of total rows.
 labelProportion :: T.Text -> T.Text -> DataFrame -> Double
 labelProportion col label df =
     let total = fst (dataframeDimensions df)

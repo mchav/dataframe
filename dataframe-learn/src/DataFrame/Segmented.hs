@@ -9,10 +9,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- | Fit a separate base model per categorical value-combination, routing each
-row to its segment at predict time; unseen or too-small segments fall back to a
-global fit. Optional partial pooling (linear base) shrinks small segments.
--}
+-- | Fit a separate base model per categorical value-combination.
 module DataFrame.Segmented (
     module DataFrame.Model,
     Segmented (..),
@@ -60,10 +57,7 @@ import DataFrame.Operations.Core (nRows)
 import DataFrame.Operations.Subset (exclude, rowsAtIndices)
 import DataFrame.SymbolicRegression (SRConfig)
 
-{- | A base estimator @cfg@ wrapped to fit one model per categorical
-value-combination. @segOn@ picks the columns ('Nothing' = auto-detect),
-@segMinRows@ the smallest own-model segment, @segPool@ the pooling strength @λ@.
--}
+-- | A base estimator wrapped to fit one model per categorical combination.
 data Segmented cfg = Segmented
     { segBase :: !cfg
     , segOn :: !(Maybe [T.Text])
@@ -73,11 +67,11 @@ data Segmented cfg = Segmented
     }
     deriving (Eq, Show)
 
--- | Wrap a base config with the defaults: auto-detect, cap 32, min 30 rows, no pooling.
+-- | Wrap a base config with default segmentation settings.
 segmented :: cfg -> Segmented cfg
 segmented base = Segmented base Nothing 32 30 0
 
--- | Segment only on the named columns (each must be Text), overriding auto-detect.
+-- | Segment only on the named Text columns, overriding auto-detect.
 segmentOn :: Segmented cfg -> [T.Text] -> Segmented cfg
 segmentOn s cols = s{segOn = Just cols}
 
@@ -93,10 +87,7 @@ data Segment model = Segment
     }
     deriving (Show)
 
-{- | A fitted segmented model: the columns segmented on, the per-segment models
-(ascending key order), the observed combinations that fell back (key + row
-count), the global fallback model, and the compiled routing expression.
--}
+-- | A fitted segmented model with per-segment, fallback and routing parts.
 data SegmentedModel a model = SegmentedModel
     { smCatCols :: ![T.Text]
     , smSegments :: ![Segment model]
@@ -106,10 +97,7 @@ data SegmentedModel a model = SegmentedModel
     }
     deriving (Show)
 
-{- | How a base estimator fits its per-segment models under pooling strength @λ@.
-The default fits each segment independently and rejects @λ > 0@; the linear
-instance overrides it with closed-form shrinkage. Every base model needs an instance.
--}
+-- | How a base estimator fits per-segment models under pooling strength.
 class (Fit cfg (Expr a)) => SegmentFit cfg a where
     -- | Fit the qualifying segments (each a numeric-only frame, in order).
     fitSegments :: cfg -> Double -> Expr a -> [DataFrame] -> [ModelOf cfg (Expr a)]
@@ -186,14 +174,11 @@ fitSegmented (Segmented base mcols maxCard minRows lam) target df =
                 expr = buildExpr catCols segments globalM
              in SegmentedModel catCols segments fellBack globalM expr
 
--- | 'span' over a predicate that need not hold contiguously (a filter partition).
+-- | 'span' over a predicate that need not hold contiguously.
 span' :: (b -> Bool) -> [b] -> ([b], [b])
 span' p xs = (filter p xs, filter (not . p) xs)
 
-{- | Compile the routing: a right-folded @If@ ladder of @key == value@ conjuncts,
-ending in the fallback model's prediction. Keys are disjoint, so order is
-immaterial.
--}
+-- | Compile the routing: a right-folded If ladder ending in the fallback.
 buildExpr ::
     (Columnable a, Predict model, Prediction model ~ Expr a) =>
     [T.Text] ->
@@ -211,10 +196,7 @@ keyCond :: [T.Text] -> [T.Text] -> Expr Bool
 keyCond catCols vals =
     foldr1 (.&&.) [(Col c :: Expr T.Text) .==. Lit v | (c, v) <- zip catCols vals]
 
-{- | The Text feature columns to segment on, chosen from the frame's Text features
-@textCols@. An explicit list is validated to be all-Text; auto-detect keeps Text
-columns with at most @maxCard@ distinct values.
--}
+-- | The Text feature columns to segment on, explicit or auto-detected.
 resolveCatCols ::
     DataFrame -> Maybe T.Text -> [T.Text] -> Maybe [T.Text] -> Int -> [T.Text]
 resolveCatCols df mTarget textCols mcols maxCard = case mcols of
@@ -236,10 +218,7 @@ distinctCount :: DataFrame -> T.Text -> Int
 distinctCount df c =
     Set.size (Set.fromList (V.toList (columnToTextVec (unsafeGetColumn c df))))
 
-{- | Reject feature columns that are neither Text (dropped\/segmented) nor
-non-null 'Double', naming each with its fix — clearer than the base fitter's
-raw type mismatch.
--}
+-- | Reject feature columns that are neither Text nor non-null Double.
 guardNumeric :: DataFrame -> [T.Text] -> Expr a -> ()
 guardNumeric df textCols target =
     case problems of
@@ -272,9 +251,7 @@ guardNumeric df textCols target =
             _ -> False
         _ -> False
 
-{- | Group row indices by their composite categorical key, dropping rows whose key
-has a null in any segmented column (served by the fallback). Ascending key order.
--}
+-- | Group row indices by composite categorical key, dropping null keys.
 groupByKey :: DataFrame -> [T.Text] -> [([T.Text], VU.Vector Int)]
 groupByKey df catCols =
     map (\(k, is) -> (k, VU.fromList (reverse is))) (M.toAscList grouped)
@@ -291,10 +268,7 @@ groupByKey df catCols =
             M.empty
             [0 .. n - 1]
 
-{- | Linear segments with exact closed-form pooling. @λ = 0@ is independent OLS;
-@λ > 0@ shrinks each segment's coefficients toward the @n_g@-weighted mean of the
-per-segment fits.
--}
+-- | Linear segments with exact closed-form pooling.
 instance SegmentFit LinearConfig Double where
     fitSegments cfg lam target dfs
         | lam == 0 = map (fit cfg target) dfs

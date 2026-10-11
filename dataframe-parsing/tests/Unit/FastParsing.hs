@@ -1,11 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Pinned adversarial cases for "DataFrame.Internal.Parsing.Fast".
-
-Each case asserts parity with the reference parsers plus, where the
-parser-semantics contract (benchmarks/csv/results/code-audit.md section 2)
-pins a concrete value, the value itself.
--}
+-- | Pinned adversarial parity cases for "DataFrame.Internal.Parsing.Fast".
 module Unit.FastParsing (tests) where
 
 import qualified Data.ByteString as BS

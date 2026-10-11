@@ -1,12 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | The vocabulary shared by the aggregation planner and the aggregation
-kernels: the set of recognised reductions, and the admission gate that decides
-whether a column may enter a Double-valued fast path.
-
-This module holds no kernel and no policy, so the planner can depend on it
-without depending on an implementation.
--}
+-- | Vocabulary shared by the aggregation planner and kernels.
 module DataFrame.Internal.Aggregation.Reduction (
     Reduction (..),
     cleanDoubleVector,
@@ -20,10 +14,7 @@ import DataFrame.Internal.Column (
  )
 import DataFrame.Internal.Column.Conversion (toDoubleVector)
 
-{- | A recognised fast-path reduction over a single value column. The element
-type (Int vs Double) is resolved at scatter time; sum/min/max preserve the
-column's element type, everything else produces a Double column.
--}
+-- | A recognised fast-path reduction over a single value column.
 data Reduction
     = RSum
     | RCount

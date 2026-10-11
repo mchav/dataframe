@@ -3,10 +3,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | Linear regression with the standard penalties: OLS (QR), ridge (Cholesky),
-and lasso\/elastic net (FISTA). 'fit' produces a 'LinearRegressor'; 'predict'
-compiles it to an @Expr Double@ over the raw feature columns.
--}
+-- | Linear regression: OLS, ridge and lasso/elastic net.
 module DataFrame.LinearModel.Regression (
     module DataFrame.Model,
     Penalty (..),
@@ -37,7 +34,7 @@ import DataFrame.LinearSolver (
 import DataFrame.LinearSolver.Loss (squaredLoss)
 import DataFrame.Model
 
--- | Regularization choice. @alpha@ is the penalty strength; @l1Ratio@ mixes L1/L2.
+-- | Regularization choice: penalty strength and L1/L2 mix.
 data Penalty
     = OLS
     | Ridge !Double
@@ -45,7 +42,7 @@ data Penalty
     | ElasticNet !Double !Double
     deriving (Eq, Show)
 
--- | Hyperparameters for linear regression: the penalty and the FISTA solver config.
+-- | Hyperparameters for linear regression: penalty and solver config.
 data LinearConfig = LinearConfig
     { lcPenalty :: !Penalty
     , lcSolver :: !SolverConfig
@@ -55,9 +52,7 @@ data LinearConfig = LinearConfig
 defaultLinearConfig :: LinearConfig
 defaultLinearConfig = LinearConfig{lcPenalty = OLS, lcSolver = defaultSolverConfig}
 
-{- | A fitted linear regressor. @regCoef@ and @regIntercept@ are sklearn's
-@coef_@ / @intercept_@ in raw feature space.
--}
+-- | A fitted linear regressor with coefficients in raw feature space.
 data LinearRegressor = LinearRegressor
     { regCoef :: !(VU.Vector Double)
     , regIntercept :: !Double
@@ -103,9 +98,7 @@ olsSolve mat y =
   where
     augmented = V.map (VU.cons 1) mat
 
-{- | Ridge via Cholesky on @(XcᵀXc + αI) w = Xcᵀ yc@ over centred data; the
-intercept is recovered from the column/target means.
--}
+-- | Ridge via Cholesky over centred data, intercept from the means.
 ridgeSolve :: Double -> Matrix -> VU.Vector Double -> (VU.Vector Double, Double)
 ridgeSolve alpha mat y =
     case choleskySolve a rhs of

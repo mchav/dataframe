@@ -42,9 +42,7 @@ newtype DataFusionError = DataFusionError T.Text
     deriving (Show)
 instance Exception DataFusionError
 
-{- | Allocate a session. The handle stays alive until garbage-collected; in
-practice that is the program lifetime.
--}
+-- | Allocate a session that stays alive until garbage-collected.
 newContext :: IO Context
 newContext = do
     p <- F.df_ctx_new

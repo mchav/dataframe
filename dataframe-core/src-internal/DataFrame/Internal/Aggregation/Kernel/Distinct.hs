@@ -61,10 +61,6 @@ import DataFrame.Internal.Data.PackedText (
     packedSlice,
  )
 
--------------------------------------------------------------------------------
--- Admission
--------------------------------------------------------------------------------
-
 -- | How a column's rows become set keys.
 data Keys
     = -- | One 64-bit word per row; equal words iff equal values.
@@ -72,9 +68,7 @@ data Keys
     | -- | A UTF-8 byte slice per row.
       ByteKeys !Int !TextRows
 
-{- | Where a text row's bytes live. The contiguous layouts get their own kernel
-instances so the row accessor inlines; the rest go through a closure.
--}
+-- | Where a text row's bytes live, with kernel instances for each layout.
 data TextRows
     = Contig32 !A.Array !(VU.Vector Int32)
     | Contig64 !A.Array !(VU.Vector Int)
@@ -144,10 +138,6 @@ doubleWord d
     | d == 0 = 0
     | otherwise = fromIntegral (castDoubleToWord64 d)
 
--------------------------------------------------------------------------------
--- Entry points
--------------------------------------------------------------------------------
-
 -- | Number of distinct values in a column, or 'Nothing' if not admitted.
 countDistinctColumn :: Column -> Maybe Int
 countDistinctColumn col = case columnKeys col of
@@ -159,9 +149,7 @@ countDistinctColumn col = case columnKeys col of
         AnyRows slice -> bytesGlobal n slice
 {-# NOINLINE countDistinctColumn #-}
 
-{- | Distinct values per group, given each row's group id (@rowToGroup@) and the
-group count. 'Nothing' if the column is not admitted.
--}
+-- | Distinct values per group, or 'Nothing' if the column is not admitted.
 countDistinctGroups :: VU.Vector Int -> Int -> Column -> Maybe (VU.Vector Int)
 countDistinctGroups rtg nGroups col = case columnKeys col of
     Nothing -> Nothing
@@ -178,10 +166,6 @@ contigSlice arr offs i =
     let !o = fromIntegral (VU.unsafeIndex offs i)
      in (arr, o, fromIntegral (VU.unsafeIndex offs (i + 1)) - o)
 {-# INLINE contigSlice #-}
-
--------------------------------------------------------------------------------
--- The four variants
--------------------------------------------------------------------------------
 
 wordGlobal :: VU.Vector Int -> IO Int
 wordGlobal v = do
@@ -292,10 +276,6 @@ rowsEq slice r r' = case slice r of
 {-# INLINE bytesGlobal #-}
 {-# INLINE bytesGrouped #-}
 
--------------------------------------------------------------------------------
--- Hashing
--------------------------------------------------------------------------------
-
 -- | Murmur3's 64-bit finaliser: every input bit reaches every output bit.
 fmix :: Int -> Int
 fmix k =
@@ -321,14 +301,7 @@ slotOf pb bits h =
         (((fromIntegral h :: Word64) `unsafeShiftL` pb) `unsafeShiftR` (64 - bits))
 {-# INLINE slotOf #-}
 
--------------------------------------------------------------------------------
--- Passes 1 and 2: histogram and scatter
--------------------------------------------------------------------------------
-
-{- | Partition count as a bit width: about 64K rows per partition so the sets
-stay cache-sized, at least four partitions per worker for balance, capped so
-the scatter's write heads stay within cache and TLB reach.
--}
+-- | Partition count as a bit width, sized for cache-resident sets.
 partitionBits :: Int -> Int
 partitionBits n
     | not (shouldParallelize parThreshold n) = 1
@@ -359,19 +332,10 @@ cacheSize = 4096
 droppedRow :: Word16
 droppedRow = maxBound
 
--- | Rows scattered by partition: key words, optional second words, @np+1@ starts.
+-- | Rows scattered by partition: key words, optional second words, starts.
 data Scattered = Scattered !(VU.Vector Int) !(VU.Vector Int) !(VU.Vector Int)
 
-{- | Hash every row to histogram partitions, then write each row's words into
-its partition. With @keepHash@ the hash is stored between the passes (text
-hashing is too costly to repeat).
-
-Each chunk keeps a small direct-mapped cache of the keys it has emitted; a row
-equal to a cached key is a duplicate of a row already headed for the same
-partition, so it is dropped. Skewed keys (an empty string on most rows, a few
-very active users) then cost one cache probe per row instead of piling into
-one partition and one worker.
--}
+-- | Hash every row to a partition, then write each row's words into it.
 scatterRows ::
     Int ->
     Int ->
@@ -468,14 +432,7 @@ scatterRows n pb keepHash twoWords rowHash rowEq rowW0 rowW1 = do
         <*> VU.unsafeFreeze starts
 {-# INLINE scatterRows #-}
 
--------------------------------------------------------------------------------
--- Pass 3: per-partition dedup
--------------------------------------------------------------------------------
-
-{- | Run @body@ over partitions @[0, np)@ on a pool of workers pulling the next
-partition from a shared counter. Each worker gets its own state; all states are
-returned for the caller to merge.
--}
+-- | Run @body@ over partitions on a worker pool pulling from a shared counter.
 forPartitions :: Int -> IO s -> (s -> Int -> IO ()) -> IO [s]
 forPartitions np newState body = do
     next <- newIORef 0
@@ -488,12 +445,7 @@ forPartitions np newState body = do
     pure states
 {-# INLINE forPartitions #-}
 
-{- | Per-group counts from @body counts p@, which calls @bumpGroup counts g@
-once per new pair of group @g@ in partition @p@. Small group domains count into
-per-worker arrays summed at the end; wide ones share one array with atomic
-increments, as replicating it per worker would cost more than the rare
-contention.
--}
+-- | Per-group counts from a body that bumps a counter once per new pair.
 groupCounts :: Int -> Int -> (Counts -> Int -> IO ()) -> IO (VU.Vector Int)
 groupCounts nGroups np body
     | nGroups * capabilities <= 1 `unsafeShiftL` 22 = do
@@ -511,9 +463,7 @@ groupCounts nGroups np body
         VU.unsafeFreeze shared
 {-# INLINE groupCounts #-}
 
-{- | A group-count array and whether other workers share it. Passed as data, not
-as an increment closure, so the dedup loop's increment is inlined code.
--}
+-- | A group-count array and whether other workers share it.
 data Counts = Counts !Bool !(VUM.IOVector Int)
 
 bumpGroup :: Counts -> Int -> IO ()
@@ -532,13 +482,11 @@ modifyStrict :: IORef Int -> (Int -> Int) -> IO ()
 modifyStrict ref f = readIORef ref >>= \x -> writeIORef ref $! f x
 {-# INLINE modifyStrict #-}
 
--- | Starting table width for a partition of @rows@ entries; it doubles as needed.
+-- | Starting table width for a partition of @rows@ entries.
 initialBits :: Int -> Int
 initialBits rows = max 4 (min 12 (ceilLog2 (2 * rows)))
 
-{- | Distinct words in @w0[s, e)@. Slots hold the word itself; 'minBound' marks
-an empty slot, so a real 'minBound' key is tracked by a flag instead.
--}
+-- | Distinct words in @w0[s, e)@, with 'minBound' tracked by a flag.
 dedupWords :: Int -> VU.Vector Int -> Int -> Int -> IO Int
 dedupWords pb w0 s e = do
     let !bits0 = initialBits (e - s)
@@ -589,10 +537,7 @@ growWords pb t bits = do
             place (slotOf pb bits' (fmix k))
     pure t'
 
-{- | Distinct @(w0, w1)@ entries in @[s, e)@ under @eq@, slotted by @hashOf@.
-An empty slot has a negative second word (group ids and row indices are not).
-@onNew@ sees each first sighting.
--}
+-- | Distinct @(w0, w1)@ entries in @[s, e)@ under @eq@, slotted by @hashOf@.
 dedupPairs ::
     Int ->
     VU.Vector Int ->

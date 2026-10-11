@@ -2,9 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Specification for 'DataFrame.Internal.Expression.Simplify.simplify': each case is the
-full predicate expression, compared with 'eqExpr'.
--}
+-- | Specification for simplify: each case compares the full expression.
 module Simplify (tests) where
 
 import DataFrame.Expression.Operators

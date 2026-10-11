@@ -47,9 +47,7 @@ data ReadOptions = ReadOptions
     { hasHeader :: Bool
     , inferTypes :: Bool
     , safeRead :: SafeReadMode
-    {- ^ Default 'SafeReadMode' for columns without an entry in
-    'safeReadOverrides'.
-    -}
+    -- ^ Default 'SafeReadMode' for columns without an override.
     , safeReadOverrides :: [(T.Text, SafeReadMode)]
     -- ^ Per-column 'SafeReadMode' overrides; takes precedence over 'safeRead'.
     , rowRange :: !(Maybe (Int, Int)) -- (start, length)
@@ -59,10 +57,7 @@ data ReadOptions = ReadOptions
     , rowsRead :: !Int
     }
 
-{- | Default read options: assume a header, infer types, no safe-read wrapping.
-Set 'safeRead' to 'MaybeRead'/'EitherRead' to wrap columns; use
-'safeReadOverrides' to pick a different mode per column.
--}
+-- | Default read options: assume a header, infer types, no safe-read wrapping.
 defaultOptions :: ReadOptions
 defaultOptions =
     ReadOptions
@@ -77,17 +72,11 @@ defaultOptions =
         , rowsRead = 0
         }
 
-{- | Reads a CSV file from the given path.
-Note this file stores intermediate temporary files
-while converting the CSV from a row to a columnar format.
--}
+-- | Read a CSV file from a path, staging intermediate temp files.
 readCsv :: FilePath -> IO DataFrame
 readCsv path = fst <$> readSeparated ',' defaultOptions path
 
-{- | Reads a tab separated file from the given path.
-Note this file stores intermediate temporary files
-while converting the CSV from a row to a columnar format.
--}
+-- | Read a tab-separated file from a path, staging intermediate temp files.
 readTsv :: FilePath -> IO DataFrame
 readTsv path = fst <$> readSeparated '\t' defaultOptions path
 
@@ -202,7 +191,7 @@ fillColumns n c mutableCols nullIndices unused handle = do
     pure (l, r)
 {-# INLINE fillColumns #-}
 
--- | Writes a value into the appropriate column, resizing the vector if necessary.
+-- | Writes a value into the right column, resizing the vector if needed.
 writeValue ::
     VM.IOVector MutableColumn ->
     VM.IOVector [(Int, T.Text)] ->
@@ -217,7 +206,7 @@ writeValue mutableCols nullIndices count colIndex value = do
     either modify (const (return ())) res
 {-# INLINE writeValue #-}
 
--- | Freezes a mutable vector into an immutable one, trimming it to the actual row count.
+-- | Freezes a mutable vector into an immutable one, trimmed to the row count.
 freezeColumn ::
     V.Vector T.Text ->
     VM.IOVector MutableColumn ->
@@ -241,14 +230,7 @@ freezeColumn colNames mutableCols nulls opts colIndex = do
         NoSafeRead -> freezeColumn' colNulls col
 {-# INLINE freezeColumn #-}
 
--- ---------------------------------------------------------------------------
--- Streaming scan API
--- ---------------------------------------------------------------------------
-
-{- | Open a file for streaming: returns a handle positioned after the header
-and the column spec for the schema columns present in the header.
-The caller must close the handle when done.
--}
+-- | Open a file for streaming, returning the handle and the column spec.
 openCsvStream ::
     Char ->
     Schema ->
@@ -272,10 +254,7 @@ openCsvStream sep schema path = do
                 ("openCsvStream: none of the schema columns appear in the header of " <> path)
     return (handle, colSpec)
 
-{- | Read up to @batchSz@ rows, returning a batch 'DataFrame' and the unconsumed
-leftover text; 'Nothing' at EOF with no leftover. Pass the previous call's
-leftover back in (use @""@ on the first call).
--}
+-- | Read up to @batchSz@ rows, returning a batch and the leftover text.
 readBatch ::
     Char ->
     [(Int, T.Text, SchemaType)] ->
@@ -342,9 +321,7 @@ readBatch sep colSpec batchSz leftover handle = do
                     , newLeftover
                     )
 
-{- | Write a 'ByteString' field value directly into a mutable column,
-parsing numerics without an intermediate 'T.Text' allocation.
--}
+-- | Write a 'ByteString' field directly into a mutable column.
 writeColumnBs ::
     Int -> BS.ByteString -> MutableColumn -> IO (Either T.Text Bool)
 writeColumnBs i bs (MBoxedColumn (col :: VM.IOVector a)) =
@@ -365,10 +342,7 @@ writeColumnBs i bs (MUnboxedColumn (col :: VUM.IOVector a)) =
             Nothing -> return (Left (TextEncoding.decodeUtf8Lenient bs))
 {-# INLINE writeColumnBs #-}
 
-{- | Extracts the Nth field (0-indexed), respecting double quotes and stripping them.
-Fast path: uses memchr-based 'BS.break' when no quotes are present in the line.
-Slow path: quote-aware character-by-character scan.
--}
+-- | Extract the Nth field (0-indexed), respecting and stripping quotes.
 getNthFieldBs :: Word8 -> Int -> BS.ByteString -> BS.ByteString
 getNthFieldBs sep targetIdx bs
     | not (BS.any (== 0x22) bs) = skipFast targetIdx bs
@@ -422,10 +396,7 @@ sliceCol :: Int -> MutableColumn -> MutableColumn
 sliceCol n (MBoxedColumn col) = MBoxedColumn (VM.take n col)
 sliceCol n (MUnboxedColumn col) = MUnboxedColumn (VUM.take n col)
 
-{- | Finds the index of the next unquoted newline (0x0A).
-Fast path: uses memchr (SIMD) and falls back to a quote-aware linear scan
-only if a double-quote appears before the candidate newline.
--}
+-- | Find the index of the next unquoted newline (0x0A).
 findUnquotedNewline :: BS.ByteString -> Maybe Int
 findUnquotedNewline bs =
     case BS.elemIndex 0x0A bs of

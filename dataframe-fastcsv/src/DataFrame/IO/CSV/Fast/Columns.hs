@@ -3,10 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Column-level dispatch for the fast CSV reader: resolve each column's
-target type up front into a 'ColumnPlan' (schema hit, inference chain, or
-legacy Text pipeline). Plans are chunk-runnable for the parallel reader.
--}
+-- | Resolves each column's target type up front into a 'ColumnPlan'.
 module DataFrame.IO.CSV.Fast.Columns (
     ColumnEnv (..),
     ColumnPlan (..),
@@ -103,21 +100,14 @@ supportedType (SType (_ :: P.Proxy a))
     | isJust (testEquality (typeRep @a) (typeRep @Day)) = Just TDate
     | otherwise = Nothing
 
-{- | How to build one column, resolved once per read (before any chunk
-fan-out). 'PlanLegacy' carries the \"re-apply 'parseWithTypes'\" flag.
--}
+-- | How to build one column, resolved once per read.
 data ColumnPlan
-    = {- | Inference: fallback chain; the 'Bool' asks for the all-null
-      pre-check ('NoAssumption' only).
-      -}
+    = -- | Inference: fallback chain, optionally with an all-null pre-check.
       PlanChain !SafeReadMode !NullSpec ![Step] !Bool
     | PlanSchema !SafeReadMode !NullSpec !TargetType
     | PlanLegacy !SafeReadMode !Bool
 
-{- | Resolve a column's plan. For inferred columns the sample is always
-classified against the global (full-range) env, so chunked and sequential
-reads share one assumption.
--}
+-- | Resolve a column's plan against the global (full-range) env.
 planColumn :: ColumnEnv -> T.Text -> Int -> ColumnPlan
 planColumn env name col = case mode of
     EitherRead -> PlanLegacy mode (isJust schemaEntry)
@@ -154,10 +144,7 @@ chainPlan env mode col =
         NoAssumption -> True
         _ -> False
 
-{- | What a chain plan produced for one row range: every cell null (only
-reported when the all-null pre-check is on), or the index of the first
-chain step whose pass succeeded plus its column.
--}
+-- | What a chain plan produced for one row range.
 data ChunkOutcome = AllNullChunk | Resolved !Int !PassCol
 
 -- | Run a fallback chain over the env's row range.
@@ -174,9 +161,7 @@ runChainChunk env nspec steps checkAllNull col = do
             Left _ -> go (i + 1) rest
     go _ [] = error "fastcsv: type-fallback chain exhausted (StepText must succeed)"
 
-{- | Run a schema-typed pass over the env's row range. @rowOff@ maps a
-chunk-local failure index to the global data-row index.
--}
+-- | Run a schema-typed pass over the env's row range.
 runSchemaChunk ::
     ColumnEnv ->
     NullSpec ->
@@ -209,10 +194,7 @@ finishMode :: SafeReadMode -> Column -> Column
 finishMode MaybeRead = ensureOptional
 finishMode _ = id
 
-{- | Build one column sequentially (single chunk over the full row range).
-Returns the column plus a flag telling the caller to re-apply the legacy
-'parseWithTypes' conversion afterwards (schema types the passes can't serve).
--}
+-- | Build one column sequentially over the full row range.
 buildColumn :: ColumnEnv -> T.Text -> Int -> IO (Column, Bool)
 buildColumn env name col = case planColumn env name col of
     PlanLegacy mode pwt -> (,pwt) <$> legacyColumn env mode col
@@ -227,9 +209,7 @@ buildColumn env name col = case planColumn env name col of
                 Resolved _ c' -> passColumn c'
         pure (finishMode mode (dictCompactColumn c), False)
 
-{- | The original Text-materializing pipeline, kept for 'EitherRead' and
-exotic schema types (cold paths).
--}
+-- | The original Text-materializing pipeline, kept for cold paths.
 legacyColumn :: ColumnEnv -> SafeReadMode -> Int -> IO Column
 legacyColumn env mode col = do
     let opts = ceOpts env

@@ -5,12 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | Density-based clustering (DBSCAN). Brute-force @O(n²)@ region queries, no
-spatial index — suitable for the in-memory scales this library targets. DBSCAN
-is transductive: it has a 'Fit' instance but deliberately no 'Predict' instance
-(there is no honest single prediction expression). 'dbscanSurrogateExpr' fits an
-interpretable decision-tree surrogate on the cluster labels instead.
--}
+-- | Density-based clustering (DBSCAN) with brute-force region queries.
 module DataFrame.DBSCAN (
     module DataFrame.Model,
     DBSCANConfig (..),
@@ -48,9 +43,7 @@ data DBSCANConfig = DBSCANConfig
 defaultDBSCANConfig :: DBSCANConfig
 defaultDBSCANConfig = DBSCANConfig{dbEps = 0.5, dbMinSamples = 5}
 
-{- | A fitted DBSCAN labelling. 'dbLabels' uses @-1@ for noise (sklearn's
-@labels_@); 'dbCoreSampleIndices' are the core points.
--}
+-- | A fitted DBSCAN labelling, with -1 marking noise.
 data DBSCANModel = DBSCANModel
     { dbLabels :: !(VU.Vector Int)
     , dbCoreSampleIndices :: !(VU.Vector Int)
@@ -106,9 +99,7 @@ clusterLabels n nbrs isCore = runST $ do
     seedLoop 0 0
     VU.freeze lab
 
-{- | Fit a decision-tree surrogate on the DBSCAN labels so new rows can be
-assigned an (approximate) cluster. Noise (@-1@) is its own class.
--}
+-- | Fit a decision-tree surrogate on the DBSCAN labels.
 dbscanSurrogateExpr ::
     TreeConfig -> [Expr Double] -> DBSCANModel -> DataFrame -> Expr Int
 dbscanSurrogateExpr cfg features model df =

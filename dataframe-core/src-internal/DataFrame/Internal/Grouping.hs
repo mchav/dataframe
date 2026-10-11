@@ -72,10 +72,7 @@ import DataFrame.Internal.Row.RowHash (computeRowHashesWithIO)
 import System.IO.Unsafe (unsafePerformIO)
 import Type.Reflection (typeRep)
 
-{- | O(k * n) group the dataframe by the given key columns, bucketing rows with an
-open-addressing hash table that re-verifies keys on each hash hit. Groups are
-numbered in first-appearance order; 'valueIndices'/'offsets' follow by counting sort.
--}
+-- | O(k * n) group the dataframe by the given key columns via a hash table.
 groupBy ::
     [T.Text] ->
     DataFrame ->
@@ -100,23 +97,7 @@ groupBy names df
   where
     !n = nRows df
 
-{- | Low-cardinality direct-indexed grouping fast path
-('DataFrame.Internal.Grouping.Direct'): fires for key lists
-where every key is a single clean small-range @Int@ column or a canonical
-dict-encoded text column, and the product of the key domains stays within
-'directGroupThreshold' (the keys fuse into one mixed-radix code; a single key
-degenerates to its own code). Returns 'Nothing' on any other key shape, falling
-back to the hash path.
-
-Narrow domains build @offsets@/@groupRepRows@ eagerly (histogram-sized work
-only) and leave BOTH per-row outputs lazy: @valueIndices@ ('visFromCodes')
-only materializes for consumers that gather (median/top-k, set ops,
-interpreter slices), and @rowToGroup@ ('rtgFromCodes') only for the streaming
-scatter aggregations — each aggregate pays for exactly one O(n) output pass,
-not both. Wide domains run the two-level radix engine instead
-('DataFrame.Internal.Grouping.Direct.directLayoutLazy'): @rowToGroup@ eager,
-@valueIndices@ deferred (see 'fusedDirectGroup').
--}
+-- | Low-cardinality direct-indexed grouping fast path for multi-key lists.
 tryDirectGroup :: [T.Text] -> DataFrame -> Maybe GroupedDataFrame
 tryDirectGroup [] _ = Nothing
 tryDirectGroup names df = do
@@ -128,19 +109,13 @@ tryDirectGroup names df = do
             ([name], [col]) -> tryDictGroup (nRows df) df [name] col
             _ -> Nothing
 
-{- | One key column of a fused multi-key direct grouping: a per-row component
-code in @[0, fkDomain)@ (negative marks an invalid/corrupt code, which aborts
-the direct path).
--}
+-- | One key column of a fused multi-key direct grouping.
 data FusedKey = FusedKey
     { fkCode :: Int -> Int
     , fkDomain :: !Int
     }
 
-{- | Classify a key column for the fused multi-key direct path: a clean non-null
-unboxed @Int@ of small range, or a non-null canonical dict-encoded text column
-of small dictionary. Anything else falls back to the hash group-by.
--}
+-- | Classify a key column for the fused multi-key direct path.
 fusedKey :: Column -> Maybe FusedKey
 fusedKey col@(UnboxedColumn Nothing (_ :: VU.Vector a))
     | Just v <- asIntKeys col
@@ -165,34 +140,14 @@ fusedKey (PackedText Nothing p)
                 else Nothing
 fusedKey _ = Nothing
 
-{- | An integral key column as 'Int's. Narrow widths are copied once so they
-share the 'Int' direct path; hash grouping costs far more. Floats are refused:
-rounding them would merge distinct keys.
--}
+-- | An integral key column as 'Int's; floats are refused.
 asIntKeys :: Column -> Maybe (VU.Vector Int)
 asIntKeys (UnboxedColumn Nothing (v :: VU.Vector a)) = case sFloating @a of
     STrue -> Nothing
     SFalse -> widenToInt v
 asIntKeys _ = Nothing
 
-{- | Fuse the per-key codes into one mixed-radix code per row
-(@((k1*d2)+k2)*d3+...@) and feed the direct counting-sort machinery. Group
-order: ascending fused code (lexicographic in key order) — ascending value
-order for @Int@ keys (mirroring the order the single-@Int@-key direct path
-always had) and ascending dictionary code for dict-encoded text keys (the
-dictionary's first-appearance order, a fixed property of the column). The
-ascending order keeps @codeToGroup@ an identity map whenever the domain is
-fully occupied, so the deferred @rowToGroup@ pass skips its per-row random
-remap lookup; ranking dict groups by string hash instead (the historical
-order) profiled ~0.6s slower per 1e8 rows at 1e6 groups.
-
-On the narrow-domain engine, @valueIndices@ and @rowToGroup@ are passed to the
-constructor as unevaluated applications of 'visFromCodes' / 'rtgFromCodes'
-(constructor arguments are not forced even under @-XStrict@, and the fields
-are lazy at their definition site), so each per-row output pass is deferred
-until a consumer demands it. The wide-domain engine defers only
-@valueIndices@ (see the branch comment below).
--}
+-- | Fuse per-key codes into one mixed-radix code per row and group directly.
 fusedDirectGroup ::
     [T.Text] -> DataFrame -> [FusedKey] -> Maybe GroupedDataFrame
 fusedDirectGroup names df keys = do
@@ -201,13 +156,7 @@ fusedDirectGroup names df keys = do
         codeAt' = fusedCodeAt keys
     if GD.useTwoLevel n domain
         then do
-            {- Wide domains (> ~1024 codes at parallel scale): the two-level
-            radix engine — no pass random-writes a multi-megabyte table per
-            worker, unlike the per-chunk direct histograms below (measured ~2x
-            on the eager layout at 1e6 codes / 1e8 rows). It builds
-            @rowToGroup@ eagerly (the streaming aggregations force it first
-            thing anyway); only @valueIndices@ stays deferred, reconstructed
-            from @rowToGroup@ by the same engine on demand. -}
+            -- Wide domains use the radix engine; valueIndices stays deferred.
             (rtg, offs, reps, nGroups) <-
                 GD.directLayoutLazy codeAt' n domain ascendingCodeGroups
             Just
@@ -232,10 +181,7 @@ fusedDirectGroup names df keys = do
                     reps
                 )
 
-{- | Product of the per-key domains, 'Nothing' once it (or any factor) passes
-'directGroupThreshold'. Factors are capped before multiplying, so the running
-product never exceeds @threshold^2@ and cannot overflow.
--}
+-- | Product of the per-key domains, or 'Nothing' past the direct threshold.
 fusedDomain :: [Int] -> Maybe Int
 fusedDomain = go 1
   where
@@ -245,10 +191,7 @@ fusedDomain = go 1
         | acc * d > directGroupThreshold = Nothing
         | otherwise = go (acc * d) ds
 
-{- | Per-row fused mixed-radix code; @-1@ when any component code is invalid
-(only possible for corrupt dict codes), making 'groupCodesMaybe' bail to the
-hash path. Valid components compose to a code in @[0, product of domains)@.
--}
+-- | Per-row fused mixed-radix code; @-1@ when any component code is invalid.
 fusedCodeAt :: [FusedKey] -> (Int -> Int)
 fusedCodeAt [] = const (-1)
 fusedCodeAt (k0 : ks0) = go (fkCode k0) ks0
@@ -266,10 +209,7 @@ fusedCodeAt (k0 : ks0) = go (fkCode k0) ks0
                 )
                 ks
 
-{- | Dictionary-encode a single text key to dense int codes, then derive
-@valueIndices@/@offsets@ by counting sort. Profiled slower than the fused hash
-group-by on every db-benchmark question, so it always falls back ('dictGroupEnabled').
--}
+-- | Dictionary-encode a single text key, then group by counting sort.
 tryDictGroup ::
     Int -> DataFrame -> [T.Text] -> Column -> Maybe GroupedDataFrame
 tryDictGroup n df names col
@@ -279,23 +219,15 @@ tryDictGroup n df names col
         Just (Grouped df names vis os codes)
     | otherwise = Nothing
 
-{- | Master switch for the single-key dict-encode grouping path. 'False' because
-it profiled slower than the hash group-by on every db-benchmark group-by question
-(see 'tryDictGroup'); the path is kept compiled and tested but not taken.
--}
+-- | Master switch for the single-key dict-encode grouping path.
 dictGroupEnabled :: Bool
 dictGroupEnabled = False
 
-{- | Cardinality ceiling for the single-key dict-encode probe: it bails to 'Nothing'
-once the distinct count passes this. Only consulted when 'dictGroupEnabled' is 'True'.
--}
+-- | Cardinality ceiling for the single-key dict-encode probe.
 dictSingleThreshold :: Int
 dictSingleThreshold = 4096
 
-{- | The sequential grouping path: a single open-addressing table over all rows,
-canonically remapped. Always available regardless of capabilities; the parallel
-path is verified equal to it by a property test.
--}
+-- | The sequential grouping path: one open-addressing table over all rows.
 groupBySeq :: [T.Text] -> DataFrame -> GroupedDataFrame
 groupBySeq names df =
     let !n = nRows df
@@ -307,10 +239,7 @@ groupBySeq names df =
         (vis, os) = indicesFromGroups rtg nGroups
      in Grouped df names vis os rtg
 
-{- | The parallel partitioned grouping path (see 'DataFrame.Internal.Grouping.Partitioned'):
-forks one task per capability, producing output bit-for-bit identical to
-'groupBySeq'. Pure via 'unsafePerformIO' (deterministic thread fan-out only).
--}
+-- | The parallel partitioned grouping path, identical in output to sequential.
 groupByPar :: [T.Text] -> DataFrame -> GroupedDataFrame
 groupByPar names df =
     let !n = nRows df
@@ -319,15 +248,9 @@ groupByPar names df =
         selectedCols = map (materializeMerged . (columns df V.!)) indicesToGroup
         !eqRow = eqKeyRow df indicesToGroup
         (vis, os) = unsafePerformIO $ do
-            -- Parallel row-hash kernel, bit-identical to 'computeHashes' at the
-            -- same dict-code setting (grouping always hashes canonical dict
-            -- columns by code; see 'hashPacked').
             hashes <- computeRowHashesWithIO True n selectedCols
             parallelAssignGroups n hashes eqRow
-     in -- rowToGroup is passed as an UNFORCED constructor argument (this module
-        -- is -XStrict, so it must not be let-bound): gather-style aggregation
-        -- over huge group counts never reads it, and the deferred pass writes
-        -- values identical to the eager build.
+     in -- rowToGroup stays an unforced argument (the module is -XStrict).
         Grouped df names vis os (rtgFromVisOffs n vis os)
 {-# NOINLINE groupByPar #-}
 
@@ -336,10 +259,7 @@ keyColIndices :: [T.Text] -> DataFrame -> [Int]
 keyColIndices names df =
     M.elems $ M.filterWithKey (\k _ -> k `elem` names) (columnIndices df)
 
-{- | Assign every row to a dense group id in first-appearance order. Returns
-@(rowToGroup, repHash, repRow)@ — the hash and representative row of each group.
-'eqKeyRow' re-verifies the real key on each hash hit so colliding keys stay apart.
--}
+-- | Assign every row a dense group id in first-appearance order.
 assignGroups ::
     DataFrame -> [Int] -> Int -> (VU.Vector Int, VU.Vector Int, VU.Vector Int)
 assignGroups df indicesToGroup n = runST $ do
@@ -365,18 +285,12 @@ assignGroups df indicesToGroup n = runST $ do
     repRow <- VU.unsafeFreeze (VUM.slice 0 nGroups repRowM)
     pure (frozen, repHash, repRow)
 
-{- | Map each first-appearance group id to its canonical id: groups ordered by
-ascending representative hash (tie-broken by representative row), making group
-order a deterministic function of the key set so set ops commute. O(g), no sort.
--}
+-- | Map each first-appearance group id to its canonical id (by hash).
 canonicalRemap :: VU.Vector Int -> VU.Vector Int -> VU.Vector Int
 canonicalRemap repHash _repRow =
     runST (rankByHash (pure . VU.unsafeIndex repHash) (VU.length repHash))
 
-{- | Compute the FNV row-hash of the key columns into a fresh unboxed vector,
-mixing 'nullSalt' for null slots so a missing value never collides with a
-present one of the same bits.
--}
+-- | Compute the FNV row-hash of the key columns into an unboxed vector.
 computeHashes :: DataFrame -> [Int] -> Int -> ST s (VU.Vector Int)
 computeHashes df indicesToGroup n = do
     mh <- VUM.replicate n fnvOffset
@@ -426,10 +340,7 @@ computeHashes df indicesToGroup n = do
             error "computeHashes: MergedColumn is normalized before hashing"
     VU.unsafeFreeze mh
 
-{- | Build the row-key equality predicate over the selected key columns.
-@eqKeyRow df idxs a b@ is 'True' iff rows @a@ and @b@ agree on all key columns
-(validity first, a null equals only a null). Used to reject hash collisions.
--}
+-- | Build the row-key equality predicate over the selected key columns.
 eqKeyRow :: DataFrame -> [Int] -> Int -> Int -> Bool
 eqKeyRow df indicesToGroup = case map (colEqRow . (columns df V.!)) indicesToGroup of
     [p] -> p
@@ -438,9 +349,7 @@ eqKeyRow df indicesToGroup = case map (colEqRow . (columns df V.!)) indicesToGro
             go (p : ps) a b = p a b && go ps a b
          in go preds
 
-{- | Per-column row equality respecting nulls. Two rows are equal at a column
-when both are null, or both are valid and their values compare equal.
--}
+-- | Per-column row equality respecting nulls.
 colEqRow :: Column -> (Int -> Int -> Bool)
 colEqRow c@(MergedColumn _ _) = colEqRow (materializeMerged c)
 colEqRow (UnboxedColumn bm v) =
@@ -450,8 +359,7 @@ colEqRow (BoxedColumn bm v) =
     let eqV a b = V.unsafeIndex v a == V.unsafeIndex v b
      in withNulls bm eqV
 colEqRow (PackedText bm p) =
-    -- A canonical dictionary selection assigns equal strings the same code,
-    -- so two rows are byte-equal iff their codes agree.
+    -- A canonical dictionary selection gives equal strings equal codes.
     let eqV = case ptSel p of
             Just sel
                 | ptCanonicalSel p ->
@@ -460,9 +368,7 @@ colEqRow (PackedText bm p) =
      in withNulls bm eqV
 {-# INLINE colEqRow #-}
 
-{- | Byte equality of two packed-text rows. The layout is matched once, outside
-the returned function, so each row pair costs two offset lookups and a compare.
--}
+-- | Byte equality of two packed-text rows, with the layout matched once.
 packedEqRow :: PackedTextData -> (Int -> Int -> Bool)
 packedEqRow (PackedTextData arr offs sel _) = case (sel, offs) of
     (Nothing, Offs32 o) -> \a b -> a == b || eqBase (off32 o) a b
@@ -484,9 +390,7 @@ packedEqRow (PackedTextData arr offs sel _) = case (sel, offs) of
     {-# INLINE eqSel #-}
     {-# INLINE eqBase #-}
 
-{- | Wrap a value-equality with null handling: equal iff both valid and the
-values agree, or both null.
--}
+-- | Wrap a value-equality with null handling (both null counts as equal).
 withNulls :: Maybe Bitmap -> (Int -> Int -> Bool) -> (Int -> Int -> Bool)
 withNulls Nothing eqV = eqV
 withNulls (Just bm) eqV = \a b ->
@@ -496,10 +400,7 @@ withNulls (Just bm) eqV = \a b ->
         _ -> False
 {-# INLINE withNulls #-}
 
-{- | Derive @(valueIndices, offsets)@ from @rowToGroup@ via a stable counting
-sort on the group id: a per-group count, a prefix-sum into group offsets, then a
-single placement pass keeps rows in original order within each group.
--}
+-- | Derive @(valueIndices, offsets)@ from @rowToGroup@ by stable counting sort.
 indicesFromGroups :: VU.Vector Int -> Int -> (VU.Vector Int, VU.Vector Int)
 indicesFromGroups rtg nGroups = runST $ do
     let !n = VU.length rtg
@@ -541,37 +442,15 @@ indicesFromGroups rtg nGroups = runST $ do
     frozenVis <- VU.unsafeFreeze vis
     pure (frozenVis, offs)
 
--------------------------------------------------------------------------------
--- Deferred-placement direct grouping
--------------------------------------------------------------------------------
-
-{- | Contiguous per-worker row ranges: one chunk per capability above the
-parallel threshold, a single chunk otherwise.
--}
+-- | Contiguous per-worker row ranges, one chunk per capability when parallel.
 directRowChunks :: Int -> [(Int, Int)]
 directRowChunks = chunksFor parThreshold
 
-{- | Like 'directRowChunks' but over a code/group domain (merge/seed passes),
-which pays for a fan-out at a much lower width than the row passes do.
--}
+-- | Like 'directRowChunks' but over a code/group domain.
 directCodeSlices :: Int -> [(Int, Int)]
 directCodeSlices = chunksFor 4096
 
-{- | The eager phases of the direct counting-sort grouping — WITHOUT either
-per-row output pass: per-chunk validated code histograms (parallel), per-code
-totals and first occurrences (parallel over code slices), the caller-chosen
-code->group mapping, the offsets prefix scan and per-group representative
-rows. Returns
-@(offsets, groupRepRows, counts, codeToGroup, chunkHists, nGroups)@ — the last
-three feed the deferred @valueIndices@ placement ('visFromCodes') and
-@rowToGroup@ ('rtgFromCodes') thunks, so a consumer pays only for the per-row
-output it actually demands. 'Nothing' when any row's code falls outside
-@[0, card)@ (fall back to hashing).
-
-Pure w.r.t. its immutable inputs: the fork fan-out is a fixed function of the
-row count and capability count, and every merge runs in fixed chunk order, so
-the result is deterministic and the 'unsafePerformIO' is safe.
--}
+-- | The eager phases of the direct counting-sort grouping.
 directLayoutLazy ::
     (Int -> Int) ->
     Int ->
@@ -588,9 +467,7 @@ directLayoutLazy ::
 directLayoutLazy codeAt n card mkGroups
     | n <= 0 || card <= 0 = Nothing
     | n < packedRowLimit = unsafePerformIO $ do
-        -- Packed variant: count and first-occurrence row share one word per
-        -- code, keeping phase 1 at a single accumulator array per chunk
-        -- (measured ~0.15s/1e8 rows cheaper than a second firstOcc array).
+        -- Packed variant: count and first row share one word per code.
         let chunks = directRowChunks n
         parts <- forkJoin [histFirstChunkPacked codeAt card lo hi | (lo, hi) <- chunks]
         if not (all snd parts)
@@ -598,8 +475,7 @@ directLayoutLazy codeAt n card mkGroups
             else finishLayout card mkGroups (map fst parts) $ \histsM totalsM firstAllM lo hi ->
                 sumFirstSlicePacked histsM totalsM firstAllM lo hi
     | otherwise = unsafePerformIO $ do
-        -- Fallback for gigantic frames where a row index does not fit the
-        -- packed word: separate count and firstOcc arrays, same results.
+        -- Fallback for huge frames: separate count and firstOcc arrays.
         let chunks = directRowChunks n
         parts <- forkJoin [histFirstChunk codeAt card lo hi | (lo, hi) <- chunks]
         if not (all (\(_, _, ok) -> ok) parts)
@@ -614,11 +490,7 @@ directLayoutLazy codeAt n card mkGroups
                     )
 {-# NOINLINE directLayoutLazy #-}
 
-{- | Shared tail of 'directLayoutLazy': run the totals/first-occurrence merge
-(which also normalizes each chunk histogram to plain counts, see
-'sumFirstSlicePacked'), derive the group mapping, offsets and representative
-rows, and freeze the retained chunk histograms.
--}
+-- | Shared tail of 'directLayoutLazy': merge, normalise and build the layout.
 finishLayout ::
     Int ->
     (VU.Vector Int -> (VU.Vector Int, Int)) ->
@@ -662,10 +534,7 @@ finishLayout card mkGroups histsM mergeSlice = do
     hists <- mapM VU.unsafeFreeze histsM
     pure (Just (offs, reps, counts, codeToGroup, hists, nGroups))
 
-{- | Rows must satisfy @row + 1 < 2^31@ for the packed count/first-row encoding
-(count in the high bits, first row + 1 in the low 31). Above it (a >2e9-row
-frame, >17GB per Int column) the unpacked variant runs instead.
--}
+-- | Row limit for the packed count/first-row encoding (@row + 1 < 2^31@).
 packedRowLimit :: Int
 packedRowLimit = 0x7FFFFFFF
 
@@ -673,10 +542,7 @@ packedRowLimit = 0x7FFFFFFF
 packedCountOne :: Int
 packedCountOne = 0x80000000
 
-{- | Whether @codeToGroup@ maps every code to itself (fully occupied ascending
-domain — e.g. a dense Int key covering its whole range). The rowToGroup pass
-then skips the random remap lookup entirely.
--}
+-- | Whether @codeToGroup@ maps every code to itself.
 isIdentityMap :: VU.Vector Int -> Bool
 isIdentityMap m = go 0
   where
@@ -686,10 +552,7 @@ isIdentityMap m = go 0
         | VU.unsafeIndex m i /= i = False
         | otherwise = go (i + 1)
 
-{- | Histogram one row chunk with the packed encoding: slot @c@ holds
-@count(c) * 2^31 + (firstRow(c) + 1)@ (zero = never seen). One accumulator
-array per chunk. Reports 'False' as soon as any code escapes @[0, card)@.
--}
+-- | Histogram one row chunk with the packed count and first-row encoding.
 histFirstChunkPacked ::
     (Int -> Int) -> Int -> Int -> Int -> IO (VUM.IOVector Int, Bool)
 histFirstChunkPacked codeAt card lo hi = do
@@ -710,11 +573,7 @@ histFirstChunkPacked codeAt card lo hi = do
     ok <- go lo
     pure (acc, ok)
 
-{- | Per-code totals and overall first occurrences from the PACKED chunk
-histograms, rewriting each histogram slot to its plain count in place (the
-placement thunk then sees ordinary counts). Chunks are ordered by row range, so
-the first chunk with a nonzero slot holds the code's globally first row.
--}
+-- | Per-code totals and first occurrences from the packed chunk histograms.
 sumFirstSlicePacked ::
     [VUM.IOVector Int] ->
     VUM.IOVector Int ->
@@ -740,11 +599,7 @@ sumFirstSlicePacked hists totals firstAll lo hi = go lo
             VUM.unsafeWrite firstAll c fo
             go (c + 1)
 
-{- | Histogram one row chunk into a private @card@-slot count plus the chunk's
-first occurrence of each code, reporting 'False' as soon as any code escapes
-@[0, card)@ (the counts are then abandoned). Fallback for frames beyond
-'packedRowLimit'.
--}
+-- | Histogram one row chunk into a private count plus first occurrences.
 histFirstChunk ::
     (Int -> Int) ->
     Int ->
@@ -768,10 +623,7 @@ histFirstChunk codeAt card lo hi = do
     ok <- go lo
     pure (acc, firstOcc, ok)
 
-{- | Per-code totals over one code slice, plus the overall first occurrence of
-each code: the chunks are ordered by row range, so the first chunk with a
-nonzero count for a code holds its globally first row.
--}
+-- | Per-code totals over one code slice, plus each code's first occurrence.
 sumFirstSlice ::
     [VUM.IOVector Int] ->
     [VUM.IOVector Int] ->
@@ -799,9 +651,7 @@ sumFirstSlice hists firsts totals firstAll lo hi = go lo
             VUM.unsafeWrite firstAll c fo
             go (c + 1)
 
-{- | Exclusive prefix scan of per-group counts (gathered through @codeToGroup@)
-into the offsets array of length @nGroups + 1@.
--}
+-- | Exclusive prefix scan of per-group counts into the offsets array.
 scanGroupOffsets :: VU.Vector Int -> VU.Vector Int -> Int -> IO (VU.Vector Int)
 scanGroupOffsets counts codeToGroup nGroups = do
     let !card = VU.length counts
@@ -826,10 +676,7 @@ scanGroupOffsets counts codeToGroup nGroups = do
     scan 0 0
     VU.unsafeFreeze offsM
 
-{- | @reps[codeToGroup c] = firstAll c@ for every occupied code: each group is
-exactly one occupied code, so this is a disjoint parallel write and equals
-@vis[offs[g]]@ (the group's first row in original order).
--}
+-- | Scatter representative rows for every occupied code, in parallel.
 scatterRepsSlice ::
     VU.Vector Int ->
     VU.Vector Int ->
@@ -850,16 +697,7 @@ scatterRepsSlice counts codeToGroup firstAll repsM lo hi = go lo
                 (VU.unsafeIndex firstAll c)
             go (c + 1)
 
-{- | Deferred @rowToGroup@: one parallel per-row pass mapping each row's code
-through @codeToGroup@ (skipping the lookup entirely when the map is the
-identity, i.e. a fully occupied ascending domain). Only the streaming
-aggregation paths force this; a purely gather-driven consumer (median, top-k)
-never pays for it.
-
-Pure w.r.t. its immutable inputs and deterministic (fixed chunking), so the
-'unsafePerformIO' behind a lazy field is safe: whenever and however many times
-the thunk is forced it yields the same vector.
--}
+-- | Deferred @rowToGroup@: one parallel per-row pass through @codeToGroup@.
 rtgFromCodes :: (Int -> Int) -> VU.Vector Int -> Int -> VU.Vector Int
 rtgFromCodes codeAt codeToGroup n = unsafePerformIO $ do
     rtgM <- VUM.new n
@@ -897,21 +735,7 @@ rtgChunkIdentity codeAt rtgM lo hi = go lo
             VUM.unsafeWrite rtgM i (codeAt i)
             go (i + 1)
 
-{- | Deferred stable placement: build the @valueIndices@ permutation from the
-per-row codes and the RETAINED phase-1 chunk histograms — the same
-seed-cursors-then-place structure (and cost) the eager path used, minus the
-@rowToGroup@ writes. Each chunk's code-indexed cursor starts at the group
-offset plus everything earlier chunks (in row order) place there, so rows keep
-original order within each group: the result is the unique group-major,
-original-row-order permutation, bit-identical to the eager placement at any
-chunk count.
-
-Pure w.r.t. its immutable inputs and deterministic (fixed chunking, fixed merge
-order), so the 'unsafePerformIO' behind a lazy field is safe: whenever and
-however many times the thunk is forced it yields the same vector. The thunk
-retains the chunk histograms (capabilities x card words) until forced or the
-grouping is dropped.
--}
+-- | Deferred stable placement building @valueIndices@ from per-row codes.
 visFromCodes ::
     (Int -> Int) ->
     VU.Vector Int ->
@@ -923,8 +747,7 @@ visFromCodes ::
     VU.Vector Int
 visFromCodes codeAt counts codeToGroup offs hists n card = unsafePerformIO $ do
     let chunks = directRowChunks n
-    -- Private mutable copies of the retained histograms, rewritten in place
-    -- into the per-chunk write cursors.
+    -- Private mutable copies of the histograms, rewritten into write cursors.
     cursors <- mapM VU.thaw hists
     _ <-
         forkJoin
@@ -940,10 +763,7 @@ visFromCodes codeAt counts codeToGroup offs hists n card = unsafePerformIO $ do
     VU.unsafeFreeze vis
 {-# NOINLINE visFromCodes #-}
 
-{- | Rewrite each chunk's histogram copy in place into its disjoint write
-cursor: chunk w's run for code c starts at the offset of c's group plus what
-earlier chunks (in row order) place there.
--}
+-- | Rewrite each chunk's histogram copy in place into its write cursor.
 seedCursorSlice ::
     VU.Vector Int ->
     VU.Vector Int ->
@@ -967,9 +787,7 @@ seedCursorSlice counts codeToGroup offs cursors lo hi = go lo
             loop cursors (VU.unsafeIndex offs g)
             go (c + 1)
 
-{- | Stable placement over one row chunk via the chunk's advancing
-code-indexed cursors.
--}
+-- | Stable placement over one row chunk via its advancing cursors.
 placeVisChunk ::
     (Int -> Int) -> VUM.IOVector Int -> VUM.IOVector Int -> Int -> Int -> IO ()
 placeVisChunk codeAt cursor vis lo hi = go lo
@@ -983,9 +801,7 @@ placeVisChunk codeAt cursor vis lo hi = go lo
             VUM.unsafeWrite cursor c (pos + 1)
             go (i + 1)
 
-{- | Fold a value-mix over an unboxed column into the running hash vector,
-respecting the null bitmap: a null slot mixes a fixed 'nullSalt' sentinel.
--}
+-- | Fold a value-mix over an unboxed column into the running hash vector.
 hashUnboxed ::
     (VU.Unbox a) =>
     VUM.MVector s Int ->
@@ -1013,14 +829,7 @@ hashUnboxed mh ubm mix v = case ubm of
             v
 {-# INLINE hashUnboxed #-}
 
-{- | Hash a packed-text column over its raw UTF-8 byte slices (no per-row
-'Data.Text.Text'), mixing 'nullSalt' for null rows. Shares 'mixBytes' with
-'mixText' so packed and boxed Text columns hash identically. A canonical
-dict-encoded column (equal strings share a code) instead mixes its 'Int' code
-with one 'mixInt' per row; 'DataFrame.Internal.RowHash.packedRange' applies the
-same rule under the grouping setting so 'groupBySeq' and 'groupByPar' bucket
-identically.
--}
+-- | Hash a packed-text column over its raw UTF-8 byte slices.
 hashPacked ::
     VUM.MVector s Int -> Maybe Bitmap -> PackedTextData -> ST s ()
 hashPacked mh bm p = case ptSel p of
@@ -1056,9 +865,7 @@ columnNames = M.keys . columnIndices
 nRows :: DataFrame -> Int
 nRows = fst . dataframeDimensions
 
-{- | Build the rowToGroup lookup vector from valueIndices and offsets.
-rowToGroup[i] = k means row i belongs to group k.
--}
+-- | Build the rowToGroup lookup vector from valueIndices and offsets.
 buildRowToGroup :: Int -> VU.Vector Int -> VU.Vector Int -> VU.Vector Int
 buildRowToGroup n vis os = runST $ do
     rtg <- VUM.new n

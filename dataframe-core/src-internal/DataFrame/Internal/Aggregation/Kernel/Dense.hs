@@ -5,19 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | The low-cardinality DENSE reduction kernel: when the group domain is small,
-the grouping layer's @rowToGroup@ already maps row -> group, so the reduction
-scatters straight off it with no @valueIndices@ gather.
-
-Parallel by ROW range with a private per-worker accumulator of @nGroups@ slots,
-merged afterwards — which is why it needs a small domain, and why it admits only
-order-independent reductions: the merge must be exact for the result to stay
-byte-identical to @-N1@. Anything it rejects falls back to
-"DataFrame.Internal.Aggregation.Kernel.Scatter".
-
-The caller decides whether the domain is small enough; see @denseThreshold@ in
-the operations layer.
--}
+-- | The low-cardinality dense reduction kernel (direct-indexed by group).
 module DataFrame.Internal.Aggregation.Kernel.Dense (
     denseReduce,
     denseMaxMinusMin,
@@ -42,24 +30,11 @@ import DataFrame.Internal.Control.Concurrent (
     shouldParallelize,
  )
 
-{- | Group count at or below which the float (Double sum/mean) direct
-reductions run as ONE sequential row-order pass: the accumulators fit in L2, the
-pass is memory-bandwidth bound, and adding each value to its group in ascending
-row order is exactly the order the group-range gather kernel uses (the grouping
-layer's @valueIndices@ is a stable counting sort), so the result is
-byte-identical to it. Above this the parallel chunked variant runs instead (see
-'sumDblDense'). Var/std are never taken directly: any chunked merge of
-variance state changes the float recurrence, and the group-range gather kernel
-already runs them in parallel while replaying the interpreter's per-group
-update order bit-for-bit.
--}
+-- | Group count at or below which float reductions run one sequential pass.
 seqFloatGroups :: Int
 seqFloatGroups = 65536
 
-{- | Run a recognised reduction through the direct-indexed path. 'Nothing' (so
-the caller falls back to the order-preserving kernel) unless the reduction is
-admitted at this element type AND the column is a clean unboxed Int/Double.
--}
+-- | Run a recognised reduction through the direct-indexed path, if admitted.
 denseReduce :: Reduction -> VU.Vector Int -> Int -> Column -> Maybe Column
 denseReduce red g nGroups col = case col of
     UnboxedColumn Nothing (v :: VU.Vector a) ->
@@ -72,11 +47,7 @@ denseReduce red g nGroups col = case col of
     _ -> Nothing
 {-# INLINEABLE denseReduce #-}
 
-{- | The reductions admitted over an Int column. Sum/min/max/mean/count are
-exact in the Int domain (any merge order gives the same bits). Var/std stay with the group-range gather kernel:
-its per-group Welford recurrence replays the interpreter's update order
-bit-for-bit, which no chunk-merged direct pass can.
--}
+-- | The reductions admitted over an Int column.
 denseInt :: Reduction -> VU.Vector Int -> Int -> VU.Vector Int -> Maybe Column
 denseInt red g nGroups v = case red of
     RCount -> Just (fromUnboxedVector (countDense g nGroups (VU.length v)))
@@ -86,12 +57,7 @@ denseInt red g nGroups v = case red of
     RMean -> Just (fromUnboxedVector (meanIntDense g nGroups v))
     _ -> Nothing
 
-{- | The reductions admitted over a Double column. Count/min/max are
-order-independent (exact per-worker merge, byte-identical at any @-N@). The
-float sum/mean run sequentially in row order below 'seqFloatGroups' (matching
-the gather kernel's per-group addition order exactly) and as deterministic
-chunked partials above it. Var/std keep the gather kernel (see 'denseInt').
--}
+-- | The reductions admitted over a Double column.
 denseDouble ::
     Reduction -> VU.Vector Int -> Int -> VU.Vector Double -> Maybe Column
 denseDouble red g nGroups v = case red of
@@ -102,13 +68,7 @@ denseDouble red g nGroups v = case red of
     RMax -> Just (fromUnboxedVector (extremaDblDense False g nGroups v))
     _ -> Nothing
 
-{- | The fused @max a - min b@ direct pass: BOTH extrema accumulate in one
-streaming loop over the rows (min/max are order-independent, so the per-worker
-merge is exact and the result byte-identical to the two gather passes it
-replaces). 'Nothing' unless both columns are clean unboxed and same-typed
-(Int/Int keeps the Int result of the interpreter; Double/Double the Double one);
-mixed pairs keep the gather fallback.
--}
+-- | The fused @max a - min b@ direct pass over both extrema at once.
 denseMaxMinusMin :: VU.Vector Int -> Int -> Column -> Column -> Maybe Column
 denseMaxMinusMin g nGroups ca cb = case (ca, cb) of
     ( UnboxedColumn Nothing (va :: VU.Vector x)
@@ -123,12 +83,7 @@ denseMaxMinusMin g nGroups ca cb = case (ca, cb) of
     _ -> Nothing
 {-# INLINEABLE denseMaxMinusMin #-}
 
-{- | Monomorphic entry points: the 'testEquality' dispatch above only yields an
-unsafe coercion, so a direct call to the polymorphic 'maxMinusMinDense' there
-would stay at the abstract element type and never meet its SPECIALIZE rules
-(measured ~3x on the whole pass); calling through these fixed-type wrappers
-(the coercion lands on the argument) does.
--}
+-- | Monomorphic entry points for the 'testEquality' dispatch above.
 maxMinusMinDenseInt ::
     VU.Vector Int -> Int -> VU.Vector Int -> VU.Vector Int -> VU.Vector Int
 maxMinusMinDenseInt = maxMinusMinDense minBound maxBound
@@ -143,19 +98,10 @@ maxMinusMinDenseDbl = maxMinusMinDense (negate (1 / 0)) (1 / 0)
 shouldPar :: Int -> Bool
 shouldPar = shouldParallelize parThreshold
 
-{- | Fork @caps@ workers over disjoint contiguous row ranges of @[0, n)@, each
-producing its own private accumulator (no shared array, no sync). Returns the
-partials in worker order for the caller's merge; rethrows the first failure.
-The chunking is a fixed function of @n@ and @caps@, so any merge over the
-partials is deterministic at a given @-N@.
--}
+-- | Fork workers over disjoint row ranges, each with a private accumulator.
 runPartialsOver ::
     Int -> Int -> (Int -> Int -> IO acc) -> IO [acc]
 runPartialsOver n _caps = parallelChunks parThreshold n
-
--------------------------------------------------------------------------------
--- Count (order-independent: per-group row count)
--------------------------------------------------------------------------------
 
 countDense :: VU.Vector Int -> Int -> Int -> VU.Vector Int
 countDense g nGroups n = unsafePerformIO $ do
@@ -175,10 +121,6 @@ countChunk g nGroups lo hi = do
                 go (i + 1)
     go lo
     pure acc
-
--------------------------------------------------------------------------------
--- Integer sum (exact: merge order irrelevant)
--------------------------------------------------------------------------------
 
 sumIntDense :: VU.Vector Int -> Int -> VU.Vector Int -> VU.Vector Int
 sumIntDense g nGroups v = unsafePerformIO $ do
@@ -200,17 +142,7 @@ sumIntChunk g v nGroups lo hi = do
     go lo
     pure acc
 
--------------------------------------------------------------------------------
--- Double sum / mean (streaming scatter; chunked partials above seqFloatGroups)
--------------------------------------------------------------------------------
-
-{- | Double group sums. At or below 'seqFloatGroups' a single sequential pass in
-ascending row order — each group's additions happen in exactly the order the
-group-range gather kernel performs them, so the result is byte-identical to it.
-Above that, per-worker chunk partials merged in worker order: still
-deterministic at a fixed @-N@, but the float summation order differs from the
-sequential pass.
--}
+-- | Double group sums, sequential at small group counts.
 sumDblDense :: VU.Vector Int -> Int -> VU.Vector Double -> VU.Vector Double
 sumDblDense g nGroups v
     | nGroups <= seqFloatGroups || not (shouldPar n) =
@@ -241,10 +173,7 @@ sumDblChunk g v nGroups lo hi = do
     go lo
     pure acc
 
-{- | Double mean: fused (Double sum, count) per group, divided once at finalize.
-Same order policy as 'sumDblDense' (sequential row order is byte-identical to
-the gather kernel; the chunked variant changes the float summation order).
--}
+-- | Double mean: fused (sum, count) per group, divided once at finalize.
 meanDblDense :: VU.Vector Int -> Int -> VU.Vector Double -> VU.Vector Double
 meanDblDense g nGroups v
     | nGroups <= seqFloatGroups || not (shouldPar n) = unsafePerformIO $ do
@@ -297,10 +226,6 @@ finalizeMeanDbl nGroups s c = do
     go 0
     VU.unsafeFreeze out
 
--------------------------------------------------------------------------------
--- Integer min / max (order-independent)
--------------------------------------------------------------------------------
-
 extremaIntDense ::
     Bool -> VU.Vector Int -> Int -> VU.Vector Int -> VU.Vector Int
 extremaIntDense isMin g nGroups v = unsafePerformIO $ do
@@ -330,10 +255,6 @@ extremaIntChunk isMin g v nGroups lo hi = do
                 go (i + 1)
     go lo
     pure acc
-
--------------------------------------------------------------------------------
--- Double min / max (order-independent: exact per-worker merge)
--------------------------------------------------------------------------------
 
 extremaDblDense ::
     Bool -> VU.Vector Int -> Int -> VU.Vector Double -> VU.Vector Double
@@ -369,14 +290,7 @@ extremaDblChunk isMin g v nGroups lo hi = do
     go lo
     pure acc
 
--------------------------------------------------------------------------------
--- Fused max(a) - min(b) (order-independent: exact per-worker merge)
--------------------------------------------------------------------------------
-
-{- | One streaming pass accumulating @max a@ and @min b@ together. @maxSeed@ is
-the identity of @max@ (the type's least value), @minSeed@ of @min@ (its
-greatest).
--}
+-- | One streaming pass accumulating @max a@ and @min b@ together.
 maxMinusMinDense ::
     (VU.Unbox a, Num a, Ord a) =>
     a ->
@@ -418,9 +332,7 @@ maxMinusMinDense maxSeed minSeed g nGroups va vb
         finalizeMaxMinusMin nGroups mx mn
   where
     !n = VU.length va
-{- INLINEABLE (not NOINLINE) so the SPECIALIZE pragmas above take effect; the
-kernel is a pure function of its arguments, so the usual unsafePerformIO
-sharing concern does not apply. -}
+-- INLINEABLE (not NOINLINE) so the SPECIALIZE pragmas above take effect.
 {-# INLINEABLE maxMinusMinDense #-}
 
 maxMinusMinChunk ::
@@ -490,14 +402,7 @@ finalizeMaxMinusMin nGroups mx mn = do
     go 0
     VU.unsafeFreeze out
 
--------------------------------------------------------------------------------
--- Integer mean (exact integer sum + count, divided once -> order-independent)
--------------------------------------------------------------------------------
-
-{- | Integer mean in ONE fused pass: a running integer sum and count per group,
-divided once at finalize. The integer sum is exact, so the parallel partial
-merge is byte-identical to the sequential single pass at any @-N@.
--}
+-- | Integer mean in one fused pass: running sum and count per group.
 meanIntDense :: VU.Vector Int -> Int -> VU.Vector Int -> VU.Vector Double
 meanIntDense g nGroups v
     | not (shouldPar n) = unsafePerformIO $ do
@@ -550,10 +455,6 @@ finalizeMeanInt nGroups s c = do
     go 0
     VU.unsafeFreeze out
 
--------------------------------------------------------------------------------
--- Partial accumulation + merge
--------------------------------------------------------------------------------
-
 mergeIntSum :: Int -> [VUM.IOVector Int] -> IO (VU.Vector Int)
 mergeIntSum nGroups parts = case parts of
     [] -> VU.unsafeFreeze =<< VUM.replicate nGroups 0
@@ -570,10 +471,7 @@ mergeIntSum nGroups parts = case parts of
         mapM_ add rest
         VU.unsafeFreeze p0
 
-{- | Sum the per-worker Double partials into the first worker's accumulator IN
-WORKER ORDER: deterministic at a fixed @-N@, but the float summation order is
-chunk-major rather than the sequential row order.
--}
+-- | Sum per-worker Double partials into the first worker's, in worker order.
 mergeDblSum :: Int -> [VUM.IOVector Double] -> IO (VU.Vector Double)
 mergeDblSum nGroups parts = case parts of
     [] -> VU.unsafeFreeze =<< VUM.replicate nGroups 0
@@ -590,9 +488,7 @@ mergeDblSum nGroups parts = case parts of
         mapM_ add rest
         VU.unsafeFreeze p0
 
-{- | Merge per-worker (sum, count) partials into the first worker's pair by
-exact integer addition; returns the accumulated pair for finalize.
--}
+-- | Merge per-worker (sum, count) partials by exact integer addition.
 mergePair ::
     Int ->
     [(VUM.IOVector Int, VUM.IOVector Int)] ->
@@ -615,9 +511,7 @@ mergePair nGroups parts = case parts of
         mapM_ add rest
         pure (s0, c0)
 
-{- | As 'mergePair' but for the Double (sum, count) partials of the Double mean;
-worker-order float sums (see 'mergeDblSum').
--}
+-- | As 'mergePair' but for the Double (sum, count) partials of the mean.
 mergeMeanDbl ::
     Int ->
     [(VUM.IOVector Double, VUM.IOVector Int)] ->

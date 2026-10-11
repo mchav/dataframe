@@ -1,10 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Proximal-gradient (FISTA) solver for L1/L2-regularized generalized linear
-models. 'fitL1Logistic' is the binary logistic split solver; 'fitProx'
-generalizes it to any 'SmoothLoss'. Features are standardized internally.
--}
+-- | Proximal-gradient (FISTA) solver for L1/L2-regularized linear models.
 module DataFrame.LinearSolver (
     -- * Model
     LinearModel (..),
@@ -45,10 +42,7 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
-{- | A fitted linear classifier: predicts the positive class when
-@sum (weights .* features) + intercept > 0@. Weights of exactly @0@ mark
-features dropped by the L1 penalty (filtered out by 'modelToExpr').
--}
+-- | A fitted linear classifier; zero weights mark features dropped by L1.
 data LinearModel = LinearModel
     { lmWeights :: !(VU.Vector Double)
     , lmIntercept :: !Double
@@ -61,19 +55,13 @@ data SolverConfig = SolverConfig
     { scL1Lambda :: !Double
     -- ^ Strength of the L1 penalty on weights (intercept is not regularized).
     , scL2Lambda :: !Double
-    {- ^ Strength of the L2 penalty @(λ₂/2)·|w|²@ (Elastic Net; Zou & Hastie
-    2005). Combined with @scL1Lambda@ this is the elastic-net objective;
-    @0@ reduces the solver to pure L1.
-    -}
+    -- ^ Strength of the L2 penalty (elastic net); 0 reduces to pure L1.
     , scMaxIter :: !Int
     -- ^ Maximum number of FISTA iterations.
     , scTol :: !Double
     -- ^ Convergence tolerance on the weight delta (L-inf norm).
     , scSampleWeights :: !(Maybe (VU.Vector Double))
-    {- ^ Optional per-row sample weights, length @n@ (@Nothing@ is uniform).
-    Weights should have mean 1 (i.e. @Σ w_i = N@) so the Lipschitz bound stays
-    valid; see 'fitLinearCandidate' for the class-balanced construction.
-    -}
+    -- ^ Optional per-row sample weights with mean 1 (Nothing is uniform).
     }
     deriving (Eq, Show)
 
@@ -87,10 +75,7 @@ defaultSolverConfig =
         , scSampleWeights = Nothing
         }
 
-{- | Fit L1-regularized binary logistic regression by FISTA. Rows are feature
-vectors of equal length; labels are in @{\-1,+1}@. Features are standardized
-internally and weights de-standardized, so the model applies to raw values.
--}
+-- | Fit L1-regularized binary logistic regression by FISTA.
 fitL1Logistic ::
     SolverConfig ->
     V.Vector (VU.Vector Double) ->
@@ -100,10 +85,7 @@ fitL1Logistic ::
 {-# INLINEABLE fitL1Logistic #-}
 fitL1Logistic = runFista logisticLoss (specNormLipschitz logisticLoss)
 
-{- | Fit any 'SmoothLoss' with the elastic-net proximal-gradient engine. The
-Lipschitz constant uses the spectral norm of the standardized Gram matrix
-(power iteration), tight for squared and squared-hinge losses.
--}
+-- | Fit any SmoothLoss with the elastic-net proximal-gradient engine.
 fitProx ::
     SmoothLoss ->
     SolverConfig ->
@@ -113,10 +95,7 @@ fitProx ::
     LinearModel
 fitProx loss = runFista loss (specNormLipschitz loss)
 
-{- | FISTA smooth-part Lipschitz bound: the loss curvature bound times the
-spectral norm of the standardized Gram (+1 for the intercept), via power
-iteration. Tight for every smooth loss.
--}
+-- | FISTA smooth-part Lipschitz bound from the standardized Gram spectral norm.
 specNormLipschitz :: SmoothLoss -> Matrix -> Int -> Double
 specNormLipschitz loss xKept _ =
     let n = V.length xKept
@@ -124,10 +103,7 @@ specNormLipschitz loss xKept _ =
         (specNorm, _) = powerIterTop 50 gramN
      in slCurvBound loss * (specNorm + 1)
 
-{- | Shared FISTA scaffolding: standardize, drop near-constant columns, run the
-inner loop, de-standardize. @lipschitzOf@ returns the smooth-part Lipschitz
-bound from the kept-feature matrix; the L2 contribution @λ₂@ is added here.
--}
+-- | Shared FISTA scaffolding: standardize, drop constants, loop, unscale.
 runFista ::
     SmoothLoss ->
     (Matrix -> Int -> Double) ->
@@ -170,9 +146,7 @@ runFista loss lipschitzOf cfg rows labels featureNames
     !d = V.length featureNames
     zeroModel = LinearModel (VU.replicate d 0) 0 featureNames
 
-{- | Indices of columns whose variance clears the near-constant threshold.
-Columns below it are dropped before fitting; their weight ends up @0@.
--}
+-- | Indices of columns whose variance clears the near-constant threshold.
 keptIndices :: VU.Vector Double -> VU.Vector Int
 keptIndices variances =
     VU.fromList
@@ -181,15 +155,11 @@ keptIndices variances =
         , VU.unsafeIndex variances j >= 1.0e-12
         ]
 
-{- | Gather the entries of @v@ at @idxs@, preserving order. unsafeIndex is
-safe: every index in @idxs@ is in range by construction.
--}
+-- | Gather the entries of a vector at the given indices, preserving order.
 gatherBy :: VU.Vector Int -> VU.Vector Double -> VU.Vector Double
 gatherBy idxs v = VU.map (VU.unsafeIndex v) idxs
 
-{- | Standardize one row to the kept columns only (subtract column mean, divide
-by column std). unsafeIndex is safe: rows share the column layout.
--}
+-- | Standardize one row to the kept columns only.
 standardizeRowKept ::
     VU.Vector Int ->
     VU.Vector Double ->
@@ -201,19 +171,14 @@ standardizeRowKept keep means stds row = VU.map standardizeAt keep
     standardizeAt j =
         (VU.unsafeIndex row j - VU.unsafeIndex means j) / VU.unsafeIndex stds j
 
-{- | Scatter kept-column weights back into a full-width vector, with @0@ for
-the dropped (near-constant) columns.
--}
+-- | Scatter kept-column weights into a full-width vector, zero elsewhere.
 expandWeights :: Int -> VU.Vector Int -> VU.Vector Double -> VU.Vector Double
 expandWeights d keep wKept = VU.create $ do
     mv <- VUM.replicate d 0
     VU.iforM_ keep $ \k j -> VUM.unsafeWrite mv j (VU.unsafeIndex wKept k)
     pure mv
 
-{- | Convert a fitted model to an 'Expr Bool' over its feature columns,
-dropping zero-weight features. With no non-zero weights it returns the
-constant @Lit (intercept > 0)@.
--}
+-- | Convert a fitted model to a Bool expression, dropping zero-weight features.
 modelToExpr :: LinearModel -> Expr Bool
 modelToExpr m =
     case nonZero of
@@ -229,10 +194,7 @@ modelToExpr m =
     term w n = F.lit w .*. (Col n :: Expr Double)
     score rest first = foldl (\acc (w, n) -> acc .+. term w n) first rest .+. F.lit b
 
-{- | Per-column @(means, stds, variances)@ of a feature matrix. Cheaper than
-'standardize' when only the statistics are needed. unsafeIndex within is
-safe: all rows share width @d@.
--}
+-- | Per-column means, stds and variances of a feature matrix.
 columnStats ::
     V.Vector (VU.Vector Double) ->
     (VU.Vector Double, VU.Vector Double, VU.Vector Double)
@@ -278,10 +240,7 @@ scaleInPlace factor mv = go 0
         | j >= VUM.length mv = pure ()
         | otherwise = VUM.unsafeModify mv (* factor) j >> go (j + 1)
 
-{- | Standardize each column to zero mean and unit variance, also returning
-@(means, stds, variances)@. Near-constant columns get std @1@; callers use
-the raw variances to detect and drop them (see 'fitL1Logistic').
--}
+-- | Standardize columns to zero mean and unit variance, with their statistics.
 standardize ::
     V.Vector (VU.Vector Double) ->
     ( V.Vector (VU.Vector Double)
@@ -299,25 +258,18 @@ standardize x
                     (VU.unsafeIndex row j - VU.unsafeIndex means j) / VU.unsafeIndex stds j
          in (V.map standardizeRow x, means, stds, variances)
 
-{- | Proximal operator for the L1 norm: shrink @v@ toward zero by @lambda@,
-clamping at zero.
--}
+-- | Proximal operator for the L1 norm: shrink toward zero, clamping at zero.
 softThreshold :: Double -> Double -> Double
 softThreshold lambda v
     | v > lambda = v - lambda
     | v < -lambda = v + lambda
     | otherwise = 0
 
-{- | Dot product of two unboxed vectors. Caller must ensure equal length;
-lengths are not checked.
--}
+-- | Dot product of two unboxed vectors; lengths are not checked.
 dotProduct :: VU.Vector Double -> VU.Vector Double -> Double
 dotProduct u v = VU.sum (VU.zipWith (*) u v)
 
-{- | Gradient of the average loss at @(w, b)@, returning @(gradW, gradB)@.
-When @sampleWeights@ is @Just ws@ each row is scaled by @ws[i]@; with mean-1
-weights the @1/N@ normalisation is preserved exactly.
--}
+-- | Gradient of the average loss, optionally scaled by per-row sample weights.
 lossGradient ::
     SmoothLoss ->
     Maybe (VU.Vector Double) ->
@@ -333,9 +285,7 @@ lossGradient loss sampleWeights features labels w b = (gradW, gradB)
     !gradW = accumulateGradW (VU.length w) features coeffs
     !gradB = VU.sum coeffs
 
-{- | Per-row loss coefficient @c_i = ℓ'(y_i, z_i) / N@ at margin
-@z_i = w·x_i + b@, optionally scaled by @ws[i]@.
--}
+-- | Per-row loss coefficient at the current margin, optionally weighted.
 rowCoeffs ::
     SmoothLoss ->
     Maybe (VU.Vector Double) ->
@@ -355,9 +305,7 @@ rowCoeffs loss sampleWeights features labels w b invN =
                 Nothing -> base
                 Just ws -> base * VU.unsafeIndex ws i
 
-{- | Accumulate the weight gradient in one pass over every (row, feature)
-pair, scattering into a length-@d@ mutable vector.
--}
+-- | Accumulate the weight gradient in one pass over every row and feature.
 accumulateGradW ::
     Int -> V.Vector (VU.Vector Double) -> VU.Vector Double -> VU.Vector Double
 accumulateGradW d features coeffs = runST $ do
@@ -367,10 +315,7 @@ accumulateGradW d features coeffs = runST $ do
          in VU.iforM_ row $ \j v -> VUM.unsafeModify mv (+ c * v) j
     VU.unsafeFreeze mv
 
-{- | Inner FISTA loop over standardized features, returning the final @(w, b)@
-(the caller de-standardizes). @lambda1@/@lambda2@ are the L1/L2 strengths and
-@lp@ the smooth-part Lipschitz constant driving the elastic-net prox step.
--}
+-- | Inner FISTA loop over standardized features, returning the final weights.
 fistaLoop ::
     SmoothLoss ->
     Double ->
@@ -400,10 +345,7 @@ fistaLoop loss lambda1 lambda2 lp maxIter tol sampleWeights features labels w0 b
         !delta = if VU.null xW then 0 else deltaInf xWPrev xW
         (!yWNew, !yBNew, !tNew) = fistaMomentum t xWPrev xBPrev xW xB
 
-{- | One fused FISTA prox step: gradient step plus the Elastic-Net proximal
-operator @softThreshold(z, λ₁/lp) / (1 + λ₂/lp)@ (soft-threshold then ridge
-shrinkage). The intercept is unregularised.
--}
+-- | One fused FISTA prox step: gradient step plus the elastic-net prox.
 fistaProxStep ::
     SmoothLoss ->
     Maybe (VU.Vector Double) ->
@@ -425,9 +367,7 @@ fistaProxStep loss sampleWeights features labels shrink ridgeDenom stepInv yW yB
         !bNew = yB - gB * stepInv
      in (wNew, bNew)
 
-{- | Nesterov momentum extrapolation: new look-ahead point @(yW, yB)@ and the
-updated step size @t@.
--}
+-- | Nesterov momentum extrapolation: new look-ahead point and step size.
 fistaMomentum ::
     Double ->
     VU.Vector Double ->
@@ -442,9 +382,7 @@ fistaMomentum t xWPrev xBPrev xW xB =
         !yB = xB + mom * (xB - xBPrev)
      in (yW, yB, tNew)
 
-{- | L-inf norm of the weight delta. unsafeIndex is safe: both vectors share
-the same length by construction.
--}
+-- | L-inf norm of the weight delta.
 {-# INLINE deltaInf #-}
 deltaInf :: VU.Vector Double -> VU.Vector Double -> Double
 deltaInf xWPrev = VU.ifoldl' (\acc i x -> max acc (abs (x - VU.unsafeIndex xWPrev i))) 0

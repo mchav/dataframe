@@ -2,11 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | The HARD GATE for the lazy engine: for a bounded source the lazy result
-must be BYTE-IDENTICAL to the eager result of the same ops (bounded joins and
-aggregates route through the eager fast paths). Covers a LEFT-join pipeline
-(join -> groupBy -> aggregate -> sort) and a pure groupBy pipeline.
--}
 module LazyParity (tests) where
 
 import qualified Data.Map.Strict as M
@@ -48,9 +43,7 @@ customersSchema =
             , ("plan", schemaType @Text)
             ]
 
-{- | @n@ orders; ~10% reference a customer id with no matching customer row so
-the LEFT join produces a Nothing group (exercises unmatched-row semantics).
--}
+-- | Orders frame where about 10% reference a customer with no matching row.
 ordersFrame :: Int -> D.DataFrame
 ordersFrame n =
     D.fromColumns
@@ -84,9 +77,7 @@ withCsv df k = do
     removeFile csvPath
     return r
 
-{- | LEFT join 20k orders to 257 customers -> groupBy region,plan
--> sum(amount-discount), count -> sort revenue desc.
--}
+-- | Left-join orders to customers, then group, aggregate and sort.
 joinPipelineParity :: Test
 joinPipelineParity =
     TestCase $
@@ -113,7 +104,7 @@ joinPipelineParity =
                         |> L.sortBy [("revenue", Descending)]
                         |> L.runDataFrame
                 assertEqual
-                    "join pipeline lazy == eager (byte-identical)"
+                    "join pipeline lazy == eager"
                     (show eager)
                     (show lazy)
 
@@ -138,7 +129,7 @@ groupByPipelineParity =
                     |> L.sortBy [("total", Descending)]
                     |> L.runDataFrame
             assertEqual
-                "groupBy pipeline lazy == eager (byte-identical)"
+                "groupBy pipeline lazy == eager"
                 (show eager)
                 (show lazy)
 

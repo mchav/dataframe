@@ -5,10 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Row-hash kernels with a parallel driver, feeding grouping and the join
-build/probe. Each row's hash depends only on its own bytes, so hashing disjoint
-ranges in parallel is race-free and bit-identical to the sequential pass.
--}
+-- | Row-hash kernels with a parallel driver, feeding grouping and joins.
 module DataFrame.Internal.Row.RowHash (
     computeRowHashesIO,
     computeRowHashesWithIO,
@@ -54,31 +51,15 @@ import DataFrame.Internal.Data.PackedText (
     selAt,
  )
 
-{- | At least this many rows make the fork/coordination overhead of the parallel
-hash worth it. Below it the sequential single range is used. Matches the
-grouping/join parallel thresholds so the whole pipeline switches together.
--}
+-- | Row count from which the parallel hash beats the sequential single range.
 parRowHashThreshold :: Int
 parRowHashThreshold = 200000
 
-{- | Compute the per-row key hash over the selected key columns of an @n@-row
-frame. Forks one worker per capability over disjoint row ranges when the row
-count justifies it, else hashes the single full range; output is capability-independent.
-
-Dictionary-code hashing is disabled: this is the join entry point, and joins
-hash each side by its own representation, so a canonical dict column on one
-side of a join against a plain 'T.Text' (or non-canonical packed) column on
-the other must byte-hash to keep both sides bucketing identically.
--}
+-- | Compute the per-row key hash over the selected key columns.
 computeRowHashesIO :: Int -> [Column] -> IO (VU.Vector Int)
 computeRowHashesIO = computeRowHashesWithIO False
 
-{- | 'computeRowHashesIO' with an explicit dictionary-code switch. When
-@useDictCodes@ is 'True', a canonical dict-encoded 'PackedText' column mixes
-its 'Int' code per row instead of its byte slice (equal strings share a code,
-so bucketing within one frame is preserved). Only sound when every consumer of
-the hashes uses the same rule — the grouping path passes 'True', joins 'False'.
--}
+-- | 'computeRowHashesIO' with an explicit dictionary-code switch.
 computeRowHashesWithIO :: Bool -> Int -> [Column] -> IO (VU.Vector Int)
 computeRowHashesWithIO useDictCodes n selected = do
     mv <- VUM.unsafeNew (max 1 n)
@@ -86,10 +67,7 @@ computeRowHashesWithIO useDictCodes n selected = do
     parallelChunks_ parRowHashThreshold n runRange
     VU.unsafeFreeze (VUM.slice 0 n mv)
 
-{- | Mix every selected column over the row range @[lo, hi)@ into @mv@, seeding
-each slot with 'fnvOffset'. Must match the sequential grouping hash byte-for-byte
-(at the same @useDictCodes@ setting) so grouping and joins bucket identically.
--}
+-- | Mix every selected column over a row range into @mv@.
 hashRowRange :: Bool -> VUM.IOVector Int -> Int -> Int -> [Column] -> IO ()
 hashRowRange useDictCodes mv lo hi cols = do
     seedRange mv lo hi
@@ -102,10 +80,7 @@ seedRange mv lo hi = go lo
         | i >= hi = pure ()
         | otherwise = VUM.unsafeWrite mv i fnvOffset >> go (i + 1)
 
-{- | Fold one column's values over @[lo, hi)@ into the running hashes. The branch
-structure mirrors the sequential grouping hash: typed unboxed fast paths, then a
-'mixShow' fallback, with the null bitmap mixing 'nullSalt'.
--}
+-- | Fold one column's values over @[lo, hi)@ into the running hashes.
 mixColumnRange :: Bool -> VUM.IOVector Int -> Int -> Int -> Column -> IO ()
 mixColumnRange useDictCodes mv lo hi = \case
     c@(MergedColumn _ _) -> mixColumnRange useDictCodes mv lo hi (materializeMerged c)
@@ -131,9 +106,7 @@ mixColumnRange useDictCodes mv lo hi = \case
             Nothing -> boxedRange mv lo hi bm mixShow v
     PackedText bm p -> packedRange useDictCodes mv lo hi bm p
 
-{- | Mix an unboxed column's range, mixing 'nullSalt' at null slots. @INLINE@d to
-specialise on the element type and mixing function per call site.
--}
+-- | Mix an unboxed column's range, mixing 'nullSalt' at null slots.
 unboxedRange ::
     (VU.Unbox a) =>
     VUM.IOVector Int ->
@@ -177,13 +150,7 @@ boxedRange mv lo hi bm mix v = go lo
             go (i + 1)
 {-# INLINE boxedRange #-}
 
-{- | Mix a packed-text column's range over its raw UTF-8 byte slices. The
-unselected payload is the hot path (indexes the offset vector directly); a
-selected payload (a gather/join result) falls back to 'packedSlice'. When
-@useDictCodes@ holds and the selection is a canonical dictionary encoding
-(equal strings share a code), each row mixes its 'Int' code with one 'mixInt'
-instead of walking the string bytes.
--}
+-- | Mix a packed-text column's range over its raw UTF-8 byte slices.
 packedRange ::
     Bool ->
     VUM.IOVector Int ->

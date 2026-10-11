@@ -1,62 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 
-{- |
-Module      : DataFrame.Typed
-Copyright   : (c) 2024 - 2026 Michael Chavinda
-License     : MIT
-Maintainer  : mschavinda@gmail.com
-Stability   : experimental
-
-A type-safe layer over the @dataframe@ library.
-
-This module provides 'TypedDataFrame', a phantom-typed wrapper around
-the untyped 'DataFrame' that tracks column names and types at compile time.
-All operations delegate to the untyped core at runtime; the phantom type
-is updated at compile time to reflect schema changes.
-
-== Key difference from untyped API: TExpr
-
-All expression-taking operations use 'TExpr' (typed expressions) instead
-of raw @Expr@. Column references are validated at compile time:
-
-@
-{\-\# LANGUAGE DataKinds, TypeApplications, TypeOperators \#-\}
-import qualified DataFrame.Typed as T
-
-type People = '[ '(\"name\", Text), '(\"age\", Int)]
-
-main = do
-    raw <- D.readCsv \"people.csv\"
-    case T.freeze \@People raw of
-        Nothing -> putStrLn \"Schema mismatch!\"
-        Just df -> do
-            let adults = T.filterWhere (T.col \@\"age\" T..>=. T.lit 18) df
-            let names  = T.columnAsList \@\"name\" adults  -- :: [Text]
-            print names
-@
-
-Column references like @T.col \@\"age\"@ are checked at compile time — if the
-column doesn't exist or has the wrong type, you get a type error, not a
-runtime exception.
-
-== filterAllJust tracks Maybe-stripping
-
-@
-df :: TypedDataFrame '[ '(\"x\", Maybe Double), '(\"y\", Int)]
-T.filterAllJust df :: TypedDataFrame '[ '(\"x\", Double), '(\"y\", Int)]
-@
-
-== Typed aggregation
-
-@
-result = T.aggregate
-    ( T.as \@\"total\" (T.sum   (T.col \@\"salary\"))
-    . T.as \@\"count\" (T.count (T.col \@\"salary\"))
-    )
-    (T.groupBy \@'[\"dept\"] employees)
-@
--}
+-- | A type-safe layer that tracks column names and types over the core API.
 module DataFrame.Typed (
     -- * Core types
     TypedDataFrame,

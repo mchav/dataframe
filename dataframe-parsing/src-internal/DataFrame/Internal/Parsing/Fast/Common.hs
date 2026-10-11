@@ -4,10 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Shared byte-level helpers for the fast slice parsers. All operate on
-@(buf, start, end)@ slices; the caller guarantees
-@0 <= start <= end <= length buf@ so everything below uses 'unsafeIndex'.
--}
+-- | Shared byte-level helpers for the fast slice parsers.
 module DataFrame.Internal.Parsing.Fast.Common (
     isStripByte,
     isDigitByte,
@@ -36,10 +33,7 @@ import GHC.Exts (
  )
 import GHC.Word (Word64 (..))
 
-{- | Bytes removed by 'Data.ByteString.Char8.strip' (Latin-1 'isSpace'):
-HT LF VT FF CR SP and NBSP 0xA0. Probed over all 256 bytes; parity
-with the strip-based reference parsers depends on this exact set.
--}
+-- | Bytes removed by 'Data.ByteString.Char8.strip' (Latin-1 whitespace).
 isStripByte :: Word8 -> Bool
 isStripByte w = w == 0x20 || (w - 0x09) <= 4 || w == 0xA0
 {-# INLINE isStripByte #-}
@@ -75,10 +69,7 @@ skipZeroes bs = go
         | otherwise = i
 {-# INLINE skipZeroes #-}
 
-{- | Consume ASCII digits from @i@, passing the stop index and the wrapping
-'Word64' accumulation to the continuation. Callers must bound the
-significant digit count before trusting the value.
--}
+-- | Consume ASCII digits from @i@, passing the stop index and Word64 sum on.
 takeDigits64 ::
     forall (rep :: RuntimeRep) (r :: TYPE rep).
     BS.ByteString ->

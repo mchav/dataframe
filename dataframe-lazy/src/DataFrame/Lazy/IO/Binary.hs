@@ -5,31 +5,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Simple column-oriented binary spill format (DFBN).
-
-Layout (all integers little-endian):
-
-@
-[magic:       4  bytes] "DFBN"
-[num_columns: 4  bytes] Word32
-  per column:
-    [name_len:  2  bytes] Word16  (byte length of UTF-8 name)
-    [name:     name_len bytes]
-    [type_tag:  1  byte]  Word8
-[num_rows:    8  bytes] Word64
-
-per column data block (order matches schema):
-  type_tag 0 (Int):            num_rows × Int64 LE
-  type_tag 1 (Double):         num_rows × Double LE (IEEE 754)
-  type_tag 2 (Text):           (num_rows+1) × Word32 offsets  ++  payload bytes (UTF-8)
-  type_tag 3 (Maybe Int):      ceil(num_rows/8)-byte null bitmap  ++  num_rows × Int64 LE
-  type_tag 4 (Maybe Double):   ceil(num_rows/8)-byte null bitmap  ++  num_rows × Double LE
-  type_tag 5 (Maybe Text):     ceil(num_rows/8)-byte null bitmap
-                                ++  (num_rows+1) × Word32 offsets  ++  payload bytes
-@
-
-Null bitmap: bit @i@ of byte @i\/8@ is 1 when row @i@ is non-null.
--}
+-- | Simple column-oriented binary spill format (DFBN).
 module DataFrame.Lazy.IO.Binary (
     spillToDisk,
     readSpilled,
@@ -66,10 +42,6 @@ import System.Directory (getTemporaryDirectory, removeFile)
 import System.IO (IOMode (..), hClose, openTempFile, withFile)
 import Type.Reflection (typeRep)
 
--- ---------------------------------------------------------------------------
--- Type tags
--- ---------------------------------------------------------------------------
-
 tagInt, tagDouble, tagText, tagMaybeInt, tagMaybeDouble, tagMaybeText :: Word8
 tagInt = 0
 tagDouble = 1
@@ -77,10 +49,6 @@ tagText = 2
 tagMaybeInt = 3
 tagMaybeDouble = 4
 tagMaybeText = 5
-
--- ---------------------------------------------------------------------------
--- Write
--- ---------------------------------------------------------------------------
 
 -- | Serialise a 'DataFrame' to a DFBN binary file.
 spillToDisk :: FilePath -> DataFrame -> IO ()
@@ -165,9 +133,7 @@ buildColumnData _ (BoxedColumn (Just bm) (v :: V.Vector a)) =
      in buildNullBitmap isValidVec <> buildTextVector texts
 buildColumnData n c@(PackedText _ _) = buildColumnData n (materializePacked c)
 
-{- | Bulk-encode an Int vector as 8-byte LE values (native layout on LE platforms).
-hPutBuilder flushes synchronously so the underlying ForeignPtr outlives the Builder.
--}
+-- | Bulk-encode an Int vector as 8-byte little-endian values.
 buildIntVector :: VU.Vector Int -> BSB.Builder
 buildIntVector v =
     let sv = VU.convert v :: VS.Vector Int
@@ -175,7 +141,7 @@ buildIntVector v =
         bs = BSI.fromForeignPtr (castForeignPtr fp) 0 (n * sizeOf (0 :: Int))
      in BSB.byteString bs
 
--- | Bulk-encode a Double vector as 8-byte LE IEEE 754 values (native layout on LE platforms).
+-- | Bulk-encode a Double vector as 8-byte LE IEEE 754 values (native on LE).
 buildDoubleVector :: VU.Vector Double -> BSB.Builder
 buildDoubleVector v =
     let sv = VU.convert v :: VS.Vector Double
@@ -205,10 +171,6 @@ buildNullBitmap valids = foldMap (BSB.word8 . mkByte) [0 .. numBytes - 1]
             )
             (0 :: Word8)
             [0 .. 7]
-
--- ---------------------------------------------------------------------------
--- Read
--- ---------------------------------------------------------------------------
 
 -- | @(new_offset, value)@
 type ParseResult a = Either String (Int, a)
@@ -285,10 +247,7 @@ readColumnData bs off nrows tag
         return (off2, BoxedColumn (Just bm) v)
     | otherwise = Left ("unknown type tag " <> show tag)
 
-{- | Zero-copy Int column read: reuses the ByteString buffer's ForeignPtr.
-Safe as long as 'bs' stays live during the caller's use of the resulting vector.
-Only correct on little-endian platforms (aarch64/x86_64).
--}
+-- | Zero-copy Int column read that reuses the ByteString's buffer.
 readIntColumn :: BS.ByteString -> Int -> Int -> ParseResult (VU.Vector Int)
 readIntColumn bs off nrows
     | off + nrows * 8 > BS.length bs = Left "unexpected end of input"
@@ -298,10 +257,7 @@ readIntColumn bs off nrows
             sv = VS.unsafeFromForeignPtr0 fp' nrows :: VS.Vector Int
          in Right (off + nrows * 8, VU.convert sv)
 
-{- | Zero-copy Double column read: reuses the ByteString buffer's ForeignPtr.
-Safe as long as 'bs' stays live during the caller's use of the resulting vector.
-Only correct on little-endian platforms (aarch64/x86_64).
--}
+-- | Zero-copy Double column read that reuses the ByteString's buffer.
 readDoubleColumn ::
     BS.ByteString -> Int -> Int -> ParseResult (VU.Vector Double)
 readDoubleColumn bs off nrows
@@ -398,13 +354,7 @@ readN n f off = do
     (off'', xs) <- readN (n - 1) f off'
     return (off'', x : xs)
 
--- ---------------------------------------------------------------------------
--- Bracket helper
--- ---------------------------------------------------------------------------
-
-{- | Spill a DataFrame to a temporary file, run an action with the path,
-then delete the file even if the action throws.
--}
+-- | Spill a DataFrame to a temp file, run an action, then delete the file.
 withSpilled :: DataFrame -> (FilePath -> IO a) -> IO a
 withSpilled df action = do
     tmpDir <- getTemporaryDirectory

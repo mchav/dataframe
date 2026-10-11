@@ -27,9 +27,7 @@ import qualified DataFrame.Lazy.Internal.Optimizer as Opt
 import DataFrame.Operations.Join (JoinType)
 import DataFrame.Schema (Schema)
 
-{- | A lazy query that has not been executed yet: a 'LogicalPlan' tree whose
-execution is deferred until 'runDataFrame' is called.
--}
+-- | A lazy query: a 'LogicalPlan' whose execution waits for 'runDataFrame'.
 data LazyDataFrame = LazyDataFrame
     { plan :: LogicalPlan
     , batchSize :: Int
@@ -40,52 +38,19 @@ instance Show LazyDataFrame where
         "LazyDataFrame { batchSize = "
             <> (show (batchSize ldf) <> (", plan = " <> (show (plan ldf) <> " }")))
 
--- ---------------------------------------------------------------------------
--- Entry point
--- ---------------------------------------------------------------------------
-
-{- | Execute the lazy query: optimise the logical plan, then stream-execute
-the resulting physical plan into a fully-materialised 'D.DataFrame'.
--}
+-- | Optimise and stream-execute the lazy query into a 'D.DataFrame'.
 runDataFrame :: LazyDataFrame -> IO D.DataFrame
 runDataFrame ldf = execute (Opt.optimize (batchSize ldf) (plan ldf))
-
--- ---------------------------------------------------------------------------
--- Builders that construct the logical plan tree
--- ---------------------------------------------------------------------------
 
 -- | Lift an already-loaded eager 'D.DataFrame' into the lazy plan.
 fromDataFrame :: D.DataFrame -> LazyDataFrame
 fromDataFrame df = LazyDataFrame{plan = SourceDF df, batchSize = 1_000_000}
 
-{- | Scan a CSV file with the default comma separator and the in-tree
-strict reader.  For the SIMD reader use 'scanCsvWith'.
-
-The 'Schema' both types and selects: only the columns it names are read,
-matching 'scanParquet'.
-
-==== __Example__
-@
-ghci> schema = D.makeSchema [("id", D.schemaType \@Int), ("name", D.schemaType \@Text)]
-ghci> L.runDataFrame (L.scanCsv schema \"customers.csv\")
-
-@
--}
+-- | Scan a CSV file with the default comma separator and strict reader.
 scanCsv :: Schema -> T.Text -> LazyDataFrame
 scanCsv = scanCsvWith readSeparated
 
-{- | Like 'scanCsv' but with an explicit CSV reader (e.g. the SIMD reader
-@fastReadCsvWithOpts@ from @dataframe-fastcsv@). The scan derives the
-reader's 'DataFrame.IO.CSV.ReadOptions' from the schema and separator, so
-any 'CsvReader' projects.
-
-==== __Example__
-@
-ghci> import qualified DataFrame.IO.CSV.Fast as Fast
-ghci> L.runDataFrame (L.scanCsvWith Fast.fastReadCsvWithOpts schema \"customers.csv\")
-
-@
--}
+-- | Like 'scanCsv' but with an explicit 'CsvReader'.
 scanCsvWith :: CsvReader -> Schema -> T.Text -> LazyDataFrame
 scanCsvWith reader schema path =
     LazyDataFrame
@@ -93,35 +58,11 @@ scanCsvWith reader schema path =
         , batchSize = 1_000_000
         }
 
-{- | Scan a CSV file in bounded-memory windows with the default in-tree
-strict reader. Windows are decoded directly from memory, without temporary
-files.
-
-Use this for files too large to hold in memory even after the schema's
-projection.
-
-==== __Example__
-@
-ghci> L.runDataFrame (L.scanCsvStreaming schema "huge.csv")
-
-@
--}
+-- | Scan a CSV in bounded-memory windows with the default strict reader.
 scanCsvStreaming :: Schema -> T.Text -> LazyDataFrame
 scanCsvStreaming = scanCsvStreamingBytesWith decodeSeparatedStrict
 
-{- | Like 'scanCsvWith', but the file is read in bounded-memory windows.
-
-This compatibility entry point accepts an existing path-based 'CsvReader'.
-Because such a reader can only consume file paths, each window is staged in a
-temporary file. New readers should use 'scanCsvStreamingBytesWith' to decode
-windows directly from memory.
-
-==== __Example__
-@
-ghci> L.runDataFrame (L.scanCsvStreamingWith Fast.fastReadCsvWithOpts schema \"huge.csv\")
-
-@
--}
+-- | Like 'scanCsvWith', but reads the file in bounded-memory windows.
 scanCsvStreamingWith :: CsvReader -> Schema -> T.Text -> LazyDataFrame
 scanCsvStreamingWith reader schema path =
     LazyDataFrame
@@ -129,16 +70,7 @@ scanCsvStreamingWith reader schema path =
         , batchSize = 1_000_000
         }
 
-{- | Stream a CSV file in bounded-memory windows decoded by an in-memory
-'CsvBytesReader'. This avoids the temporary-file staging required by
-'scanCsvStreamingWith'.
-
-==== __Example__
-@
-ghci> L.runDataFrame (L.scanCsvStreamingBytesWith decodeSeparatedStrict schema "huge.csv")
-
-@
--}
+-- | Stream a CSV in bounded-memory windows decoded by a 'CsvBytesReader'.
 scanCsvStreamingBytesWith :: CsvBytesReader -> Schema -> T.Text -> LazyDataFrame
 scanCsvStreamingBytesWith reader schema path =
     LazyDataFrame
@@ -146,25 +78,11 @@ scanCsvStreamingBytesWith reader schema path =
         , batchSize = 1_000_000
         }
 
-{- | Scan a character-separated file with the default strict reader.
-
-==== __Example__
-@
-ghci> L.runDataFrame (L.scanSeparated ';' schema \"customers.txt\")
-
-@
--}
+-- | Scan a character-separated file with the default strict reader.
 scanSeparated :: Char -> Schema -> T.Text -> LazyDataFrame
 scanSeparated = scanSeparatedWith readSeparated
 
-{- | Like 'scanSeparated' but with an explicit CSV reader.
-
-==== __Example__
-@
-ghci> L.runDataFrame (L.scanSeparatedWith Fast.fastReadCsvWithOpts ';' schema \"customers.txt\")
-
-@
--}
+-- | Like 'scanSeparated' but with an explicit CSV reader.
 scanSeparatedWith ::
     CsvReader -> Char -> Schema -> T.Text -> LazyDataFrame
 scanSeparatedWith reader sep schema path =
@@ -213,10 +131,7 @@ join jt leftKey rightKey left right =
         , batchSize = batchSize left
         }
 
-{- | Group by a set of columns and compute aggregate expressions.
-
-Each aggregate expression should use an 'Agg' node (e.g. @sumOf@, @meanOf@).
--}
+-- | Group by a set of columns and compute aggregate expressions.
 groupBy ::
     -- | Group-by key columns
     [T.Text] ->

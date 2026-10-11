@@ -91,29 +91,12 @@ data DataFrame = DataFrame
     , derivingExpressions :: M.Map T.Text SomeExpr
     }
 
-{- | Force evaluation of all columns in a DataFrame. Replacement for the removed
-@instance NFData DataFrame@; used by the IO and lazy-executor strict paths.
--}
+-- | Force evaluation of all columns in a DataFrame.
 forceDataFrame :: DataFrame -> DataFrame
 forceDataFrame df@(DataFrame cols idx dims _exprs) =
     V.foldl' (\() c -> forceColumn c) () cols `seq` idx `seq` dims `seq` df
 
-{- | A record that contains information about how and what
-rows are grouped in the dataframe. This can only be used with
-`aggregate`.
-
-Laziness contract: every field except 'valueIndices' and 'groupRepRows' is
-computed eagerly by the grouping paths. 'valueIndices' may be a lazy thunk (the
-low-cardinality direct grouping defers the O(n) stable placement pass until a
-consumer — grouped median/top-k gathers, set ops, the interpreter's
-group-slicing — actually demands the permutation); forcing it always yields the
-unique stable counting-sort permutation of 'rowToGroup', so WHAT it evaluates to
-is independent of when it is forced. 'groupRepRows' is the per-group
-representative row (the first original row of each group, in canonical group
-order); aggregation uses it to materialize the key columns without demanding
-'valueIndices'. It may also be a thunk; its value always equals
-@VU.map (valueIndices !) (VU.init offsets)@.
--}
+-- | Row grouping of a dataframe; can only be used with 'aggregate'.
 data GroupedDataFrame = GroupedInternal
     { fullDataframe :: DataFrame
     , groupedColumns :: [T.Text]
@@ -121,19 +104,12 @@ data GroupedDataFrame = GroupedInternal
     -- ^ Rows sorted by group id (stable); possibly an unevaluated thunk.
     , offsets :: VU.Vector Int
     , rowToGroup :: VU.Vector Int
-    {- ^ rowToGroup[i] = group index for row i.  Length n (one per row).
-    Built once in 'groupBy'; reused by every aggregation.
-    -}
+    -- ^ rowToGroup[i] is the group index for row i, built once in 'groupBy'.
     , groupRepRows :: VU.Vector Int
     -- ^ First original row of each group, length nGroups. See laziness note.
     }
 
-{- | The historical five-field view of 'GroupedDataFrame'. Matching ignores
-'groupRepRows'; building derives it lazily from @valueIndices@/@offsets@ (the
-thunk only forces them if something actually reads the representative rows).
-The direct grouping paths construct 'GroupedInternal' directly instead so the
-representative rows never demand the placement pass.
--}
+-- | The historical five-field view of 'GroupedDataFrame'.
 pattern Grouped ::
     DataFrame ->
     [T.Text] ->
@@ -150,11 +126,7 @@ pattern Grouped df cols vis offs rtg <- GroupedInternal df cols vis offs rtg _
                 vis
                 offs
                 rtg
-                {- Parallel gather (still a deferred thunk; forcing it forces
-                vis/offs as before). Indices are grouping-produced and
-                in-bounds by construction: offs has nGroups+1 entries and
-                offs!g < length vis for every non-empty group. Values are
-                identical to the historical @VU.map (vis !) (VU.init offs)@. -}
+                -- Parallel gather; indices are in-bounds by construction.
                 (parBackpermute2Int vis offs)
 
 {-# COMPLETE Grouped #-}
@@ -195,10 +167,7 @@ instance Show DataFrame where
                 | otherwise = T.empty
          in T.unpack (body <> footer)
 
-{- | Configures how a 'DataFrame' is rendered as text: 'maxRows' caps rendered
-rows, 'maxColumns' collapses middle columns past the limit into an ellipsis, and
-'maxCellWidth' truncates long cells. A non-positive field means \"no limit\".
--}
+-- | Configures how a 'DataFrame' is rendered as truncated text.
 data TruncateConfig = TruncateConfig
     { maxRows :: Int
     , maxColumns :: Int
@@ -265,10 +234,7 @@ asTextWith fmt mTrunc d =
             (map clipCell finalTypes)
             (map (V.map clipCell) finalCols)
 
-{- | Decide which columns survive horizontal truncation and where to splice the
-ellipsis column. Splits with the extra column on the left for odd 'maxColumns';
-inserts the ellipsis only when it actually saves space.
--}
+-- | Decide which columns survive horizontal truncation.
 pickColumns ::
     Maybe TruncateConfig ->
     Int ->
@@ -313,10 +279,7 @@ columnNames :: DataFrame -> [T.Text]
 columnNames = map fst . sortBy (compare `on` snd) . M.toList . columnIndices
 {-# INLINE columnNames #-}
 
-{- | Insert a column into a DataFrame. If a column with the same name already
-exists it is replaced in-place; otherwise the column is appended at the end.
-Other columns are expanded (padded with nulls) to match the new row count.
--}
+-- | Insert a column into a DataFrame, replacing any column of the same name.
 insertColumn :: T.Text -> Column -> DataFrame -> DataFrame
 insertColumn name column d =
     let
@@ -338,7 +301,7 @@ insertColumn name column d =
                     (n, c + 1)
                     exprs
 
--- | Build a DataFrame from a list of @(name, column)@ pairs using 'insertColumn'.
+-- | Build a DataFrame from @(name, column)@ pairs using 'insertColumn'.
 fromColumns :: [(T.Text, Column)] -> DataFrame
 fromColumns = L.foldl' (\df (name, column) -> insertColumn name column df) empty
 
@@ -349,18 +312,7 @@ infix 1 =:
 (=:) :: (Columnable a) => T.Text -> [a] -> (T.Text, Column)
 (=:) = mkColumn
 
-{- | Safely retrieves a column by name from the dataframe.
-
-Returns 'Nothing' if the column does not exist.
-
-==== __Examples__
-
->>> getColumn "age" df
-Just (UnboxedColumn ...)
-
->>> getColumn "nonexistent" df
-Nothing
--}
+-- | Safely retrieve a column by name, or 'Nothing' if it does not exist.
 getColumn :: T.Text -> DataFrame -> Maybe Column
 getColumn name df
     | null df = Nothing
@@ -368,19 +320,13 @@ getColumn name df
         i <- columnIndices df M.!? name
         columns df V.!? i
 
-{- | Retrieve a column by name, throwing 'ColumnsNotFoundException' if it does not
-exist. Unsafe version of 'getColumn'; use when the column is certain to exist.
--}
+-- | Retrieve a column by name, throwing 'ColumnsNotFoundException' if absent.
 unsafeGetColumn :: T.Text -> DataFrame -> Column
 unsafeGetColumn name df = case getColumn name df of
     Nothing -> throw $ ColumnsNotFoundException [name] "" (M.keys $ columnIndices df)
     Just col -> col
 
-{- | Checks if the dataframe is empty (has no columns).
-
-Returns 'True' if the dataframe has no columns, 'False' otherwise.
-Note that a dataframe with columns but no rows is not considered null.
--}
+-- | Checks if the dataframe is empty (has no columns).
 null :: DataFrame -> Bool
 null df = V.null (columns df)
 

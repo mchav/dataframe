@@ -2,12 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Correctness oracle for the packed-text column variant. Every assertion
-builds a 'PackedText' column from raw bytes + offsets and the same data as a
-'BoxedColumn Text', then checks display, extraction, equality, ordering,
-hashing, groupBy and join all agree. This pins behavioral parity before any
-reader emits packed columns.
--}
+-- | Correctness oracle: packed-text columns behave like boxed Text columns.
 module Internal.PackedText (tests) where
 
 import qualified Data.Text as T
@@ -124,8 +119,7 @@ joinParity = TestCase $ do
         joinedB = D.innerJoin ["k"] lhsB rhs
     assertBool "inner join parity" (joinedP == joinedB)
 
--- A gather (atIndicesStable) on a packed column stays packed and equals the
--- boxed gather. Indices repeat, reorder, and drop rows.
+-- A gather on a packed column stays packed and equals the boxed gather.
 gatherPreservesPacked :: Test
 gatherPreservesPacked = TestCase $ do
     let ixs = VU.fromList [9, 0, 0, 5, 7, 2, 3 :: Int]
@@ -148,8 +142,7 @@ sortPreservesPacked = TestCase $ do
         (DI.isPackedText (unsafeGetColumn "k" sortedP))
     assertBool "sorted packed == sorted boxed" (sortedP == sortedB)
 
--- A left join (sentinel gather, -1 for missing right rows) on a packed right
--- column stays packed, builds the correct null bitmap, and equals boxed.
+-- A left join on a packed right column stays packed and equals boxed.
 leftJoinSentinelPreservesPacked :: Test
 leftJoinSentinelPreservesPacked = TestCase $ do
     let lhsP = D.fromColumns [("k", packedCol)]
@@ -171,8 +164,7 @@ leftJoinSentinelPreservesPacked = TestCase $ do
         (DI.isPackedText (unsafeGetColumn "v" joinedP))
     assertBool "left join packed == boxed" (joinedP == joinedB)
 
--- A slice of a packed column stays packed: decoding to Text would make a
--- ten-row slice cost the whole frame.
+-- A slice of a packed column stays packed instead of decoding to Text.
 slicePreservesPacked :: Test
 slicePreservesPacked = TestCase $ do
     let sp = DI.sliceColumn 3 4 packedCol
@@ -195,8 +187,7 @@ takeLastPreservesPacked = TestCase $ do
         (DI.toList @T.Text tb)
         (DI.toList @T.Text tp)
 
--- Every other representation rejects a slice running past the end; the packed
--- arm must not quietly decode the overrun as empty strings.
+-- A packed slice past the end must be rejected, not decoded as empty.
 sliceRejectsInvalidBounds :: Test
 sliceRejectsInvalidBounds = TestCase $ do
     r <- try (evaluate (DI.columnLength (DI.sliceColumn 8 5 packedCol)))
@@ -205,8 +196,7 @@ sliceRejectsInvalidBounds = TestCase $ do
         Right len ->
             assertFailure ("expected an invalid slice, got length " ++ show len)
 
--- Rows for the eq/neq kernel: valid text, empty, and invalid UTF-8 (a lone
--- 0xFF, a truncated "é", a bare continuation byte) that decodes to U+FFFD.
+-- Rows for the eq/neq kernel: valid text, empty, and invalid UTF-8.
 kernelRowBytes :: [[Word8]]
 kernelRowBytes =
     map (B.unpack . encodeUtf8) ["apple", "", "café", "日本語", "apple", "\xFFFD"]
@@ -221,9 +211,7 @@ packedFromBytes rows =
             (VU.fromList (scanl (+) 0 (map length rows)))
         )
 
-{- The eq/neq-literal kernel compares raw bytes. It must agree with the same
-expression over the decoded column, including invalid UTF-8 rows.
--}
+-- The eq/neq-literal kernel must agree with the decoded-column expression.
 eqLiteralKernelParity :: Test
 eqLiteralKernelParity = TestCase $ do
     let base = D.fromColumns [("k", packedFromBytes kernelRowBytes)]

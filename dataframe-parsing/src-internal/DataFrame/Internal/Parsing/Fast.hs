@@ -1,10 +1,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
 
-{- | Fast, non-backtracking field parsers for CSV ingest. Each is a pure
-function over a @(buf, start, end)@ byte slice, bit-exact with the reference
-parsers in "DataFrame.Internal.Parsing". Unboxed @#@ variants avoid boxing.
--}
+-- | Fast, non-backtracking field parsers for CSV ingest over byte slices.
 module DataFrame.Internal.Parsing.Fast (
     -- * Int fields
     parseIntField,
@@ -45,9 +42,7 @@ import DataFrame.Internal.Parsing.Fast.Token (
     parseDateFieldSlice,
  )
 
-{- | Strip-tolerant @Int@ parse of a whole field; rejects overflow,
-matching @readByteStringInt@ exactly.
--}
+-- | Strip-tolerant @Int@ parse of a whole field; rejects overflow.
 parseIntField :: BS.ByteString -> Maybe Int
 parseIntField bs = parseIntFieldSlice bs 0 (BS.length bs)
 {-# INLINE parseIntField #-}
@@ -59,9 +54,7 @@ parseIntFieldSlice bs start end =
         (# _, n #) -> Just (I# n)
 {-# INLINE parseIntFieldSlice #-}
 
-{- | Strip-tolerant @Double@ parse of a whole field; bit-exact with
-@readByteStringDouble@ (falls back to it outside the fast window).
--}
+-- | Strip-tolerant @Double@ parse of a whole field, bit-exact with reference.
 parseDoubleField :: BS.ByteString -> Maybe Double
 parseDoubleField bs = parseDoubleFieldSlice bs 0 (BS.length bs)
 {-# INLINE parseDoubleField #-}
@@ -85,16 +78,12 @@ parseBoolFieldSlice bs start end =
         (# _, b #) -> Just (I# b /= 0)
 {-# INLINE parseBoolFieldSlice #-}
 
-{- | @%Y-%m-%d@ date parse: byte-level fast path for the padded
-10-byte shape, 'Data.Time.parseTimeM' fallback for everything else.
--}
+-- | @%Y-%m-%d@ date parse with a fast path for the padded 10-byte shape.
 parseDateField :: BS.ByteString -> Maybe Day
 parseDateField bs = parseDateFieldSlice bs 0 (BS.length bs)
 {-# INLINE parseDateField #-}
 
-{- | Byte-level test against the canonical missing-token list
-(@Nothing NULL \"\" \" \" nan null N\/A NaN NAN NA@), no Text decode.
--}
+-- | Byte-level test against the canonical missing-token list.
 isMissingField :: BS.ByteString -> Bool
 isMissingField bs = isMissingFieldSlice bs 0 (BS.length bs)
 {-# INLINE isMissingField #-}

@@ -1,9 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | Smooth losses for the proximal-gradient engine. Each carries its
-derivative @∂ℓ/∂z@ at @z = w·x + b@ and a global bound on the curvature
-@∂²ℓ/∂z²@ (used for the FISTA step size).
--}
+-- | Smooth losses for the proximal-gradient engine.
 module DataFrame.LinearSolver.Loss (
     SmoothLoss (..),
     sigmoid,
@@ -14,9 +11,7 @@ module DataFrame.LinearSolver.Loss (
 
 import qualified Data.Text as T
 
-{- | A convex, @C¹@ per-sample loss @ℓ(y, z)@. 'slGradZ' is @∂ℓ/∂z@;
-'slCurvBound' bounds @∂²ℓ/∂z²@ over all @(y, z)@.
--}
+-- | A convex per-sample loss with its gradient and a curvature bound.
 data SmoothLoss = SmoothLoss
     { slName :: !T.Text
     , slGradZ :: Double -> Double -> Double

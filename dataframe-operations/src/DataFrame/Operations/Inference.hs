@@ -44,7 +44,7 @@ data ParsingAssumption
 
 parseTimeOpt :: DateFormat -> T.Text -> Maybe Day
 parseTimeOpt dateFormat s =
-    parseTimeM {- Accept leading/trailing whitespace -}
+    parseTimeM
         True
         defaultTimeLocale
         dateFormat
@@ -127,9 +127,7 @@ promoteIntColumn isNullAt parseI parseD vec =
         (parseD . V.unsafeIndex vec)
 {-# INLINE promoteIntColumn #-}
 
-{- | 'promoteIntColumn' over row indices instead of a materialized cell
-vector (used by readers that keep cells as buffer offsets).
--}
+-- | 'promoteIntColumn' over row indices instead of a materialized cell vector.
 promoteIntColumnIndexed ::
     Int ->
     (Int -> Bool) ->
@@ -156,8 +154,7 @@ promoteIntColumnIndexed n isNullAt parseI parseD = runST $ do
                     Just dv -> promote i anyNull dv
                     Nothing -> return Nothing
 
-        -- Switch to Double at row i: convert the Int prefix, then
-        -- continue parsing the remaining cells as Double.
+        -- Switch to Double at row i: convert the Int prefix, then keep going.
         promote !i !anyNull !dv = do
             dvalues <- VUM.unsafeNew n
             let copy !j

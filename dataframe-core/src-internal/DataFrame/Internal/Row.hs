@@ -41,9 +41,7 @@ import Type.Reflection (TypeRep, typeOf, typeRep)
 
 data Any where
     Value :: (Columnable a) => a -> Any
-    -- Saves us the extra indirection we get from making Value (Maybe a)
-    -- and having to unpack it again to check for nulls.
-    -- Instead, we just have Null as a separate constructor.
+    -- Null is its own constructor to avoid unpacking a Value (Maybe a).
     Null :: Any
 
 instance Eq Any where
@@ -66,7 +64,7 @@ showValue v = case testEquality (typeRep @a) (typeRep @T.Text) of
         Just Refl -> T.pack v
         Nothing -> (T.pack . show) v
 
--- | Wraps a value into an \Any\ type. This helps up represent rows as heterogenous lists.
+-- | Wraps a value into an @Any@ type to represent rows as heterogeneous lists.
 toAny :: forall a. (Columnable a) => a -> Any
 toAny = Value
 
@@ -77,10 +75,7 @@ fromAny (Value (v :: b)) = do
     Refl <- testEquality (typeRep @a) (typeRep @b)
     pure v
 
-{- | Wrap a column cell into an 'Any', honouring the column's null bitmap: a slot
-marked invalid becomes 'Null', any other slot becomes a 'Value'. Only needs
-@Columnable a@ (the stored element type), not @Columnable (Maybe a)@.
--}
+-- | Wrap a column cell into an 'Any', honouring the column's null bitmap.
 cellAny :: (Columnable a) => Maybe Bitmap -> Int -> a -> Any
 cellAny Nothing _ x = Value x
 cellAny (Just bm) i x = if bitmapTestBit bm i then Value x else Null
@@ -130,13 +125,7 @@ mkColumnFromRow name i rows =
                 <> name
             )
 
-{- | Convert the whole dataframe to a list of rows, one per row index in natural
-order; each row lists all columns ordered by column index. Materializes every
-row, so prefer 'toRowVector' for large frames.
-
->>> toRowList df
-[[("name", "Alice"), ("age", 25), ...], [("name", "Bob"), ("age", 30), ...], ...]
--}
+-- | Convert the whole dataframe to a list of rows, in natural order.
 toRowList :: DataFrame -> [[(T.Text, Any)]]
 toRowList df =
     let
@@ -146,22 +135,11 @@ toRowList df =
             (zip names . V.toList . mkRowRep df names)
             [0 .. (fst (dataframeDimensions df) - 1)]
 
-{- | Convert the dataframe to a vector of rows containing only the named columns,
-in the given order. An empty name list yields one empty row per dataframe row.
-
->>> toRowVector ["name", "age"] df
-Vector of rows with only name and age fields
--}
+-- | Convert the dataframe to a vector of rows with only the named columns.
 toRowVector :: [T.Text] -> DataFrame -> V.Vector Row
 toRowVector names df = V.generate (fst (dataframeDimensions df)) (mkRowRep df names)
 
-{- | Given a row gets the value associated with a field.
-
-==== __Examples__
-
->>> map (rowValue (F.col @Int "age")) (toRowList df)
-[25,30, ...]
--}
+-- | Given a row, get the value associated with a field.
 rowValue :: forall a. Expr a -> [(T.Text, Any)] -> Maybe a
 rowValue (Col name) row = lookup name row >>= fromAny @a
 rowValue _ _ = error "Can only get rowValue of column reference"
@@ -184,8 +162,7 @@ mkRowFromArgs names df i = V.map get (V.fromList names)
                 BoxedColumn bm column -> cellAny bm 0 (column V.! 0)
                 _ -> error "mkRowFromArgs: materializeMerged is boxed"
 
--- Returns row values in the caller's requested column order, not the
--- dataframe's storage order.
+-- Rows follow the caller's requested column order, not storage order.
 mkRowRep :: DataFrame -> [T.Text] -> Int -> Row
 mkRowRep df names i = V.generate (L.length names) (\index -> get (names' V.! index))
   where

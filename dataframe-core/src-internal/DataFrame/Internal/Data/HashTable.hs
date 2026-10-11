@@ -2,10 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | A flat, unboxed, open-addressing (linear-probe) hash table mapping a row's
-key-hash to a dense group id, re-verifying the real key on every hash hit to
-reject collisions. Runs in any 'PrimMonad' ('ST' for grouping, 'IO' per worker).
--}
+-- | A flat open-addressing hash table mapping row hash to a dense group id.
 module DataFrame.Internal.Data.HashTable (
     HashTable (..),
     newHashTable,
@@ -18,9 +15,7 @@ import Data.Bits (popCount, unsafeShiftR, (.&.))
 import qualified Data.Vector.Unboxed.Mutable as VUM
 import Data.Word (Word64)
 
-{- | An open-addressing linear-probe table. @htMask@ is @capacity - 1@ (capacity
-is a power of two) and maps a hash to its home slot.
--}
+-- | An open-addressing linear-probe table with a power-of-two capacity.
 data HashTable s = HashTable
     { htHash :: !(VUM.MVector s Int)
     , htGroup :: !(VUM.MVector s Int)
@@ -28,10 +23,7 @@ data HashTable s = HashTable
     , htMask :: !Int
     }
 
-{- | Smallest power of two strictly greater than @n@, at least 2. Sizes the
-table so the load factor stays below ~0.5 even when every row is a distinct
-group.
--}
+-- | Smallest power of two strictly greater than @n@, at least 2.
 nextPow2Above :: Int -> Int
 nextPow2Above n = go 2
   where
@@ -40,10 +32,7 @@ nextPow2Above n = go 2
         | otherwise = go (p * 2)
 {-# INLINE nextPow2Above #-}
 
-{- | Allocate an empty table able to hold up to @n@ distinct groups while
-keeping the load factor under ~0.5 (capacity @= nextPow2Above (2*n)@). All
-group slots start empty (@-1@).
--}
+-- | Allocate an empty table for up to @n@ groups at load factor under 0.5.
 newHashTable :: (PrimMonad m) => Int -> m (HashTable (PrimState m))
 newHashTable n = do
     let !cap = nextPow2Above (2 * max 1 n)
@@ -53,10 +42,7 @@ newHashTable n = do
     pure (HashTable h g r (cap - 1))
 {-# INLINE newHashTable #-}
 
-{- | Look up @row@ (with precomputed @hash@) and return its dense group id: an
-empty slot starts a new group via @nextGroup@, a stored-hash match is re-verified
-with @eqRow@ before reuse. The 'Bool' is 'True' when a new group was created.
--}
+-- | Look up @row@ by hash and return its group id, adding one if new.
 htInsert ::
     (PrimMonad m) =>
     HashTable (PrimState m) ->
@@ -94,11 +80,7 @@ htInsert ht eqRow nextGroup row hash = go (homeSlot mask hash)
                     else go ((slot + 1) .&. mask)
 {-# INLINE htInsert #-}
 
-{- | Home slot of a hash: the top @log2 cap@ bits of a Fibonacci multiply. The
-row hash's final FxHash step is a multiply, which leaves its LOW bits poorly
-diffused — raw-text keys cluster into contiguous linear-probe pileups when
-slotted by @hash .&. mask@, so the home slot must come from the top bits.
--}
+-- | Home slot of a hash: the top bits of a Fibonacci multiply.
 homeSlot :: Int -> Int -> Int
 homeSlot !mask !hash =
     fromIntegral

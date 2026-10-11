@@ -55,10 +55,7 @@ import DataFrame.Internal.Expression (Expr (Col))
 foreign export ccall "dfExecutePlan"
     dfExecutePlan :: CString -> Ptr Word64 -> Ptr Word64 -> IO CInt
 
-{- | Execute a JSON-encoded query plan, returning Arrow C Data Interface
-pointers to Python via the @schemaOut@/@arrayOut@ output parameters (each an
-address as a 'Word64'). Returns 0 on success, -1 on error.
--}
+-- | Run a JSON query plan and return Arrow C Data Interface pointers.
 dfExecutePlan :: CString -> Ptr Word64 -> Ptr Word64 -> IO CInt
 dfExecutePlan planCS schemaOut arrayOut = do
     planBytes <- BS.packCString planCS
@@ -89,10 +86,7 @@ foreign export ccall "dfFitDecisionTree"
 foreign export ccall "dfFreeModel"
     dfFreeModel :: Ptr CChar -> IO ()
 
-{- | Fit a TAO decision tree on a plan's materialized result, predicting the
-target column from the rest (@target_type@: @"auto"@ or a wire type tag;
-@config_json@: 'TreeConfig' fields). Caller frees via 'dfFreeModel'; 0 ok, -1 err.
--}
+-- | Fit a TAO decision tree on a plan's result; caller frees via 'dfFreeModel'.
 dfFitDecisionTree ::
     CString ->
     CString ->
@@ -205,9 +199,7 @@ treeConfigFromJson j =
     pickS :: (TreeConfigJson -> Maybe a) -> (SynthConfig -> a) -> a
     pickS getter dflt = Data.Maybe.fromMaybe (dflt defaultSynthConfig) (getter j)
 
-{- | Need this so we don't specify types on the Python side
-but it means out type universe is limited/falls back to string.
--}
+-- | Infer the target wire type, falling back to string.
 inferTargetType :: T.Text -> DataFrame -> T.Text
 inferTargetType target df = dispatchType (columnTypeRep (unsafeGetColumn target df))
   where

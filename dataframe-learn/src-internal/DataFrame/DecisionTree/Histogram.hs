@@ -1,12 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TupleSections #-}
 
-{- | Regression trees grown from per-bin histograms, for gradient boosting.
-Each feature is bucketed once per fit; a node's split search then costs
-O(bins) per feature instead of a sweep over its sorted rows. Splits, null
-handling and leaf values follow 'DataFrame.DecisionTree.Regression': with no
-more distinct values than bins, the trees partition the rows identically.
--}
+-- | Regression trees grown from per-bin histograms, for gradient boosting.
 module DataFrame.DecisionTree.Histogram (
     Binned,
     BinnedFeatures,
@@ -42,9 +37,7 @@ data Binned = Binned
     , bnUpper :: !(VU.Vector Double)
     }
 
-{- | Every feature's bins, plus the same bins stored row by row: row @i@'s bin
-for feature @j@ is at @i * features + j@, so one row's bins share a cache line.
--}
+-- | Every feature's bins, also stored row by row for cache locality.
 data BinnedFeatures = BinnedFeatures
     { bfFeatures :: !(V.Vector Binned)
     , bfRows :: !(VU.Vector Word16)
@@ -86,8 +79,7 @@ binFeature maxBins f = Binned f bins nb upper
             VU.fromList (zipWith splitMidpoint distinct (drop 1 distinct))
         | otherwise = VU.fromList (cutEdges maxBins (VU.length sorted) runs)
     nb = VU.length edges + 1
-    -- The last bin's threshold is the largest value, so "every non-null row
-    -- left" stays a valid null-vs-non-null split, as in the exact tree.
+    -- Top threshold is the largest value, so null vs non-null stays valid.
     upper = VU.snoc edges (if VU.null sorted then 0 else VU.last sorted)
     bins = VU.generate (VU.length vals) binOf
     binOf i
@@ -135,19 +127,15 @@ data TreeLimits = TreeLimits
     , tlMinLeafSize :: !Int
     , tlMinImpurityDecrease :: !Double
     , tlL2 :: !Double
-    -- ^ Added to every node's total weight: shrinks leaf values and split gains.
+    -- ^ Added to every node's total weight, shrinking leaf values and gains.
     , tlMinChildWeight :: !Double
     -- ^ Smallest total weight a child may have.
     }
 
-{- | Per-bin Σw, Σwy, Σwy² and row count, four slots per bin, null bin last.
-Built strictly: left lazy, the histograms of a deep tree pile up as thunks.
--}
+-- | Per-bin weight, weighted-y sums and row count, four slots per bin.
 type Hist = VU.Vector Double
 
-{- | Every feature's histogram for a node, in one pass over its rows. Each
-feature's slice of the result is its 'Hist'.
--}
+-- | Every feature's histogram for a node, built in one pass over its rows.
 buildHists ::
     BinnedFeatures ->
     VU.Vector Int ->
@@ -186,9 +174,7 @@ data Node
     = NLeaf !Double !(VU.Vector Int)
     | NBranch !(Expr Bool) !Node !Node
 
-{- | Fit a weighted-SSE regression tree on binned features; returns the tree
-and its in-sample predictions.
--}
+-- | Fit a weighted-SSE regression tree on binned features.
 fitBinnedTree ::
     TreeLimits ->
     BinnedFeatures ->
@@ -262,10 +248,7 @@ histTotals h = go 0 0 0 0 0
                 (c + h VU.! (4 * k + 2))
                 (d + h VU.! (4 * k + 3))
 
-{- | Best @(feature, bin, nulls left)@ by SSE reduction. Each bin boundary is
-scored with the node's null rows on the right and then on the left; ties keep
-the earliest candidate, as in the exact sweep.
--}
+-- | Best (feature, bin, nulls left) by SSE reduction.
 bestSplit ::
     TreeLimits ->
     V.Vector Binned ->
@@ -329,10 +312,7 @@ bestSplit lim binned allowed hs
                 | otherwise = bst
             best' = foldl consider best (maybeToList right ++ maybeToList left)
 
-{- | Weighted SSE of a node from its Σy, Σy², and total weight, with @l2@ added
-to the weight. Differences of these give the Newton split gain with an L2 leaf
-penalty; at @l2 = 0@ it is the plain SSE.
--}
+-- | Weighted SSE of a node, with l2 added to the weight.
 penalisedSse :: Double -> Double -> Double -> Double -> Double
 penalisedSse l2 sumY sumSq wt = sumSq - (if wt + l2 == 0 then 0 else sumY * sumY / (wt + l2))
 

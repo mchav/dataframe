@@ -15,9 +15,7 @@ import qualified DataFrame.Operations.Core as D
 
 import Data.Maybe
 
-{- | Vertically merge two dataframes using shared columns.
-Columns that exist in only one dataframe are padded with Nothing.
--}
+-- | Vertically merge two dataframes, padding unshared columns with Nothing.
 instance Semigroup D.DataFrame where
     (<>) :: D.DataFrame -> D.DataFrame -> D.DataFrame
     (<>) a b =

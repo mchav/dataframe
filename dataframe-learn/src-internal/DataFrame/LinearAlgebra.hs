@@ -1,9 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | Dependency-free dense linear algebra over row-major matrices, shared by the
-models in @dataframe-learn@. Solvers live in "DataFrame.LinearAlgebra.Solve"
-and eigenproblems in "DataFrame.LinearAlgebra.Eigen".
--}
+-- | Dependency-free dense linear algebra over row-major matrices.
 module DataFrame.LinearAlgebra (
     Matrix,
     dot,
@@ -23,9 +20,7 @@ module DataFrame.LinearAlgebra (
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
-{- | Row-major dense matrix: an outer boxed vector of equal-length rows. An
-@n×d@ matrix has @n@ rows of length @d@.
--}
+-- | Row-major dense matrix: an outer boxed vector of equal-length rows.
 type Matrix = V.Vector (VU.Vector Double)
 
 -- | Inner product of two equal-length vectors.
@@ -43,11 +38,11 @@ scaleV :: Double -> VU.Vector Double -> VU.Vector Double
 scaleV a = VU.map (* a)
 {-# INLINE scaleV #-}
 
--- | @matVec A v@ for @A@ of shape @n×d@ and @v@ of length @d@; result length @n@.
+-- | Matrix-vector product A v.
 matVec :: Matrix -> VU.Vector Double -> VU.Vector Double
 matVec a v = VU.convert (V.map (`dot` v) a)
 
--- | @tMatVec A v = Aᵀ v@ for @A@ of shape @n×d@, @v@ of length @n@; result length @d@.
+-- | Transposed matrix-vector product.
 tMatVec :: Matrix -> VU.Vector Double -> VU.Vector Double
 tMatVec a v
     | V.null a = VU.empty
@@ -105,9 +100,7 @@ nearestCenter centers p =
         (-1, 1 / 0)
         centers
 
-{- | Indices @j@ (excluding @i@) within squared radius @eps²@ of row @i@, by
-brute force; @O(n d)@ per query.
--}
+-- | Indices (excluding i) within squared radius eps squared of row i.
 epsNeighbors :: Double -> Matrix -> Int -> VU.Vector Int
 epsNeighbors eps rows i =
     VU.fromList

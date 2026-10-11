@@ -8,7 +8,7 @@ import Control.Exception
 import GHC.Float (castDoubleToWord64, castFloatToWord32)
 import Test.HUnit
 
--- Adapted from: https://github.com/BartMassey/chunk/blob/1ee4bd6545e0db6b8b5f4935d97e7606708eacc9/hunit.hs#L29
+-- Adapted from BartMassey/chunk, hunit.hs.
 assertExpectException ::
     String ->
     String ->

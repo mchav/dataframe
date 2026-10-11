@@ -1,9 +1,6 @@
 {-# LANGUAGE CPP #-}
 
-{- | Deterministic, platform-independent random sampling for the stochastic
-fitters. Built on @random@'s SplitMix 'StdGen'; the distributions here are our
-own so a seeded fit is bit-reproducible across platforms.
--}
+-- | Deterministic, platform-independent random sampling for the fitters.
 module DataFrame.Random (
     Gen,
     mkGen,
@@ -52,9 +49,7 @@ nextDouble g =
         d = fromIntegral (w `shiftR` 11) * (1 / 9007199254740992)
      in (d, g')
 
-{- | Uniform 'Int' in the inclusive range @[lo, hi]@ by rejection sampling
-(unbiased). Returns @lo@ when @hi <= lo@.
--}
+-- | Uniform Int in an inclusive range by rejection sampling (unbiased).
 nextIntR :: (Int, Int) -> Gen -> (Int, Gen)
 nextIntR (lo, hi) g
     | hi <= lo = (lo, g)
@@ -68,9 +63,7 @@ nextIntR (lo, hi) g
                 then (lo + fromIntegral (w `mod` range), gg')
                 else loop gg'
 
-{- | A pair of independent standard normals via Box-Muller, consuming exactly two
-uniforms so stream offsets stay data-independent.
--}
+-- | A pair of independent standard normals via Box-Muller.
 gaussianPair :: Gen -> ((Double, Double), Gen)
 gaussianPair g =
     let (u1, g1) = nextDouble g
@@ -90,9 +83,7 @@ gaussianVector n g0 = go n g0 []
             let ((z0, z1), g') = gaussianPair g
              in go (k - 2) g' (z1 : z0 : acc)
 
-{- | A uniformly random permutation of @[0 .. n-1]@ (Fisher-Yates), threading the
-generator purely.
--}
+-- | A uniformly random permutation of 0 .. n-1 (Fisher-Yates).
 shuffleInts :: Int -> Gen -> (VU.Vector Int, Gen)
 shuffleInts n g0
     | n <= 1 = (VU.enumFromN 0 (max 0 n), g0)
@@ -110,9 +101,7 @@ shuffleInts n g0
             let (j, g') = nextIntR (0, i) g
              in genSwaps (i - 1) g' ((i, j) : acc)
 
-{- | @sampleIndices k n@ draws @k@ distinct indices from @[0 .. n-1]@ (the first
-@k@ of a full shuffle); returns all @n@ when @k >= n@.
--}
+-- | Draw k distinct indices from 0 .. n-1; returns all n when k >= n.
 sampleIndices :: Int -> Int -> Gen -> (VU.Vector Int, Gen)
 sampleIndices k n g =
     let (perm, g') = shuffleInts n g

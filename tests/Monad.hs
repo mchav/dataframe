@@ -30,7 +30,7 @@ prop_sampleM df = monadic' $ do
     let finalRowCount = D.nRows finalDf
     let realRate = roundToTwoPlaces $ fromIntegral finalRowCount / fromIntegral rowCount
     let diff = abs $ expectedRate - realRate
-    -- calculates the 99.99% confidence interval (quickcheck runs 100 tests, aim for 1/10000)
+    -- 99.99% confidence interval (quickcheck runs 100 tests, 1/10000)
     let tolerance' = 3.89 * sqrt (expectedRate * (1 - expectedRate) / fromIntegral rowCount)
     assert (diff <= tolerance')
 

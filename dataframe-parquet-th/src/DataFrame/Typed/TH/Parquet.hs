@@ -1,17 +1,4 @@
-{- |
-Module      : DataFrame.Typed.TH.Parquet
-License     : MIT
-
-Parquet-file-based typed-schema derivation. The typed counterpart of
-'DataFrame.TH.Parquet.declareColumnsFromParquetFile': instead of binding one
-@Expr@ per column, it generates a type synonym describing the file's schema,
-suitable for 'DataFrame.Typed.freeze' / @readParquet \@Schema@.
-
-@
-deriveSchemaFromParquetFile \"Trips\" \"trips.parquet\"
--- generates:  type Trips = '[ '(\"id\", Int), '(\"fare\", Double), ...]
-@
--}
+-- | Derives a typed schema from a Parquet file.
 module DataFrame.Typed.TH.Parquet (
     deriveSchemaFromParquetFile,
 ) where

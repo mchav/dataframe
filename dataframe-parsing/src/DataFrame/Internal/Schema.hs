@@ -10,11 +10,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- |
-Runtime schema representation. The Template-Haskell @deriveSchema@ splice
-lives in "DataFrame.Internal.Schema.TH" so this module can be used from
-packages that do not depend on @template-haskell@.
--}
+-- | Runtime schema representation, free of any @template-haskell@ dependency.
 module DataFrame.Internal.Schema (
     SchemaType (..),
     schemaType,
@@ -38,55 +34,25 @@ data SchemaType where
     -- | Constructor carrying a 'Proxy' of the element type.
     SType :: (Columnable a, Read a) => P.Proxy a -> SchemaType
 
-{- | Show the underlying element type using 'typeRep'.
-
-==== __Examples__
->>> :set -XTypeApplications
->>> show (schemaType @Bool)
-"Bool"
--}
+-- | Show the underlying element type using 'typeRep'.
 instance Show SchemaType where
     show :: SchemaType -> String
     show (SType (_ :: P.Proxy a)) = show (typeRep @a)
 
-{- | Two 'SchemaType's are equal iff their element types are the same.
-
-==== __Examples__
->>> :set -XTypeApplications
->>> schemaType @Int == schemaType @Int
-True
-
->>> schemaType @Int == schemaType @Integer
-False
--}
+-- | Two 'SchemaType's are equal iff their element types are the same.
 instance Eq SchemaType where
     (==) :: SchemaType -> SchemaType -> Bool
     (==) (SType (_ :: P.Proxy a)) (SType (_ :: P.Proxy b)) =
         isJust (testEquality (typeRep @a) (typeRep @b))
 
-{- | Construct a 'SchemaType' for the given @a@.
-
-==== __Examples__
->>> :set -XTypeApplications
->>> schemaType @T.Text == schemaType @T.Text
-True
-
->>> show (schemaType @Double)
-"Double"
--}
+-- | Construct a 'SchemaType' for the given @a@.
 schemaType :: forall a. (Columnable a, Read a) => SchemaType
 schemaType = SType (P.Proxy @a)
 
-{- | Logical schema of a 'DataFrame': a mapping from column names to their
-element types ('SchemaType').
--}
+-- | Logical schema of a 'DataFrame': column names mapped to element types.
 newtype Schema = Schema
     { elements :: M.Map T.Text SchemaType
-    {- ^ Mapping from /column name/ to its 'SchemaType'.
-
-    Invariant: keys are unique column names. A missing key means the column
-    is not present in the schema.
-    -}
+    -- ^ Mapping from column name to its 'SchemaType'; keys are unique.
     }
     deriving (Show, Eq)
 
@@ -94,18 +60,7 @@ newtype Schema = Schema
 makeSchema :: [(T.Text, SchemaType)] -> Schema
 makeSchema = Schema . M.fromList
 
-{- | The runtime 'Schema' behind a type-level schema — names /and/ element
-types — so a reader can project to a schema's columns and skip inference for
-them in one step.
-
-Every column type must have a 'Read' instance, which 'Columnable' does not
-imply; that is what lets the names carry their types across to a reader.
-
-==== __Examples__
->>> :set -XTypeApplications -XDataKinds
->>> elements (runtimeSchema @'[ '("n", Int)])
-fromList [("n",Int)]
--}
+-- | The runtime 'Schema' behind a type-level schema, names and element types.
 class RuntimeSchema (cols :: [(Symbol, Type)]) where
     runtimeSchema :: Schema
 

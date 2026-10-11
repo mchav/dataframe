@@ -31,9 +31,7 @@ import qualified DataFrame.Internal.DataFrame as D
 import DataFrame.Typed.Schema (KnownSchema (..))
 import DataFrame.Typed.Types (TypedDataFrame (..))
 
-{- | Validate that an untyped 'DataFrame' matches the expected schema @cols@,
-then wrap it. Returns 'Nothing' on mismatch.
--}
+-- | Validate an untyped 'DataFrame' against schema @cols@ and wrap it.
 freeze ::
     forall cols. (KnownSchema cols) => D.DataFrame -> Maybe (TypedDataFrame cols)
 freeze df = case validateSchema @cols df of
@@ -49,17 +47,12 @@ freezeWithError df = case validateSchema @cols df of
     Left err -> Left err
     Right _ -> Right (TDF df)
 
-{- | Validate and wrap like 'freezeWithError', but throw a 'DataFrameException'
-in 'IO' on mismatch. The throwing boundary used by the typed readers
-(@readCsv@ \/ @readParquet@).
--}
+-- | Like 'freezeWithError' but throws a 'DataFrameException' on mismatch.
 freezeOrThrow ::
     forall cols. (KnownSchema cols) => D.DataFrame -> IO (TypedDataFrame cols)
 freezeOrThrow = either (throwIO . InternalException) pure . freezeWithError @cols
 
-{- | Unwrap a typed DataFrame back to the untyped representation.
-Always safe; discards type information.
--}
+-- | Unwrap a typed DataFrame back to the untyped representation.
 thaw :: TypedDataFrame cols -> D.DataFrame
 thaw (TDF df) = df
 
@@ -72,9 +65,7 @@ instance ToDataFrame D.DataFrame where
 instance ToDataFrame (TypedDataFrame cols) where
     toDataFrame = thaw
 
-{- | Wrap an untyped DataFrame without any validation.
-Used internally after delegation where the library guarantees schema correctness.
--}
+-- | Wrap an untyped DataFrame without any validation.
 unsafeFreeze :: D.DataFrame -> TypedDataFrame cols
 unsafeFreeze = TDF
 
@@ -105,17 +96,13 @@ validateSchema df = mapM_ checkCol (schemaEvidence @cols)
                             <> ", got "
                             <> T.pack (C.columnTypeString col)
 
-{- | Check if a Column's element type matches the expected SomeTypeRep.
-For nullable columns (those with a bitmap), @Maybe a@ in the schema matches
-a column whose inner type is @a@, since we store nullable data as
-@BoxedColumn (Just bm) a@ or @UnboxedColumn (Just bm) a@ rather than
-@Column (Maybe a)@.
--}
+-- | Check that a Column's element type matches the expected SomeTypeRep.
 matchesType :: SomeTypeRep -> C.Column -> Bool
 matchesType expected col =
     let expectedStr = show expected
         colTypeStr = C.columnTypeString col
      in expectedStr == colTypeStr
-            || ( C.hasMissing col -- nullable column: schema says "Maybe X", column stores "X" with a bitmap
+            -- A nullable column stores "X" under a "Maybe X" schema type.
+            || ( C.hasMissing col
                     && Just colTypeStr == stripPrefix "Maybe " expectedStr
                )

@@ -1,11 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | 'readColumns' semantics for the SIMD reader, pinned against the
-pure reader. Every case asserts both readers agree: the two disagreed
-over 'ProvideNames' for a long time, and a projection only one of them
-honours is worse than no projection at all.
--}
+-- | 'readColumns' semantics, pinned against the pure reader.
 module Operations.Projection (tests) where
 
 import qualified Data.Map as M
@@ -33,9 +29,7 @@ withCsv label contents k = do
     removeFile path
     pure r
 
-{- | Read @contents@ through both readers with @opts@, check they agree,
-then hand the frame to the assertion.
--}
+-- | Read through both readers, check they agree, then assert.
 bothReaders ::
     String -> CSV.ReadOptions -> T.Text -> (DataFrame -> Assertion) -> Test
 bothReaders label opts contents check = TestLabel label $

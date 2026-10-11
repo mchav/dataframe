@@ -2,34 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE KindSignatures #-}
 
-{- |
-The schema-checked, typed-expression analogue of "DataFrame.Display.Web.Chart".
-Charts are built over a 'TypedDataFrame' using typed expressions ('TExpr',
-@#col@), so column references are checked against the schema at compile time
-and the field type follows from the column's Haskell type.
-
-@
-{\-\# LANGUAGE OverloadedLabels \#-\}
-import qualified DataFrame.Display.Web.Chart.Typed as Plt
-
--- one-liner
-Plt.scatter #age #fare tdf
-
--- composable grammar
-Plt.showChart
-  ( Plt.chart tdf
-      |> Plt.mark Plt.Boxplot
-      |> Plt.enc Plt.X #region
-      |> Plt.enc Plt.Y #value
-      |> Plt.enc Plt.Color #grp
-      |> Plt.facet #grp
-  )
-@
-
-Every combinator delegates to "DataFrame.Display.Web.Chart" by unwrapping the
-typed expression ('unTExpr') and frame ('unTDF'); the @cols@ phantom is erased
-at the boundary.
--}
+-- | Schema-checked typed-expression analogue of "DataFrame.Display.Web.Chart".
 module DataFrame.Display.Web.Chart.Typed (
     -- * Chart
     Chart,
@@ -157,7 +130,7 @@ regression xE yE (Chart c) = Chart (C.regression (unTExpr xE) (unTExpr yE) c)
 density :: (Columnable a) => TExpr cols a -> Chart cols -> Chart cols
 density e (Chart c) = Chart (C.density (unTExpr e) c)
 
--- | The Vega-Lite spec as an aeson 'Value' (escape hatch for advanced use / hvega).
+-- | The Vega-Lite spec as an aeson 'Value' (escape hatch, e.g. for hvega).
 toVegaSpec :: Chart cols -> Value
 toVegaSpec (Chart c) = C.toVegaSpec c
 

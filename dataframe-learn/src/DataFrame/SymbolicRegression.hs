@@ -3,11 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | Symbolic regression by genetic programming (modelled on the
-@symbolic-regression@ library, ported dependency-light: no e-graphs, no NLOPT).
-'predict' is the best discovered @Expr Double@; the search also returns the
-accuracy-vs-complexity Pareto front. Deterministic given the seed.
--}
+-- | Symbolic regression by genetic programming, returning a Pareto front.
 module DataFrame.SymbolicRegression (
     module DataFrame.Model,
     UnOp (..),
@@ -63,9 +59,7 @@ defaultSRConfig =
         , srUnaryOps = allUnOps
         }
 
-{- | A fitted symbolic regressor. 'srBest' is the lowest-error expression;
-'srPareto' is the @(complexity, mse, expr)@ frontier.
--}
+-- | A fitted symbolic regressor: best expression plus Pareto frontier.
 data SRModel = SRModel
     { srBest :: !(Expr Double)
     , srBestMSE :: !Double

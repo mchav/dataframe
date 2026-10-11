@@ -131,10 +131,7 @@ tdfOptional ::
     DT.TypedDataFrame ['("key", Text), '("C", Maybe Int)]
 tdfOptional = either (error . show) id (DT.freezeWithError dfOptional)
 
-{- | A left join over an already-optional column must not nest the Maybe: the
-explicit @Maybe Int@ result schema below only type-checks because 'WrapMaybe'
-flattens @Maybe (Maybe Int)@ to @Maybe Int@, matching the runtime column.
--}
+-- | A left join over an already-optional column must not nest the Maybe.
 testLeftJoinTypedOptional :: Test
 testLeftJoinTypedOptional =
     TestCase
@@ -451,9 +448,6 @@ testLeftJoinRightEmpty =
         )
 
 -- Many-to-many: duplicate keys on both sides produce the cross-product.
--- manyLeft:  K0->A0, K1->A1, K1->A2
--- manyRight: K0->B0, K1->B1, K1->B2
--- Expected inner join: 1 K0 pair + 4 K1 pairs = 5 rows
 manyLeft :: D.DataFrame
 manyLeft =
     D.fromColumns
@@ -487,7 +481,6 @@ testManyToManyLeftJoin =
         )
 
 -- Stress the open-addressing hash index with many distinct integer keys.
--- Left keys 0..9999, right keys 5000..14999 (overlap 5000..9999).
 bigLeft :: D.DataFrame
 bigLeft =
     D.fromColumns

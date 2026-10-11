@@ -2,9 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | A lazy scan reads only the columns its 'Schema' names, and rejects
-self-contradictory 'ReadOptions' before opening the file.
--}
+-- | A lazy scan reads only the columns its schema names.
 module LazyProjection (tests) where
 
 import qualified Data.Map.Strict as M
@@ -42,9 +40,7 @@ twoCols :: Schema
 twoCols =
     Schema $ M.fromList [("id", schemaType @Int), ("dob", schemaType @Int)]
 
-{- | The scan keeps only the schema's columns — and 'dob' is not a prefix of
-the header, so a positional scheme could not express this.
--}
+-- | The scan keeps only the schema's columns, whatever their header position.
 scanProjects :: Test
 scanProjects = TestLabel "scan_projects" $ TestCase $ withCsv ',' $ \csvPath -> do
     df <- L.runDataFrame (L.scanCsv twoCols (T.pack csvPath))
@@ -69,14 +65,11 @@ readersAgree = TestLabel "scan_readers_agree" $ TestCase $ withCsv ',' $ \csvPat
         L.runDataFrame (L.scanCsvWith Fast.fastReadCsvWithOpts twoCols (T.pack csvPath))
     assertEqual "same frame" slow fast
 
-{- | 'scanSeparated' used to drop its separator on the floor: the reader was
-built from the schema alone and always split on commas.
--}
+-- | scanSeparated must honour its separator, not always split on commas.
 scanHonoursSeparator :: Test
 scanHonoursSeparator =
     TestLabel "scan_honours_separator" $ TestCase $ withCsv ';' $ \csvPath -> do
-        -- With the separator ignored, the whole line is one field and the
-        -- schema's columns would not be found at all.
+        -- With the separator ignored, the schema's columns are not found.
         df <- L.runDataFrame (L.scanSeparated ';' twoCols (T.pack csvPath))
         assertEqual "dims" (2, 2) (D.dimensions df)
         assertEqual "columns" ["dob", "id"] (D.columnNames df)
@@ -141,10 +134,7 @@ invalidOptions =
         "cannot delimit fields"
     ]
 
-{- | The SIMD reader's low-level entry takes its separator as a scanner byte,
-so a 'columnSeparator' saying something else would be silently ignored.
-Reject it instead.
--}
+-- | A column separator that disagrees with the scanner byte is rejected.
 rejectSeparatorMismatch :: Test
 rejectSeparatorMismatch = TestLabel "reject_separator_mismatch" $ TestCase $ do
     let opts = Csv.defaultReadOptions{Csv.columnSeparator = ';'}

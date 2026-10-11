@@ -81,29 +81,16 @@ import GHC.Float (castWord32ToFloat, castWord64ToDouble)
 import Pinch (decodeWithLeftovers)
 import qualified Pinch
 
--- ---------------------------------------------------------------------------
--- Types
--- ---------------------------------------------------------------------------
-
-{- | A type-specific page decoder.
-Given the optional dictionary, the page encoding, the number of present
-values, and the decompressed value bytes, returns exactly @nPresent@ values.
--}
+-- | A type-specific page decoder.
 type PageDecoder a =
     Maybe DictVals -> Encoding -> Int -> BS.ByteString -> VB.Vector a
 
 type UnboxedPageDecoder a =
     Maybe DictVals -> Encoding -> Int -> BS.ByteString -> VU.Vector a
 
--- ---------------------------------------------------------------------------
--- Per-type decoders
--- ---------------------------------------------------------------------------
-
 boolDecoder :: UnboxedPageDecoder Bool
 boolDecoder mDict enc nPresent bs = case enc of
-    -- PLAIN bools are bit-packed (1 bit/value, LSB-first). Generate the
-    -- unboxed vector directly by indexing the bit for each row, avoiding an
-    -- intermediate @[Bool]@ list.
+    -- PLAIN bools are bit-packed; index the bits directly, avoiding a list.
     PLAIN _ ->
         VU.generate nPresent $ \i ->
             (BSU.unsafeIndex bs (i `shiftR` 3) `shiftR` (i .&. 7)) .&. 1 == 1
@@ -182,9 +169,7 @@ fixedLenByteArrayDecoder len mDict enc nPresent bs = case enc of
   where
     getText = dictText
 
-{- | Shared dictionary-path helper: decode @nPresent@ RLE/bit-packed indices
-and look each one up in the dictionary.
--}
+-- | Decode RLE\/bit-packed indices and look each up in the dictionary.
 lookupDict ::
     Maybe DictVals ->
     Int ->
@@ -197,9 +182,7 @@ lookupDict mDict nPresent bs f = case mDict of
         let (idxs, _) = decodeDictIndices nPresent bs
          in VB.generate nPresent (f dict . VU.unsafeIndex idxs)
 
-{- | Decode @nPresent@ dictionary indices and gather the entries from an
-unboxed dictionary. Inlined per element type so the gather is a plain loop.
--}
+-- | Decode dictionary indices and gather from an unboxed dictionary.
 gatherDict ::
     (VU.Unbox a) =>
     String ->
@@ -219,10 +202,6 @@ gatherDict who pick mDict nPresent bs = case mDict of
                  in VU.map (VU.unsafeIndex ds . fromIntegral) idxs
 {-# INLINE gatherDict #-}
 
--- ---------------------------------------------------------------------------
--- Core page-iteration loop
--- ---------------------------------------------------------------------------
-
 -- | Read the raw (compressed) byte range for a column chunk.
 readChunkBytes ::
     (RandomAccess m) =>
@@ -239,30 +218,11 @@ readChunkBytes columnChunk = do
     rawBytes <- readBytes (Range offset compLen)
     return (codec, pType, rawBytes)
 
-{- | A decoded DATA page handed to a fold step: the running dictionary, the
-page encoding, the present-value count, the (decompressed) value bytes, and the
-definition/repetition level vectors.
--}
+-- | A decoded DATA page handed to a fold step.
 type RawPage =
     (Maybe DictVals, Encoding, Int, BS.ByteString, VU.Vector Int, VU.Vector Int)
 
-{- | Left-fold a monadic step over every DATA page (V1 or V2) of every column
-chunk, in order, threading the running dictionary internally and handing each
-page to @step@ as a 'RawPage' (no value decoding — the step decides how to
-materialize, e.g. into a typed vector or straight into a text buffer).
-
-Dictionary pages update the running dictionary; @INDEX_PAGE@s are skipped. Only
-one page's bytes are live at a time.
-
--- TODO: when a page index is available, use it here to compute which page
--- byte ranges to request from the RandomAccess layer instead of reading the
--- entire column chunk in one contiguous read.
-
--- TODO: accept an optional row-range and use the column/offset page index
--- (when present in file metadata) to skip pages whose row range does not
--- overlap the requested range, avoiding decompression of irrelevant pages
--- entirely.
--}
+-- | Left-fold a monadic step over every DATA page of every column chunk.
 {-# INLINEABLE foldColumnDataPagesM #-}
 foldColumnDataPagesM ::
     forall m acc.
@@ -322,8 +282,7 @@ foldColumnDataPagesM description chunks step = goChunks chunks
                             enc = unField dph2.dph2_encoding
                             defLen = unField dph2.dph2_definition_levels_byte_length
                             repLen = unField dph2.dph2_repetition_levels_byte_length
-                            -- V2: levels are never compressed; only the value
-                            -- payload is (optionally) compressed.
+                            -- V2 levels are never compressed, only the values.
                             isCompressed = fromMaybe True (unField dph2.dph2_is_compressed)
                             (defLvls, repLvls, nPresent, compValBytes) =
                                 readLevelsV2 n maxDef maxRep repLen defLen pageData
@@ -335,10 +294,7 @@ foldColumnDataPagesM description chunks step = goChunks chunks
                         goPages dict codec pType rest' acc'
                     INDEX_PAGE _ -> goPages dict codec pType rest' acc
 
-{- | Left-fold over per-page value triples, decoding each page with @decoder@.
-A thin wrapper over 'foldColumnDataPagesM' for the typed (numeric/boxed) column
-paths.
--}
+-- | Left-fold over per-page value triples with a given decoder.
 {-# INLINEABLE foldColumnPagesM #-}
 foldColumnPagesM ::
     forall m v a acc.
@@ -354,14 +310,7 @@ foldColumnPagesM description decoder chunks step =
         \acc (dict, enc, nPresent, valBytes, defLvls, repLvls) ->
             step acc (decoder dict enc nPresent valBytes, defLvls, repLvls)
 
-{- | Append a non-nullable BYTE_ARRAY page's strings straight into a
-'TextBuilder', no intermediate boxed 'Text' vector.
-
-PLAIN pages copy each value's UTF-8 bytes directly from the page buffer pointer
-('appendTextSliceFromPtr'), skipping the per-value 'decodeUtf8Lenient' +
-'ByteString' slicing + 'Text' allocation that @readNTexts@ would do.
-Dictionary pages append the shared dictionary 'Text's by reference.
--}
+-- | Append a non-nullable BYTE_ARRAY page's strings into a 'TextBuilder'.
 appendStringPageIO ::
     TextBuilder RealWorld ->
     Maybe DictVals ->
@@ -397,9 +346,7 @@ appendStringPageIO builder mDict enc nPresent bs = case enc of
         Just d -> error ("appendStringPageIO: wrong dict type, got " ++ show d)
         Nothing -> error "appendStringPageIO: dictionary-encoded page but no dictionary seen"
 
-{- | Read a little-endian 4-byte length prefix at byte @off@ from a raw page
-pointer.
--}
+-- | Read a little-endian 4-byte length prefix from a raw page pointer.
 readLenLE :: Ptr Word8 -> Int -> IO Int
 readLenLE p off = do
     b0 <- peekByteOff p off :: IO Word8
@@ -413,13 +360,7 @@ readLenLE p off = do
             .|. (fromIntegral b3 `shiftL` 24)
 {-# INLINE readLenLE #-}
 
-{- | Append a NULLABLE BYTE_ARRAY page into a 'TextBuilder', interleaving nulls
-by walking the definition levels: a present row (@def == maxDef@) consumes the
-next stored value (dictionary entry by reference, or the next length-prefixed
-PLAIN slice by memcpy); a null row ('appendNull') writes an offset and clears a
-validity bit. Builds 'PackedText' + validity bitmap with no per-row 'Text' or
-@[Maybe a]@ allocation. Only present values are stored in the page payload.
--}
+-- | Append a nullable BYTE_ARRAY page into a 'TextBuilder'.
 appendNullableStringPageIO ::
     TextBuilder RealWorld ->
     Int ->
@@ -467,16 +408,8 @@ appendNullableStringPageIO builder maxDef mDict enc nPresent bs defs = case enc 
             error
                 "appendNullableStringPageIO: dictionary-encoded page but no dictionary seen"
 
--- ---------------------------------------------------------------------------
--- Page header parsing
--- ---------------------------------------------------------------------------
-
 parsePageHeader :: BS.ByteString -> Either String (BS.ByteString, PageHeader)
 parsePageHeader = decodeWithLeftovers Pinch.compactProtocol
-
--- ---------------------------------------------------------------------------
--- Batch value readers
--- ---------------------------------------------------------------------------
 
 readNInt32 :: Int -> BS.ByteString -> VU.Vector Int32
 readNInt32 n bs = VU.generate n $ \i -> fromIntegral (word32At bs (4 * i))
@@ -507,11 +440,7 @@ readNFixedTexts len n bs =
     decodeUtf8Lenient (BS.take len bs)
         : readNFixedTexts len (n - 1) (BS.drop len bs)
 
-{- | Decode a required numeric column chunk (no levels) straight into
-@out[off ..]@ and return the next free index. Each page is one loop from the
-decompressed bytes to the destination: no per-page vectors, no concatenation.
-Inlined so each element type gets its own copy.
--}
+-- | Decode a required numeric column chunk straight into @out[off ..]@.
 decodeRequiredNumericInto ::
     forall a m.
     (VU.Unbox a, RandomAccess m, MonadIO m) =>

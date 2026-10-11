@@ -4,10 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Concatenation of per-chunk 'Column's (e.g. from parallel CSV chunks). Text
-columns merge at the byte level via 'TextChunk' \/ 'mergeTextChunks', so no
-per-chunk 'Data.Text.Text' values are ever materialized.
--}
+-- | Concatenation of per-chunk 'Column's, merging text at the byte level.
 module DataFrame.Internal.Column.Merge (
     TextChunk (..),
     concatColumns,
@@ -54,10 +51,7 @@ import DataFrame.Internal.Data.PackedText (
  )
 import Type.Reflection (typeRep)
 
-{- | A frozen text-builder chunk: raw UTF-8 bytes plus row offsets (row @i@
-spans bytes @[offsets!i, offsets!(i+1))@) and an optional validity bitmap.
-'Data.Text.Text' values are only created when chunks merge into a 'Column'.
--}
+-- | A frozen text-builder chunk: UTF-8 bytes, row offsets and validity.
 data TextChunk = TextChunk
     { tcBytes :: !A.Array
     , tcUsed :: !Int
@@ -68,18 +62,12 @@ data TextChunk = TextChunk
 tcRows :: TextChunk -> Int
 tcRows c = VU.length (tcOffsets c) - 1
 
-{- | Freeze a builder chunk directly into a packed-text column: no
-'Data.Text.Text' materialization, no UTF-8 validation pass (deferred to decode).
-Not yet called by any reader.
--}
+-- | Freeze a builder chunk directly into a packed-text column.
 packedFromTextChunk :: TextChunk -> Column
 packedFromTextChunk (TextChunk arr _used offs bm) =
     PackedText bm (mkPackedContiguous arr offs)
 
-{- | Merge text chunks into one packed-text 'Column': one byte-array copy per
-chunk, one offset rebase, then wrap the shared buffer + offsets as 'PackedText'
-(no per-row header, decode deferred).
--}
+-- | Merge text chunks into one packed-text 'Column' with one copy per chunk.
 mergeTextChunks :: [TextChunk] -> Column
 mergeTextChunks [] = error "DataFrame.Internal.ColumnMerge.mergeTextChunks: empty list"
 mergeTextChunks [c] = packedFromTextChunk c
@@ -102,10 +90,7 @@ mergeTextChunks cs = runST $ do
     let !bm = concatValidity [Validity (tcBitmap c) (tcRows c) | c <- cs]
     pure (PackedText bm (mkPackedContiguous farr foffs))
 
-{- | 'mergeTextChunks' with the byte copies and offset rebases spread over
-worker threads, one per chunk. Chunks from a parallel reader are big enough
-that the serial merge otherwise costs as much as decoding did.
--}
+-- | 'mergeTextChunks' with copies and offset rebases spread over workers.
 mergeTextChunksIO :: [TextChunk] -> IO Column
 mergeTextChunksIO [] = error "DataFrame.Internal.ColumnMerge.mergeTextChunksIO: empty list"
 mergeTextChunksIO [c] = pure (packedFromTextChunk c)
@@ -140,16 +125,11 @@ concatColumnsIO cols
     | Just chunks <- mapM packedChunk cols = mergeTextChunksIO chunks
     | otherwise = pure (concatColumns cols)
 
-{- | Merge per-chunk columns into one column.
-
-TODO: mchavinda - this is very similar to mappendColumns can could possibly
-be defined in terms of it but I'll have to ivnestigate further.
--}
+-- | Merge per-chunk columns into one column.
 concatColumns :: [Column] -> Column
 concatColumns [] = error "DataFrame.Internal.Column.Builder.concatColumns: empty list"
 concatColumns [c] = c
--- Normalize on the whole list, not the head: a packed or merged chunk in any
--- position must demote every chunk to the common boxed form.
+-- Normalize the whole list: a packed or merged chunk demotes all to boxed.
 concatColumns cols
     | Just chunks <- mapM packedChunk cols = mergeTextChunks chunks
 concatColumns cols@(c0 : _)

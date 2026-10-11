@@ -2,9 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Tree learners on nullable columns: the compiled tree must route null rows
-as fitting did, and the regression tree must send them to the side that fits.
--}
+-- | Tree learners on nullable columns route null rows as fitting did.
 module NullSplits (tests) where
 
 import Data.Either (fromRight)
@@ -100,8 +98,7 @@ inSampleMatchesInterpret = TestCase $ do
         (interpreted df t)
         inSample
 
--- The null rows have the same target as the low values of x, so one split
--- fits exactly only if it sends the nulls left.
+-- Nulls share the low x values' target, so an exact split sends nulls left.
 learnedDirection :: Test
 learnedDirection = TestCase $ do
     let y = [0, 0, 0, 1, 1, 1, 0, 0]
@@ -133,9 +130,7 @@ unseenNullsRoute = TestCase $ do
         "null rows land in a leaf"
         (VU.all (`elem` [0, 1]) (VU.drop 4 scored))
 
--- The target depends only on whether x is null. If the split's threshold were
--- +Infinity instead of 3, CART and AdaBoost would send the null rows left
--- while fitting but right in the compiled tree, and the fit would break.
+-- The target depends only on whether x is null.
 indicatorFrame :: ([Double], D.DataFrame)
 indicatorFrame = (y, withTarget y [("x", maybeCol x)])
   where

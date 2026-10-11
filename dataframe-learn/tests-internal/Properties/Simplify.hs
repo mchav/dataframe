@@ -2,10 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Property tests for the simplifier and tree-pruning pass: @simplify@
-preserves denotation (over Bool and Maybe Bool, incl. NaN\/null\/boundary rows)
-and is idempotent; @pruneDead@ preserves the function the tree computes.
--}
+-- | Property tests for the simplifier and tree-pruning pass.
 module Properties.Simplify (tests) where
 
 import DataFrame.DecisionTree.Predict (predictWithTree)

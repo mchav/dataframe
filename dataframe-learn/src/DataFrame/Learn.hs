@@ -1,13 +1,4 @@
-{- | The one import an application needs for the @dataframe-learn@ estimators:
-the @fit@\/@predict@ verbs, every model config and fitted-model record, and all
-their 'Fit'\/'Predict' instances.
-
-@
-import DataFrame.Learn
-...
-fit defaultRegTreeConfig target df
-@
--}
+-- | The one import an application needs for the dataframe-learn estimators.
 module DataFrame.Learn (
     module DataFrame.Model,
     module DataFrame.LinearModel,

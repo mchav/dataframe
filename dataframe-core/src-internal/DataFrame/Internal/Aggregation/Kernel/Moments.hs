@@ -5,18 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | The fused two-column moment kernel: one pass over @x@ and @y@ producing the
-six sufficient statistics @(n, Sx, Sy, Sxx, Syy, Sxy)@ per group, from which the
-whole correlation\/regression family (mean, variance, covariance, correlation,
-OLS slope) is algebra requiring no further look at the rows.
-
-The sequential and parallel passes live together because they must agree on
-floating-point accumulation order. Moments are additive, so a row-range split
-with a merge would be correct in exact arithmetic — but float addition is not
-associative, so 'momentScatterPar' partitions by GROUP range instead: every
-group accumulates start-to-finish inside a single worker, in the same order as
-'momentScatter'. That is what makes the two byte-identical at any @-N@.
--}
+-- | The fused two-column moment kernel: six sufficient statistics per group.
 module DataFrame.Internal.Aggregation.Kernel.Moments (
     Moments (..),
     momentScatter,
@@ -51,9 +40,7 @@ import DataFrame.Internal.Control.Concurrent (
 shouldPar :: Int -> Bool
 shouldPar = shouldParallelize parThreshold
 
-{- | The additive moment sums of two columns, each an @nGroups@-length column:
-@(n, Sx, Sy, Sxx, Syy, Sxy)@.
--}
+-- | The additive moment sums of two columns: @(n, Sx, Sy, Sxx, Syy, Sxy)@.
 data Moments = Moments
     { mN :: Column
     , mSx :: Column
@@ -63,10 +50,7 @@ data Moments = Moments
     , mSxy :: Column
     }
 
-{- | One pass over two Double-coercible columns @x@ and @y@ filling the count and
-five sums, collapsing the Q9 regression family's six folds into a single pass.
-'Nothing' unless both columns are non-null unboxed Int/Double.
--}
+-- | One pass over two Double-coercible columns filling the count and sums.
 momentScatter :: VU.Vector Int -> Int -> Column -> Column -> Maybe Moments
 momentScatter g nGroups colX colY = do
     xs <- cleanDoubleVector colX
@@ -125,10 +109,7 @@ momentPass g nGroups xs ys = runST $ do
         <*> VU.unsafeFreeze syy
         <*> VU.unsafeFreeze sxy
 
-{- | Parallel counterpart of 'momentScatter': one fused pass over both columns,
-each group's six sums accumulated within one worker's range. Byte-identical to
-'momentScatter'. 'Nothing' unless both columns are non-null unboxed Int/Double.
--}
+-- | Parallel counterpart of 'momentScatter'.
 momentScatterPar ::
     VU.Vector Int -> VU.Vector Int -> Int -> Column -> Column -> Maybe Moments
 momentScatterPar vis offs nGroups colX colY
@@ -141,8 +122,6 @@ momentScatterPar vis offs nGroups colX colY
             !bounds = groupRangeBounds offs nGroups caps
         pure (unsafePerformIO (momentPar vis offs nGroups xs ys caps bounds))
 {-# NOINLINE momentScatterPar #-}
-
--------------------------------------------------------------------------------
 
 momentPar ::
     VU.Vector Int ->
@@ -197,21 +176,7 @@ momentPar vis offs nGroups xs ys caps bounds = do
         <*> (fromUnboxedVector <$> VU.unsafeFreeze syy)
         <*> (fromUnboxedVector <$> VU.unsafeFreeze sxy)
 
--------------------------------------------------------------------------------
--- Streaming fused two-column moments (Q9)
--------------------------------------------------------------------------------
-
-{- | Streaming counterpart of 'momentScatterPar': one fused pass over
-@rowToGroup@ and the two TYPED value columns (Int values convert to Double
-in-register — bit-identical to the @VU.map fromIntegral@ materialization it
-replaces, with no 800MB intermediate column and no sequential conversion pass).
-Each worker accumulates the six per-group sums over its contiguous row chunk in
-original row order; partials merge in fixed worker order (counts exactly, the
-five Double sums in chunk-major float order — deterministic at a fixed @-N@,
-but a different summation order than the per-group gather kernel).
-'Nothing' above 'streamGroupCap' or unless both columns are clean unboxed
-Int/Double; the caller then keeps the gather path.
--}
+-- | Streaming counterpart of 'momentScatterPar' over typed value columns.
 momentStreamPar :: VU.Vector Int -> Int -> Column -> Column -> Maybe Moments
 momentStreamPar rtg nGroups colX colY
     | nGroups <= 0 || nGroups > streamGroupCap = Nothing
@@ -234,9 +199,7 @@ momentStreamPar rtg nGroups colX colY
         _ -> Nothing
 {-# NOINLINE momentStreamPar #-}
 
-{- | Monomorphic entry points (see 'reduceParInt' for why the 'testEquality'
-dispatch needs them).
--}
+-- | Monomorphic entry points for the 'testEquality' dispatch.
 momentStreamII ::
     VU.Vector Int -> Int -> VU.Vector Int -> VU.Vector Int -> Moments
 momentStreamII = momentStreamTyped
@@ -285,9 +248,7 @@ momentStreamTyped ::
     VU.Vector a ->
     VU.Vector b ->
     Moments
-{- The SPECIALIZE pragmas matter for the same reason as 'reduceParTyped': the
-per-element @realToFrac@ must rewrite to @int2Double@/@id@ at a concrete type
-or it goes through 'Rational' at runtime. -}
+-- SPECIALIZE keeps per-element @realToFrac@ from going through 'Rational'.
 {-# SPECIALIZE momentStreamTyped ::
     VU.Vector Int -> Int -> VU.Vector Int -> VU.Vector Int -> Moments
     #-}

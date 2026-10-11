@@ -15,16 +15,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- |
-Core column definitions: the type-erased 'Column' GADT and its mutable/typed
-companions, the 'Columnable' constraint, and the representation-level
-primitives ('materializePacked', 'materializeMerged') that the non-orphan
-'Show'/'Eq' instances depend on.
-
-Predicates live in "DataFrame.Internal.Column.Properties", vector/list
-conversions in "DataFrame.Internal.Column.Conversion", and bulk transformations
-in "DataFrame.Internal.Column.Operations".
--}
+-- | Core column definitions: the type-erased 'Column' GADT and companions.
 module DataFrame.Internal.Column.Base where
 
 import qualified Data.Vector as VB
@@ -62,24 +53,16 @@ type Columnable a =
     , SBoolI (FloatingTypes a)
     )
 
-{- | Type-erased column GADT. Pattern-matching on the constructor recovers the
-representation; nullability is an optional bit-packed 'Bitmap' (@Nothing@ = no
-nulls, @Just bm@ = bit @i@ set iff row @i@ is valid).
--}
+-- | Type-erased column GADT with optional bit-packed null bitmap.
 data Column where
     BoxedColumn :: (Columnable a) => Maybe Bitmap -> VB.Vector a -> Column
     UnboxedColumn ::
         (Columnable a, VU.Unbox a) => Maybe Bitmap -> VU.Vector a -> Column
-    -- TODO: mchavinda - investigate splitting this into a separate intermediate
-    --                   representation.
-    -- Efficient intermediate formats.z
-    -- Bit-packed Text: shared UTF-8 byte buffer + row offsets + optional bitmap;
-    -- Text is materialized on demand. Only CSV ingest emits this; user-built
-    -- Text columns stay 'BoxedColumn'.
+    -- TODO: mchavinda - split this into a separate intermediate representation.
+
+    -- Bit-packed Text: shared UTF-8 buffer, offsets, optional bitmap; CSV only.
     PackedText :: Maybe Bitmap -> {-# UNPACK #-} !PackedTextData -> Column
-    -- A join's same-named non-key column pair ('mkMergedColumns'): both sides
-    -- keep their native (packed/dict/unboxed) representation; per-row 'These'
-    -- values only materialize on element access ('materializeMerged').
+    -- A join's same-named non-key column pair; both sides keep native form.
     MergedColumn :: !Column -> !Column -> Column
 
 instance Show Column where
@@ -103,9 +86,7 @@ instance Show Column where
          in "[" ++ foldl (\acc e -> if null acc then e else acc ++ "," ++ e) "" elems ++ "]"
     show c@(PackedText _ _) = show (materializePacked c)
 
-{- | Compare two nullable boxed columns element by element, skipping null slots.
-Uses a manual loop to avoid stream fusion forcing null-slot error thunks.
--}
+-- | Compare two nullable boxed columns element by element, skipping nulls.
 eqBoxedCols ::
     (Eq a) => Maybe Bitmap -> VB.Vector a -> Maybe Bitmap -> VB.Vector a -> Bool
 eqBoxedCols bm1 a bm2 b
@@ -150,9 +131,7 @@ instance Eq Column where
     (==) lhs rhs@(PackedText _ _) = lhs == materializePacked rhs
     (==) _ _ = False
 
-{- | Byte-slice equality of two packed-text columns, skipping null slots
-(a null compares equal only to a null), mirroring 'eqBoxedCols'.
--}
+-- | Byte-slice equality of two packed-text columns, skipping null slots.
 eqPackedCols ::
     Maybe Bitmap -> PackedTextData -> Maybe Bitmap -> PackedTextData -> Bool
 eqPackedCols bm1 p1 bm2 p2
@@ -172,18 +151,12 @@ eqPackedCols bm1 p1 bm2 p2
         nullB = maybe False (\bm -> not (bitmapTestBit bm i)) bm2
 {-# INLINE eqPackedCols #-}
 
-{- | A mutable companion struct to dataframe columns.
-
-Used mostly as an intermediate structure for I/O.
--}
+-- | A mutable companion to dataframe columns, used as an I/O intermediate.
 data MutableColumn where
     MBoxedColumn :: (Columnable a) => VBM.IOVector a -> MutableColumn
     MUnboxedColumn :: (Columnable a, VU.Unbox a) => VUM.IOVector a -> MutableColumn
 
-{- | A wrapper around the type-erased 'Column' carrying a phantom element type,
-used to type-check expressions. The phantom is not guaranteed to match the
-underlying vector's type.
--}
+-- | A type-erased 'Column' with a phantom element type, for expressions.
 data TypedColumn a where
     TColumn :: (Columnable a) => Column -> TypedColumn a
 
@@ -199,9 +172,7 @@ instance (Show a) => Show (TypedColumn a) where
 unwrapTypedColumn :: TypedColumn a -> Column
 unwrapTypedColumn (TColumn value) = value
 
-{- | Decode a 'PackedText' into a @BoxedColumn Text@ (bit-identical to
-materializing at freeze). Identity on every other column.
--}
+-- | Decode a 'PackedText' into a @BoxedColumn Text@; identity otherwise.
 materializePacked :: Column -> Column
 materializePacked (PackedText bm p) =
     BoxedColumn bm (VB.generate (packedLength p) (packedIndexText p))
@@ -215,9 +186,7 @@ columnBitmap (UnboxedColumn bm _) = bm
 columnBitmap (PackedText bm _) = bm
 columnBitmap (MergedColumn _ _) = Nothing
 
-{- | A class for converting a vector to a column of the appropriate type.
-Given each Rep we tell the `toColumnRep` function which Column type to pick.
--}
+-- | Selects which Column type to build from a vector for each 'Rep'.
 class ColumnifyRep (r :: Rep) a where
     toColumnRep :: VB.Vector a -> Column
 
@@ -276,9 +245,7 @@ takeColumn n (PackedText bm p) =
     PackedText (fmap (bitmapSlice 0 n) bm) (packedTake n p)
 {-# INLINE takeColumn #-}
 
-{- | Merge two columns using `These`. O(1): the sides are kept in their
-native representation and 'These' values materialize on element access.
--}
+-- | Merge two columns using 'These' in O(1), keeping native representations.
 mkMergedColumns :: Column -> Column -> Column
 mkMergedColumns = MergedColumn
 {-# INLINE mkMergedColumns #-}
@@ -294,10 +261,7 @@ mergedHead (MergedColumn a b) =
     materializeMerged (MergedColumn (takeColumn 1 a) (takeColumn 1 b))
 mergedHead c = c
 
-{- | The eager element-wise merge ('These' per row, boxed). Bitmaps are
-honored for every representation pair: a null side yields 'This'/'That',
-both-null is an error (the join kernels never produce such a row).
--}
+-- | The eager element-wise merge ('These' per row, boxed).
 mergeEager :: Column -> Column -> Column
 mergeEager colA colB = case (colA, colB) of
     (MergedColumn a b, _) -> mergeEager (mergeEager a b) colB

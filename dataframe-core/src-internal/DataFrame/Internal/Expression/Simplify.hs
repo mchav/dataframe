@@ -122,9 +122,7 @@ asBoolLit (Lit v) =
             Nothing -> Nothing
 asBoolLit _ = Nothing
 
-{- | Polymorphic boolean literal: @Lit b@ for @Expr Bool@, @Lit (Just b)@ for
-@Expr (Maybe Bool)@.
--}
+-- | Polymorphic boolean literal for @Expr Bool@ and @Expr (Maybe Bool)@.
 litBoolish :: forall a. (Columnable a) => Bool -> Maybe (Expr a)
 litBoolish v =
     case testEquality (typeRep @a) (typeRep @Bool) of
@@ -214,9 +212,7 @@ litDouble (Lit v) =
                     Nothing -> Nothing
 litDouble _ = Nothing
 
-{- | True for a column lifted from an integral type (never NaN): @toDouble (col …)@
-or a column whose type is itself integral.
--}
+-- | True for a column lifted from an integral type (never NaN).
 integralColE :: forall c. (Columnable c) => Expr c -> Bool
 integralColE (Unary op _) = unaryName op == "toDouble"
 integralColE _ =
@@ -258,9 +254,7 @@ litFalseGated :: (Columnable a) => NullK -> Maybe (Expr a)
 litFalseGated UnknownOnNull = Nothing
 litFalseGated _ = litBoolish False
 
-{- | Tautology to literal True is sound only for total (never-null) atoms; the
-exhaustive-cover form additionally needs a non-NaN (integral) column.
--}
+-- | Tautology to literal True is sound only for total (never-null) atoms.
 litTrueTotal :: (Columnable a) => NullK -> Maybe (Expr a)
 litTrueTotal Total = litBoolish True
 litTrueTotal _ = Nothing
@@ -317,9 +311,7 @@ orAtoms a atomA b atomB nk integral =
             | cA == CEq, cB == CEq -> if tA == tB then Just a else Nothing
             | otherwise -> Nothing
 
-{- | Build @col == t@ for the point-collapse rule; only strict @Expr Bool@ over a
-@Double@ column (otherwise bail).
--}
+-- | Build @col == t@ for the point-collapse rule over a @Double@ column.
 pointEq :: forall a. (Columnable a) => Expr a -> Double -> Maybe (Expr a)
 pointEq atom lo = case testEquality (typeRep @a) (typeRep @Bool) of
     Just Refl -> (\colE -> colE .==. Lit lo) <$> recoverColD atom
@@ -351,10 +343,6 @@ outside t CLt tb = t >= tb
 outside t CLeq tb = t > tb
 outside _ _ _ = False
 
--- ---------------------------------------------------------------------------
--- Path-condition entailment for fitted-tree pruning.
--- ---------------------------------------------------------------------------
-
 -- | A known same-column threshold fact accumulated along a tree path.
 data PredFact = PredFact !String !Cmp !Double
 
@@ -362,10 +350,7 @@ data PredFact = PredFact !String !Cmp !Double
 factTrue :: Expr Bool -> Maybe PredFact
 factTrue e = (\a -> PredFact (aKey a) (aCmp a) (aThr a)) <$> atomOf e
 
-{- | The fact a branch's false edge establishes (the negated condition). Only
-sound for non-NaN (integral) columns — a NaN row takes the false edge too,
-so @¬(x>t)@ is not a clean @x<=t@ bound for floats.
--}
+-- | The fact a branch's false edge establishes (the negated condition).
 factFalse :: Expr Bool -> Maybe PredFact
 factFalse e = do
     a <- atomOf e
@@ -380,9 +365,7 @@ negCmp CGt = Just CLeq
 negCmp CGeq = Just CLt
 negCmp _ = Nothing
 
-{- | @entails facts cond@: 'Just' 'True' when the path facts force @cond@ true,
-'Just' 'False' when they force it false, 'Nothing' when undecided.
--}
+-- | Whether the path facts force @cond@ true, false, or leave it undecided.
 entails :: [PredFact] -> Expr Bool -> Maybe Bool
 entails facts cond = do
     a <- atomOf cond
@@ -396,10 +379,7 @@ entails facts cond = do
         (d : _) -> Just d
         [] -> Nothing
 
-{- | Does the fact's solution set sit inside @cond@ ('Just' 'True'), disjoint
-from it ('Just' 'False'), or neither ('Nothing')? Boundary strictness is
-honoured: e.g. @x<=t@ does NOT entail @x<t@, and @x>=t ∧ x<=t@ is not empty.
--}
+-- | Does a fact's solution set sit inside, apart from, or across @cond@?
 factImplies :: (Cmp, Double) -> (Cmp, Double) -> Maybe Bool
 factImplies (fc, ft) (cc, tc)
     | isLower fc, isLower cc, subset = Just True

@@ -1,15 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CApiFFI #-}
 
-{- | Parallel delimiter-index construction (Round-2 WS-E2): the SIMD region
-is split into 64-byte-aligned ranges, one per worker. Quote parity at each
-range start comes from a prefix-xor of per-range quote counts (exact: every
-quote byte toggles the scanner's PCLMUL parity chain), a parallel counting
-pass right-sizes the flat output arrays and gives every worker an exact
-write offset, and a parallel emit pass writes delimiter positions plus
-row-end ordinals directly (no per-delimiter file-byte re-read). The scalar
-tail and the unclosed-quote policy are unchanged from the sequential path.
--}
+-- | Parallel delimiter-index construction over aligned SIMD ranges.
 module DataFrame.IO.CSV.Fast.IndexPar (
     ParIndex (..),
     getDelimiterIndicesPar,
@@ -52,18 +44,14 @@ foreign import capi "process_csv.h emit_delimiter_indices_chunk"
 simdUnavailable :: CSize
 simdUnavailable = maxBound
 
-{- | Result of the parallel scan: the same @(delimiters, rowEnds)@ pair the
-sequential 'DataFrame.IO.CSV.Fast.Index.classifyRowEnds' path produces.
--}
+-- | Result of the parallel scan: the @(delimiters, rowEnds)@ pair.
 data ParIndex = ParIndex
     { piDelims :: !(VS.Vector CSize)
     , piRowEnds :: !(VS.Vector Int)
     , piEndsInQuote :: !Bool
     }
 
-{- | Scan with @nWorkers@ parallel range scans. Returns 'Nothing' when the
-build\/CPU lacks SIMD support (callers fall back to the sequential scan).
--}
+-- | Scan with @nWorkers@ ranges, or 'Nothing' when SIMD is missing.
 getDelimiterIndicesPar ::
     Int -> Word8 -> Int -> VS.Vector Word8 -> IO (Maybe ParIndex)
 getDelimiterIndicesPar nWorkers separator contentLen file =
@@ -156,9 +144,7 @@ scanParallel nWorkers separator contentLen file filePtr = do
     rowEnds <- VS.unsafeFreeze (VSM.slice 0 nlFinal rowEndsMV)
     pure (ParIndex delims rowEnds inQuote)
 
-{- | Classify the scalar tail's delimiters: append the ordinal of every
-newline entry in @[from, to)@ of the delimiter vector.
--}
+-- | Append the ordinal of every newline entry in the scalar tail.
 appendTailRowEnds ::
     VS.Vector Word8 ->
     VSM.IOVector Int ->

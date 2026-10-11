@@ -7,10 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- |
-Internal shared helpers used by both the terminal and web plot backends.
-Not part of the public API.
--}
+-- | Internal helpers shared by the terminal and web plot backends.
 module DataFrame.Display.Internal.Common (
     -- * Aggregation
     Agg (..),
@@ -82,12 +79,7 @@ aggLabel Median = "median"
 aggLabel Min = "min"
 aggLabel Max = "max"
 
-{- | Apply an aggregation across rows grouped by the given category column.
-
-For 'Count', the value column is ignored. For all other aggregations, the
-value column is extracted as numeric and folded per group. Group order is
-the order in which categories first appear.
--}
+-- | Aggregate values across rows grouped by a category column.
 aggregateByGroup ::
     (HasCallStack) =>
     Agg ->
@@ -121,10 +113,7 @@ aggregateByGroup agg groupCol mValueCol df = case mValueCol of
             reduce = numericReducer agg
          in [(g, reduce (M.findWithDefault [] g byGroup)) | g <- seen]
 
-{- | The numeric reducers, broken out so the overlapping-Count case in
-  'aggregateByGroup' can be dispatched at the head pattern without
-  producing a redundant inner match.
--}
+-- | The numeric reducers, split out from 'aggregateByGroup'.
 numericReducer :: Agg -> [Double] -> Double
 numericReducer Sum = sum
 numericReducer Mean = \vs -> if null vs then 0 else sum vs / fromIntegral (length vs)
@@ -161,7 +150,7 @@ extractNumericColumn colName df =
         Nothing -> error $ "Column " ++ T.unpack colName ++ " not found"
         Just idx -> columnToDoubles (columns df V.! idx)
 
--- | Render a column's values as strings (identity for @Text@, @show@ otherwise).
+-- | Render a column's values as strings (@Text@ as is, @show@ otherwise).
 columnToStrings :: (HasCallStack) => Column -> [T.Text]
 columnToStrings col = case col of
     BoxedColumn _ (vec :: V.Vector a) ->
@@ -173,7 +162,7 @@ columnToStrings col = case col of
     PackedText _ _ -> columnToStrings (materializePacked col)
     MergedColumn _ _ -> columnToStrings (materializeMerged col)
 
--- | Coerce a numeric column to @[Double]@; errors if the element type is not numeric.
+-- | Coerce a numeric column to @[Double]@; errors on non-numeric elements.
 columnToDoubles :: (HasCallStack) => Column -> [Double]
 columnToDoubles col = case col of
     BoxedColumn _ vec -> vectorToDoubles vec
@@ -270,9 +259,7 @@ getCategoricalCounts colName df =
             M.toList $
                 L.foldl' (\acc x -> M.insertWith (+) (show x) (1 :: Int) acc) M.empty xs
 
-{- | Keep the top-N entries by value; fold the rest into a single "Other"
-bucket. Used to limit bar/pie counts to a readable number.
--}
+-- | Keep the top-N entries and fold the rest into an "Other" bucket.
 groupWithOther :: Int -> [(T.Text, Double)] -> [(T.Text, Double)]
 groupWithOther n items =
     let sorted = L.sortOn (negate . snd) items

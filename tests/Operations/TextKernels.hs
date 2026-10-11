@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | 'F.contains' and 'F.length' on packed text columns agree with
-'T.isInfixOf' and 'T.length' row by row, including matches that would only
-exist across a row boundary.
--}
+-- | contains and length on packed text agree with the Text functions per row.
 module Operations.TextKernels (tests) where
 
 import qualified Data.ByteString as BS

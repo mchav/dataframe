@@ -2,19 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Typed CSV reading.
-
-The schema is the whole specification of the read: it names the columns to
-fetch and gives their types, so these readers touch only the columns @cols@
-declares and never infer a type the schema already knows.
-
-@
-type Customer = '[ '(\"customer_id\", Int), '(\"customer_name\", Text)]
-
-customers <- readCsv \@Customer \"customers.csv\"  -- reads 2 columns, whatever
-                                                 -- else the file holds
-@
--}
+-- | Typed CSV reading driven entirely by the type-level schema.
 module DataFrame.Typed.IO.CSV (
     readCsv,
     readCsvWithError,
@@ -37,10 +25,7 @@ import DataFrame.Typed.Types (TypedDataFrame)
 
 import qualified Data.Map.Strict as M
 
-{- | Fold a type-level schema into read options: fetch exactly its columns,
-and parse them at its types. Anything else the caller asked for is kept,
-including a wider 'typeSpec' for columns the schema does not name.
--}
+-- | Fold a type-level schema into read options: its columns and types.
 schemaOptions :: forall cols. (RuntimeSchema cols) => ReadOptions -> ReadOptions
 schemaOptions opts =
     opts
@@ -50,64 +35,33 @@ schemaOptions opts =
   where
     declared = elements (runtimeSchema @cols)
 
-{- | Read a CSV file into a typed DataFrame, throwing on schema mismatch.
-Reads only the columns @cols@ names, typed as @cols@ says.
-
-==== __Example__
-@
-ghci> type Customer = '[ '(\"id\", Int), '(\"name\", Text)]
-ghci> customers <- readCsv \@Customer \"customers.csv\"
-@
--}
+-- | Read a CSV into a typed DataFrame, throwing on schema mismatch.
 readCsv ::
     forall cols.
     (KnownSchema cols, RuntimeSchema cols) =>
     FilePath -> IO (TypedDataFrame cols)
 readCsv = readCsvWithOpts @cols defaultReadOptions
 
-{- | Read a CSV file, returning a descriptive error on schema mismatch or a
-missing column instead of throwing.
-
-==== __Example__
-@
-ghci> readCsvWithError \@Customer \"customers.csv\"
-Right (TDF ...)
-@
--}
+-- | Read a CSV, returning an error on schema mismatch instead of throwing.
 readCsvWithError ::
     forall cols.
     (KnownSchema cols, RuntimeSchema cols) =>
     FilePath -> IO (Either T.Text (TypedDataFrame cols))
 readCsvWithError path = do
-    -- The projection can fail before the freeze does (a column the file does
-    -- not have); this reader reports rather than throws either way.
+    -- A missing column can fail the projection before the freeze does.
     r <- try (CSV.readCsvWithOpts (schemaOptions @cols defaultReadOptions) path)
     pure $ case r of
         Left (e :: SomeException) -> Left (T.pack (show e))
         Right df -> freezeWithError df
 
-{- | Read a tab-separated file into a typed DataFrame, throwing on mismatch.
-
-==== __Example__
-@
-ghci> customers <- readTsv \@Customer \"customers.tsv\"
-@
--}
+-- | Read a tab-separated file into a typed DataFrame, throwing on mismatch.
 readTsv ::
     forall cols.
     (KnownSchema cols, RuntimeSchema cols) =>
     FilePath -> IO (TypedDataFrame cols)
 readTsv = readCsvWithOpts @cols defaultReadOptions{columnSeparator = '\t'}
 
-{- | Read a CSV file with custom options, throwing on schema mismatch. The
-schema still supplies the column selection and types; an explicit
-'readColumns' takes precedence, and is then checked by the freeze.
-
-==== __Example__
-@
-ghci> customers <- readCsvWithOpts \@Customer defaultReadOptions{safeRead = MaybeRead} \"customers.csv\"
-@
--}
+-- | Read a CSV with custom options, throwing on schema mismatch.
 readCsvWithOpts ::
     forall cols.
     (KnownSchema cols, RuntimeSchema cols) =>
@@ -115,22 +69,10 @@ readCsvWithOpts ::
 readCsvWithOpts opts path =
     CSV.readCsvWithOpts (schemaOptions @cols opts) path >>= freezeOrThrow @cols
 
-{- | Write a typed DataFrame to a CSV file.
-
-==== __Example__
-@
-ghci> writeCsv \"customers.csv\" customers
-@
--}
+-- | Write a typed DataFrame to a CSV file.
 writeCsv :: FilePath -> TypedDataFrame cols -> IO ()
 writeCsv path = CSV.writeCsv path . thaw
 
-{- | Write a typed DataFrame to a tab-separated file.
-
-==== __Example__
-@
-ghci> writeTsv \"customers.tsv\" customers
-@
--}
+-- | Write a typed DataFrame to a tab-separated file.
 writeTsv :: FilePath -> TypedDataFrame cols -> IO ()
 writeTsv path = CSV.writeTsv path . thaw

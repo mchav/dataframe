@@ -87,7 +87,7 @@ filterAndProject =
             assertEqual "filterAndProject" (2, 2) (D.dimensions actual)
         )
 
--- Test 5: multi-file glob — alltypes_plain*.parquet matches plain + snappy = 10 rows.
+-- Test 5: multi-file glob matches plain + snappy = 10 rows.
 multiFileGlob :: Test
 multiFileGlob =
     TestCase

@@ -86,9 +86,7 @@ import DataFrame.Typed.Freeze (unsafeFreeze)
 import DataFrame.Typed.Schema
 import DataFrame.Typed.Types (TExpr (..), TSortOrder (..), TypedDataFrame (..))
 
-{- | Filter rows where a boolean expression evaluates to True.
-The expression is validated against the schema at compile time.
--}
+-- | Filter rows where a boolean expression evaluates to True.
 filterWhere :: TExpr cols Bool -> TypedDataFrame cols -> TypedDataFrame cols
 filterWhere (TExpr expr) (TDF df) = TDF (D.filterWhere expr df)
 
@@ -104,24 +102,11 @@ filterBy ::
     (a -> Bool) -> TExpr cols a -> TypedDataFrame cols -> TypedDataFrame cols
 filterBy pred' (TExpr expr) (TDF df) = TDF (D.filterBy pred' expr df)
 
-{- | Keep only rows where ALL Optional columns have Just values.
-Strips 'Maybe' from all column types in the result schema.
-
-@
-df :: TDF '[ '(\"x\", Maybe Double), '(\"y\", Int)]
-filterAllJust df :: TDF '[ '(\"x\", Double), '(\"y\", Int)]
-@
--}
+-- | Keep only rows where all Optional columns have Just values.
 filterAllJust :: TypedDataFrame cols -> TypedDataFrame (StripAllMaybe cols)
 filterAllJust (TDF df) = unsafeFreeze (D.filterAllJust df)
 
-{- | Keep only rows where the named column has Just values.
-Strips 'Maybe' from that column's type in the result schema.
-
-@
-filterJust \@\"x\" df
-@
--}
+-- | Keep only rows where the named column has Just values.
 filterJust ::
     forall name cols.
     ( KnownSymbol name
@@ -132,9 +117,7 @@ filterJust (TDF df) = unsafeFreeze (D.filterJust colName df)
   where
     colName = T.pack (symbolVal (Proxy @name))
 
-{- | Keep only rows where the named column has Nothing.
-Schema is preserved (column types unchanged, just fewer rows).
--}
+-- | Keep only rows where the named column has Nothing.
 filterNothing ::
     forall name cols.
     ( KnownSymbol name
@@ -145,15 +128,11 @@ filterNothing (TDF df) = TDF (D.filterNothing colName df)
   where
     colName = T.pack (symbolVal (Proxy @name))
 
-{- | Keep only rows where every nullable column has Nothing.
-Schema is preserved.
--}
+-- | Keep only rows where every nullable column has Nothing.
 filterAllNothing :: TypedDataFrame cols -> TypedDataFrame cols
 filterAllNothing (TDF df) = TDF (D.filterAllNothing df)
 
-{- | Sort by the given typed sort orders.
-Sort orders reference columns that are validated against the schema.
--}
+-- | Sort by the given typed sort orders, validated against the schema.
 sortBy :: [TSortOrder cols] -> TypedDataFrame cols -> TypedDataFrame cols
 sortBy ords (TDF df) = TDF (D.sortBy (map toUntypedSort ords) df)
   where
@@ -198,15 +177,7 @@ sample g frac (TDF df) = TDF (D.sample g frac df)
 shuffle :: (RandomGen g) => g -> TypedDataFrame cols -> TypedDataFrame cols
 shuffle g (TDF df) = TDF (D.shuffle g df)
 
-{- | Derive a new column from a typed expression. The column name must NOT
-already exist in the schema (enforced at compile time via 'AssertAbsent').
-The expression is validated against the current schema.
-
-@
-df' = derive \@\"total\" (col \@\"price\" * col \@\"qty\") df
--- df' :: TDF ('(\"total\", Double ': originalCols))
-@
--}
+-- | Derive a new column from a typed expression; its name must be absent.
 derive ::
     forall name a cols.
     ( KnownSymbol name
@@ -331,9 +302,7 @@ dropColumn (TDF df) = unsafeFreeze (D.exclude [colName] df)
   where
     colName = T.pack (symbolVal (Proxy @name))
 
-{- | Replace an existing column with new values derived from a typed expression.
-The column must already exist and the new type must match.
--}
+-- | Replace an existing column with values from a typed expression.
 replaceColumn ::
     forall name a cols.
     ( KnownSymbol name
@@ -358,9 +327,7 @@ union (TDF a) (TDF b) = TDF (DS.union a b)
 intersect :: TypedDataFrame cols -> TypedDataFrame cols -> TypedDataFrame cols
 intersect (TDF a) (TDF b) = TDF (DS.intersect a b)
 
-{- | Rows in the left DataFrame but not the right, deduplicated
-(relational @EXCEPT@; the subobject complement).
--}
+-- | Rows in the left DataFrame but not the right, deduplicated.
 difference :: TypedDataFrame cols -> TypedDataFrame cols -> TypedDataFrame cols
 difference (TDF a) (TDF b) = TDF (DS.difference a b)
 

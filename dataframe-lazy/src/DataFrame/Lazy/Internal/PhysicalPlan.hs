@@ -16,9 +16,7 @@ data ScanConfig = ScanConfig
     }
     deriving (Show)
 
-{- | Physical plan: every node carries enough information for the executor
-to allocate resources and choose algorithms without further analysis.
--}
+-- | Physical plan: nodes carry what the executor needs to pick algorithms.
 data PhysicalPlan
     = PhysicalScan DataSource ScanConfig
     | PhysicalProject [T.Text] PhysicalPlan

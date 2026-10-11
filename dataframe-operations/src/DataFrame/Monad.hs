@@ -57,9 +57,7 @@ import qualified Data.Text as T
 import Data.Tuple (swap)
 import System.Random
 
--- A re-implementation of the state monad.
--- `mtl` might be too heavy a dependency just to get
--- a single monad instance.
+-- A re-implementation of the state monad, avoiding an `mtl` dependency.
 newtype FrameM a = FrameM {runFrameM_ :: DataFrame -> (DataFrame, a)}
 
 instance Functor FrameM where
@@ -199,8 +197,6 @@ toFrameM p =
     let (_, steps, res) = unPipeline p 0
      in mapM_ (\(nm, SomeExpr e) -> void (deriveM nm e)) steps >> pure res
 
-{- | Run a pipeline over a frame: derive its columns and return the result
-expression (a reference to the final column) and the resulting frame.
--}
+-- | Run a pipeline over a frame, returning the result expression and frame.
 runPipeline :: DataFrame -> Pipeline (Expr a) -> (Expr a, DataFrame)
 runPipeline df = runFrameM df . toFrameM

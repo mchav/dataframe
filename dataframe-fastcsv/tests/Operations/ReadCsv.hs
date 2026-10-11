@@ -3,7 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
--- Test fixtures inspired by csv-spectrum (https://github.com/max-mapper/csv-spectrum)
+-- Test fixtures inspired by csv-spectrum.
 
 module Operations.ReadCsv where
 
@@ -55,10 +55,6 @@ fixtureDir = "./tests/data/unstable_csv/"
 tempDir :: FilePath
 tempDir = "./tests/data/unstable_csv/"
 
---------------------------------------------------------------------------------
--- Pretty-printer
---------------------------------------------------------------------------------
-
 prettyPrintCsv :: FilePath -> DataFrame -> IO ()
 prettyPrintCsv = prettyPrintSeparated ','
 
@@ -78,9 +74,7 @@ prettyPrintSeparated sep filepath df = withFile filepath WriteMode $ \handle -> 
         (TIO.hPutStrLn handle . T.intercalate (T.singleton sep) . getRowEscaped sep df)
         [0 .. rows - 1]
 
--- RFC 4180-compliant CSV field escaping: wrap in quotes if the field
--- contains the separator, a line break, or a quote; double any embedded
--- quotes so the parser can reverse the encoding.
+-- RFC 4180 field escaping: quote when needed, double embedded quotes.
 escapeField :: Char -> T.Text -> T.Text
 escapeField sep field
     | needsQuoting = T.concat ["\"", T.replace "\"" "\"\"" field, "\""]
@@ -236,9 +230,7 @@ testSingleCol = TestLabel "malformed_single_col" $ TestCase $ do
                 (DI.fromList @T.Text ["Alice", "Bob", "Carol"])
                 col
 
--- After the RFC 4180 alignment, whitespace inside unquoted fields is
--- preserved verbatim.  Users who want leading/trailing whitespace
--- stripped can opt in via the fastCsvTrimUnquoted knob (Step 7).
+-- Whitespace inside unquoted fields is preserved verbatim.
 testWhitespaceFields :: Test
 testWhitespaceFields = TestLabel "malformed_whitespace_fields" $ TestCase $ do
     df <- D.readCsvFast (fixtureDir <> "whitespace_fields.csv")
@@ -261,9 +253,7 @@ testWhitespaceFields = TestLabel "malformed_whitespace_fields" $ TestCase $ do
                 (DI.fromList @T.Text ["  New York", "  Los Angeles"])
                 col
 
--- File: a,b,c header; row "1,2" (short); row "X,Y,Z" (full). Each line is
--- classified individually: the short row survives with a null-padded 'c';
--- the full row keeps its value.
+-- A short row survives with a null-padded 'c'; the full row keeps its value.
 testMissingFields :: Test
 testMissingFields = TestLabel "malformed_missing_fields" $ TestCase $ do
     df <- D.readCsvFast (fixtureDir <> "missing_fields.csv")
@@ -286,9 +276,7 @@ testMissingFields = TestLabel "malformed_missing_fields" $ TestCase $ do
                 (DI.fromList @(Maybe T.Text) [Nothing, Just "Z"])
                 col
 
--- File: a,b,c header; row "1,2,3,EXTRA" (over-long). Under the default
--- ragged-row policy we read columns 0..numCol-1 and silently drop the
--- EXTRA field.
+-- An over-long row drops the extra field under the default ragged policy.
 testExtraFieldsTruncate :: Test
 testExtraFieldsTruncate =
     TestLabel "malformed_extra_fields_truncate" $ TestCase $ do
@@ -327,18 +315,14 @@ testNoTrailingNewline = TestLabel "malformed_no_trailing_newline" $ TestCase $ d
                 (DI.fromList @T.Text ["London"])
                 col
 
--- Regression: a zero-byte CSV used to divide by zero in the row-stride math
--- (`VS.length indices `div` numCol` with numCol == 0). Now it returns an
--- empty DataFrame cleanly.
+-- Regression: a zero-byte CSV used to divide by zero; now it is empty.
 testEmptyFile :: Test
 testEmptyFile = TestLabel "malformed_empty_file" $ TestCase $ do
     df <- D.readCsvFast (fixtureDir <> "empty_file.csv")
     assertEqual "empty_file.csv: 0 rows" 0 (fst (dataframeDimensions df))
     assertEqual "empty_file.csv: 0 columns" 0 (snd (dataframeDimensions df))
 
--- RFC 4180 quote unescaping: `""` decodes to a single `"`.  The escaped
--- quote fixture contains the two canonical shapes: an embedded doubled
--- quote and a plain quoted number.
+-- RFC 4180 unescaping: a doubled quote decodes to a single quote.
 testRfc4180EscapedQuote :: Test
 testRfc4180EscapedQuote =
     TestLabel "rfc4180_escaped_quote" $ TestCase $ do
@@ -355,8 +339,7 @@ testRfc4180EscapedQuote =
                     (DI.fromList @T.Text ["ha \"ha\" ha", "4"])
                     col
 
--- Whitespace inside double quotes is data, not padding, so a quoted
--- "  padded  " survives the parser unchanged.
+-- Whitespace inside double quotes is data and survives unchanged.
 testQuotedWhitespacePreserved :: Test
 testQuotedWhitespacePreserved =
     TestLabel "quoted_whitespace_preserved" $ TestCase $ do
@@ -372,9 +355,7 @@ testQuotedWhitespacePreserved =
                     (DI.fromList @T.Text ["  padded  "])
                     col
 
--- With `fastCsvOnRaggedRow = RaiseOnRagged`, the short row in
--- missing_fields.csv must be rejected with a CsvRaggedRow carrying the
--- row index and the expected/actual field counts.
+-- RaiseOnRagged rejects the short row with a CsvRaggedRow.
 testRaiseOnRagged :: Test
 testRaiseOnRagged = TestLabel "raise_on_ragged" $ TestCase $ do
     let opts = defaultReadOptions{fastCsvOnRaggedRow = RaiseOnRagged}
@@ -392,8 +373,7 @@ testRaiseOnRagged = TestLabel "raise_on_ragged" $ TestCase $ do
             assertFailure
                 "fastReadCsvWithOpts RaiseOnRagged should have thrown"
 
--- With `fastCsvTrimUnquoted = True` we recover the legacy behaviour of
--- stripping leading/trailing whitespace from unquoted fields.
+-- fastCsvTrimUnquoted = True strips whitespace from unquoted fields.
 testTrimUnquotedOpt :: Test
 testTrimUnquotedOpt = TestLabel "trim_unquoted_opt" $ TestCase $ do
     let opts = defaultReadOptions{fastCsvTrimUnquoted = True}
@@ -406,9 +386,7 @@ testTrimUnquotedOpt = TestLabel "trim_unquoted_opt" $ TestCase $ do
                 (DI.fromList @T.Text ["Alice", "Bob"])
                 col
 
--- A declared 'Schema' overrides type inference: the 'a' column is
--- forced to 'Int' and 'b' to 'Double', regardless of what the first few
--- rows look like.
+-- A declared 'Schema' overrides type inference.
 testSchemaPushdown :: Test
 testSchemaPushdown = TestLabel "schema_pushdown" $ TestCase $ do
     let path = fixtureDir <> "schema_pushdown.csv"
@@ -428,8 +406,7 @@ testSchemaPushdown = TestLabel "schema_pushdown" $ TestCase $ do
         Nothing -> assertFailure "schema_pushdown: 'b' missing"
         Just col -> assertEqual "b is Double" (DI.fromList @Double [1.5, 2.5]) col
 
--- `fastReadCsvProj` returns only the requested columns, in the order
--- requested; unreferenced columns never appear in the result.
+-- fastReadCsvProj returns only the requested columns, in order.
 testProjection :: Test
 testProjection = TestLabel "projection" $ TestCase $ do
     let path = fixtureDir <> "projection.csv"
@@ -443,9 +420,7 @@ testProjection = TestLabel "projection" $ TestCase $ do
             map fst . L.sortBy (compare `on` snd) . M.toList $ columnIndices df
     assertEqual "projection preserves order" ["c", "a"] names
 
--- An unmatched `"` used to silently swallow the rest of the file (the SIMD
--- quote-parity chain never resets). We now raise 'CsvUnclosedQuote' rather
--- than returning a corrupted DataFrame.
+-- An unmatched quote now raises 'CsvUnclosedQuote' instead of corrupting.
 testUnclosedQuote :: Test
 testUnclosedQuote = TestLabel "malformed_unclosed_quote" $ TestCase $ do
     let path = fixtureDir <> "unclosed_quote.csv"
@@ -461,9 +436,7 @@ testUnclosedQuote = TestLabel "malformed_unclosed_quote" $ TestCase $ do
             assertFailure
                 "readCsvFast should have thrown CsvUnclosedQuote on input with a stray quote"
 
--- UTF-8 BOM (EF BB BF) must be stripped before the first header is parsed.
--- Without the strip, `getColumn "name"` fails because the column is keyed
--- under the three-byte-prefixed "\xEF\xBB\xBFname".
+-- The UTF-8 BOM must be stripped before the first header is parsed.
 testUtf8Bom :: Test
 testUtf8Bom = TestLabel "malformed_utf8_bom" $ TestCase $ do
     df <- D.readCsvFast (fixtureDir <> "utf8_bom.csv")

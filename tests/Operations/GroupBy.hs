@@ -54,19 +54,13 @@ groupByColumnDoesNotExist =
             (print $ D.groupBy ["test0"] testData)
         )
 
-{- | The grouping invariant every backend (sequential now, parallel in Phase 2)
-must satisfy: 'valueIndices' / 'offsets' / 'rowToGroup' agree, groups partition
-all rows exactly once, each group is exactly the rows sharing a key tuple, and
-no two groups share a key. Checked on a frame with several keys colliding under
-the hash (forces the open-addressing key re-verification path).
--}
+-- | Every backend must partition rows into groups by key tuple.
 groupingInvariantHolds :: Test
 groupingInvariantHolds =
     TestCase
         (assertBool "grouping partitions rows by exact key tuple" (checkGrouping df))
   where
-    -- Repeated, interleaved keys across two columns; the dense int grid is the
-    -- classic hash-collision stressor.
+    -- Repeated, interleaved keys across two columns stress hash collisions.
     df =
         D.fromColumns
             [ ("k1", DI.fromList (map (`mod` 5) [0 .. 199 :: Int]))
@@ -74,9 +68,7 @@ groupingInvariantHolds =
             , ("v", DI.fromList [0 .. 199 :: Int])
             ]
 
-{- | Recompute the reference grouping by the key tuple and assert the library's
-'valueIndices'/'offsets'/'rowToGroup' describe the same partition.
--}
+-- | Recompute the reference grouping by key tuple and compare the partitions.
 checkGrouping :: D.DataFrame -> Bool
 checkGrouping df =
     let g = D.groupBy ["k1", "k2"] df

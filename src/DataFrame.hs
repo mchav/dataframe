@@ -1,17 +1,6 @@
 {-# LANGUAGE CPP #-}
 
-{- |
-Module      : DataFrame
-Copyright   : (c) 2024 - 2026 Michael Chavinda
-License     : GPL-3.0
-Maintainer  : mschavinda@gmail.com
-Stability   : experimental
-Portability : POSIX
-
-Batteries-included entry point for @dataframe@: re-exports the most commonly
-used pieces for GHCi and scripts. Use the @D.@ prefix for core table operations
-and @F.@ for the expression DSL.
--}
+-- | Batteries-included entry point re-exporting the common pieces for GHCi.
 module DataFrame (
     -- * Core data structures
     module CoreTypes,
@@ -79,9 +68,7 @@ module DataFrame (
 )
 where
 
--- DecisionTree's own `percentile`/`percentiles` are hidden here; the public
--- versions come from Operations.Statistics / DataFrame.Synthesis, avoiding
--- ambiguous-export errors.
+-- DecisionTree's `percentile`/`percentiles` are hidden to avoid ambiguity.
 import DataFrame.DecisionTree as DecisionTree
 import DataFrame.Display as Display (
     DisplayOptions (..),
@@ -111,8 +98,7 @@ import DataFrame.IO.JSON as JSON (
     readJSON,
     readJSONEither,
  )
--- Marks the dataframe-expr-serializer dependency as used (the codec modules are
--- surfaced to consumers via this library's @reexported-modules@).
+-- Marks the dataframe-expr-serializer dependency as used.
 import DataFrame.Expr.Serialize ()
 #ifdef WITH_PARQUET
 import DataFrame.IO.Parquet as Parquet (
@@ -183,9 +169,7 @@ import DataFrame.Schema as Schema (
 import DataFrame.Typed.TH.Records as SchemaTH (deriveSchemaFromType, deriveSchemaValues)
 #endif
 #ifdef WITH_LAZY
--- Re-export only the lazy engine's types and source constructors; its
--- operator surface (filter/select/derive/...) collides with the eager API,
--- so users wanting full lazy access `import qualified DataFrame.Lazy as L`.
+-- Re-export only the lazy types and sources; its operators clash with eager.
 import DataFrame.Lazy as Lazy (
     LazyDataFrame,
     fromDataFrame,

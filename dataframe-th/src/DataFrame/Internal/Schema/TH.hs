@@ -3,11 +3,7 @@
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- |
-Template-Haskell @deriveSchema@ splice for "DataFrame.Internal.Schema".
-Kept in a separate module so the runtime schema types in
-"DataFrame.Internal.Schema" do not pull in @template-haskell@.
--}
+-- | Template-Haskell @deriveSchema@ splice for "DataFrame.Internal.Schema".
 module DataFrame.Internal.Schema.TH (
     deriveSchema,
     schemaTypeE,
@@ -27,10 +23,7 @@ schemaTypeE :: Type -> Exp
 schemaTypeE ty =
     ConE 'SType `AppE` SigE (ConE 'P.Proxy) (ConT ''P.Proxy `AppT` ty)
 
-{- | Auto-generate a runtime 'Schema' (and per-column @'Expr'@ accessors)
-from a record ADT. Emits @\<tyName\>Schema@ plus one accessor per field
-(@camelCase -> snake_case@). Requires a single record constructor.
--}
+-- | Auto-generate a runtime 'Schema' and per-column accessors from a record.
 deriveSchema :: Name -> DecsQ
 deriveSchema tyName = do
     info <- reify tyName
@@ -95,9 +88,7 @@ extractRecordFields tyName _ =
             ++ show tyName
             ++ " is not a data/newtype declaration"
 
-{- | @camelCase -> snake_case@. Lowercases the first character then prefixes
-@\'_\'@ before every uppercase character (lowercased).
--}
+-- | Convert @camelCase@ to @snake_case@.
 camelToSnake :: String -> String
 camelToSnake [] = []
 camelToSnake (c : cs) = toLower c : go cs

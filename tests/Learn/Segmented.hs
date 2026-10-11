@@ -275,15 +275,14 @@ poolingTests =
         -- lambda = 0: independent OLS (matches recovery test).
         assertBool "lambda0 a slope 2" (close 1e-9 (slope ["a"] m0) 2)
         assertBool "lambda0 b slope -3" (close 1e-9 (slope ["b"] m0) (-3))
-        -- lambda -> inf: both segments converge to the n_g-weighted reference
-        -- (raw slope -0.5, raw intercept 3.0 for this balanced fixture).
+        -- lambda -> inf: both segments converge to the weighted reference.
         assertBool "lambdaInf a slope ~ -0.5" (close 1e-3 (slope ["a"] mInf) (-0.5))
         assertBool "lambdaInf b slope ~ -0.5" (close 1e-3 (slope ["b"] mInf) (-0.5))
         assertBool "lambdaInf a intercept ~ 3" (close 1e-3 (inter ["a"] mInf) 3.0)
         assertBool
             "lambdaInf segments coincide"
             (close 1e-3 (slope ["a"] mInf) (slope ["b"] mInf))
-        -- interior: a's slope sits strictly between its OLS (2) and the ref (-0.5).
+        -- interior: a's slope sits strictly between its OLS and the ref.
         assertBool
             "interior between OLS and ref"
             (slope ["a"] mMid < 2 && slope ["a"] mMid > (-0.5))

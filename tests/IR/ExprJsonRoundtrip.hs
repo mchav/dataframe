@@ -3,9 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Round-trip, pipeline, end-to-end, and wire-shape contract tests for the
-expression/pipeline serializer.
--}
+-- | Round-trip and wire-shape contract tests for the expression serializer.
 module IR.ExprJsonRoundtrip (tests) where
 
 import qualified Data.Aeson as Aeson
@@ -64,9 +62,7 @@ regDF =
     xs1 = [1, 2, 3, 4, 5, 6, 7, 8] :: [Double]
     xs2 = [2, 1, 4, 3, 6, 5, 8, 7] :: [Double]
 
-{- | An expression round-trips when encode → decode → re-encode yields the same
-JSON. Avoids needing an 'Eq' instance on the GADT.
--}
+-- | Round-trips when encode, decode, re-encode yields the same JSON.
 roundtrips :: (Columnable a) => Expr a -> Bool
 roundtrips e = fromRight False $ do
     v1 <- encodeExpr e
@@ -108,8 +104,7 @@ aggRoundtripTests =
     , testCase "over" (roundtrips (F.over ["g"] (F.sum (F.col @Double "x"))))
     ]
 
--- Documented limitation: collect's list-typed output has no type tag, so it
--- cannot be encoded.
+-- Documented limitation: collect's list-typed output cannot be encoded.
 limitationTests :: [Test]
 limitationTests =
     [ testCase

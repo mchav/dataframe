@@ -1,15 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Metamorphic, invariance, and abstraction-law tests for the ML library.
-
-These check how the fitted model and the metrics behave under transformations of
-the *input* — duplicate / permute / scale / rename / add-constant-feature — where
-the math dictates the answer. Each test computes the model on two genuinely
-different (transformed) frames and asserts they agree, or pins a metric/scaler to
-its defining law. None compares a value to itself; each can fail if the library
-is wrong.
--}
+-- | Metamorphic and invariance tests: models must obey transformation laws.
 module Learn.Metamorphic (tests) where
 
 import qualified Data.Text as T
@@ -32,8 +24,6 @@ import DataFrame.Operations.Merge ()
 import DataFrame.Transform
 
 import Test.HUnit
-
--- Helpers -------------------------------------------------------------------
 
 interpD :: D.DataFrame -> Expr Double -> [Double]
 interpD df e = case interpret @Double df e of
@@ -64,12 +54,7 @@ baseDF = mkRegDF [("x1", baseX1), ("x2", baseX2)] baseY
 fitBase :: D.DataFrame -> LinearRegressor
 fitBase = fit defaultLinearConfig (F.col @Double "y")
 
--- Metamorphic: duplicate rows ----------------------------------------------
-
-{- | OLS minimises Σ(y-ŷ)²; duplicating every row scales the loss by 2 but leaves
-the argmin (the coefficients/intercept) unchanged. Catches a solver that
-weights rows by frame size or mishandles the normal equations.
--}
+-- | Duplicating every row leaves the OLS coefficients unchanged.
 testDuplicateRows :: Test
 testDuplicateRows = TestCase $ do
     let dupDF =
@@ -85,12 +70,7 @@ testDuplicateRows = TestCase $ do
         "duplicate rows: intercept unchanged"
         (close 1e-9 (regIntercept m0) (regIntercept m1))
 
--- Metamorphic: permute rows -------------------------------------------------
-
-{- | OLS is invariant to row order. We reverse the rows (a genuine non-identity
-permutation) and require identical coefficients. Catches any order-dependence
-in matrix assembly or solving.
--}
+-- | OLS is invariant to row order.
 testPermuteRows :: Test
 testPermuteRows = TestCase $ do
     let permDF =
@@ -106,13 +86,7 @@ testPermuteRows = TestCase $ do
         "permute rows: intercept unchanged"
         (close 1e-9 (regIntercept m0) (regIntercept m1))
 
--- Metamorphic: scale a feature ----------------------------------------------
-
-{- | Scaling feature x1 by k must scale that coefficient by 1/k while leaving
-predictions (and every other coefficient + the intercept) invariant. Both
-sides are genuine fits on different frames. Catches a regressor that drops or
-mis-applies a feature's scale.
--}
+-- | Scaling a feature by k scales its coefficient by 1/k and keeps predictions.
 testScaleFeature :: Test
 testScaleFeature = TestCase $ do
     let k = 10.0
@@ -135,12 +109,7 @@ testScaleFeature = TestCase $ do
         p1 = interpD scaledDF (predict m1)
     assertBool "scale feature: predictions invariant" (closeList 1e-6 p0 p1)
 
--- Metamorphic: rename columns -----------------------------------------------
-
-{- | Renaming feature columns is a pure relabelling: coefficients, intercept, and
-predictions are identical and the fitted feature names track the rename.
-Catches any hidden dependence on specific column-name strings.
--}
+-- | Renaming feature columns only relabels coefficients and feature names.
 testRenameColumns :: Test
 testRenameColumns = TestCase $ do
     let renamedDF = mkRegDF [("feat_a", baseX1), ("feat_b", baseX2)] baseY
@@ -161,14 +130,7 @@ testRenameColumns = TestCase $ do
         p1 = interpD renamedDF (predict m1)
     assertBool "rename: predictions unchanged" (closeList 1e-9 p0 p1)
 
--- Metamorphic: irrelevant constant feature ----------------------------------
-
-{- | A constant feature carries no variance, so OLS predictions for the real
-features must be unchanged when one is added. (Its own weight is absorbed into
-the intercept and is not separately identifiable, so we pin predictions, not
-the weight.) Catches a fit whose answer drifts when a degenerate column is
-present.
--}
+-- | A constant feature must not change predictions for the real features.
 testConstantFeatureIgnored :: Test
 testConstantFeatureIgnored = TestCase $ do
     let withConst =
@@ -194,15 +156,7 @@ testConstantFeatureIgnored = TestCase $ do
         "constant feature: x2 coefficient unchanged"
         (close 1e-6 (VU.toList (regCoef m0) !! 1) (coef1 !! 1))
 
--- Metamorphic: split then concatenate --------------------------------------
-
-{- | Genuinely split the frame into two row-range sub-frames and concatenate them
-back with the DataFrame @<>@ (row concatenation). The rebuilt frame has the
-same rows, so the fit must be identical — but this actually exercises the
-concatenation code path, so it catches a @<>@ that drops, duplicates, or
-mis-aligns rows/columns (a plain @take h ++ drop h@ would be the identity and
-test nothing).
--}
+-- | Splitting a frame and rejoining it with <> must give an identical fit.
 testSplitConcat :: Test
 testSplitConcat = TestCase $ do
     let n = length baseX1
@@ -226,14 +180,7 @@ testSplitConcat = TestCase $ do
         "split/concat: intercept unchanged"
         (close 1e-9 (regIntercept m0) (regIntercept m1))
 
--- Training/inference parity: column order ----------------------------------
-
-{- | The order of feature columns in the frame must not change predictions.
-We fit on a frame whose columns are declared in the opposite order and require
-the prediction expression to produce the same numbers on the original frame.
-(predict compiles to a name-keyed affine Expr, so it should be order-free.)
-Catches a positional, rather than name-keyed, feature mapping.
--}
+-- | The order of feature columns must not change predictions.
 testColumnOrderParity :: Test
 testColumnOrderParity = TestCase $ do
     let swappedDF = mkRegDF [("x2", baseX2), ("x1", baseX1)] baseY
@@ -300,7 +247,7 @@ testAccuracyPermInvariant = TestCase $ do
         a0 = accuracy preds truth
         a1 = accuracy (VU.reverse preds) (VU.reverse truth)
     assertBool "accuracy: permutation invariant" (close 1e-12 a0 a1)
-    -- Sanity: the metric is non-trivial here (not 0 or 1), so invariance is meaningful.
+    -- Sanity: the metric is non-trivial here, so invariance is meaningful.
     assertBool "accuracy: non-degenerate baseline" (a0 > 0 && a0 < 1)
 
 testR2Anchors :: Test
@@ -314,9 +261,7 @@ testR2Anchors = TestCase $ do
     let worse = VU.map (+ 100) truth
     assertBool "r2: far-off prediction is negative" (r2 worse truth < 0)
 
-{- | r² on a fitted noiseless linear model equals 1, and rmse equals 0. Ties the
-metric law to the model: if the fit is exact, the metric must say so.
--}
+-- | A noiseless linear fit has r2 equal to 1 and rmse equal to 0.
 testR2OfFittedModel :: Test
 testR2OfFittedModel = TestCase $ do
     let m = fitBase baseDF

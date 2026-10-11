@@ -3,18 +3,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
--- 'buildNullableColumn' deliberately constrains @Columnable (Maybe a)@ (needed to
--- build a bitmap-backed nullable column); GHC flags that as simplifiable.
+-- buildNullableColumn needs @Columnable (Maybe a)@; GHC flags it simplifiable.
 {-# OPTIONS_GHC -Wno-simplifiable-class-constraints #-}
 
-{- |
-Module      : DataFrame.IO.Persistent.Read.Columns
-License     : MIT
-
-Turning rows of 'PersistValue's into typed dataframe 'Column's: decoders driven
-by a known 'HaskellType', value-sniffing inference for unknown columns, and the
-typed-schema boundary. Shared by the runtime readers and the generated readers.
--}
+-- | Turn rows of 'PersistValue's into typed dataframe 'Column's.
 module DataFrame.IO.Persistent.Read.Columns (
     ColumnReader,
     buildColumn,
@@ -40,7 +32,7 @@ import DataFrame.Typed.Freeze (freezeWithError)
 import DataFrame.Typed.Schema (KnownSchema)
 import DataFrame.Typed.Types (TypedDataFrame)
 
--- | A function that turns one column's worth of 'PersistValue's into a 'Column'.
+-- | Turns one column's worth of 'PersistValue's into a 'Column'.
 type ColumnReader = [PersistValue] -> Column
 
 -- | Build a non-null column, decoding each value with 'fromPersistValue'.
@@ -56,9 +48,7 @@ buildNullableColumn pvs = case traverse fromPersistValue pvs of
     Left err -> error (decodeError (typeName @(Maybe a)) err)
     Right (xs :: [Maybe a]) -> fromList xs
 
-{- | Infer a column's type by sniffing the first non-null value; nullable if any
-value is @PersistNull@. Used for arbitrary queries and generic entity loads.
--}
+-- | Infer a column's type from its first non-null value.
 inferColumn :: [PersistValue] -> Column
 inferColumn pvs = columnReaderFor (inferHaskellType pvs) (any isNull pvs) pvs
 
@@ -109,10 +99,7 @@ typeName = show (typeRep (Proxy @a))
 decodeError :: String -> Text -> String
 decodeError ty err = "buildColumn: failed to decode column as " <> ty <> ": " <> T.unpack err
 
-{- | Validate an untyped 'DataFrame' against a typed schema and wrap it, throwing
-an 'IOError' on mismatch. The generated @declareTable@ readers call this; the
-schema came from the same database, so success is the normal case.
--}
+-- | Validate an untyped 'DataFrame' against a typed schema, throwing on error.
 freezeOrThrow ::
     forall cols m.
     (KnownSchema cols, MonadIO m) =>

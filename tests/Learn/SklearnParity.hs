@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Parity tests against scikit-learn on clean Kaggle-style datasets; reference
-values in @data/ml/golden.json@ come from @scripts/gen_sklearn_golden.py@.
-Closed-form models get tight coefficient parity; iterative ones an accuracy floor.
--}
+-- | Parity tests against scikit-learn using reference values in golden.json.
 module Learn.SklearnParity (tests) where
 
 import Data.Aeson (Value (..), decodeFileStrict')

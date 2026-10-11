@@ -6,11 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Reload expressions from their two printed forms: the 'Show' form
-(@(ifThenElse (leq (toDouble (col \@Int "Age")) (lit (3.5))) ...)@), which carries
-column types, and the 'prettyPrint' form (@if toDouble(Age) .<=. 3.5 ...@), which
-needs a 'Schema' to tell bare column names apart from operators.
--}
+-- | Reload expressions from their 'Show' and 'prettyPrint' printed forms.
 module DataFrame.Expression.Parse (
     ColType (..),
     Schema,
@@ -76,15 +72,13 @@ schemaOf df = M.fromList [(c, t) | c <- columnNames df, Just t <- [typeOf c]]
 -- | The untyped syntax both printers share.
 data Ast
     = ACol T.Text (Maybe ColType)
-    | -- | The value and whether it was written as a Double (has a point or exponent).
+    | -- | The value, and whether it was a Double (point or exponent).
       ANum Double Bool
     | AStr T.Text
     | ABool Bool
     | AIf Ast Ast Ast
     | ACall T.Text [Ast]
     deriving (Show)
-
--- Elaboration -------------------------------------------------------------
 
 -- | Two expressions of one type (the result of making operands agree).
 data Same where
@@ -93,7 +87,7 @@ data Same where
 typeName :: SomeExpr -> String
 typeName (SomeExpr (_ :: Expr t)) = show (typeRep @t)
 
--- | Use evidence for a class on an expression's type, or report which operator lacked it.
+-- | Use evidence for a class on an expression's type, or name the operator.
 need :: String -> Maybe (Dict c) -> ((c) => Either String r) -> Either String r
 need what d k = maybe (Left (what ++ ": operand type not supported")) (\Dict -> k) d
 
@@ -127,7 +121,7 @@ elab schema ast = case ast of
         TText -> SomeExpr (F.col @T.Text c)
         TBool -> SomeExpr (F.col @Bool c)
 
--- | Make two operands the same type: a numeric literal adopts the other side's type.
+-- | Make two operands the same type; a numeric literal adopts the other's.
 unify :: SomeExpr -> SomeExpr -> Either String Same
 unify a@(SomeExpr (x :: Expr p)) b@(SomeExpr (y :: Expr q))
     | Just Refl <- testEquality (typeRep @p) (typeRep @q) = pure (Same x y)
@@ -197,8 +191,6 @@ binary name x y = case name of
         Just Refl -> pure (SomeExpr (f x y))
         Nothing -> Left (T.unpack name ++ " needs Bool operands")
 
--- The Show form -----------------------------------------------------------
-
 data SExp = SAtom String | SList [SExp]
     deriving (Show)
 
@@ -241,7 +233,7 @@ fromSExp e = case e of
         "Text" -> pure TText
         "Bool" -> pure TBool
         _ -> Left ("unsupported column type " ++ ty)
-    -- (lit (3.5)), (lit ("x")), (lit (True)); the inner parentheses come from show.
+    -- (lit (3.5)), (lit ("x")); the inner parentheses come from show.
     literal inner = case inner of
         SList [SAtom v] -> atomLit v
         SAtom v -> atomLit v
@@ -255,15 +247,13 @@ fromSExp e = case e of
             [(d, "")] -> pure (ANum d (any (`elem` (".eE" :: String)) v))
             _ -> Left ("bad literal " ++ v)
 
--- | Parse the output of 'show' on an 'Expr'. No schema is needed: columns carry their types.
+-- | Parse the output of 'show' on an 'Expr'; columns carry their own types.
 parseShown :: String -> Either String SomeExpr
 parseShown s = do
     (e, rest) <- sexp s
     if all isSpace rest then pure () else Left ("trailing input: " ++ take 30 rest)
     ast <- fromSExp e
     elab M.empty ast
-
--- The pretty form ---------------------------------------------------------
 
 data Tok
     = TNum Double Bool
@@ -279,7 +269,7 @@ data Tok
     deriving (Eq, Show)
 
 operators :: [String]
--- Dotted forms come from Operators; the bare forms from Functions (eq, leq, ...); same names either way.
+-- Dotted forms come from Operators, bare forms from Functions; same names.
 operators =
     sortBy
         (comparing (Down . length))
@@ -327,7 +317,7 @@ lexPretty schema = go
         , take 1 (dropWhile isSpace more) == "(" =
             (TFun f :) <$> go more
         | isDigit c = number s
-        -- The printer spaces binary operators (`a - b`), so a '-' touching a digit is a negative literal.
+        -- A '-' touching a digit is a negative literal; binary '-' is spaced.
         | c == '-', (d : _) <- rest, isDigit d = number s
         | Just op <- firstPrefix operators s = (TOp op :) <$> go (drop (length op) s)
         | otherwise = Left ("cannot lex near: " ++ take 30 s)

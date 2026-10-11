@@ -1,9 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | Householder QR (for ordinary least squares) and Cholesky factorisation (for
-ridge normal equations and Gaussian log-densities). Pure, deterministic, no
-LAPACK; sound at the @d@ ≤ low-hundreds scales this library targets.
--}
+-- | Householder QR and Cholesky factorisation, pure and deterministic.
 module DataFrame.LinearAlgebra.Solve (
     qrLeastSquares,
     cholesky,
@@ -20,10 +17,7 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 import DataFrame.LinearAlgebra (Matrix)
 
-{- | Solve @min ‖A x − b‖₂@ for an @n×d@ matrix @A@ (@n ≥ d@) via Householder QR.
-@Left cols@ reports rank deficiency (near-zero @R@ diagonal) with the offending
-column indices; @Right x@ is the least-squares solution.
--}
+-- | Least squares via Householder QR, or the rank-deficient column indices.
 qrLeastSquares :: Matrix -> VU.Vector Double -> Either [Int] (VU.Vector Double)
 qrLeastSquares a b
     | V.null a = Right VU.empty
@@ -127,9 +121,7 @@ backSubstQR mat rhs n d x = forM_ [d - 1, d - 2 .. 0] $ \i -> do
             xj <- VUM.read x j
             sumAbove i (j + 1) (acc + rij * xj)
 
-{- | Cholesky factor @L@ (lower-triangular, @A = L Lᵀ@) of a symmetric
-positive-definite matrix, or 'Nothing' if a non-positive pivot is hit.
--}
+-- | Cholesky factor of a symmetric positive-definite matrix, if one exists.
 cholesky :: Matrix -> Maybe Matrix
 cholesky a
     | V.null a = Just V.empty
@@ -200,9 +192,7 @@ backSubst l y = runST $ do
             xj <- VUM.read x j
             sumKnown x i (j + 1) (acc + ((l V.! j) VU.! i) * xj)
 
-{- | Solve the SPD system @A x = b@ via Cholesky; 'Nothing' when @A@ is not
-positive-definite.
--}
+-- | Solve an SPD system via Cholesky; Nothing when not positive-definite.
 choleskySolve :: Matrix -> VU.Vector Double -> Maybe (VU.Vector Double)
 choleskySolve a b = do
     l <- cholesky a

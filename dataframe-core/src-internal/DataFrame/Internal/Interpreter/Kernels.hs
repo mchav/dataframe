@@ -72,10 +72,7 @@ arithOpByName name = case name of
     "mult" -> Just ArithMult
     _ -> Nothing
 
-{- | Runs @k@ with the element type known to the compiler, so the loops in @k@
-compile to that type's primitive operations. 'Nothing' unless the type is
-'Double' or 'Int'.
--}
+-- | Runs @k@ with the element type known, only for 'Double' or 'Int'.
 withNumeric ::
     forall a r.
     (Typeable a) =>
@@ -96,9 +93,7 @@ arithOperands ::
     forall a. (Typeable a) => Maybe (ArithOp -> Operand a -> Operand a -> Operand a)
 arithOperands = withNumeric @a (\Refl -> arithLoop)
 
-{- | One branch of an if-then-else: the same value for every row, a value for
-each row of the condition, or a value for each row that chose this branch.
--}
+-- | One branch of an if-then-else: constant, every-row, or chosen-rows values.
 data Branch a = Constant !a | EveryRow !(VU.Vector a) | ChosenRows !(VU.Vector a)
 
 -- | Each row's value from the branch its condition chooses.
@@ -107,9 +102,7 @@ mergeBranches ::
     (Typeable a) => Maybe (VU.Vector Bool -> Branch a -> Branch a -> VU.Vector a)
 mergeBranches = withNumeric @a (\Refl -> mergeLoop)
 
--- Each loop is compiled once per element type above. Inside, the operator
--- must be applied to all its arguments, or it is not inlined into the loop
--- and every element pays for an unknown call.
+-- The operator must be fully applied or it is not inlined into the loop.
 compareLoop ::
     (VU.Unbox a, Ord a) => CmpOp -> Operand a -> Operand a -> Operand Bool
 compareLoop op l r = case op of
@@ -175,16 +168,13 @@ mergeLoop cs l r = case (l, r) of
         VU.unsafeFreeze out
 {-# INLINE mergeLoop #-}
 
-{- | The positions where the condition holds and where it does not, each in
-ascending order.
--}
+-- | The positions where the condition holds and where it does not.
 partitionRows :: VU.Vector Bool -> (VU.Vector Int, VU.Vector Int)
 partitionRows cs = runST $ do
     let n = VU.length cs
     yes <- VUM.unsafeNew n
     no <- VUM.unsafeNew n
-    -- Write the position to both and advance only the side it belongs to:
-    -- no branch on the data, so an unpredictable condition costs nothing extra.
+    -- Write to both and advance one side, so there is no data-dependent branch.
     let go !i !ny !nn
             | i >= n = pure (ny, nn)
             | otherwise = do
@@ -199,14 +189,10 @@ intToDouble :: VU.Vector Int -> VU.Vector Double
 intToDouble v = parGenerateUnboxedInline (VU.length v) (fromIntegral . VU.unsafeIndex v)
 {-# NOINLINE intToDouble #-}
 
-{- | Whether each row of a packed Text column equals (or, when @wantEq@ is
-False, differs from) a literal, by comparing UTF-8 bytes. Exact only when the
-literal has no U+FFFD, since invalid rows decode to U+FFFD.
--}
+-- | Whether each row of a packed Text column equals a literal.
 packedEqLit :: Bool -> PackedTextData -> T.Text -> VU.Vector Bool
 packedEqLit wantEq p@(PackedTextData arr offs sel _) (Text la lo ll) =
-    -- The layout is matched once so each row costs two offset reads and,
-    -- only when the lengths agree, a byte compare.
+    -- Match the layout once so each row costs two offset reads and a compare.
     case (sel, offs) of
         (Nothing, Offs32 o) -> gen id (off32 o)
         (Nothing, Offs64 o) -> gen id (VU.unsafeIndex o)
@@ -224,10 +210,7 @@ packedEqLit wantEq p@(PackedTextData arr offs sel _) (Text la lo ll) =
     {-# INLINE gen #-}
 {-# NOINLINE packedEqLit #-}
 
-{- | Whether each row of a packed Text column contains a literal substring,
-by UTF-8 byte search. A valid UTF-8 needle can only match at character
-boundaries, so this equals 'Data.Text.isInfixOf' on decodable rows.
--}
+-- | Whether each row of a packed Text column contains a literal substring.
 packedContainsLit :: PackedTextData -> T.Text -> VU.Vector Bool
 packedContainsLit p@(PackedTextData arr offs sel _) (Text la lo ll)
     | ll == 0 = VU.replicate (packedLength p) True
@@ -274,9 +257,7 @@ packedCharCount p@(PackedTextData arr offs sel _) = case (sel, offs) of
         | otherwise = count (k + 1) end (n + 1)
 {-# NOINLINE packedCharCount #-}
 
-{- | @sum (map f v)@ as one parallel loop with no intermediate column. Inlined
-so a known @f@ and element type give a plain loop at each use.
--}
+-- | @sum (map f v)@ as one parallel loop with no intermediate column.
 parSumBy :: (VU.Unbox a, Num b) => (a -> b) -> VU.Vector a -> b
 parSumBy f v = unsafePerformIO $ do
     parts <-

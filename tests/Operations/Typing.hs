@@ -71,8 +71,7 @@ datesExpected = [fromGregorian 2020 02 12 .. fromGregorian 2020 02 26]
 datesInput :: [T.Text]
 datesInput = T.pack . show <$> datesExpected
 
--- PARSING TESTS
-------- 1. SIMPLE CASES
+-- PARSING TESTS: 1. SIMPLE CASES
 parseBools :: Test
 parseBools =
     let afterParse :: [Bool]
@@ -409,7 +408,7 @@ parseIntsAndDoublesAndEmptyStringsWithoutSafeRead =
 
 parseDatesAndEmptyStringsWithoutSafeRead :: Test
 parseDatesAndEmptyStringsWithoutSafeRead =
-    -- Pattern: 3 dates, empty, 3 dates, empty, 3 dates, empty, 3 dates, empty, 3 dates, empty
+    -- Pattern: 3 dates then an empty, repeated five times
     let groups = chunksOf3 datesExpected
         beforeParse = concatMap (\g -> map (T.pack . show) g ++ [""]) groups
         afterParse :: [Maybe Day]
@@ -484,7 +483,7 @@ parseIntsAndNullishStringsWithoutSafeRead =
 
 parseIntsAndDoublesAndNullishStringsWithoutSafeRead :: Test
 parseIntsAndDoublesAndNullishStringsWithoutSafeRead =
-    -- Nullish separators are literal text strings (not interpreted as null when safeRead=False)
+    -- Nullish separators are literal text when safeRead=False
     let nullishSeps = ["Nothing", "N/A", "NULL", "null", "NAN"]
         intGrp = T.pack . show <$> ([1 .. 10] :: [Int])
         dblGrps =
@@ -675,7 +674,7 @@ parseIntsAndNullishStringsWithSafeRead =
 
 parseIntsAndDoublesAndNullishStringsWithSafeRead :: Test
 parseIntsAndDoublesAndNullishStringsWithSafeRead =
-    -- Note: this test uses different special doubles and nullish separators than the safeRead=False version
+    -- Uses different special doubles and nullish separators than safeRead=False
     let nullishSeps = ["Nothing", "N/A", "NULL", "null", "NAN"]
         intGrp = T.pack . show <$> ([1 .. 10] :: [Int])
         dblGrps =
@@ -736,7 +735,7 @@ parseIntsAndNullishAndEmptyStringsWithSafeRead =
 
 parseIntsAndDoublesAndNullishAndEmptyStringsWithSafeRead :: Test
 parseIntsAndDoublesAndNullishAndEmptyStringsWithSafeRead =
-    -- Data: 4xN/A, "Nothing", "", then 10 ints (1-10), "", 10 ints (11-20), "", 10 ints (21-30), "", 3.14
+    -- Data: 4xN/A, "Nothing", "", then ints 1-30 split by empties, 3.14
     let beforeParse =
             ["N/A", "N/A", "N/A", "N/A", "Nothing", ""]
                 ++ map (T.pack . show) ([1 .. 10] :: [Int])
@@ -770,7 +769,7 @@ parseTextsAndEmptyAndNullishStringsWithSafeRead :: Test
 parseTextsAndEmptyAndNullishStringsWithSafeRead = TestCase $ do
     raw <-
         T.lines <$> TIO.readFile (typingDataDir <> "texts_with_empties_and_nullish.txt")
-    -- safeRead=True: empty strings and nullish tokens (NaN, Nothing, N/A) -> Nothing
+    -- safeRead=True: empty strings and nullish tokens become Nothing
     let isNullish t = t `elem` ["NaN", "Nothing", "N/A", "nan", "null", "NULL", "NA", "na", "NAN"]
         afterParse = map (\t -> if t == "" || isNullish t then Nothing else Just t) raw
         expected = DI.fromVector $ V.fromList afterParse
@@ -784,10 +783,6 @@ parseTextsAndEmptyAndNullishStringsWithSafeRead = TestCase $ do
         actual
 
 -- 3C. PARSING WITH SAFEREAD = EitherRead
---
--- EitherRead wraps every column as @Either Text a@: successful parses become
--- @Right v@; failures (including nullish/empty cells) become @Left <raw>@
--- preserving the original input verbatim.
 
 parseBoolsWithEitherRead :: Test
 parseBoolsWithEitherRead =
@@ -840,7 +835,7 @@ parseIntsWithEitherRead =
 
 parseDoublesWithEitherRead :: Test
 parseDoublesWithEitherRead =
-    -- Sample is cleanly Double; "oops" / "" come after and must surface as Left.
+    -- Sample is cleanly Double; later "oops" and "" must surface as Left.
     let beforeParse :: [T.Text]
         beforeParse = ["1.5", "2.0", "3.5", "4.25", "3.14", "oops", ""]
         afterParse :: [Either T.Text Double]
@@ -908,8 +903,7 @@ parseDatesWithEitherRead =
                 actual
             )
 
--- parseDefaults honours per-column overrides: 'ages' stays strict Int,
--- 'notes' is wrapped as Either Text Text.
+-- parseDefaults honours per-column overrides of the default read mode.
 parseDefaultsPerColumnOverrides :: Test
 parseDefaultsPerColumnOverrides = TestCase $ do
     let df =
@@ -1042,8 +1036,7 @@ parseDefaultsNonExistentOverride = TestCase $ do
 
 parseAllNullWithEitherRead :: Test
 parseAllNullWithEitherRead =
-    -- NoAssumption path: sample is all empty/nullish so inference can't
-    -- pick a numeric type. EitherRead still wraps as Either Text Text.
+    -- NoAssumption path: EitherRead still wraps as Either Text Text.
     let beforeParse :: [T.Text]
         beforeParse = ["", "", "", "N/A", ""]
         afterParse :: [Either T.Text T.Text]
@@ -1212,7 +1205,7 @@ parseIntsAndDoublesAsDoublesWithManyExamples =
 
 parseIntsAndDoublesAndEmptyStringsAsDoublesWithOneExampleWithSafeReadOff :: Test
 parseIntsAndDoublesAndEmptyStringsAsDoublesWithOneExampleWithSafeReadOff =
-    -- Pattern: 10 empties, 50 ints (as int text), 50 doubles (as double text), 5 specials
+    -- Pattern: 10 empties, 50 ints, 50 doubles, 5 specials
     let beforeParse =
             replicate 10 ""
                 ++ intsInput
@@ -1267,7 +1260,7 @@ parseIntsAndDoublesAndEmptyStringsAsDoublesWithManyExamplesWithSafeReadOff =
 parseIntsAndDoublesAndEmptyStringsAndNullishAsStringssWithOneExampleWithSafeReadOff ::
     Test
 parseIntsAndDoublesAndEmptyStringsAndNullishAsStringssWithOneExampleWithSafeReadOff =
-    -- Pattern: 10 empties, 5x(NaN,N/A), 20 ints (1-20), 30 doubles (1.0-30.0), 5 specials
+    -- Pattern: 10 empties, 5x(NaN,N/A), 20 ints, 30 doubles, 5 specials
     let nullishPairs = concat (replicate 5 ["NaN", "N/A"])
         beforeParse =
             replicate 10 ""

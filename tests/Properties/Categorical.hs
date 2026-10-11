@@ -1,18 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- |
-Property tests pinning the categorical laws the library is meant to obey,
-following https://mchav.github.io/what-category-theory-teaches-us-about-dataframes/
-
-  * /Topos (set algebra)/ — 'D.union', 'D.intersect', 'D.difference' and
-    'D.symmetricDifference' form the subobject lattice, with 'D.distinct'
-    (image factorization) as the canonical set-valued map.
-  * /Migration functor Δ/ — 'D.select'/'D.rename'/'D.exclude' are functorial:
-    identities and round-trips hold.
-
-Operands that must share a schema are produced by row-subsetting one generated
-base DataFrame, so the two/three frames are always schema-compatible.
--}
+-- | Property tests pinning the categorical laws of set algebra and migration.
 module Properties.Categorical (tests) where
 
 import Data.Text ()
@@ -30,11 +18,7 @@ import Test.QuickCheck
 nRows :: DataFrame -> Int
 nRows = fst . dataframeDimensions
 
-{- | Equality of the underlying row sets, via the library's null-aware
-@Eq DataFrame@. Set operations emit rows in a deterministic hash-bucket order
-that depends only on content, and 'D.Eq' compares null slots correctly, so this
-is a sound oracle for the topos laws (including over @Maybe Int@ columns).
--}
+-- | Equality of the underlying row sets, a sound oracle for the topos laws.
 sameRows :: DataFrame -> DataFrame -> Property
 sameRows x y = x === y
 
@@ -44,13 +28,7 @@ data Pair = Pair DataFrame DataFrame deriving (Show)
 -- | A schema-compatible triple, likewise.
 data Triple = Triple DataFrame DataFrame DataFrame deriving (Show)
 
-{- | A base frame of @Int@ and @Maybe Int@ columns.
-
-@Maybe Int@ is included so the laws exercise nulls — @Nothing@ must behave as a
-value distinct from any @Just n@. @Double@ is deliberately excluded: @NaN@/@-0.0@
-break set semantics by IEEE rules (@NaN /= NaN@), which is not a library bug. A
-small value range makes duplicate rows common, exercising deduplication.
--}
+-- | A base frame of Int and Maybe Int columns, with many duplicate rows.
 genBase :: Gen DataFrame
 genBase = do
     nCols <- choose (1, 4)
@@ -87,12 +65,7 @@ instance Arbitrary Triple where
         base <- genBase
         Triple <$> subset base <*> subset base <*> subset base
 
-{- | A single clean base frame (Int / Maybe Int columns only).
-
-Used by the Δ-functor laws, which compare with the representation-sensitive
-@Eq DataFrame@ — and that @Eq@ is not even reflexive on @NaN@, so the shared
-@Double@-bearing generator cannot be used here.
--}
+-- | A single clean base frame (Int and Maybe Int columns only).
 newtype Frame = Frame DataFrame deriving (Show)
 
 instance Arbitrary Frame where
@@ -101,13 +74,6 @@ instance Arbitrary Frame where
 -- | An empty frame with the same schema as @df@ (zero rows, same columns).
 emptyLike :: DataFrame -> DataFrame
 emptyLike = D.range (0, 0)
-
--------------------------------------------------------------------------------
--- Topos / set-algebra laws
---
--- These are statements about row /sets/, so they are asserted with 'sameRows'
--- (row-content equality) rather than the representation-sensitive @Eq DataFrame@.
--------------------------------------------------------------------------------
 
 prop_unionCommutative :: Pair -> Property
 prop_unionCommutative (Pair a b) = sameRows (D.union a b) (D.union b a)
@@ -151,10 +117,6 @@ prop_complementPartition (Pair a b) =
 prop_differenceDisjoint :: Pair -> Property
 prop_differenceDisjoint (Pair a b) =
     nRows (D.intersect (D.difference a b) b) === 0
-
--------------------------------------------------------------------------------
--- Δ migration functor laws
--------------------------------------------------------------------------------
 
 -- | Excluding nothing is the identity.
 prop_excludeNothingIdentity :: Frame -> Property

@@ -1,12 +1,8 @@
-{- | Linear models for the dataframe ecosystem: regression (OLS, ridge, lasso,
-elastic net) and one-vs-rest logistic classification. Re-exports the focused
-submodules.
--}
+-- | Linear regression (OLS, ridge, lasso, elastic net) and logistic models.
 module DataFrame.LinearModel (
     module DataFrame.LinearModel.Regression,
     module DataFrame.LinearModel.Logistic,
-    -- Re-exported from the internal solver so the public configs' and records'
-    -- @SolverConfig@\/@LinearModel@ fields stay usable.
+    -- Re-exported so the configs' @SolverConfig@\/@LinearModel@ fields work.
     SolverConfig (..),
     defaultSolverConfig,
     LinearModel (..),

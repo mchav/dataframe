@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- Pure unit tests for the HuggingFace URI helpers. The network paths
--- (resolve/download) need live HTTP and are not exercised here.
+-- Pure unit tests for the HuggingFace URI helpers (no network).
 module Main (main) where
 
 import Control.Monad (unless)

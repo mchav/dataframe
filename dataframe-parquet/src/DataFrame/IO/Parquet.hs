@@ -195,58 +195,24 @@ import System.FilePath.Glob (glob)
 import System.IO (IOMode (ReadMode))
 import Type.Reflection (typeRep)
 
--- Options -----------------------------------------------------------------
-
-{- | Options for reading Parquet data.
-
-These options are applied in this order:
-
-1. predicate filtering
-2. column projection
-3. row range
-4. safe column promotion
-
-Column selection for @selectedColumns@ uses leaf column names only.
--}
+-- | Options for reading Parquet data.
 data ParquetReadOptions = ParquetReadOptions
     { selectedColumns :: Maybe [T.Text]
-    {- ^ Columns to keep in the final dataframe. If set, only these columns are returned.
-    Predicate-referenced columns are read automatically when needed and projected out after filtering.
-    -}
+    -- ^ Columns to keep in the final dataframe.
     , predicate :: Maybe (Expr Bool)
     -- ^ Optional row filter expression applied before projection.
     , rowRange :: Maybe (Int, Int)
-    -- ^ Optional row slice @(start, end)@ with start-inclusive/end-exclusive semantics.
+    -- ^ Optional row slice @(start, end)@, start-inclusive, end-exclusive.
     , safeColumns :: Bool
-    -- ^ When True, every column is promoted to OptionalColumn after read, regardless of nullability in the schema.
+    -- ^ Promote every column to OptionalColumn after read.
     , widenIntegers :: Bool
-    {- ^ When True, INT32 and INT64 columns are decoded as 'Int' instead of
-    'Int32' \/ 'Int64'. 'Int' is the width the fast comparison, arithmetic and
-    grouping kernels are compiled for.
-    -}
+    -- ^ Decode INT32 and INT64 columns as 'Int'.
     , parallel :: Bool
-    {- ^ When True, row groups are decoded concurrently, one task per
-    (row group, column) pair, using every RTS capability. Has no effect on
-    single-row-group files or with @+RTS -N1@.
-    -}
+    -- ^ Decode row groups concurrently using every RTS capability.
     }
     deriving (Show)
 
-{- | Default Parquet read options.
-
-Equivalent to:
-
-@
-ParquetReadOptions
-    { selectedColumns = Nothing
-    , predicate = Nothing
-    , rowRange = Nothing
-    , safeColumns = False
-    , widenIntegers = False
-    , parallel = True
-    }
-@
--}
+-- | Default Parquet read options.
 defaultParquetReadOptions :: ParquetReadOptions
 defaultParquetReadOptions =
     ParquetReadOptions
@@ -258,30 +224,11 @@ defaultParquetReadOptions =
         , parallel = True
         }
 
--- Public API --------------------------------------------------------------
-
-{- | Read a parquet file from path and load it into a dataframe.
-
-==== __Example__
-@
-ghci> D.readParquet ".\/data\/mtcars.parquet"
-@
--}
+-- | Read a parquet file from path and load it into a dataframe.
 readParquet :: FilePath -> IO DataFrame
 readParquet = readParquetWithOpts defaultParquetReadOptions
 
-{- | Read a Parquet file using explicit read options.
-
-==== __Example__
-@
-ghci> D.readParquetWithOpts
-ghci|   (D.defaultParquetReadOptions{D.selectedColumns = Just ["id"], D.rowRange = Just (0, 10)})
-ghci|   "./tests/data/alltypes_plain.parquet"
-@
-
-When @selectedColumns@ is set and @predicate@ references other columns, those predicate columns
-are auto-included for decoding, then projected back to the requested output columns.
--}
+-- | Read a Parquet file using explicit read options.
 readParquetWithOpts :: ParquetReadOptions -> FilePath -> IO DataFrame
 readParquetWithOpts = _readParquetWithOpts Nothing
 
@@ -297,11 +244,7 @@ _readParquetWithOpts extraConfig opts path = do
             (runReaderIO parseFileMetadata)
     readParquetWithMetadata extraConfig metadata opts path
 
-{- | Read a Parquet file whose footer has already been parsed (see
-'readMetadataFromPath'). Parsing the footer costs about as much as decoding a
-small column on files with many row groups, so a process that reads the same
-file repeatedly should parse it once.
--}
+-- | Read a Parquet file whose footer has already been parsed.
 readParquetWithMetadata ::
     ForceNonSeekable ->
     FileMetadata ->
@@ -316,10 +259,7 @@ readParquetWithMetadata extraConfig metadata opts path = do
         else withFileBufferedOrSeekable extraConfig path ReadMode $ \file ->
             runReaderIO (parseParquetWithOpts opts) file
 
-{- | Decode row groups in parallel: every (row group, column) pair is one task,
-pulled from a shared counter by @caps@ workers that each own a file handle.
-Per-row-group columns are then concatenated in file order.
--}
+-- | Decode row groups in parallel, one task per (row group, column).
 decodeRowGroupsParallel ::
     Int -> ParquetReadOptions -> FilePath -> FileMetadata -> IO DataFrame
 decodeRowGroupsParallel caps opts0 path metadata = do
@@ -328,15 +268,13 @@ decodeRowGroupsParallel caps opts0 path metadata = do
         allRowGroupRows =
             map (fromIntegral . unField . rg_num_rows) (unField metadata.row_groups)
         allOffsets = scanl (+) 0 allRowGroupRows
-        -- Row groups whose column statistics rule out every row of the
-        -- predicate are skipped outright.
+        -- Row groups whose statistics rule out the predicate are skipped.
         statsGroups =
             [ g
             | (g, rg) <- zip [0 ..] (unField metadata.row_groups)
             , maybe True (rowGroupMayMatch metadata rg) (predicate opts0)
             ]
-        -- A row range only touches the row groups it overlaps; the range is
-        -- then rebased onto the rows those groups produce.
+        -- A row range only touches overlapping groups, then is rebased.
         (keptGroups, opts) = case rowRange opts0 of
             Nothing -> (statsGroups, opts0)
             Just (s, e) ->
@@ -363,8 +301,7 @@ decodeRowGroupsParallel caps opts0 path metadata = do
     sinks <- Vector.mapM (newSink (widenIntegers opts) totalRows) descs
     results <- MVector.new nTasks
     counter <- newIORef (0 :: Int)
-    -- Each worker owns a handle: chunk reads then run in parallel too, and
-    -- decoding sees only its own chunk's bytes.
+    -- Each worker owns a handle, so chunk reads run in parallel too.
     let worker = withFileBufferedOrSeekable Nothing path ReadMode $ \file ->
             let loop = do
                     t <- atomicModifyIORef' counter (\n -> (n + 1, n))
@@ -425,10 +362,7 @@ decodeRowGroupsParallel caps opts0 path metadata = do
                 =<< forM [0 .. nRg - 1] (\r -> MVector.read results (c * nRg + r))
     pure (assembleDataFrame opts totalRows metadata plan cols)
 
-{- | Where a column's decoded values go: required numeric columns stream into
-one preallocated buffer; everything else decodes per row group and is
-concatenated afterwards.
--}
+-- | Where a column's decoded values go.
 data ColumnSink
     = -- | Widened integers; the width is the source's bytes per value.
       SinkInt !(VUM.IOVector Int) !Int
@@ -477,11 +411,7 @@ plainDouble :: BS.ByteString -> Int -> Double
 plainDouble bs o = castWord64ToDouble (word64At bs o)
 {-# INLINE plainDouble #-}
 
-{- | Whether a row group can hold a row satisfying the predicate, judged from
-its column chunk min\/max statistics. Only conjunctions of comparisons between
-an integer column and an 'Int' literal are decided; anything else is assumed
-to match.
--}
+-- | Whether a row group can hold a row satisfying the predicate.
 rowGroupMayMatch :: FileMetadata -> RowGroup -> Expr Bool -> Bool
 rowGroupMayMatch metadata rg = go
   where
@@ -567,27 +497,11 @@ data ColumnPlan = ColumnPlan
     -- ^ Per column, one chunk per row group.
     }
 
-{- | Read Parquet files from a directory or glob path.
-
-This is equivalent to calling 'readParquetFilesWithOpts' with 'defaultParquetReadOptions'.
--}
+-- | Read Parquet files from a directory or glob path.
 readParquetFiles :: FilePath -> IO DataFrame
 readParquetFiles = readParquetFilesWithOpts defaultParquetReadOptions
 
-{- | Read multiple Parquet files (directory or glob) using explicit options.
-
-If @path@ is a directory, all non-directory entries are read.
-If @path@ is a glob, matching files are read.
-
-For multi-file reads, @rowRange@ is applied once after concatenation (global range semantics).
-
-==== __Example__
-@
-ghci> D.readParquetFilesWithOpts
-ghci|   (D.defaultParquetReadOptions{D.selectedColumns = Just ["id"], D.rowRange = Just (0, 5)})
-ghci|   "./tests/data/alltypes_plain*.parquet"
-@
--}
+-- | Read multiple Parquet files (directory or glob) using options.
 readParquetFilesWithOpts :: ParquetReadOptions -> FilePath -> IO DataFrame
 readParquetFilesWithOpts opts path = do
     isDir <- doesDirectoryExist path
@@ -607,12 +521,7 @@ readParquetFilesWithOpts opts path = do
             dfs <- mapM (readParquetWithOpts optsWithoutRowRange) files
             pure (applyRowRange opts (mconcat dfs))
 
--- Core parsing pipeline ---------------------------------------------------
-
-{- | Parse a Parquet file via the 'RandomAccess' handle, applying all
-read options. This is the central parsing entry point used by
-'_readParquetWithOpts'.
--}
+-- | Parse a Parquet file via the 'RandomAccess' handle.
 parseParquetWithOpts ::
     (RandomAccess m, MonadIO m) =>
     ParquetReadOptions ->
@@ -649,13 +558,9 @@ planColumns opts metadata =
             Nothing -> Nothing
             Just selected -> Just (L.nub (selected ++ predicateColumns))
 
-        -- TODO: When rowRange is set, compute cumulative row offsets from
-        -- rg_num_rows in each RowGroup and skip any group whose row interval does
-        -- not overlap the requested range, avoiding all decoding for those groups.
+        -- TODO: With rowRange set, skip row groups the range does not overlap.
 
-        -- TODO: When predicate is set, inspect cmd_statistics min/max values for
-        -- predicate-referenced columns in each RowGroup and skip groups where
-        -- statistics prove the predicate cannot be satisfied.
+        -- TODO: Skip row groups whose statistics rule out the predicate.
 
         -- Validate selected columns
         validated = case selectedColumnsForRead of
@@ -688,10 +593,7 @@ planColumns opts metadata =
                             <> show nDescs
                             <> " columns"
 
-        -- Column-projection pushdown: decode only the columns needed for the
-        -- requested output plus any predicate, instead of decoding every column
-        -- and dropping the unwanted ones afterward. A 'Nothing' selection keeps
-        -- all columns, so full reads are unchanged.
+        -- Decode only the columns needed for the output plus any predicate.
         keep name = case selectedColumnsForRead of
             Nothing -> True
             Just req -> last (T.splitOn "." name) `elem` req
@@ -734,9 +636,7 @@ assembleDataFrame opts totalRows metadata plan rawCols =
                 Map.empty
      in applyReadOptions opts df
 
-{- | Parse the file-level Thrift metadata from the Parquet file footer.
-Validates the trailing 4-byte magic marker (\"PAR1\") before decoding.
--}
+-- | Parse the file-level Thrift metadata from the Parquet footer.
 parseFileMetadata :: (RandomAccess m) => m FileMetadata
 parseFileMetadata = do
     footerBytes <- readSuffix 8
@@ -831,13 +731,7 @@ getNonNullableColumn totalRows description chunks =
     go decoder =
         foldNonNullable totalRows (foldColumnPagesM description decoder chunks)
 
-    -- Decode a non-nullable BYTE_ARRAY (UTF-8) column straight into a single
-    -- shared byte buffer + offsets ('PackedText'), instead of a boxed vector
-    -- of per-row 'Text'. Each page's decoded 'Text' values (which share the
-    -- chunk dictionary for dictionary-encoded pages) are appended by memcpy
-    -- into one builder across all pages/chunks, then frozen once. This is the
-    -- same representation the fast CSV reader uses and matches Arrow's string
-    -- layout: no retained per-row 'Text' headers, no eager UTF-8 validation.
+    -- Decode non-nullable UTF-8 BYTE_ARRAY straight into one 'PackedText'.
     goPackedText :: m Column
     goPackedText = do
         builder <-
@@ -861,10 +755,7 @@ getNonNullableColumn totalRows description chunks =
     unboxedGo decoder =
         foldNonNullableUnboxed totalRows (foldColumnPagesM description decoder chunks)
 
-{- | Initial byte capacity for a text column: the chunks' uncompressed size is
-exact for PLAIN pages and a fair guess for dictionary pages, and saves the
-doubling copies a per-row guess would cost.
--}
+-- | Initial byte capacity for a text column.
 textByteHint :: Int -> [ColumnChunk] -> Int
 textByteHint totalRows chunks =
     max (totalRows * 8) $
@@ -908,10 +799,7 @@ getNullableColumn totalRows description chunks =
     go decoder =
         foldNullable maxDef totalRows (foldColumnPagesM description decoder chunks)
 
-    -- Nullable BYTE_ARRAY (UTF-8): decode straight into a 'PackedText' (shared
-    -- byte buffer + offsets + validity bitmap) via the text builder, walking
-    -- def-levels to interleave nulls. Avoids the boxed @Vector Text@ the
-    -- generic 'foldNullable' path would build.
+    -- Nullable UTF-8 BYTE_ARRAY: decode straight into a 'PackedText'.
     goPackedTextNullable :: m Column
     goPackedTextNullable = do
         builder <-
@@ -990,8 +878,6 @@ getRepeatedColumn description chunks =
     unboxedGo decoder =
         foldRepeatedUnboxed maxRep maxDef (foldColumnPagesM description decoder chunks)
 
--- Options application -----------------------------------------------------
-
 applyRowRange :: ParquetReadOptions -> DataFrame -> DataFrame
 applyRowRange opts df =
     maybe df (`DS.range` df) (rowRange opts)
@@ -1016,11 +902,7 @@ applyReadOptions opts =
         . applySelectedColumns opts
         . applyPredicate opts
 
--- Logical type conversion -------------------------------------------------
-
-{- | Apply a column-description's logical type annotation to convert raw
-decoded values (e.g. millisecond integers → 'UTCTime').
--}
+-- | Apply a column's logical type annotation to its decoded values.
 applyDescLogicalType :: ColumnDescription -> DI.Column -> DI.Column
 applyDescLogicalType desc = applyLogicalType (colLogicalType desc)
 
@@ -1028,10 +910,7 @@ applyLogicalType :: Maybe LogicalType -> DI.Column -> DI.Column
 applyLogicalType (Just (LT_TIMESTAMP f)) col =
     let ts = unField f
         unit = unField ts.timestamp_unit
-        -- (ticks per second, picoseconds per tick) for each unit. Convert at
-        -- native precision: a millisecond grid keeps ms, a nanosecond grid
-        -- keeps ns. (The old code multiplied by @1_000_000 `div` divisor@,
-        -- which truncated NANOS to 0 and collapsed every value to the epoch.)
+        -- Convert at native precision (ticks per second, ps per tick).
         conv = case unit of
             MILLIS _ -> epochToUTCTime 1_000 1_000_000_000
             MICROS _ -> epochToUTCTime 1_000_000 1_000_000
@@ -1102,15 +981,7 @@ restoreNativeType hints name col = case Map.lookup leaf (elements hints) of
     narrow :: (Columnable a) => (Int64 -> a) -> DI.Column
     narrow f = fromRight col (DI.mapColumn f col)
 
-{- | Convert an epoch timestamp expressed as @ticksPerSecond@ ticks/second
-(each tick = @psPerTick@ picoseconds) to 'UTCTime', at full precision.
-
-Splits into days + within-day picoseconds with integer 'divMod' (which floors,
-so the split is correct for pre-epoch negative values too), and never forms
-picoseconds-since-epoch — that would overflow 'Int64' for modern dates — only
-the bounded within-day picosecond count. 40587 is the Modified Julian Day of
-the Unix epoch (1970-01-01).
--}
+-- | Convert an epoch timestamp with the given tick rate to 'UTCTime'.
 epochToUTCTime :: Int64 -> Integer -> Int64 -> UTCTime
 epochToUTCTime ticksPerSecond psPerTick v =
     let (s, subTicks) = v `divMod` ticksPerSecond

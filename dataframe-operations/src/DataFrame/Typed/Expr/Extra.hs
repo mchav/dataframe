@@ -2,11 +2,7 @@
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Typed counterparts of the remaining "DataFrame.Functions" expression
-combinators not already provided by "DataFrame.Typed.Expr". Each wraps the
-untyped combinator 1:1, replacing @Expr@ with @'TExpr' cols@ so column
-references stay schema-checked. Re-exported from "DataFrame.Typed.Expr".
--}
+-- | Typed counterparts of the remaining "DataFrame.Functions" combinators.
 module DataFrame.Typed.Expr.Extra (
     div,
     mod,
@@ -119,7 +115,7 @@ min (TExpr a) (TExpr b) = TExpr (F.min a b)
 max :: (Columnable a, Ord a) => TExpr cols a -> TExpr cols a -> TExpr cols a
 max (TExpr a) (TExpr b) = TExpr (F.max a b)
 
--- | Fold a column into a single value with a seed and step function (aggregation).
+-- | Fold a column into a single value with a seed and step function.
 reduce ::
     (Columnable a, Columnable b) =>
     TExpr cols b -> a -> (a -> b -> a) -> TExpr cols a

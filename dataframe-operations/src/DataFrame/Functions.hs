@@ -75,12 +75,7 @@ lift2 f =
             }
         )
 
-{- | Lift a unary function over a nullable or non-nullable column expression.
-When the input is @Maybe a@, 'Nothing' short-circuits (like 'fmap').
-When the input is plain @a@, the function is applied directly.
-
-The return type is inferred via 'NullLift1Result': no annotation needed.
--}
+-- | Lift a unary function over a nullable or non-nullable column expression.
 nullLift ::
     (NullLift1Op a r (NullLift1Result a r), Columnable (NullLift1Result a r)) =>
     (BaseType a -> r) ->
@@ -90,11 +85,7 @@ nullLift f =
     Unary
         (MkUnaryOp{unaryFn = applyNull1 f, unaryName = "nullLift", unarySymbol = Nothing})
 
-{- | Lift a binary function over nullable or non-nullable column expressions.
-Any 'Nothing' operand short-circuits to 'Nothing' in the result.
-
-The return type is inferred via 'NullLift2Result': no annotation needed.
--}
+-- | Lift a binary function over nullable or non-nullable column expressions.
 nullLift2 ::
     (NullLift2Op a b r (NullLift2Result a b r), Columnable (NullLift2Result a b r)) =>
     (BaseType a -> BaseType b -> r) ->
@@ -112,38 +103,21 @@ nullLift2 f =
             }
         )
 
-{- | Lenient numeric \/ text coercion returning @Maybe a@.  Looks up column
-@name@ and coerces its values to @a@.  Values that cannot be converted
-(parse failures, type mismatches) become 'Nothing'; successfully converted
-values are wrapped in 'Just'.  Existing 'Nothing' in optional source columns
-stays as 'Nothing'.
--}
+-- | Lenient coercion of a column to @Maybe a@; failures become 'Nothing'.
 cast :: forall a. (Columnable a, Read a) => T.Text -> Expr (Maybe a)
 cast colName = CastWith colName "cast" (either (const Nothing) Just)
 
-{- | Lenient coercion that substitutes a default for unconvertible values.
-Looks up column @name@, coerces its values to @a@, and uses @def@ wherever
-conversion fails or the source value is 'Nothing'.
--}
+-- | Lenient coercion that substitutes a default for unconvertible values.
 castWithDefault :: forall a. (Columnable a, Read a) => a -> T.Text -> Expr a
 castWithDefault def colName =
     CastWith colName ("castWithDefault:" <> T.pack (show def)) (fromRight def)
 
-{- | Lenient coercion returning @Either T.Text a@.  Successfully converted
-values are 'Right'; values that cannot be parsed are kept as 'Left' with
-their original string representation, so the caller can inspect or handle
-them downstream.  Existing 'Nothing' in optional source columns becomes
-@Left \"null\"@.
--}
+-- | Lenient coercion to @Either T.Text a@, keeping unparsed values as 'Left'.
 castEither ::
     forall a. (Columnable a, Read a) => T.Text -> Expr (Either T.Text a)
 castEither colName = CastWith colName "castEither" (either (Left . T.pack) Right)
 
-{- | Lenient coercion for assertedly non-nullable columns.
-Substitutes @error@ for @Nothing@, so it will crash at evaluation time if
-any @Nothing@ is actually encountered.  For non-nullable and
-fully-populated nullable columns no cost is paid.
--}
+-- | Lenient coercion that crashes at evaluation if a @Nothing@ is found.
 unsafeCast :: forall a. (Columnable a, Read a) => T.Text -> Expr a
 unsafeCast colName =
     CastWith
@@ -362,11 +336,7 @@ bottomK :: (Columnable a, Ord a) => Int -> Expr a -> Expr [a]
 bottomK = kExtremes "bottomK" (<)
 {-# INLINEABLE bottomK #-}
 
-{- | Top k values after applying an ordering function. Floating-point NaNs
-are dropped: they have no place in a total order, and admitting them would
-make the merge non-associative (results would depend on chunk boundaries in
-the lazy executor).
--}
+-- | Top k values after applying an ordering function, dropping NaNs.
 kExtremes ::
     forall a.
     (Columnable a, Ord a) =>
@@ -685,24 +655,11 @@ bind ::
     Expr (m b)
 bind f = liftDecorated (>>= f) "bind" Nothing
 
-{- | Window function: evaluate an expression partitioned by the given columns.
-
-Each partition computes the inner expression independently, and the result
-is broadcast back to every row in that partition. This is analogous to
-Polars' @.over()@ or SQL @OVER (PARTITION BY ...)@.
-
-@
--- Per-country median, broadcast to every row:
-F.over [\"country\"] (F.median (F.col \@Double \"amount\"))
-
--- Deviation from group mean:
-F.col \@Double \"amount\" - F.over [\"group\"] (F.mean (F.col \@Double \"amount\"))
-@
--}
+-- | Window function: evaluate an expression partitioned by the given columns.
 over :: (Columnable a) => [T.Text] -> Expr a -> Expr a
 over = Over
 
--- See Section 2.4 of the Haskell Report https://www.haskell.org/definition/haskell2010.pdf
+-- Haskell Report 2.4: https://www.haskell.org/definition/haskell2010.pdf
 isReservedId :: T.Text -> Bool
 isReservedId t = case t of
     "case" -> True
@@ -731,11 +688,7 @@ isReservedId t = case t of
 
 isVarId :: T.Text -> Bool
 isVarId t = case T.uncons t of
-    -- We might want to check  c == '_' || Char.isLower c
-    -- since the haskell report considers '_' a lowercase character
-    -- However, to prevent an edge case where a user may have a
-    -- "Name" and an "_Name_" in the same scope, wherein we'd end up
-    -- with duplicate "_Name_"s, we eschew the check for '_' here.
+    -- '_' is skipped on purpose so "Name" and "_Name_" cannot collide.
     Just (c, _) -> Char.isLower c && Char.isAlpha c
     Nothing -> False
 

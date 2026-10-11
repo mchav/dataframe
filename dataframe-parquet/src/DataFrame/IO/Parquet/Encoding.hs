@@ -24,10 +24,6 @@ import Data.Word
 import DataFrame.IO.Parquet.Binary (readUVarInt)
 import DataFrame.Internal.Binary (littleEndianWord32)
 
--- ---------------------------------------------------------------------------
--- Level-width helpers (used by Levels.hs)
--- ---------------------------------------------------------------------------
-
 ceilLog2 :: Int -> Int
 ceilLog2 x
     | x <= 1 = 0
@@ -35,10 +31,6 @@ ceilLog2 x
 
 bitWidthForMaxLevel :: Int -> Int
 bitWidthForMaxLevel maxLevel = ceilLog2 (maxLevel + 1)
-
--- ---------------------------------------------------------------------------
--- Vector-based RLE / bit-packed hybrid decoder
--- ---------------------------------------------------------------------------
 
 decodeRLEBitPackedHybrid ::
     -- | Bit width per value (0 = all zeros, use 'VU.replicate')
@@ -68,8 +60,7 @@ decodeRLEBitPackedHybrid bw need bs
                         let groups = fromIntegral (hdr64 `shiftR` 1) :: Int
                             totalVals = groups * 8
                             takeN = min (need - filled) totalVals
-                            -- Consume all the bytes for this group even if we
-                            -- only need a subset of the values.
+                            -- Consume the whole group even if we need less.
                             bytesN = (bw * totalVals + 7) `div` 8
                             (chunk, rest) = BS.splitAt bytesN afterHdr
                         extractBitsInto bw takeN chunk mv filled
@@ -89,10 +80,7 @@ fillRun :: VUM.STVector s Word32 -> Int -> Int -> Word32 -> ST s ()
 fillRun mv i end = VUM.set (VUM.unsafeSlice i (end - i) mv)
 {-# INLINE fillRun #-}
 
-{- | Write @count@ bit-width-@bw@ values from @bs@ into @mv@ starting at
-@offset@, reading the byte buffer with a single-pass LSB-first accumulator.
-No intermediate list or ByteString allocation.
--}
+-- | Write bit-packed values into a mutable vector in a single pass.
 extractBitsInto ::
     -- | Bit width
     Int ->
@@ -118,12 +106,7 @@ extractBitsInto bw count bs mv off = go 0 (0 :: Word64) 0 0
              in go (byteIdx + 1) (acc .|. (b `unsafeShiftL` accBits)) (accBits + 8) done
 {-# INLINE extractBitsInto #-}
 
-{- | Decode @need@ dictionary indices from a DATA_PAGE bit-width-prefixed
-stream (the first byte encodes the bit-width of all subsequent RLE\/bitpacked
-values).
-
-Returns the index vector (as 'Int') and the unconsumed bytes.
--}
+-- | Decode dictionary indices from a bit-width-prefixed DATA_PAGE stream.
 decodeDictIndices :: Int -> BS.ByteString -> (VU.Vector Int, BS.ByteString)
 decodeDictIndices need bs = case BS.uncons bs of
     Nothing -> error "decodeDictIndices: empty stream"
@@ -133,10 +116,7 @@ decodeDictIndices need bs = case BS.uncons bs of
          in (VU.map fromIntegral raw, rest1)
 {-# INLINE decodeDictIndices #-}
 
-{- | Stream @need@ values of an RLE\/bit-packed hybrid run to @sink index value@.
-Inlined at each use so a known sink becomes one loop, with no index vector
-in between.
--}
+-- | Stream RLE\/bit-packed hybrid values to a sink.
 rleHybridFold ::
     Int -> Int -> BS.ByteString -> (Int -> Word32 -> ST s ()) -> ST s ()
 rleHybridFold bw need bs sink

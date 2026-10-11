@@ -165,9 +165,7 @@ writerRoundTripLargeText = TestCase $
         assertEqual "large text first round-trip" df firstRoundTrip
         assertEqual "large text second round-trip" df secondRoundTrip
 
-{- | Sharded writes: @maxRowsPerFile@ splits the frame across a glob pattern,
-and reading the shards back reproduces the original frame.
--}
+-- | Sharded writes split the frame and reading them back matches.
 writerRoundTripSharded :: String -> FilePath -> Int -> Int -> Test
 writerRoundTripSharded label path rowsPerFile expectedShards = TestCase $
     withSystemTempDirectory "dfpq-writer" $ \dir -> do
@@ -203,11 +201,7 @@ shardedWriteRequiresPattern = TestCase $
                 `catch` (\e -> True <$ evaluate (Prelude.length (show (e :: SomeException))))
         unless threw (assertFailure "expected an error for a path without '*'")
 
-{- | Parquet has one 64-bit integer type, so @Int@, @Int64@ and @Integer@
-columns all land in the file as @INT64@. The writer stamps the original
-Haskell type in the footer so the reader can put it back; without that, a
-CSV-inferred @Int@ column silently widens to @Int64@ on a round trip.
--}
+-- | Int, Int64 and Integer columns round-trip with their Haskell type.
 writerRoundTripNativeIntTypes :: Test
 writerRoundTripNativeIntTypes = TestCase $
     withSystemTempDirectory "dfpq-writer" $ \dir -> do
@@ -326,7 +320,7 @@ withManyRowGroups body = withSystemTempDirectory "dfpq-rg" $ \dir -> do
     writeParquetWithOptions tinyWriteOpts out manyRowGroupsFrame
     body out
 
--- | The parallel reader agrees with the sequential one and with the source frame.
+-- | The parallel reader matches the sequential one and the source frame.
 parallelReadRowGroups :: Test
 parallelReadRowGroups = TestCase $ withManyRowGroups $ \out -> do
     parallel <- readParquet out
@@ -339,7 +333,7 @@ parallelReadRowGroups = TestCase $ withManyRowGroups $ \out -> do
             out
     assertEqual "projection" (select ["t", "n"] manyRowGroupsFrame) projected
 
--- | A row range only decodes the row groups it overlaps, and still slices exactly.
+-- | A row range only decodes the row groups it overlaps, and slices exactly.
 parallelReadRowRange :: Test
 parallelReadRowRange = TestCase $ withManyRowGroups $ \out -> do
     let ranges = [(0, 5), (7, 1300), (1299, 1301), (2990, 3000), (2995, 4000), (100, 100)]

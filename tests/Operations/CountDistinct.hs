@@ -176,7 +176,7 @@ viaAggregate =
                 )
             )
 
--- An Int32 key takes the direct grouping path and must agree with the reference.
+-- An Int32 key takes the direct grouping path and must match the reference.
 viaAggregateInt32Key :: Test
 viaAggregateInt32Key =
     let n = 250000

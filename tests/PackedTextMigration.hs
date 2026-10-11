@@ -1,13 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Regression tests for the PackedText migration: a string column stored as a
-'DI.PackedText' (the form the CSV readers emit) must flow through the
-decision-tree feature/target extraction and the full-outer-join key coalescing
-without crashing, and must behave IDENTICALLY to the same data held as a boxed
-@Text@ column. If a non-exhaustive @Column@ match regresses, the packed cases
-either crash (test error) or diverge from the boxed baseline (assertion fails).
--}
+-- | Packed-text columns must behave identically to boxed Text columns.
 module PackedTextMigration (tests) where
 
 import Control.Monad (zipWithM_)
@@ -29,9 +23,7 @@ import DataFrame.Operations.Join (fullOuterJoin)
 
 import Test.HUnit
 
-{- | Build a 'DI.PackedText' column directly from raw UTF-8 bytes + offsets,
-exactly as the CSV readers do (mirrors @Internal.PackedText.packedFromTexts@).
--}
+-- | Build a packed-text column directly from UTF-8 bytes and offsets.
 packedFromTexts :: [T.Text] -> DI.Column
 packedFromTexts ts =
     let bytess = map (B.unpack . encodeUtf8) ts
@@ -52,11 +44,7 @@ packed, boxed :: [T.Text] -> DI.Column
 packed = packedFromTexts
 boxed = DI.fromList
 
-{- | A decision tree using a TEXT FEATURE (exercises Cart.featuresOfColumn and the
-categorical condition builders). The packed-feature tree must equal the
-boxed-feature tree, proving the feature is used identically — not dropped or
-crashed on.
--}
+-- | A decision tree on a packed text feature must equal the boxed-feature tree.
 treeOnTextFeature :: Test
 treeOnTextFeature = TestCase $ do
     let df mk =
@@ -71,9 +59,7 @@ treeOnTextFeature = TestCase $ do
         (D.prettyPrint (predict boxedTree))
         (D.prettyPrint (predict packedTree))
 
-{- | A classifier whose TARGET is a packed-text column (exercises
-Cart.cartTargetLabels). Packed target must give the same tree as a boxed one.
--}
+-- | A classifier with a packed-text target gives the same tree as a boxed one.
 classifierOnTextTarget :: Test
 classifierOnTextTarget = TestCase $ do
     let df mk =
@@ -88,10 +74,7 @@ classifierOnTextTarget = TestCase $ do
         (D.prettyPrint (predict boxedClf))
         (D.prettyPrint (predict packedClf))
 
-{- | A full outer join on a packed-text KEY column (exercises the
-coalesceKeyColumn path that previously errored on PackedText). Result must
-match the boxed-key join and recover all four distinct keys.
--}
+-- | A full outer join on a packed-text key matches the boxed-key join.
 fullOuterJoinOnTextKey :: Test
 fullOuterJoinOnTextKey = TestCase $ do
     let l mk =

@@ -1,10 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Oblique split candidates: fit an L1-regularised logistic hyperplane to the
-care points (class-balanced) and convert it to a boolean condition, rejecting
-all-zero and degenerate (single-side) hyperplanes.
--}
+-- | Oblique split candidates from an L1-regularised logistic hyperplane.
 module DataFrame.DecisionTree.Linear (
     bestLinearCandidate,
     fitLinearCandidate,
@@ -34,10 +31,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
-{- | Best oblique candidate, or 'Nothing' when the linear path is disabled or
-there are too few care points to fit on. The target column is named so it can
-be kept out of the feature set.
--}
+-- | Best oblique candidate, or Nothing when disabled or too few care points.
 bestLinearCandidate ::
     TreeConfig -> T.Text -> DataFrame -> [CarePoint] -> Maybe (Expr Bool)
 bestLinearCandidate cfg target df carePoints
@@ -45,10 +39,7 @@ bestLinearCandidate cfg target df carePoints
     | length carePoints < minCarePointsForLinear cfg = Nothing
     | otherwise = fitLinearCandidate cfg target df carePoints
 
-{- | Fit an L1 logistic regression to the care points and convert the resulting
-hyperplane to a condition, or 'Nothing' when no numeric features exist or the
-fitted model is all-zero or degenerate.
--}
+-- | Fit an L1 logistic regression to the care points, as a condition.
 fitLinearCandidate ::
     TreeConfig -> T.Text -> DataFrame -> [CarePoint] -> Maybe (Expr Bool)
 fitLinearCandidate cfg target df carePoints =
@@ -56,9 +47,7 @@ fitLinearCandidate cfg target df carePoints =
         [] -> Nothing
         feats -> linearFromFeatures cfg carePoints feats
 
-{- | Each feature's materialised care values together with the Double expression
-that produced them, so the hyperplane can be rebuilt over Int or nullable columns.
--}
+-- | Each feature's materialised care values with the expression behind them.
 materializedFeatures ::
     T.Text ->
     DataFrame ->
@@ -72,7 +61,7 @@ materializedFeatures target df carePoints =
         )
         (featureCols target df)
 
--- | The expression behind a feature; a nullable one takes the care-point mean, as its values did.
+-- | The expression behind a feature; nullable ones take the care-point mean.
 doubleExprOf :: NumExpr -> VU.Vector Double -> Expr Double
 doubleExprOf (NDouble e) _ = e
 doubleExprOf (NMaybeDouble e) vals = F.fromMaybe (VU.sum vals / fromIntegral (max 1 (VU.length vals))) e
@@ -110,9 +99,7 @@ linearFromFeatures cfg carePoints feats
 solverConfigFor :: TreeConfig -> VU.Vector Double -> LS.SolverConfig
 solverConfigFor cfg labels = (linearSolverConfig cfg){LS.scSampleWeights = classBalancedWeights labels}
 
-{- | Class-balanced sklearn-form weights @w_i = N / (2 · N_class)@ (mean 1), or
-'Nothing' in the degenerate one-class case (uniform weighting).
--}
+-- | Class-balanced sklearn-form weights, or Nothing for one class.
 classBalancedWeights :: VU.Vector Double -> Maybe (VU.Vector Double)
 classBalancedWeights labels
     | nPos > 0 && nNeg > 0 = Just (VU.generate nCare weightAt)
@@ -125,9 +112,7 @@ classBalancedWeights labels
         | VU.unsafeIndex labels i > 0 = fromIntegral nCare / (2 * fromIntegral nPos)
         | otherwise = fromIntegral nCare / (2 * fromIntegral nNeg)
 
-{- | A hyperplane is degenerate when every care row scores on the same side of
-zero (equivalent to an invalid split, caught upstream).
--}
+-- | A hyperplane is degenerate when every care row scores on one side.
 degenerateHyperplane ::
     V.Vector (VU.Vector Double) -> VU.Vector Double -> Double -> Bool
 degenerateHyperplane rows weights bias =
@@ -139,9 +124,7 @@ degenerateHyperplane rows weights bias =
             nCare
             (\i -> VU.sum (VU.zipWith (*) weights (V.unsafeIndex rows i)) + bias)
 
-{- | Per-care-point feature rows from materialized columns (each of length
-@nCare@, so indexing is in range).
--}
+-- | Per-care-point feature rows from materialized columns.
 careRowsFromFeatures ::
     Int -> [(T.Text, VU.Vector Double)] -> V.Vector (VU.Vector Double)
 careRowsFromFeatures nCare mats =
@@ -161,9 +144,7 @@ featName expr = case getColumns expr of
     (c : _) -> c
     [] -> "<feat>"
 
-{- | Replace missing values with the mean of present ones; 'Nothing' when
-nothing is present so the caller can drop the feature.
--}
+-- | Replace missing values with the mean of present ones.
 imputeMean :: [Maybe Double] -> Maybe (VU.Vector Double)
 imputeMean careRaw = case catMaybes careRaw of
     [] -> Nothing
@@ -182,9 +163,7 @@ interpretMaybeDoubleVals df expr = case interpret @(Maybe Double) df expr of
     Right (TColumn column) -> either (const Nothing) Just (toVector @(Maybe Double) column)
     _ -> Nothing
 
-{- | Materialize a 'NumExpr' over the care rows; 'Nothing' on interpret failure
-or (nullable) when no care point has a present value, else mean-imputed.
--}
+-- | Materialize a NumExpr over the care rows, mean-imputing nullable values.
 materializeFeatureForCare ::
     DataFrame -> [CarePoint] -> NumExpr -> Maybe (T.Text, VU.Vector Double)
 materializeFeatureForCare df carePoints (NDouble expr) = do

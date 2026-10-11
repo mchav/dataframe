@@ -5,10 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Categorical split candidates: Breiman prefixes for binary targets,
-subset/singleton enumeration otherwise, and cross-column equality. Each
-value-list becomes an OR-of-equalities condition.
--}
+-- | Categorical split candidates: Breiman prefixes, subsets and equality.
 module DataFrame.DecisionTree.Categorical (
     TargetInfo (..),
     mkTargetInfo,
@@ -57,18 +54,14 @@ import Type.Reflection (typeRep)
 validBoxedValues :: Bitmap -> V.Vector a -> V.Vector a
 validBoxedValues bm = V.ifilter (\i _ -> bitmapTestBit bm i)
 
-{- | Target-column summary driving the categorical generator: binary vs
-multi-class, the deterministic positive class, and the raw label vector.
--}
+-- | Target-column summary driving the categorical generator.
 data TargetInfo target = TargetInfo
     { tiIsBinary :: !Bool
     , tiPositiveClass :: !(Maybe target)
     , tiValues :: !(V.Vector target)
     }
 
-{- | Compute 'TargetInfo' once per fit. The positive class for binary targets
-is the lexicographically-first distinct value, for deterministic pools.
--}
+-- | Compute TargetInfo once per fit.
 mkTargetInfo ::
     forall target.
     (Columnable target, Ord target) =>
@@ -87,9 +80,7 @@ targetInfoFromValues vals = TargetInfo isBinary posClass vals
         (p : _) | isBinary -> Just p
         _ -> Nothing
 
-{- | Distinct values, capped: @Right vs@ (sorted) under the cap, else @Left@
-the count-so-far so the caller routes to the high-cardinality path.
--}
+-- | Distinct values up to a cap, else the count so far.
 distinctValuesUpTo :: (Ord a) => Int -> V.Vector a -> Either Int [a]
 distinctValuesUpTo cap values = go Set.empty 0
   where
@@ -99,9 +90,7 @@ distinctValuesUpTo cap values = go Set.empty 0
         | Set.size s > cap = Left (Set.size s)
         | otherwise = go (Set.insert (V.unsafeIndex values i) s) (i + 1)
 
-{- | OR-of-equalities for a value-list, shared by the expression and
-truth-vector discrete paths so they stay byte-identical.
--}
+-- | OR-of-equalities for a value-list, shared by both discrete paths.
 orEqs :: (a -> Expr Bool) -> [a] -> Expr Bool
 orEqs eqLit = foldr1 (.||.) . map eqLit
 
@@ -129,9 +118,7 @@ breimanPrefixSplits ::
 breimanPrefixSplits pc values targetVals distinctVals eqLit =
     map (orEqs eqLit) (breimanPrefixLists pc values targetVals distinctVals)
 
-{- | Breiman's binary-target split set: sort levels by Laplace-smoothed
-positive rate, then take every contiguous non-trivial prefix.
--}
+-- | Breiman's binary-target split set: contiguous prefixes by positive rate.
 breimanPrefixLists ::
     (Ord a, Ord target) => target -> V.Vector a -> V.Vector target -> [a] -> [[a]]
 breimanPrefixLists pc values targetVals distinctVals =
@@ -157,9 +144,7 @@ sortByRate counts = sortBy (compare `on` (\v -> (laplaceRate counts v, v)))
 nonTrivialPrefixes :: [a] -> [[a]]
 nonTrivialPrefixes = drop 1 . init . inits
 
-{- | Value-lists a categorical column contributes; shared by the expression and
-truth-vector paths so both enumerate identical candidates in the same order.
--}
+-- | Value-lists a categorical column contributes, in a fixed order.
 catValueLists ::
     (Ord a, Ord target) =>
     Bool -> Maybe target -> V.Vector target -> Int -> V.Vector a -> [[a]]
@@ -185,17 +170,13 @@ multiclassLists subsetCap values = case distinctValuesUpTo subsetCap values of
 ascDistinct :: (Ord a) => V.Vector a -> [a]
 ascDistinct = Set.toAscList . Set.fromList . V.toList
 
-{- | Truth vector of @col ∈ values@ read directly from the column; equal to
-interpreting @orEqs (== v) values@ because the values are distinct.
--}
+-- | Truth vector of col in values, read directly from the column.
 membershipVec :: (Ord a) => V.Vector a -> [a] -> VU.Vector Bool
 membershipVec colVals vs =
     let !s = Set.fromList vs
      in VU.generate (V.length colVals) (\i -> Set.member (colVals `V.unsafeIndex` i) s)
 
-{- | Per-fit categorical generation context bundling the target summary and
-the column-ordering registry.
--}
+-- | Per-fit categorical generation context.
 data CatCtx target = CatCtx
     { ccBinary :: !Bool
     , ccPos :: !(Maybe target)
@@ -224,9 +205,7 @@ isNumericKind = case sFloating @a of
         STrue -> True
         SFalse -> False
 
-{- | All equality-based candidate splits from non-numeric columns: per-column
-categorical conditions plus cross-column equality/order conditions.
--}
+-- | All equality-based candidate splits from non-numeric columns.
 discreteConditions ::
     forall target.
     (Columnable target, Ord target) =>
@@ -343,10 +322,7 @@ isTextType = case testEquality (typeRep @a) (typeRep @T.Text) of
     Just Refl -> True
     Nothing -> False
 
-{- | 'discreteConditions' materialized with shared per-column reads: the
-non-nullable categorical path builds truth vectors directly from one read
-per column; nullable and cross-column fall back to interpret.
--}
+-- | discreteConditions materialized with shared per-column reads.
 discreteCondVecs ::
     forall target.
     (Columnable target, Ord target) =>

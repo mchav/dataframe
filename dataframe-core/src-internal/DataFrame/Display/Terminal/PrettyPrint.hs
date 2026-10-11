@@ -5,17 +5,13 @@ module DataFrame.Display.Terminal.PrettyPrint where
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
-{- | Output format for 'showTable'. 'Plain' renders a terminal-style table with
-ASCII borders; 'Markdown' renders a GitHub-flavoured pipe table suitable for
-notebooks.
--}
+-- | Output format for 'showTable': 'Plain' or 'Markdown'.
 data RenderFormat = Plain | Markdown
     deriving (Show, Eq)
 
 -- Utility functions to show a DataFrame as a Markdown-ish table.
 
--- Fill functions, adapted from:
--- https://stackoverflow.com/questions/5929377/format-list-output-in-haskell
+-- Fill functions, adapted from StackOverflow question 5929377.
 type Filler = Int -> T.Text -> T.Text
 
 -- A description of one table column.
@@ -25,7 +21,7 @@ data ColDesc t = ColDesc
     , colValueFill :: Filler
     }
 
--- Fill text to a given width with a pad character, aligning left, right, or center.
+-- Pad text to a given width with a character, aligned left, right or center.
 fillLeft :: Char -> Int -> T.Text -> T.Text
 fillLeft c n s = s <> T.replicate (n - T.length s) (T.singleton c)
 
@@ -50,10 +46,7 @@ right = fillRight ' '
 center :: Int -> T.Text -> T.Text
 center = fillCenter ' '
 
-{- | Render a table from column-major data. @columns@ has one 'V.Vector' per
-column; widths are computed in one pass per column (no row-major transpose),
-and row lines are built by indexing each column at row @i@.
--}
+-- | Render a table from column-major data.
 showTable ::
     RenderFormat ->
     [T.Text] ->
@@ -106,9 +99,6 @@ showTable fmt header types columns =
                         : rowLines
      in T.unlines outputLines
 
-{- | Escape a value for a GitHub-flavoured Markdown table cell: a bare @|@ would
-end the cell and a newline would end the row, so both are neutralised (the pipe
-backslash-escaped, the newline turned into a @\<br\>@).
--}
+-- | Escape a value for a GitHub-flavoured Markdown table cell.
 escapeMarkdownCell :: T.Text -> T.Text
 escapeMarkdownCell = T.replace "\n" "<br>" . T.replace "|" "\\|"

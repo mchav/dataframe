@@ -1,10 +1,4 @@
-{- |
-Module      : DataFrame.Typed.TH.CSV
-License     : MIT
-
-CSV-file-based typed-schema derivation. Splits the CSV path out of
-@DataFrame.Typed.TH@ so it can live in @dataframe-csv-th@.
--}
+-- | Derives a typed schema from a CSV file.
 module DataFrame.Typed.TH.CSV (
     deriveSchemaFromCsvFile,
     deriveSchemaFromCsvFileWith,

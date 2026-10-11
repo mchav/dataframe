@@ -45,30 +45,24 @@ import qualified Data.Vector.Algorithms.Merge as VA
 import qualified Data.Vector.Unboxed as VU
 import Type.Reflection (TypeRep, typeRep)
 
-{- | A one-hot feature column: per-row Double values plus the sklearn LEFT
-predicate (@x <= threshold@) over the ORIGINAL DataFrame.
--}
+-- | A one-hot feature column with its sklearn LEFT predicate.
 data CartFeature = CartFeature
     { cfValues :: !(VU.Vector Double)
     -- ^ One value per row. Null rows hold @+Infinity@, so they sort last.
     , cfNulls :: !(Maybe (VU.Vector Bool))
     -- ^ Which rows are null; 'Nothing' if the training data has no nulls here.
     , cfSplit :: !(Double -> NullSide -> Expr Bool)
-    -- ^ The expression @value <= threshold@, sending null rows to the given side.
+    -- ^ The split expression, sending null rows to the given side.
     }
 
 data NullSide = NullsLeft | NullsRight
     deriving (Eq, Show)
 
-{- | The split expression with null rows sent right. For learners that ignore
-'cfNulls': their @+Infinity@ values also fall right of any 'splitMidpoint'.
--}
+-- | The split expression with null rows sent right.
 cfPred :: CartFeature -> Double -> Expr Bool
 cfPred f t = cfSplit f t NullsRight
 
-{- | The threshold between two adjacent sorted values. If the upper one is
-@+Infinity@ (a null row) it returns the lower one, keeping nulls on the right.
--}
+-- | The threshold between two adjacent sorted values, keeping nulls right.
 splitMidpoint :: Double -> Double -> Double
 splitMidpoint lo hi
     | isInfinite hi = lo
@@ -87,9 +81,7 @@ data CartCtx = CartCtx
     , ctxMinLeaf :: !Int
     }
 
-{- | Indices @0..n-1@ stably sorted by their value (ascending), ties keeping
-ascending index. In-place unboxed merge sort — no boxed-list allocation.
--}
+-- | Indices 0..n-1 stably sorted by value, via in-place merge sort.
 sortIndicesByValue :: VU.Vector Double -> VU.Vector Int
 sortIndicesByValue vs =
     VU.create $ do
@@ -116,10 +108,7 @@ buildCartTree cfg target df =
             (maxTreeDepth cfg)
             (max 1 (minLeafSize cfg))
 
-{- | Read the target column at the type the tree is being fitted at. Names the
-column and both types on failure: a bare @fromIntegral@ defaults to 'Integer'
-and lands here, and the old message said only that something went wrong.
--}
+-- | Read the target column at the fitted type, naming both types on failure.
 cartLabels :: forall a. (Columnable a) => DataFrame -> T.Text -> V.Vector a
 cartLabels df target = case interpret @a df (Col target) of
     Right (TColumn column) -> fromRight (throw err) (toVector @a column)
@@ -191,9 +180,7 @@ splitNode ctx depth idxs sortedByFeat (fj, thr) =
     rightSorted = V.map (VU.filter (\i -> vals VU.! i > thr)) sortedByFeat
     rec = buildCartNode ctx (depth + 1)
 
-{- | Minimum weighted-child-Gini @(feature, threshold)@; the first feature wins
-ties; 'Nothing' when no feature has a leaf-size-respecting threshold.
--}
+-- | Minimum weighted-child-Gini split; the first feature wins ties.
 bestSplit ::
     CartCtx ->
     V.Vector (VU.Vector Int) ->
@@ -208,9 +195,7 @@ bestSplit ctx sortedByFeat counts n =
         Just (g, thr) | maybe True (\(gB, _, _) -> g < gB) acc -> Just (g, fj, thr)
         _ -> acc
 
-{- | Accumulator while sweeping a feature's sorted rows: best @(gini, thr)@ so
-far, per-class left counts, rows moved left, and the previous value seen.
--}
+-- | Accumulator while sweeping a feature's sorted rows.
 data Sweep = Sweep
     { swBest :: !(Maybe (Double, Double))
     , swLeft :: ![Int]
@@ -305,9 +290,7 @@ featuresOfColumn df c = case unsafeGetColumn c df of
 nullFlags :: Int -> Bitmap -> VU.Vector Bool
 nullFlags n bm = VU.generate n (not . bitmapTestBit bm)
 
-{- | 'Nothing' if no row is null, so learners split a null-free column the plain
-way. Its split expression still handles nulls that appear at prediction time.
--}
+-- | Nothing if no row is null, so null-free columns split the plain way.
 trainingNulls :: VU.Vector Bool -> Maybe (VU.Vector Bool)
 trainingNulls nulls
     | VU.or nulls = Just nulls
@@ -377,9 +360,7 @@ oneHot c (Just nulls) v cat =
         | v V.! i == cat = 1
         | otherwise = 0
     col' = F.col @(Maybe T.Text) c
-    -- The feature is 1 for this category, 0 for others. A threshold below 1
-    -- means "not this category"; a threshold of 1 lets every non-null row
-    -- pass, so the split is null vs non-null.
+    -- Threshold 1 passes every non-null row, so that split is null vs non-null.
     cond t side
         | t < 1 = F.fromMaybe (side == NullsLeft) (col' ./= F.lit cat)
         | side == NullsLeft = F.lit True

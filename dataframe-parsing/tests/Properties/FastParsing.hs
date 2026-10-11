@@ -1,13 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | QuickCheck parity properties for "DataFrame.Internal.Parsing.Fast".
-
-Every fast slice parser must agree with the existing reference parser
-(`readByteStringInt` / `readByteStringDouble` / `readByteStringBool` /
-`readByteStringDate` / `isNullishBS`) on arbitrary byte fields, with
-Doubles compared bit-for-bit ('castDoubleToWord64').
--}
+-- | QuickCheck parity properties for "DataFrame.Internal.Parsing.Fast".
 module Properties.FastParsing (tests) where
 
 import qualified Data.ByteString as BS

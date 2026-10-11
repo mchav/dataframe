@@ -17,10 +17,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- |
-Bulk operations over columns: mapping, folding, slicing, gathering, zipping,
-appending, and the mutable-column IO helpers.
--}
+-- | Bulk operations over columns: map, fold, slice, gather, zip, append.
 module DataFrame.Internal.Column.Operations where
 
 import qualified Data.Text as T
@@ -87,9 +84,7 @@ import Type.Reflection (
     type (:~~:) (HRefl),
  )
 
-{- | Force evaluation of all elements in a column. Replacement for the removed
-@instance NFData Column@; used by the IO and lazy-executor strict paths.
--}
+-- | Force evaluation of all elements in a column.
 forceColumn :: Column -> ()
 forceColumn (BoxedColumn Nothing (v :: VB.Vector a)) = VB.foldl' (const (`seq` ())) () v
 forceColumn (BoxedColumn (Just bm) (v :: VB.Vector a)) =
@@ -104,11 +99,7 @@ forceColumn (PackedText _ (PackedTextData arr offs sel _)) = arr `seq` offs `seq
 forceColumn (MergedColumn a b) =
     forceColumn a `seq` forceColumn b `seq` checkMergedNoBothNull a b
 
-{- | 'MergedColumn' defers element construction, so forcing must still surface
-the one deferred error — a row null on both sides — inside strict IO/executor
-boundaries. O(rows) bitmap walk, no allocation; both-null needs a bitmap on
-each side, so anything else passes immediately.
--}
+-- | Surface the deferred both-sides-null error of a 'MergedColumn'.
 checkMergedNoBothNull :: Column -> Column -> ()
 checkMergedNoBothNull a b = case (columnBitmap a, columnBitmap b) of
     (Just ba, Just bb) ->
@@ -120,7 +111,7 @@ checkMergedNoBothNull a b = case (columnBitmap a, columnBitmap b) of
          in go 0
     _ -> ()
 
--- | Allocate a mutable column of size @n@ matching the constructor/type of the given column.
+-- | Allocate a mutable column of size @n@ matching the given column.
 newMutableColumn :: Int -> Column -> IO MutableColumn
 newMutableColumn n (BoxedColumn _ (_ :: VB.Vector a)) =
     MBoxedColumn <$> (VBM.new n :: IO (VBM.IOVector a))
@@ -165,8 +156,7 @@ mapColumn f = \case
     c@(PackedText _ _) -> mapColumn f (materializePacked c)
     c@(MergedColumn _ _) -> mapColumn f (materializeMerged c)
   where
-    -- Rows are decoded one at a time from the packed bytes; text results are
-    -- packed again per chunk, so no boxed vector of the whole column exists.
+    -- Rows decode one at a time from packed bytes; text results are re-packed.
     mapPacked :: (b ~ T.Text) => PackedTextData -> Column
     mapPacked p =
         let !n = packedLength p
@@ -244,7 +234,7 @@ mapColumn f = \case
             Nothing -> throwTypeMismatch @a @b
 {-# INLINEABLE mapColumn #-}
 
--- | Applies a function that returns an unboxed result to an unboxed vector, storing the result in a column.
+-- | Apply a function returning an unboxed result to an unboxed vector.
 imapColumn ::
     forall b c.
     (Columnable b, Columnable c) =>
@@ -301,8 +291,7 @@ sliceColumn start n (BoxedColumn bm xs) =
 sliceColumn start n (UnboxedColumn bm xs) =
     UnboxedColumn (fmap (bitmapSlice start n) bm) (VG.slice start n xs)
 sliceColumn start n (PackedText bm p)
-    -- packedGather decodes an out-of-range index as the empty string, where
-    -- the boxed and unboxed arms reject the slice, so check first.
+    -- packedGather reads out-of-range as "", so check the slice bounds first.
     | start < 0 || n < 0 || start + n > packedLength p =
         errorWithoutStackTrace
             ( "sliceColumn: invalid slice ("
@@ -319,18 +308,9 @@ sliceColumn start n (PackedText bm p)
             (packedGather (VU.enumFromN start n) p)
 {-# INLINE sliceColumn #-}
 
--- | O(n) Selects the elements at a given set of indices. Does not change the order.
+-- (n) Selects the elements at a given set of indices, keeping order.
 
--------------------------------------------------------------------------------
--- Parallel element-wise kernels
--------------------------------------------------------------------------------
-
-{- | Parallel unboxed 'VU.generate': splits the index space into one contiguous
-chunk per capability, evaluates each chunk into its disjoint slice of a single
-pre-allocated mutable vector, then freezes. Element @i@ depends only on @f i@,
-so the result is bit-identical to the sequential 'VU.generate' regardless of
-capability count. Falls back to 'VU.generate' below 'parThreshold'.
--}
+-- | Parallel unboxed 'VU.generate', one contiguous chunk per capability.
 parGenerateUnboxed :: (VU.Unbox c) => Int -> (Int -> c) -> VU.Vector c
 parGenerateUnboxed n f
     | not (shouldParallelize parThreshold n) = VU.generate n f
@@ -340,10 +320,7 @@ parGenerateUnboxed n f
         VU.unsafeFreeze mv
 {-# NOINLINE parGenerateUnboxed #-}
 
-{- | The chunk body shared by 'parGenerateUnboxed' and
-'parGenerateUnboxedInline'. INLINE so the latter's monomorphic wrappers each
-get their own copy with @f@ inlined.
--}
+-- | The chunk body shared by 'parGenerateUnboxed' and its inline variant.
 fillGenerate ::
     (VU.Unbox c) => VUM.IOVector c -> (Int -> c) -> Int -> Int -> IO ()
 fillGenerate mv f !lo !hi =
@@ -353,26 +330,14 @@ fillGenerate mv f !lo !hi =
      in go lo
 {-# INLINE fillGenerate #-}
 
-{- | Parallel unboxed gather: element @i@ of the result is
-@v ! (ix ! i)@ (unsafe indexing — callers pass in-bounds index vectors, e.g.
-grouping-produced representative rows). Same chunking as 'parGenerateUnboxed'
-(one contiguous chunk per capability into disjoint slices of one buffer), so
-the result is bit-identical to the sequential backpermute at any capability
-count; falls back to a sequential loop below 'parThreshold'.
--}
+-- | Parallel unboxed gather: element @i@ is @v ! (ix ! i)@.
 parBackpermuteUnboxed ::
     (VU.Unbox a) => VU.Vector a -> VU.Vector Int -> VU.Vector a
 parBackpermuteUnboxed v ix =
     parGenerateUnboxed (VU.length ix) (VU.unsafeIndex v . VU.unsafeIndex ix)
 {-# INLINE parBackpermuteUnboxed #-}
 
-{- | 'parGenerateUnboxed' with an INLINE body: each monomorphic NOINLINE
-wrapper below gets its own copy of the fill loop with @f@ inlined, so the
-per-element unknown closure call (and the boxed result it returns) disappears
-— on a 1e8-row gather that call+alloc dominated the whole pass. Same chunking,
-bit-identical results; wrappers must stay NOINLINE so the 'unsafePerformIO'
-runs once per call.
--}
+-- | 'parGenerateUnboxed' with an INLINE body for monomorphic wrappers.
 parGenerateUnboxedInline :: (VU.Unbox c) => Int -> (Int -> c) -> VU.Vector c
 parGenerateUnboxedInline n f
     | not (shouldParallelize parThreshold n) = VU.generate n f
@@ -382,10 +347,7 @@ parGenerateUnboxedInline n f
         VU.unsafeFreeze mv
 {-# INLINE parGenerateUnboxedInline #-}
 
-{- | Runs @k@ with the element type known to the compiler, for the types that
-get a compiled loop of their own; 'Nothing' for any other type. @k@ must take
-its 'VU.Unbox' evidence from here, so its callers carry no such constraint.
--}
+-- | Run @k@ with the element type known, or 'Nothing' for other types.
 withKnownElem ::
     forall a r. (Typeable a) => (forall x. (VU.Unbox x) => a :~: x -> r) -> Maybe r
 withKnownElem k
@@ -441,9 +403,7 @@ validAt :: Maybe Bitmap -> Int -> Bool
 validAt bm i = maybe True (`bitmapTestBit` i) bm
 {-# INLINE validAt #-}
 
-{- | @g i@ for the valid rows only. Null rows hold zero, since 'VUM.new'
-zero-fills unboxed storage.
--}
+-- | @g i@ for the valid rows only; null rows hold zero.
 generateValidUnboxed ::
     (VU.Unbox c) => Bitmap -> Int -> (Int -> c) -> VU.Vector c
 generateValidUnboxed bm n g = unsafePerformIO $ do
@@ -460,9 +420,7 @@ generateValidUnboxed bm n g = unsafePerformIO $ do
     VU.unsafeFreeze mv
 {-# NOINLINE generateValidUnboxed #-}
 
-{- | A boxed column of @g i@ for the valid rows only; null rows stay null.
-If @g@ returns a 'Maybe', its 'Nothing's become null too.
--}
+-- | A boxed column of @g i@ for the valid rows only; null rows stay null.
 generateValidBoxed ::
     forall c. (Columnable c) => Bitmap -> Int -> (Int -> c) -> Column
 generateValidBoxed bm n g = case typeRep @c of
@@ -494,10 +452,7 @@ parBackpermuteDouble v ix =
         (VU.unsafeIndex v . VU.unsafeIndex ix)
 {-# NOINLINE parBackpermuteDouble #-}
 
-{- | Closure-free double-indirection gather: @out!g = vis ! (offs!g)@ over
-@length offs - 1@ groups (the representative-row build of the 'Grouped'
-pattern).
--}
+-- | Closure-free double-indirection gather: @out!g = vis ! (offs!g)@.
 parBackpermute2Int :: VU.Vector Int -> VU.Vector Int -> VU.Vector Int
 parBackpermute2Int vis offs =
     parGenerateUnboxedInline
@@ -505,11 +460,7 @@ parBackpermute2Int vis offs =
         (VU.unsafeIndex vis . VU.unsafeIndex offs)
 {-# NOINLINE parBackpermute2Int #-}
 
-{- | Parallel boxed gather. The read side uses 'VB.unsafeIndexM' so the array
-slot is fetched eagerly (element pointers are shared, elements themselves stay
-un-forced, exactly as the sequential 'VB.generate' gather). Bit-identical
-element values; sequential below 'parThreshold'.
--}
+-- | Parallel boxed gather that fetches array slots eagerly.
 parBackpermuteBoxed :: VB.Vector a -> VU.Vector Int -> VB.Vector a
 parBackpermuteBoxed v ix
     | not (shouldParallelize parThreshold n) =
@@ -529,9 +480,7 @@ parBackpermuteBoxed v ix
     !n = VU.length ix
 {-# NOINLINE parBackpermuteBoxed #-}
 
-{- | Clamp sentinel (negative) indices to 0 in one closure-free parallel pass.
-The clamped rows read row 0's value; callers mask them via the sentinel bitmap.
--}
+-- | Clamp sentinel (negative) indices to 0 in one parallel pass.
 parClampNonNeg :: VU.Vector Int -> VU.Vector Int
 parClampNonNeg ix =
     parGenerateUnboxedInline
@@ -539,9 +488,7 @@ parClampNonNeg ix =
         (\i -> let !x = VU.unsafeIndex ix i in max x 0)
 {-# NOINLINE parClampNonNeg #-}
 
-{- | Validity bitmap from sentinel indices (bit @i@ valid iff @ix!i >= 0@),
-built one byte (8 rows) per element in parallel.
--}
+-- | Validity bitmap from sentinel indices, built in parallel.
 parBitmapNonNeg :: VU.Vector Int -> Bitmap
 parBitmapNonNeg ix =
     let !n = VU.length ix
@@ -580,8 +527,7 @@ atIndicesStable indexes (UnboxedColumn bm (column :: VU.Vector a)) =
             )
             bm
         )
-        -- Int/Double hit the closure-free monomorphic kernels; anything else
-        -- keeps the generic (per-element closure call) path.
+        -- Int/Double use closure-free kernels; others take the generic path.
         ( case testEquality (typeRep @a) (typeRep @Int) of
             Just Refl -> parBackpermuteInt column indexes
             Nothing -> case testEquality (typeRep @a) (typeRep @Double) of
@@ -602,9 +548,7 @@ atIndicesStable indexes (PackedText bm p) =
         (packedGather indexes p)
 {-# INLINE atIndicesStable #-}
 
-{- | Like 'atIndicesStable' but treats negative indices as null.
-Keeps the index vector fully unboxed (no @VB.Vector (Maybe Int)@).
--}
+-- | Like 'atIndicesStable' but treats negative indices as null.
 gatherWithSentinel :: VU.Vector Int -> Column -> Column
 gatherWithSentinel indices c@(MergedColumn _ _) =
     gatherWithSentinel indices (materializeMerged c)
@@ -614,20 +558,16 @@ gatherWithSentinel indices col =
         withBm srcBm = case srcBm of
             Nothing -> Just newBm
             Just sb -> Just (andBitmaps newBm (gatherSrcBm sb))
-        -- Sequential fallback: gather an existing source bitmap through the
-        -- raw indices (negative-guarded). Only runs when the source side is
-        -- itself nullable, which join build sides normally are not.
+        -- Sequential fallback: gather a nullable source bitmap by raw indices.
         gatherSrcBm sb =
             buildBitmapFromValid $ VU.generate n $ \i ->
                 let idx = VU.unsafeIndex indices i
                  in if idx >= 0 && bitmapTestBit sb idx then 1 else 0
      in case col of
-            -- packedGather composes -1 sentinels into the selector natively
-            -- (and shares the byte buffers), so text takes the raw indices.
+            -- packedGather handles -1 sentinels itself; pass raw indices.
             PackedText srcBm p -> PackedText (withBm srcBm) (packedGather indices p)
             BoxedColumn srcBm v
-                -- An empty source means every index is a sentinel; clamping
-                -- would read row 0 of an empty vector.
+                -- An empty source means every index is a sentinel.
                 | VB.null v -> BoxedColumn (withBm srcBm) (allNullBoxed n v)
                 | otherwise ->
                     BoxedColumn
@@ -636,17 +576,13 @@ gatherWithSentinel indices col =
             UnboxedColumn srcBm v
                 | VU.null v -> UnboxedColumn (withBm srcBm) (allNullUnboxed n v)
                 | otherwise ->
-                    -- Reuse atIndicesStable's Int/Double monomorphic kernel
-                    -- dispatch for the payload; the bitmap is replaced below.
+                    -- Reuse atIndicesStable's monomorphic Int/Double kernels.
                     case atIndicesStable (parClampNonNeg indices) (UnboxedColumn Nothing v) of
                         UnboxedColumn _ dat -> UnboxedColumn (withBm srcBm) dat
                         other -> other
 {-# INLINE gatherWithSentinel #-}
 
-{- | An @n@-row payload for a gather whose source is empty: every index is a
-sentinel, so the sentinel bitmap masks every row and no element is ever read.
-The source vector is passed only to fix the element type.
--}
+-- | An @n@-row payload for a gather whose source is empty.
 allNullBoxed :: Int -> VB.Vector a -> VB.Vector a
 allNullBoxed n _ = VB.replicate n (error "gatherWithSentinel: null row forced")
 
@@ -664,9 +600,7 @@ getIndicesUnboxed :: (VU.Unbox a) => VU.Vector Int -> VU.Vector a -> VU.Vector a
 getIndicesUnboxed indices xs = VU.generate (VU.length indices) (\i -> xs VU.! (indices VU.! i))
 {-# INLINE getIndicesUnboxed #-}
 
-{- | Positions of the 'True' entries, in order. Chunks count their hits, then
-fill disjoint slices of the output in parallel.
--}
+-- | Positions of the 'True' entries, in order, computed in parallel.
 maskIndices :: VU.Vector Bool -> VU.Vector Int
 maskIndices mask
     | not (shouldParallelize parThreshold n) = VU.findIndices id mask
@@ -834,9 +768,7 @@ foldl1Column f = \case
                         , errorColumnName = Nothing
                         }
 
-{- | O(n) Seedless fold over groups using the first element of each group as seed.
-Like 'foldDirectGroups' but for the case where no initial accumulator is available.
--}
+-- | O(n) Seedless fold over groups using each group's first element as seed.
 foldl1DirectGroups ::
     forall a.
     (Columnable a) =>
@@ -864,7 +796,7 @@ foldl1DirectGroups f col valueIndices offsets
         Just Refl -> Right $ case nullsIn (VG.length vec) bm of
             Nothing -> (Nothing, VG.generate nGroups foldGroup)
             Just nulls ->
-                -- A group whose rows are all null has no seed, so its result is null.
+                -- A group of all-null rows has no seed, so it is null.
                 let groups = VG.generate nGroups (foldValidGroup nulls) :: VB.Vector (Maybe c)
                     empty = VU.filter (isNothing . VB.unsafeIndex groups) (VU.enumFromN 0 nGroups)
                     placeholder k = VG.unsafeIndex vec (VU.unsafeIndex valueIndices (VU.unsafeIndex offsets k))
@@ -899,10 +831,7 @@ foldl1DirectGroups f col valueIndices offsets
                         }
 {-# INLINEABLE foldl1DirectGroups #-}
 
-{- | O(n) fold over groups by scanning the column linearly (rowToGroup[i] = group
-of row i). Random writes hit the small per-group accumulator array; when @acc@ is
-unboxable that array is unboxed, avoiding pointer indirection.
--}
+-- | O(n) fold over groups by scanning the column linearly.
 foldLinearGroups ::
     forall b acc.
     (Columnable b, Columnable acc) =>
@@ -1091,14 +1020,9 @@ zipWithColumnsGeneral f left right = case toVector @a left of
         Right right' -> pure $ fromVector $ VB.zipWith f left' right'
 {-# INLINE zipWithColumnsGeneral #-}
 
--- writeColumn and freezeColumn' (CSV-ingest helpers) moved to
--- DataFrame.IO.Internal.MutableColumn so the core column module does not
--- need to depend on DataFrame.Internal.Parsing.
+-- writeColumn and freezeColumn' moved to DataFrame.IO.Internal.MutableColumn.
 
-{- | Freeze a mutable column into an @Either Text a@ column: every recorded
-null position becomes @Left rawText@ (preserving the original input), every
-other position becomes @Right v@. Used by CSV readers under 'EitherRead' mode.
--}
+-- | Freeze a mutable column into an @Either Text a@ column.
 freezeColumnEither :: [(Int, T.Text)] -> MutableColumn -> IO Column
 freezeColumnEither nulls (MBoxedColumn col) = do
     frozen <- VB.unsafeFreeze col
@@ -1122,9 +1046,7 @@ freezeColumnEither nulls (MUnboxedColumn col) = do
                     Nothing -> Right (c VU.! i)
 {-# INLINE freezeColumnEither #-}
 
-{- | Promote a non-nullable column to a nullable one (add an all-valid bitmap).
-No-op when already nullable.
--}
+-- | Promote a non-nullable column to a nullable one (all-valid bitmap).
 ensureOptional :: Column -> Column
 ensureOptional c@(MergedColumn _ _) = ensureOptional (materializeMerged c)
 ensureOptional c@(BoxedColumn (Just _) _) = c
@@ -1137,7 +1059,7 @@ ensureOptional c@(PackedText (Just _) _) = c
 ensureOptional (PackedText Nothing p) =
     PackedText (Just (allValidBitmap (packedLength p))) p
 
--- | Fills the end of a column, up to n, with null rows. Does nothing if column has length >= n.
+-- | Fill the end of a column, up to n, with null rows.
 expandColumn :: Int -> Column -> Column
 expandColumn n c@(MergedColumn a b)
     | n <= min (columnLength a) (columnLength b) = c
@@ -1171,7 +1093,7 @@ expandColumn n column@(UnboxedColumn bm col)
                 VU.unsafeFreeze mv
          in UnboxedColumn newBm newCol
 
--- | Fills the beginning of a column, up to n, with null rows. Does nothing if column has length >= n.
+-- | Fill the beginning of a column, up to n, with null rows.
 leftExpandColumn :: Int -> Column -> Column
 leftExpandColumn n c@(MergedColumn a b)
     | n <= min (columnLength a) (columnLength b) = c
@@ -1208,9 +1130,7 @@ leftExpandColumn n column@(UnboxedColumn bm col)
                 VU.unsafeFreeze mv
          in UnboxedColumn newBm newCol
 
-{- | Concatenates two columns.
-Returns Nothing if the columns are of different types.
--}
+-- | Concatenates two columns; fails if the column types differ.
 mappendColumns :: Column -> Column -> Either DataFrameException Column
 mappendColumns left right = case (left, right) of
     (MergedColumn _ _, _) -> mappendColumns (materializeMerged left) right
@@ -1259,15 +1179,9 @@ mappendColumns left right = case (left, right) of
                         }
                     )
 
-{- | Like 'mappendColumns' but also combines columns of different types by wrapping
-values in 'Either' (e.g. @[1,2]@ and @["a","b"]@ become
-@[Left 1, Left 2, Right "a", Right "b"]@).
--}
+-- ike 'mappendColumns' but wraps values in 'Either' across types.
 
-{- | O(n) Concatenate a list of same-type columns in a single allocation.
-All columns must have the same constructor and element type (as they will
-within a single Parquet column). Calls 'error' on mismatch.
--}
+-- | O(n) Concatenate a list of same-type columns in a single allocation.
 concatManyColumns :: [Column] -> Column
 concatManyColumns [] = fromList ([] :: [Maybe Int])
 concatManyColumns [c] = c
@@ -1383,22 +1297,7 @@ mappendColumnsEither (BoxedColumn _ left) (UnboxedColumn _ right) =
 mappendColumnsEither (UnboxedColumn _ left) (BoxedColumn _ right) =
     BoxedColumn Nothing $ fmap Left (VG.convert left) <> fmap Right right
 
--------------------------------------------------------------------------------
--- Fused multi-column gather
--------------------------------------------------------------------------------
-
-{- | Gather ONE in-bounds index vector through several columns in a single
-parallel pass. Result columns are identical to @map (atIndicesStable ixs)@;
-columns whose shape the fused kernel does not cover (bitmapped, boxed, merged,
-unusual element types) fall back to per-column 'atIndicesStable'. All fused
-outputs are backed by one shared deferred computation: forcing ANY of them
-runs the single pass that fills ALL of them. The pass reads the index vector
-once per block instead of once per column, and every iteration of a block
-issues each column's independent random load back-to-back, so their cache/TLB
-misses overlap instead of forming one latency chain per column (the aggregate
-key materialization of a 1e8-group result was 6 sequential latency-bound
-passes without this).
--}
+-- | Gather one in-bounds index vector through several columns in one pass.
 atIndicesStableMulti :: VU.Vector Int -> [Column] -> [Column]
 atIndicesStableMulti ixs cols =
     let specs = map mgClassify cols
@@ -1422,9 +1321,7 @@ data MGSpec
       MGInt !(VU.Vector Int)
     | -- | Clean unboxed 'Double' payload.
       MGDouble !(VU.Vector Double)
-    | {- | Packed text with an 'Int32' selector (base row count necessarily
-      fits 'Int32'); carries the payload for rebuilding and the canon flag.
-      -}
+    | -- | Packed text with an 'Int32' selector and an 'Int32'-sized base.
       MGSel32 !PackedTextData !(VU.Vector Int32)
     | -- | Packed text with an 'Int' selector and an 'Int32'-sized base.
       MGSel64To32 !PackedTextData !(VU.Vector Int)
@@ -1449,11 +1346,7 @@ mgClassify _ = Nothing
 mgInt32Max :: Int
 mgInt32Max = fromIntegral (maxBound :: Int32)
 
-{- | Run the fused pass over the fusable specs; element @r@ of the result is
-spec @r@'s gathered column. Deferred as one shared thunk (see
-'atIndicesStableMulti'). Pure w.r.t. its immutable inputs, so the
-'unsafePerformIO' is safe.
--}
+-- | Run the fused pass over the fusable specs, one gathered column per spec.
 multiGatherRun :: VU.Vector Int -> [MGSpec] -> VB.Vector Column
 multiGatherRun ixs specs = unsafePerformIO $ do
     let !n = VU.length ixs
@@ -1470,11 +1363,7 @@ multiGatherRun ixs specs = unsafePerformIO $ do
     VB.fromList <$> mapM snd opened
 {-# NOINLINE multiGatherRun #-}
 
-{- | Allocate a spec's destination; return its block-fill action and its
-finalizer. Selector gathers reproduce 'packedGather' exactly (composition
-clamps against the source selector length and base row count); unboxed gathers
-reproduce the unclamped 'parBackpermuteUnboxed'.
--}
+-- | Allocate a spec's destination; return its block-fill action and finalizer.
 mgOpen :: Int -> VU.Vector Int -> MGSpec -> IO (Int -> Int -> IO (), IO Column)
 mgOpen n ixs spec = case spec of
     MGInt v -> do
@@ -1599,10 +1488,7 @@ mgFillSel64To64 ixs s !base dst lo hi = go lo
             go (i + 1)
 {-# NOINLINE mgFillSel64To64 #-}
 
-{- | A packed text column of @f i@ for each row, built chunk by chunk in
-parallel: each chunk packs its rows into one byte array, then the chunks are
-spliced into the final array with their offsets rebased.
--}
+-- | A packed text column of @f i@ per row, built chunk by chunk in parallel.
 packedMapText :: Int -> (Int -> T.Text) -> Column
 packedMapText n f = unsafePerformIO $ do
     chunks <-

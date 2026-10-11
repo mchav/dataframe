@@ -4,9 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Convert a 'DataFrame' to Arrow C Data Interface structs for zero-copy
-  transfer to Python (or any other Arrow consumer).
--}
+-- | Convert a 'DataFrame' to Arrow C Data Interface structs, zero-copy.
 module DataFrame.IO.Arrow (
     dataframeToArrow,
     columnToArrow,
@@ -140,9 +138,7 @@ releaseSchemaImpl p = do
     let sp = castPtrToStablePtr rawPriv :: StablePtr (IO ())
     join (deRefStablePtr sp)
     freeStablePtr sp
-    -- Arrow spec: release callback must set release to NULL to signal completion.
-    -- p here is Arrow C++'s internal copy of the struct (not our mallocBytes
-    -- allocation); our original allocation is freed inside the cleanup closure.
+    -- Arrow spec: the release callback must set release to NULL when done.
     p `at` _schemaRelease $ (nullFunPtr :: FunPtr (Ptr ArrowSchema -> IO ()))
 
 releaseArrayImpl :: Ptr ArrowArray -> IO ()
@@ -167,7 +163,7 @@ makeLeafSchema fmt colName = do
     p `at` _schemaChildren $ (nullPtr :: Ptr ())
     p `at` _schemaDictionary $ (nullPtr :: Ptr ())
     p `at` _schemaRelease $ pReleaseSchema
-    -- Capture p so our original mallocBytes allocation is freed when release runs.
+    -- Capture p so our mallocBytes allocation is freed on release.
     cleanup <- newStablePtr (free fmtStr >> free nameStr >> free p)
     p `at` _schemaPrivateData $ castStablePtrToPtr cleanup
     return p
@@ -187,14 +183,12 @@ makeLeafArray nRows nullCnt bufPtrs extraCleanup = do
     p `at` _arrayChildren $ (nullPtr :: Ptr ())
     p `at` _arrayDictionary $ (nullPtr :: Ptr ())
     p `at` _arrayRelease $ pReleaseArray
-    -- Capture p so our original mallocBytes allocation is freed when release runs.
+    -- Capture p so our mallocBytes allocation is freed on release.
     cleanup <- newStablePtr (free bufArr >> extraCleanup >> free p)
     p `at` _arrayPrivateData $ castStablePtrToPtr cleanup
     return p
 
-{- | Allocate an Arrow-format validity bitmap from a 'DI.Bitmap'.
-Returns (ptr, nullCount). Caller must 'free' the pointer.
--}
+-- | Allocate an Arrow validity bitmap from a 'DI.Bitmap'; caller frees it.
 bitmapToPtr :: Int -> DI.Bitmap -> IO (Ptr Word8, Int)
 bitmapToPtr n bm = do
     let numBytes = max 1 ((n + 7) `div` 8)
@@ -307,7 +301,7 @@ columnToArrow colName (UnboxedColumn (Just bm) (vec :: VU.Vector a))
 columnToArrow colName (BoxedColumn (Just bm) (vec :: V.Vector a))
     | Just Refl <- testEquality (typeRep @a) (typeRep @T.Text) = do
         let n = V.length vec
-            -- For null positions, use empty BS (null placeholder in vec is never evaluated)
+            -- Null positions get an empty ByteString.
             bss =
                 map
                     (\i -> if DI.bitmapTestBit bm i then TE.encodeUtf8 (vec V.! i) else BS.empty)
@@ -376,10 +370,7 @@ dataframeToArrow df = do
     topSchema `at` _schemaChildren $ childSArr
     topSchema `at` _schemaDictionary $ (nullPtr :: Ptr ())
     topSchema `at` _schemaRelease $ pReleaseSchema
-    -- Do NOT loop over children here: Arrow C++ zeroes children[i]->release
-    -- during import, so reading it would yield a null function pointer.
-    -- Children are released independently by Arrow C++; their own cleanup
-    -- closures free their buffers and struct memory.
+    -- Do not release children here: Arrow C++ zeroes their release on import.
     cleanupS <- newStablePtr $ do
         free childSArr
         free fmtStr
@@ -387,7 +378,6 @@ dataframeToArrow df = do
         free topSchema -- free our original mallocBytes allocation
     topSchema `at` _schemaPrivateData $ castStablePtrToPtr cleanupS
 
-    -- ── Top-level struct array ──────────────────────────────────────────────
     topArray <- mallocBytes arrowArraySize
     childAArr <- mallocArray ncols :: IO (Ptr (Ptr ArrowArray))
     zipWithM_ (pokeElemOff childAArr) [0 ..] childAPtrs
@@ -411,10 +401,7 @@ dataframeToArrow df = do
 
     return (topSchema, topArray)
 
-{- | Import an Arrow RecordBatch from raw C Data Interface pointers.
-  Copies all data into GC-managed Haskell vectors, then calls the
-  producer's release callbacks.
--}
+-- | Import an Arrow RecordBatch from raw C Data Interface pointers.
 arrowToDataframe :: Ptr () -> Ptr () -> IO DataFrame
 arrowToDataframe rawSchema rawArray = do
     let schemaPtr = castPtr rawSchema :: Ptr ArrowSchema

@@ -66,13 +66,7 @@ import qualified Data.Vector.Unboxed as VU
 import Data.Word (Word8)
 import Test.HUnit
 
-------------------------------------------------------------------------
--- Shared fixtures
-------------------------------------------------------------------------
-
-{- | Build a 'TargetInfo' or fail loudly; the test fixtures always satisfy
-'mkTargetInfo', so a 'Nothing' here is a broken test, not a runtime case.
--}
+-- | Build a TargetInfo or fail loudly; fixtures always satisfy mkTargetInfo.
 requireTargetInfo :: T.Text -> D.DataFrame -> TargetInfo T.Text
 requireTargetInfo target df = case mkTargetInfo @T.Text target df of
     Just ti -> ti
@@ -103,10 +97,6 @@ splitCond = F.col @Double "x" .<= F.lit (2.5 :: Double)
 carePoints3 :: [CarePoint]
 carePoints3 =
     identifyCarePoints @T.Text "label" fixtureDF allIndices leftTree rightTree
-
-------------------------------------------------------------------------
--- Unit tests: identifyCarePoints
-------------------------------------------------------------------------
 
 carePointsBothWrong :: Test
 carePointsBothWrong =
@@ -162,10 +152,6 @@ carePointsBothCorrect = TestCase $ do
                 (Leaf "A")
     assertEqual "no care points when both subtrees agree" 0 (length cps)
 
-------------------------------------------------------------------------
--- Unit tests: majorityValueFromIndices
-------------------------------------------------------------------------
-
 majorityVoteTest :: Test
 majorityVoteTest = TestCase $ do
     let df =
@@ -187,10 +173,6 @@ majorityVoteSubset = TestCase $ do
                 ]
         result = majorityValueFromIndices @T.Text "label" df (V.fromList [0, 1, 3])
     assertEqual "majority from subset [0,1,3] is cat" "cat" result
-
-------------------------------------------------------------------------
--- Unit tests: computeTreeLoss
-------------------------------------------------------------------------
 
 computeLossZero :: Test
 computeLossZero = TestCase $ do
@@ -214,10 +196,6 @@ computeLossHalf = TestCase $ do
         loss = computeTreeLoss @T.Text "label" df (V.fromList [0, 1, 2, 3]) constTree
     assertEqual "constant leaf misclassifies half of balanced data" 0.5 loss
 
-------------------------------------------------------------------------
--- Unit tests: partitionIndices
-------------------------------------------------------------------------
-
 partitionDisjoint :: Test
 partitionDisjoint = TestCase $ do
     let (lft, rgt) = partitionIndices splitCond fixtureDF allIndices
@@ -235,10 +213,6 @@ partitionUnion = TestCase $ do
         [0, 1, 2, 3]
         combined
 
-------------------------------------------------------------------------
--- Unit tests: countCarePointErrors
-------------------------------------------------------------------------
-
 countErrorsAllCorrect :: Test
 countErrorsAllCorrect = TestCase $ do
     let cps = [CarePoint 0 GoLeft, CarePoint 1 GoRight]
@@ -252,10 +226,6 @@ countErrorsAllWrong = TestCase $ do
         cond = F.col @Double "x" .> F.lit (1.5 :: Double)
         errs = countCarePointErrors cond fixtureDF cps
     assertEqual "reversed condition misroutes all care points" 2 errs
-
-------------------------------------------------------------------------
--- Unit tests: predictWithTree
-------------------------------------------------------------------------
 
 predictLeaf :: Test
 predictLeaf =
@@ -276,10 +246,6 @@ predictBranch = TestCase $ do
         "idx 3 (x=4.0 > 2.5) routes right -> B"
         "B"
         (predictWithTree @T.Text "label" fixtureDF 3 stump)
-
-------------------------------------------------------------------------
--- Integration tests
-------------------------------------------------------------------------
 
 -- 20-row, linearly separable: x in [1..10] -> "pos", x in [11..20] -> "neg"
 sepDF :: D.DataFrame
@@ -497,8 +463,7 @@ taoLinearRecoversObliqueFromAxisAlignedPool = TestCase $ do
         0.0
         finalLoss
 
--- Cleanly separable nullable column (no actual nulls): Just 1..6 -> "pos",
--- Just 7..12 -> "neg". Exercises the nullable numeric path.
+-- Separable nullable column, no actual nulls: Just 1..6 pos, Just 7..12 neg.
 nullableSepDF :: D.DataFrame
 nullableSepDF =
     D.fromColumns
@@ -538,7 +503,7 @@ numericColsNullableDoubleTest = TestCase $ do
         "numericCols finds NMaybeDouble for DI.fromVector (Maybe Double)"
         hasMD
 
--- numericCols picks up DI.fromVector (Maybe Int) as NMaybeDouble (via whenPresent).
+-- numericCols picks up DI.fromVector (Maybe Int) as NMaybeDouble.
 numericColsNullableIntTest :: Test
 numericColsNullableIntTest = TestCase $ do
     let df =
@@ -552,7 +517,7 @@ numericColsNullableIntTest = TestCase $ do
         hasMD = any (\case NMaybeDouble _ -> True; _ -> False) (numericCols df)
     assertBool "numericCols finds NMaybeDouble for DI.fromVector (Maybe Int)" hasMD
 
--- generateNumericConds is non-empty for a DF with an DI.fromVector (Maybe Double).
+-- generateNumericConds is non-empty for a nullable (Maybe Double) column.
 numericCondsNullableNonEmptyTest :: Test
 numericCondsNullableNonEmptyTest =
     TestCase $
@@ -560,7 +525,7 @@ numericCondsNullableNonEmptyTest =
             "generateNumericConds non-empty for DI.fromVector (Maybe Double)"
             (not (null (generateNumericConds defaultTreeConfig nullableSepDF)))
 
--- Null values evaluate to False for threshold conditions (null rows route right).
+-- Null values fail threshold conditions, so null rows route right.
 nullValueRoutesFalseTest :: Test
 nullValueRoutesFalseTest = TestCase $ do
     let df =
@@ -577,7 +542,7 @@ nullValueRoutesFalseTest = TestCase $ do
     assertBool "null row (idx 0) routes to right (false) partition" (0 `V.elem` rgt)
     assertBool "Just 5.0 <= 6.0 routes to left (true) partition" (1 `V.elem` lft)
 
--- Nullable feature (no actual nulls) achieves zero loss on cleanly separable data.
+-- Nullable feature with no actual nulls reaches zero loss on separable data.
 nullableFitZeroLossTest :: Test
 nullableFitZeroLossTest = TestCase $ do
     let cfg = defaultTreeConfig{taoIterations = 5, expressionPairs = 4, minLeafSize = 1}
@@ -603,8 +568,7 @@ nullableFitWithNullsNoCrashTest = TestCase $ do
         "loss is in [0,1] with null values present"
         (loss >= 0.0 && loss <= 1.0)
 
--- numericExprsWithTerms produces cross-column combinations when one col is
--- DI.fromVector (Maybe Double) and another is a plain UnboxedColumn Double.
+-- numericExprsWithTerms crosses a Maybe Double column with a plain Double one.
 numericExprsWithTermsMixedTest :: Test
 numericExprsWithTermsMixedTest = TestCase $ do
     let df =
@@ -697,8 +661,7 @@ arrayFromBytes ws = A.run $ do
     zipWithM_ (A.unsafeWrite m) [0 ..] ws
     pure m
 
--- G5: nullable PackedText columns (what CSV ingest emits for nullable text)
--- get a missingness candidate; non-nullable PackedText does not.
+-- G5: nullable PackedText columns get a missingness candidate; others do not.
 packedMissingnessTest :: Test
 packedMissingnessTest = TestCase $ do
     let df =
@@ -1023,8 +986,7 @@ taoLinearDeterministic = TestCase $ do
         r2 = fitDecisionTree @T.Text cfg (Col "label") sepDF
     assertBool "fitDecisionTree is deterministic on the same input" (eqExpr r1 r2)
 
--- D1: One care point — solver must not crash; integration should fall back
--- gracefully (via minCarePointsForLinear) and rely on the discrete path.
+-- D1: One care point; the solver must not crash and should fall back.
 taoLinearTinyCareSet :: Test
 taoLinearTinyCareSet = TestCase $ do
     let cfg =
@@ -1339,8 +1301,7 @@ threshNegNonLiteralRhs = TestCase $ do
         (F.and (cvExpr a) (cvExpr b))
         (cvExpr r)
 
--- Semantic-preservation spot check: the consolidated cvVec matches the
--- elementwise AND/OR of the inputs at every row of a synthetic DataFrame.
+-- The consolidated cvVec equals the elementwise AND/OR of the inputs.
 threshSemanticPreservation :: Test
 threshSemanticPreservation = TestCase $ do
     let a = materializeOrFail (F.col @Double "x" .>. F.lit (1.0 :: Double))
@@ -1358,12 +1319,7 @@ threshSemanticPreservation = TestCase $ do
         expectedOr
         (cvVec rOr)
 
-------------------------------------------------------------------------
--- Test list
-------------------------------------------------------------------------
-
--- Regression: on Int features the hyperplane used to be rebuilt over `Col c :: Expr Double`,
--- which cannot evaluate, so every oblique candidate was silently dropped.
+-- Regression: oblique candidates on Int features were silently dropped.
 obliqueOnIntColumns :: Test
 obliqueOnIntColumns = TestCase $ do
     let as = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 2, 4, 6, 8, 1, 3, 5, 7, 9] :: [Int]

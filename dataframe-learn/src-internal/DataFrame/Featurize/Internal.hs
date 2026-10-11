@@ -3,10 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Shared internal helpers used across the model fitters: turning a 'DataFrame'
-plus a target/feature 'Expr' into the numeric matrices the algorithms consume,
-plus common expression builders (affine score, arg-max/arg-min over scores).
--}
+-- | Shared helpers turning a DataFrame into the matrices the fitters consume.
 module DataFrame.Featurize.Internal (
     -- * Supervised extraction
     featureNames,
@@ -59,19 +56,13 @@ featureNames :: Expr a -> DataFrame -> [T.Text]
 featureNames (Col target) df = filter (/= target) (columnNames df)
 featureNames _ df = columnNames df
 
-{- | The named columns as a row-major @n×d@ matrix, paired with the names. Every
-column must already be stored as non-null 'Double'; a nullable ('Maybe Double')
-or non-'Double' column is a fit-time error rather than a silent coercion.
--}
+-- | The named columns as a row-major matrix, paired with the names.
 numericMatrix :: [T.Text] -> DataFrame -> (V.Vector T.Text, Matrix)
 numericMatrix names df = (V.fromList names, transposeM colMajor)
   where
     colMajor = V.fromList (map (`requireDoubleColumn` df) names)
 
-{- | Read a feature\/target column strictly as a non-null 'Double' vector. A
-nullable ('Maybe Double') column, or a column of any other type, is a fit-time
-error naming the column and pointing at the fix.
--}
+-- | Read a column strictly as a non-null Double vector.
 requireDoubleColumn :: T.Text -> DataFrame -> VU.Vector Double
 requireDoubleColumn name df = case getColumn name df of
     Nothing ->
@@ -131,9 +122,7 @@ nullableInputError name found =
             TypeErrorContext Double ()
         )
 
-{- | The target column as a non-null 'Double' vector. A nullable or non-'Double'
-target is a fit-time error, not a coercion.
--}
+-- | The target column as a non-null Double vector.
 targetDoubles :: Expr Double -> DataFrame -> VU.Vector Double
 targetDoubles (Col name) df = requireDoubleColumn name df
 targetDoubles expr df = case columnAsUnboxedVector expr df of
@@ -146,10 +135,7 @@ targetValues expr df = case columnAsVector expr df of
     Right v -> v
     Left e -> throw e
 
-{- | The extracted feature columns of an unsupervised fit, in the shapes the
-algorithms need: names, column-major vectors, the row-major matrix, and the
-@(n, d)@ dimensions.
--}
+-- | The extracted feature columns of an unsupervised fit, in several shapes.
 data Features = Features
     { ftNames :: ![T.Text]
     , ftCols :: ![VU.Vector Double]
@@ -182,9 +168,7 @@ materializeColumn df e = case columnAsDoubleVector e df of
     Right v -> v
     Left err -> throw err
 
-{- | An affine score @b + Σ wⱼ·colⱼ@ over named columns, dropping zero weights
-(the shared core of linear/logistic/SVM margins).
--}
+-- | An affine score over named columns, dropping zero weights.
 affineExpr :: Double -> [(Double, T.Text)] -> Expr Double
 affineExpr b terms =
     foldr
@@ -192,9 +176,7 @@ affineExpr b terms =
         (F.lit b)
         [F.lit w .*. (Col n :: Expr Double) | (w, n) <- terms, w /= 0]
 
-{- | The class whose score is greatest, as a nested-@If@ expression; ties go to
-the earlier class.
--}
+-- | The class whose score is greatest, as a nested If; ties go earlier.
 argMaxExpr :: (Columnable a) => [(a, Expr Double)] -> Expr a
 argMaxExpr = argExtreme (.>=.)
 

@@ -5,11 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- |
-Tests for the Vega-Lite web plotting backend: field-type inference, the
-box-plot mark fix, NaN handling, escaping, computed-expression encodings, and
-typed/untyped spec parity.
--}
+-- | Tests for the Vega-Lite plotting backend, including typed parity.
 module Plotting (tests) where
 
 import Data.Aeson (Value (Array, Null, Object, String), toJSON)
@@ -30,13 +26,8 @@ import qualified DataFrame.Display.Web.Chart as C
 import qualified DataFrame.Display.Web.Chart.Typed as CT
 import qualified DataFrame.Display.Web.Plot as P
 
--- Unqualified so the record update below has a single 'includeZero' field
--- label in scope; GHC < 9.8 can't disambiguate the qualified duplicate field.
+-- Unqualified: GHC < 9.8 can't disambiguate the qualified duplicate field.
 import DataFrame.Display.Web.Plot (Scatter (includeZero))
-
--- ---------------------------------------------------------------------------
--- Fixtures + JSON helpers
--- ---------------------------------------------------------------------------
 
 numFrame :: D.DataFrame
 numFrame =
@@ -63,10 +54,6 @@ dataValues :: Value -> V.Vector Value
 dataValues spec = case jpath ["data", "values"] spec of
     Just (Array xs) -> xs
     _ -> V.empty
-
--- ---------------------------------------------------------------------------
--- Test cases
--- ---------------------------------------------------------------------------
 
 fieldTypeInference :: Test
 fieldTypeInference = TestCase $ do

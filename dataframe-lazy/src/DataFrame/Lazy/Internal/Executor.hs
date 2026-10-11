@@ -8,10 +8,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Pull-based (iterator) execution engine: each operator returns a 'Stream'
-yielding the next 'DataFrame' batch or 'Nothing' at end. Bounded local sources
-materialise into eager whole-frame ops; unbounded sources stream in constant memory.
--}
+-- | Pull-based execution engine where each operator returns a 'Stream'.
 module DataFrame.Lazy.Internal.Executor (
     CsvReader,
     execute,
@@ -66,19 +63,10 @@ import System.IO (IOMode (ReadMode), withFile)
 import System.IO.Temp (emptySystemTempFile)
 import Type.Reflection (typeRep)
 
--- ---------------------------------------------------------------------------
--- Stream abstraction
--- ---------------------------------------------------------------------------
-
-{- | A pull-based stream: each call to the action yields the next batch or
-'Nothing' when the stream is exhausted.  State is captured by the closure.
--}
+-- | A pull-based stream whose action yields the next batch or 'Nothing'.
 newtype Stream = Stream {pullBatch :: IO (Maybe D.DataFrame)}
 
-{- | Wrap an already-computed 'DataFrame' as a single-batch stream: the first
-pull yields it, every subsequent pull yields 'Nothing'.  Used by blocking
-operators that materialise their whole result up front.
--}
+-- | Wrap a computed 'DataFrame' as a single-batch stream.
 materialized :: D.DataFrame -> IO Stream
 materialized df = do
     ref <- newIORef (Just df)
@@ -87,10 +75,7 @@ materialized df = do
         writeIORef ref Nothing
         return mb
 
-{- | Drain all batches from a stream and concatenate them into one DataFrame.
-Columns are concatenated in a single multi-way pass (O(rows)) rather than a
-left-fold of @acc <> batch@ that would recopy the accumulator on every step.
--}
+-- | Drain a stream and concatenate its batches into one DataFrame.
 collectStream :: Stream -> IO D.DataFrame
 collectStream stream = go []
   where
@@ -110,10 +95,7 @@ concatBatches batches@(first : _) =
         | name <- D.columnNames first
         ]
 
-{- | True when every scan leaf is a finite local source, so the whole result can
-be materialised and routed through the eager whole-frame ops. False for
-online/streaming sources, which keep the constant-memory streaming paths.
--}
+-- | True when every scan leaf is a finite local source.
 isBounded :: PhysicalPlan -> Bool
 isBounded (PhysicalScan (CsvSource{}) _) = True
 isBounded (PhysicalScan (CsvSourceStreaming{}) _) = False
@@ -130,15 +112,11 @@ isBounded (PhysicalSourceDF _ _) = True
 isBounded (PhysicalHashJoin _ _ _ l r) = isBounded l && isBounded r
 isBounded (PhysicalSortMergeJoin _ _ _ l r) = isBounded l && isBounded r
 
-{- | Execute a physical plan, returning the complete result as a single
-'DataFrame'.
--}
+-- | Execute a physical plan into a single complete 'DataFrame'.
 execute :: PhysicalPlan -> IO D.DataFrame
 execute plan = buildStream plan >>= collectStream
 
-{- | Fold a function over every batch produced by a physical plan.
-The fold is strict in the accumulator; each batch is discarded after folding.
--}
+-- | Strictly fold a function over every batch a physical plan produces.
 foldBatches ::
     (b -> D.DataFrame -> IO b) -> b -> PhysicalPlan -> IO b
 foldBatches f seed plan = do
@@ -304,9 +282,7 @@ buildStream (PhysicalSortMergeJoin jt leftKey rightKey leftPlan rightPlan) = do
     rightDf <- execute rightPlan
     materialized (performJoin jt leftKey rightKey leftDf rightDf)
 
-{- | One worker's loop: pull batches off the shared child stream until
-exhausted, building up a per-worker accumulator.
--}
+-- | One worker's loop: pull shared batches into a per-worker accumulator.
 workerLoop ::
     Stream ->
     [T.Text] ->
@@ -364,10 +340,7 @@ isStreamableAgg (E.SomeExpr (E.Agg (E.FoldAgg _ (Just _) (_ :: a -> b -> a)) _))
 isStreamableAgg (E.SomeExpr (E.Agg (E.MergeAgg{}) _)) = True
 isStreamableAgg _ = False
 
-{- | Build the (partial, merge, finalizer) plan for a list of streamable
-aggregates: @partialAggs@ run per batch, @mergeAggs@ combine two partial
-results, and @finalizer@ post-processes (for 'MergeAgg' acc≠output types).
--}
+-- | Build the (partial, merge, finalizer) plan for streamable aggregates.
 buildAggPlan ::
     [(T.Text, E.SomeExpr)] ->
     ( [(T.Text, E.SomeExpr)]
@@ -461,10 +434,7 @@ buildAggPlan aggs = foldl combine ([], [], id) (map processAgg aggs)
                     )
         _ -> ([(name, ue)], [(name, ue)], id)
 
-{- | Scan a Parquet file, directory, or glob.  Each file becomes one batch.
-Column projection and predicate pushdown are forwarded to 'readParquetWithOpts'
-via 'ParquetReadOptions'.
--}
+-- | Scan a Parquet file, directory or glob; each file becomes one batch.
 executeParquetScan :: FilePath -> ScanConfig -> IO Stream
 executeParquetScan path cfg = do
     isDir <- doesDirectoryExist path
@@ -487,17 +457,12 @@ executeParquetScan path cfg = do
                 writeIORef ref rest
                 Just <$> Parquet.readParquetWithOpts opts f
 
-{- | The options a CSV scan reads with: the plan's schema supplies the column
-types and the projection, the source supplies the separator.
--}
+-- | Read options for a CSV scan: schema gives types, source the separator.
 scanReadOptions :: Char -> ScanConfig -> ReadOptions
 scanReadOptions sep cfg =
     (schemaReadOptions (scanSchema cfg)){columnSeparator = sep}
 
-{- | SIMD-parallel CSV scan: the file is split at newline boundaries into one
-slice per capability, parsed concurrently, sliced into batches, and fed through
-a bounded queue. Pushdown predicates are applied per batch by the consumer.
--}
+-- | Parallel CSV scan splitting the file at newlines into slices.
 executeCsvScan :: FilePath -> Char -> CsvReader -> ScanConfig -> IO Stream
 executeCsvScan path sep reader cfg = do
     nCaps <- getNumCapabilities
@@ -599,12 +564,7 @@ executeCsvScanStreamingWith path sep reader cfg = do
     stripUtf8Bom bytes =
         Data.Maybe.fromMaybe bytes (BS.stripPrefix "\xEF\xBB\xBF" bytes)
 
-{- | Find the last record-ending LF in a CSV buffer. The common unquoted case
-uses bytestring's optimized reverse search; only buffers containing a quote
-need the scalar RFC 4180 quote-state scan. The buffer always starts at a record
-boundary, so rescanning it after an incomplete quoted record is sufficient to
-handle a doubled or closing quote split across read windows.
--}
+-- | Find the last record-ending LF in a CSV buffer.
 lastCompleteRecordNewline :: BS.ByteString -> Maybe Int
 lastCompleteRecordNewline bytes
     | not (BS.elem quote bytes) = BS.elemIndexEnd nl bytes
@@ -612,9 +572,7 @@ lastCompleteRecordNewline bytes
   where
     !len = BS.length bytes
 
-    -- Every read stays inside the branch that has already bounds-checked its
-    -- offset: a guard binding shared across alternatives can be forced on the
-    -- terminating @i == len@ iteration, indexing one byte past the buffer.
+    -- Each read stays inside its bounds-checked branch (no shared guard).
     go !i !inside !lastNewline
         | i >= len = lastNewline
         | otherwise = case BSU.unsafeIndex bytes i of
@@ -643,10 +601,7 @@ sliceIntoBatches n df =
         starts = [0, n .. total - 1]
      in [Sub.range (s, min (s + n) total) df | s <- starts]
 
-{- | Split a CSV file at newline boundaries into @n@ temp files, each with the
-original header plus a body slice. Returns the paths (caller removes them); the
-per-file reader mmap's each, giving OS-paged reads instead of one monolithic read.
--}
+-- | Split a CSV at newline boundaries into temp files, each with the header.
 splitCsvAtNewlines :: Int -> FilePath -> IO [FilePath]
 splitCsvAtNewlines n path = do
     bs <- BS.readFile path
@@ -673,10 +628,7 @@ splitCsvAtNewlines n path = do
             Just i -> off + i + 1
             Nothing -> BS.length body
 
-{- | Route a join to 'Operations.Join', renaming the right key when the names
-differ. 'Join.join' keeps its first argument, so LEFT/RIGHT must pass 'leftDf'
-first to retain the intended side; symmetric INNER/FULL_OUTER pass @rightDf@ first.
--}
+-- | Route a join to 'Operations.Join', renaming the right key if needed.
 performJoin ::
     Join.JoinType -> T.Text -> T.Text -> D.DataFrame -> D.DataFrame -> D.DataFrame
 performJoin jt leftKey rightKey leftDf rightDf =
@@ -689,10 +641,7 @@ performJoin jt leftKey rightKey leftDf rightDf =
         | leftKey == rightKey = rightDf
         | otherwise = Core.rename rightKey leftKey rightDf
 
-{- | Convert a plan-level @(column, direction)@ into a Permutation 'SortOrder',
-emitting @E.Col@ at the materialised column's element type so 'Perm.sortBy'
-dispatches its comparator correctly; unknown/non-'Ord' types fall back to 'T.Text'.
--}
+-- | Convert a plan-level (column, direction) into a Permutation 'SortOrder'.
 toPermSortOrder :: D.DataFrame -> (T.Text, SortOrder) -> Perm.SortOrder
 toPermSortOrder df (col, dir) =
     case M.lookup col (D.columnIndices df) of

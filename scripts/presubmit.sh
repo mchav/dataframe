@@ -9,6 +9,7 @@ cd "$(dirname "$0")/.."
 # ./scripts/format.sh --fix to apply fixes locally.
 ./scripts/format.sh
 ./scripts/lint.sh
+./scripts/lint-comments.sh
 
 # Default cabal.project lists every satellite (dataframe-core, dataframe-parsing,
 # dataframe-operations, dataframe-csv, dataframe-json, dataframe-parquet,

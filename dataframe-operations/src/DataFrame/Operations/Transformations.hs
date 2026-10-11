@@ -75,7 +75,7 @@ apply f columnName d = case safeApply f columnName d of
     Left exception -> throw exception
     Right df -> df
 
--- | O(k) Safe version of the apply function. Returns (instead of throwing) the error.
+-- | O(k) Safe version of 'apply'. Returns the error instead of throwing.
 safeApply ::
     forall b c.
     (Columnable b, Columnable c) =>
@@ -93,9 +93,7 @@ safeApply f columnName d = case getColumn columnName d of
         column' <- mapColumn f column
         pure $ insertColumn columnName column' d
 
-{- | O(k) Apply a function to an expression in a dataframe and
-add the result into `alias` column.
--}
+-- | O(k) Derive a new column named alias from an expression.
 derive :: forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> DataFrame
 derive name expr df = case interpret @a df (normalize expr) of
     Left e -> throw e
@@ -104,14 +102,7 @@ derive name expr df = case interpret @a df (normalize expr) of
             { derivingExpressions = M.insert name (SomeExpr expr) (derivingExpressions df)
             }
 
-{- | O(k) Apply a function to an expression in a dataframe and
-add the result into `alias` column but
-
-==== __Examples__
-
->>> (z, df') = deriveWithExpr "z" (F.col @Int "x" + F.col "y") df
->>> filterWhere (z .>= 50)
--}
+-- | O(k) Like 'derive' but also returns a reference to the new column.
 deriveWithExpr ::
     forall a. (Columnable a) => T.Text -> Expr a -> DataFrame -> (Expr a, DataFrame)
 deriveWithExpr name expr df = case interpret @a df (normalize expr) of
@@ -166,11 +157,7 @@ applyDouble ::
     DataFrame
 applyDouble = apply
 
-{- | O(k * n) Apply a function to a column only if there is another column
-value that matches the given criterion.
-
-> applyWhere (<20) "Age" (const "Gen-Z") "Generation" df
--}
+-- | O(k * n) Apply a function to a column where another column matches.
 applyWhere ::
     forall a b.
     (Columnable a, Columnable b) =>
@@ -223,9 +210,7 @@ applyAtIndex i f columnName df = case getColumn columnName df of
         Left e -> throw e
         Right column' -> insertColumn columnName column' df
 
-{- | Core impute implementation for nullable columns. A column with no null
-bitmap cannot hold a missing value, so imputing it is a mistake, not a no-op.
--}
+-- | Core impute for nullable columns; a column with no nulls is an error.
 imputeCore ::
     forall b.
     (Columnable b) =>
@@ -246,9 +231,7 @@ imputeCore (Col columnName) value df = case getColumn columnName df of
             (nonNullableColumnError columnName ("Maybe " ++ show (typeRep @b)) col)
 imputeCore expr _ _ = throw (NonColumnReferenceException (T.pack (show expr)))
 
-{- | 'impute' was handed a column that carries no null bitmap, so there is
-nothing it could replace.
--}
+-- | 'impute' was handed a column with no null bitmap, so nothing to replace.
 nonNullableColumnError :: T.Text -> String -> Column -> DataFrameException
 nonNullableColumnError columnName wanted col =
     TypeMismatchException @() @()
@@ -284,9 +267,7 @@ instance
     runImpute = errorWithoutStackTrace "impute: unreachable"
     runImputeWith = errorWithoutStackTrace "impute: unreachable"
 
-{- | Replace all instances of `Nothing` in a column with the given value.
-Throws when the column carries no nulls to replace.
--}
+-- | Replace all instances of Nothing in a column with the given value.
 impute ::
     forall a.
     (ImputeOp a) =>

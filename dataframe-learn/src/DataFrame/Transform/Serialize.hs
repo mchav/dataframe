@@ -1,13 +1,4 @@
-{- | Persist and reload a fitted 'Transform'.
-
-A 'Transform' is just an ordered list of named output expressions, so it
-serializes through the same JSON wire format as any pipeline (see
-"DataFrame.Expr.Serialize"). Save a fitted preprocessing/feature transform in one
-process and reload it in another with 'applyTransform' to run inference:
-
-> Right t <- loadTransformFromFile "scaler.json"
-> let scored = applyTransform t newData
--}
+-- | Persist and reload a fitted Transform.
 module DataFrame.Transform.Serialize (
     encodeTransform,
     decodeTransform,

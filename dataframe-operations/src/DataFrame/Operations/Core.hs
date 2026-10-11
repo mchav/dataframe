@@ -98,94 +98,22 @@ import DataFrame.Internal.Row (Any, mkColumnFromRow)
 import Type.Reflection
 import Prelude hiding (null)
 
-{- | O(1) Get DataFrame dimensions i.e. (rows, columns)
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> df = D.fromColumns [("a", D.fromList [1..100]), ("b", D.fromList [1..100]), ("c", D.fromList [1..100])]
->>> D.dimensions df
-
-(100, 3)
-@
--}
+-- | O(1) Get DataFrame dimensions, i.e. (rows, columns).
 dimensions :: DataFrame -> (Int, Int)
 dimensions = dataframeDimensions
 {-# INLINE dimensions #-}
 
-{- | O(1) Get number of rows in a dataframe.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> df = D.fromColumns [("a", D.fromList [1..100]), ("b", D.fromList [1..100]), ("c", D.fromList [1..100])]
->>> D.nRows df
-100
-@
--}
+-- | O(1) Get the number of rows in a dataframe.
 nRows :: DataFrame -> Int
 nRows = fst . dataframeDimensions
 
-{- | O(1) Get number of columns in a dataframe.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> df = D.fromColumns [("a", D.fromList [1..100]), ("b", D.fromList [1..100]), ("c", D.fromList [1..100])]
->>> D.nColumns df
-3
-@
--}
+-- | O(1) Get the number of columns in a dataframe.
 nColumns :: DataFrame -> Int
 nColumns = snd . dataframeDimensions
 
-{- | O(k) Get column names of the DataFrame in order of insertion.
+-- 'columnNames' lives in "DataFrame.Internal.DataFrame" (re-exported).
 
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> df = D.fromColumns [("a", D.fromList [1..100]), ("b", D.fromList [1..100]), ("c", D.fromList [1..100])]
->>> D.columnNames df
-
-["a", "b", "c"]
-@
--}
-
--- 'columnNames' is now defined in "DataFrame.Internal.DataFrame" and
--- re-exported from "DataFrame" at the top level.
-
-{- | Adds a vector as a named column. Size mismatches are reconciled by making
-the shorter side nullable (`Maybe a`) and padding with `Nothing`.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> import qualified Data.Vector as V
->>> D.insertVector "numbers" (V.fromList [(1 :: Int)..10]) D.empty
-
---------
- numbers
---------
-   Int
---------
- 1
- 2
- 3
- 4
- 5
- 6
- 7
- 8
- 9
- 10
-
-@
--}
+-- | Add a vector as a named column; size mismatches pad with Nothing.
 insertVector ::
     forall a.
     (Columnable a) =>
@@ -199,34 +127,7 @@ insertVector ::
 insertVector name xs = insertColumn name (fromVector xs)
 {-# INLINE insertVector #-}
 
-{- | Adds a foldable collection as a named column. Size mismatches are reconciled by
-making the shorter side nullable (`Maybe a`) and padding with `Nothing`.
-Do not pass infinite collections: they are fully forced.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> D.insert "numbers" [(1 :: Int)..10] D.empty
-
---------
- numbers
---------
-   Int
---------
- 1
- 2
- 3
- 4
- 5
- 6
- 7
- 8
- 9
- 10
-
-@
--}
+-- | Add a foldable as a named column; do not pass infinite collections.
 insert ::
     forall a t.
     (Columnable a, Foldable t) =>
@@ -240,34 +141,7 @@ insert ::
 insert name xs = insertColumn name (fromList (Fold.foldr' (:) [] xs))
 {-# INLINE insert #-}
 
-{- | Adds a vector to the dataframe and pads it with a default value if it has less elements than the number of rows.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified Data.Vector as V
->>> import qualified DataFrame as D
->>> df = D.fromColumns [("x", D.fromList [(1 :: Int)..10])]
->>> D.insertVectorWithDefault 0 "numbers" (V.fromList [(1 :: Int),2,3]) df
-
--------------
- x  | numbers
-----|--------
-Int |   Int
-----|--------
-1   | 1
-2   | 2
-3   | 3
-4   | 0
-5   | 0
-6   | 0
-7   | 0
-8   | 0
-9   | 0
-10  | 0
-
-@
--}
+-- | Add a vector, padding with a default if it has fewer elements than rows.
 insertVectorWithDefault ::
     forall a.
     (Columnable a) =>
@@ -285,33 +159,7 @@ insertVectorWithDefault defaultValue name xs d =
         values = xs V.++ V.replicate (rows - V.length xs) defaultValue
      in insertColumn name (fromVector values) d
 
-{- | Adds a list to the dataframe and pads it with a default value if it has less elements than the number of rows.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> df = D.fromColumns [("x", D.fromList [(1 :: Int)..10])]
->>> D.insertWithDefault 0 "numbers" [(1 :: Int),2,3] df
-
--------------
- x  | numbers
-----|--------
-Int |   Int
-----|--------
-1   | 1
-2   | 2
-3   | 3
-4   | 0
-5   | 0
-6   | 0
-7   | 0
-8   | 0
-9   | 0
-10  | 0
-
-@
--}
+-- | Add a list, padding with a default if it has fewer elements than rows.
 insertWithDefault ::
     forall a t.
     (Columnable a, Foldable t) =>
@@ -330,9 +178,7 @@ insertWithDefault defaultValue name xs d =
         values = xs' ++ replicate (rows - length xs') defaultValue
      in insertColumn name (fromList values) d
 
-{- | /O(n)/ Like 'insertVector' but takes an already-unboxed vector,
-skipping the boxed-to-unboxed conversion 'insertVector' would do for numbers.
--}
+-- | /O(n)/ Like 'insertVector' but takes an already-unboxed vector.
 insertUnboxedVector ::
     forall a.
     (Columnable a, VU.Unbox a) =>
@@ -345,62 +191,9 @@ insertUnboxedVector ::
     DataFrame
 insertUnboxedVector name xs = insertColumn name (UnboxedColumn Nothing xs)
 
-{- | /O(n)/ Add a column to the dataframe.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> D.insertColumn "numbers" (D.fromList [(1 :: Int)..10]) D.empty
-
---------
- numbers
---------
-   Int
---------
- 1
- 2
- 3
- 4
- 5
- 6
- 7
- 8
- 9
- 10
-
-@
--}
-
 -- 'insertColumn' is now defined in "DataFrame.Internal.DataFrame".
 
-{- | /O(n)/ Clones a column and places it under a new name in the dataframe.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified Data.Vector as V
->>> df = insertVector "numbers" (V.fromList [1..10]) D.empty
->>> D.cloneColumn "numbers" "others" df
-
------------------
- numbers | others
----------|-------
-   Int   |  Int
----------|-------
- 1       | 1
- 2       | 2
- 3       | 3
- 4       | 4
- 5       | 5
- 6       | 6
- 7       | 7
- 8       | 8
- 9       | 9
- 10      | 10
-
-@
--}
+-- | /O(n)/ Clone a column and place it under a new name.
 cloneColumn :: T.Text -> T.Text -> DataFrame -> DataFrame
 cloneColumn original new df
     | null df = throw (EmptyDataSetException "cloneColumn")
@@ -412,83 +205,11 @@ cloneColumn original new df
             column <- getColumn original df
             return $ insertColumn new column df
 
-{- | /O(n)/ Renames a single column.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> import qualified Data.Vector as V
->>> df = insertVector "numbers" (V.fromList [1..10]) D.empty
->>> D.rename "numbers" "others" df
-
--------
- others
--------
-  Int
--------
- 1
- 2
- 3
- 4
- 5
- 6
- 7
- 8
- 9
- 10
-
-@
--}
+-- | /O(n)/ Rename a single column.
 rename :: T.Text -> T.Text -> DataFrame -> DataFrame
 rename orig new df = either throw id (renameSafe orig new df)
 
-{- | /O(n)/ Renames many columns.
-
-==== __Example__
-@
->>> :set -XOverloadedStrings
->>> import qualified DataFrame as D
->>> import qualified Data.Vector as V
->>> df = D.insertVector "others" (V.fromList [11..20]) (D.insertVector "numbers" (V.fromList [1..10]) D.empty)
->>> df
-
------------------
- numbers | others
----------|-------
-   Int   |  Int
----------|-------
- 1       | 11
- 2       | 12
- 3       | 13
- 4       | 14
- 5       | 15
- 6       | 16
- 7       | 17
- 8       | 18
- 9       | 19
- 10      | 20
-
->>> D.renameMany [("numbers", "first_10"), ("others", "next_10")] df
-
--------------------
- first_10 | next_10
-----------|--------
-   Int    |   Int
-----------|--------
- 1        | 11
- 2        | 12
- 3        | 13
- 4        | 14
- 5        | 15
- 6        | 16
- 7        | 17
- 8        | 18
- 9        | 19
- 10       | 20
-
-@
--}
+-- | /O(n)/ Rename many columns.
 renameMany :: [(T.Text, T.Text)] -> DataFrame -> DataFrame
 renameMany = fold (uncurry rename)
 
@@ -511,24 +232,7 @@ data ColumnInfo = ColumnInfo
     , typeOfColumn :: !T.Text
     }
 
-{- | O(n * k ^ 2) Returns the number of non-null columns in the dataframe and the type associated with each column.
-
-==== __Example__
-@
->>> import qualified Data.Vector as V
->>> df = D.insertVector "others" (V.fromList [11..20]) (D.insertVector "numbers" (V.fromList [1..10]) D.empty)
->>> D.describeColumns df
-
---------------------------------------------------------
- Column Name | # Non-null Values | # Null Values | Type
--------------|-------------------|---------------|-----
-    Text     |        Int        |      Int      | Text
--------------|-------------------|---------------|-----
- others      | 10                | 0             | Int
- numbers     | 10                | 0             | Int
-
-@
--}
+-- | O(n * k ^ 2) Count non-null values and the type of each column.
 describeColumns :: DataFrame -> DataFrame
 describeColumns df =
     empty
@@ -590,81 +294,13 @@ nulls (UnboxedColumn (Just bm) xs) =
 nulls c@(PackedText _ _) = nulls (materializePacked c)
 nulls _ = 0
 
-{- | Creates a dataframe from a list of tuples with name and column.
-
-==== __Example__
-@
->>> df = D.fromColumns [("numbers", D.fromList [1..10]), ("others", D.fromList [11..20])]
->>> df
------------------
- numbers | others
----------|-------
-   Int   |  Int
----------|-------
- 1       | 11
- 2       | 12
- 3       | 13
- 4       | 14
- 5       | 15
- 6       | 16
- 7       | 17
- 8       | 18
- 9       | 19
- 10      | 20
-
-@
--}
-
 -- 'fromColumns' is now defined in "DataFrame.Internal.DataFrame".
 
-{- | Create a dataframe from a list of columns. The column names are "0", "1"... etc.
-Useful for quick exploration but you should probably always rename the columns after
-or drop the ones you don't want.
-
-==== __Example__
-@
->>> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
->>> df
------------------
-  0  |  1
------|----
- Int | Int
------|----
- 1   | 11
- 2   | 12
- 3   | 13
- 4   | 14
- 5   | 15
- 6   | 16
- 7   | 17
- 8   | 18
- 9   | 19
- 10  | 20
-
-@
--}
+-- | Create a dataframe from a list of columns named "0", "1", and so on.
 fromUnnamedColumns :: [Column] -> DataFrame
 fromUnnamedColumns = fromColumns . zip (map (T.pack . show) [(0 :: Int) ..])
 
-{- | Create a dataframe from a list of column names and rows.
-
-==== __Example__
-@
->>> df = D.fromRows ["A", "B"] [[D.toAny 1, D.toAny 11], [D.toAny 2, D.toAny 12], [D.toAny 3, D.toAny 13]]
-
->>> df
-
-----------
-  A  |  B
------|----
- Int | Int
------|----
- 1   | 11
- 2   | 12
- 3   | 13
-
-@
--}
+-- | Create a dataframe from a list of column names and rows.
 fromRows :: [T.Text] -> [[Any]] -> DataFrame
 fromRows names rows =
     L.foldl'
@@ -672,18 +308,7 @@ fromRows names rows =
         empty
         (zip [0 ..] names)
 
-{- | O (k * n) Counts the occurences of each value in a given column.
-
-==== __Example__
-@
->>> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
-
->>> D.valueCounts @Int "0" df
-
-[(1,1),(2,1),(3,1),(4,1),(5,1),(6,1),(7,1),(8,1),(9,1),(10,1)]
-
-@
--}
+-- | O (k * n) Count the occurrences of each value in a given column.
 valueCounts ::
     forall a. (Ord a, Columnable a) => Expr a -> DataFrame -> [(a, Int)]
 valueCounts expr df
@@ -696,18 +321,7 @@ valueCounts expr df
              in
                 M.toAscList column
 
-{- | O (k * n) Shows the proportions of each value in a given column.
-
-==== __Example__
-@
->>> df = D.fromUnnamedColumns [D.fromList [1..10], D.fromList [11..20]]
-
->>> D.valueCounts @Int "0" df
-
-[(1,0.1),(2,0.1),(3,0.1),(4,0.1),(5,0.1),(6,0.1),(7,0.1),(8,0.1),(9,0.1),(10,0.1)]
-
-@
--}
+-- | O (k * n) Show the proportion of each value in a given column.
 valueProportions ::
     forall a. (Ord a, Columnable a) => Expr a -> DataFrame -> [(a, Double)]
 valueProportions expr df
@@ -723,50 +337,11 @@ valueProportions expr df
              in
                 map (fmap ((/ total) . fromIntegral)) counts
 
-{- | A left fold for dataframes that takes the dataframe as the last object.
-This makes it easier to chain operations.
-
-==== __Example__
-@
->>> df = D.fromColumns [("x", D.fromList [1..100]), ("y", D.fromList [11..110])]
->>> D.fold D.dropLast [1..5] df
-
----------
- x  |  y
-----|----
-Int | Int
-----|----
-1   | 11
-2   | 12
-3   | 13
-4   | 14
-5   | 15
-6   | 16
-7   | 17
-8   | 18
-9   | 19
-10  | 20
-11  | 21
-12  | 22
-13  | 23
-14  | 24
-15  | 25
-16  | 26
-17  | 27
-18  | 28
-19  | 29
-20  | 30
-
-Showing 20 rows out of 85
-
-@
--}
+-- | A left fold for dataframes that takes the dataframe as the last argument.
 fold :: (a -> DataFrame -> DataFrame) -> [a] -> DataFrame -> DataFrame
 fold f xs acc = L.foldl' (flip f) acc xs
 
-{- | The dataframe as a row-major matrix of floats, for handing data to ML systems.
-'Left' if any column cannot be converted to floats.
--}
+-- | The dataframe as a row-major float matrix, 'Left' if conversion fails.
 toFloatMatrix ::
     DataFrame -> Either DataFrameException (V.Vector (VU.Vector Float))
 toFloatMatrix df = case V.foldl'
@@ -780,9 +355,7 @@ toFloatMatrix df = case V.foldl'
                 (fst (dataframeDimensions df))
                 (\i -> VU.generate (V.length m) (\j -> (m VG.! j) VG.! i))
 
-{- | The dataframe as a row-major matrix of doubles, for handing data to ML systems.
-'Left' if any column cannot be converted to doubles.
--}
+-- | The dataframe as a row-major double matrix, 'Left' if conversion fails.
 toDoubleMatrix ::
     DataFrame -> Either DataFrameException (V.Vector (VU.Vector Double))
 toDoubleMatrix df = case V.foldl'
@@ -796,9 +369,7 @@ toDoubleMatrix df = case V.foldl'
                 (fst (dataframeDimensions df))
                 (\i -> VU.generate (V.length m) (\j -> (m VG.! j) VG.! i))
 
-{- | The dataframe as a row-major matrix of ints, for handing data to ML systems.
-'Left' if any column cannot be converted to ints.
--}
+-- | The dataframe as a row-major int matrix, 'Left' if conversion fails.
 toIntMatrix :: DataFrame -> Either DataFrameException (V.Vector (VU.Vector Int))
 toIntMatrix df = case V.foldl'
     (\acc c -> V.snoc <$> acc <*> toIntVector c)
@@ -821,18 +392,7 @@ withColumnName name (Left (TypeMismatchException ctx)) =
     orFallback Nothing = Just (T.unpack name)
 withColumnName _ result = result
 
-{- | Get a specific column as a vector.
-
-You must specify the type via type applications.
-
-==== __Examples__
-
->>> columnAsVector (F.col @Int "age") df
-Right [25, 30, 35, ...]
-
->>> columnAsVector (F.col @Text "name") df
-Right ["Alice", "Bob", "Charlie", ...]
--}
+-- | Get a specific column as a vector; the type comes from type application.
 columnAsVector ::
     forall a.
     (Columnable a) => Expr a -> DataFrame -> Either DataFrameException (V.Vector a)
@@ -848,9 +408,7 @@ columnAsVector expr df
             Left e -> throw e
             Right (TColumn col) -> toVector col
 
-{- | A column as an unboxed vector of 'Int' values.
-'Left' if the column cannot be converted to ints (non-numeric or out of range).
--}
+-- | A column as an unboxed vector of 'Int', 'Left' if not convertible.
 columnAsIntVector ::
     (Columnable a, Num a) =>
     Expr a -> DataFrame -> Either DataFrameException (VU.Vector Int)
@@ -863,9 +421,7 @@ columnAsIntVector expr df = case interpret df expr of
     Left e -> throw e
     Right (TColumn col) -> toIntVector col
 
-{- | A column as an unboxed vector of 'Double' values.
-'Left' if the column cannot be converted to doubles (e.g. non-numeric data).
--}
+-- | A column as an unboxed vector of 'Double', 'Left' if not convertible.
 columnAsDoubleVector ::
     (Columnable a, Num a) =>
     Expr a -> DataFrame -> Either DataFrameException (VU.Vector Double)
@@ -881,9 +437,7 @@ columnAsDoubleVector expr df = case interpret df expr of
     Left e -> throw e
     Right (TColumn col) -> toDoubleVector col
 
-{- | A column as an unboxed vector of 'Float' values.
-'Left' if the column cannot be converted to floats (e.g. non-numeric data).
--}
+-- | A column as an unboxed vector of 'Float', 'Left' if not convertible.
 columnAsFloatVector ::
     (Columnable a, Num a) =>
     Expr a -> DataFrame -> Either DataFrameException (VU.Vector Float)
@@ -919,29 +473,9 @@ columnAsUnboxedVector expr df = case interpret df expr of
     #-}
 {-# INLINE columnAsUnboxedVector #-}
 
-{- | Get a specific column as a list.
-
-You must specify the type via type applications.
-
-==== __Examples__
-
->>> columnAsList @Int "age" df
-[25, 30, 35, ...]
-
->>> columnAsList @Text "name" df
-["Alice", "Bob", "Charlie", ...]
-
-==== __Throws__
-
-* 'error' - if the column type doesn't match the requested type
--}
+-- | Get a specific column as a list; the type comes from type application.
 columnAsList :: forall a. (Columnable a) => Expr a -> DataFrame -> [a]
 columnAsList expr df = either throw V.toList (columnAsVector expr df)
-
-{- | Returns the provenance of all columns in the DataFrame as a list of
-@(name, expression)@ pairs. Derived columns show their expression;
-raw columns show an identity @col \@type name@ expression.
--}
 
 -- TODO: mchavinda - Expand out these expressions if possible.
 showDerivedExpressions :: DataFrame -> [NamedExpr]

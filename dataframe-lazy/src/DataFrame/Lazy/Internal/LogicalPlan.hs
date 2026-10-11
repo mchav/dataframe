@@ -30,9 +30,7 @@ instance Show DataSource where
 data SortOrder = Ascending | Descending
     deriving (Show, Eq, Ord)
 
-{- | Relational-algebra tree that represents what the query computes.
-No physical decisions (batch size, join strategy) are made here.
--}
+-- | Relational-algebra tree describing what the query computes.
 data LogicalPlan
     = -- | Read columns described by the schema from a source.
       Scan DataSource Schema

@@ -4,11 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Dictionary-encode a text (or factor) group key to dense @Int@ codes: each row
-gets a first-appearance code @0..card-1@ (NULL reserved) plus the cardinality.
-
-TODO: mchavinda - revise if this module is still necessary.
--}
+-- | Dictionary-encode a text group key to dense first-appearance Int codes.
 module DataFrame.Internal.Column.Encode (
     dictEncodeColumn,
     dictEncodeColumnUpTo,
@@ -44,24 +40,15 @@ import DataFrame.Internal.Data.PackedText (
     sliceEqBytes,
  )
 
-{- | Largest distinct-value count we will dictionary-encode. Above this the codes
-no longer index a reasonable direct accumulator and the encode pass is pure
-overhead, so the caller keeps the plain hash group-by.
--}
+-- | Largest distinct-value count we will dictionary-encode.
 dictMaxCardinality :: Int
 dictMaxCardinality = 1048576
 
-{- | Dictionary-encode a text-like column to dense first-appearance @Int@ codes,
-returning @Just (codes, cardinality)@ (a NULL row gets its own reserved code).
-'Nothing' for non-text columns or cardinality above 'dictMaxCardinality'.
--}
+-- | Dictionary-encode a text-like column to dense codes plus cardinality.
 dictEncodeColumn :: Column -> Maybe (VU.Vector Int, Int)
 dictEncodeColumn = dictEncodeColumnUpTo dictMaxCardinality
 
-{- | Dictionary-encode like 'dictEncodeColumn' but bail to 'Nothing' as soon as
-the distinct count would exceed @maxCard@, letting a low-cardinality probe avoid
-a full high-cardinality pass.
--}
+-- | Like 'dictEncodeColumn' but bails to 'Nothing' past @maxCard@ values.
 dictEncodeColumnUpTo :: Int -> Column -> Maybe (VU.Vector Int, Int)
 dictEncodeColumnUpTo maxCard (PackedText bm p) = encodePacked maxCard bm p
 dictEncodeColumnUpTo maxCard (BoxedColumn bm (v :: V.Vector a)) =
@@ -70,10 +57,7 @@ dictEncodeColumnUpTo maxCard (BoxedColumn bm (v :: V.Vector a)) =
         Nothing -> Nothing
 dictEncodeColumnUpTo _ _ = Nothing
 
-{- | Encode a packed-text column: hash each row's raw UTF-8 bytes (the grouping
-'mixBytes'), re-verify byte equality on collisions, assign dense codes in
-first-appearance order. A null row hashes 'nullSalt'.
--}
+-- | Encode a packed-text column by hashing raw UTF-8 bytes.
 encodePacked ::
     Int -> Maybe Bitmap -> PackedTextData -> Maybe (VU.Vector Int, Int)
 encodePacked maxCard bm p =
@@ -95,9 +79,7 @@ encodePacked maxCard bm p =
                 _ -> False
      in buildCodes maxCard n hashAt eqAt
 
-{- | Encode a boxed 'Data.Text.Text' column, mirroring 'encodePacked' but over
-boxed values (used when a user-built Text column is grouped).
--}
+-- | Encode a boxed 'Data.Text.Text' column, mirroring 'encodePacked'.
 encodeBoxedText ::
     Int -> Maybe Bitmap -> V.Vector T.Text -> Maybe (VU.Vector Int, Int)
 encodeBoxedText maxCard bm v =
@@ -114,10 +96,7 @@ encodeBoxedText maxCard bm v =
                 _ -> False
      in buildCodes maxCard n hashAt eqAt
 
-{- | The shared code-assignment loop: bucket every row through an open-addressing
-table on its precomputed hash, re-verify with @eqAt@ on a hit, assign dense
-first-appearance codes. Bails to 'Nothing' once the distinct count exceeds @maxCard@.
--}
+-- | The shared code-assignment loop over an open-addressing hash table.
 buildCodes ::
     Int -> Int -> (Int -> Int) -> (Int -> Int -> Bool) -> Maybe (VU.Vector Int, Int)
 buildCodes maxCard n hashAt eqAt

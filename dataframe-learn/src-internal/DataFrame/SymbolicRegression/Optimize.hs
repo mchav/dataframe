@@ -1,9 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 
-{- | Constant optimization for symbolic-regression candidates: finite-difference
-gradient descent with backtracking line search on the embedded constants. Pure
-and dependency-free; effective at the one-to-few constants a tree carries.
--}
+-- | Constant optimization for symbolic-regression candidates.
 module DataFrame.SymbolicRegression.Optimize (
     optimizeConstants,
     meanSquaredError,

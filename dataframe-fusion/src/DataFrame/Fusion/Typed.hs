@@ -7,9 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Typed DataFusion-backed query API. Mirrors 'DataFrame.Typed.Lazy' but runs
-on Rust-side DataFusion via FFI.
--}
+-- | Typed DataFusion-backed query API, mirroring 'DataFrame.Typed.Lazy'.
 module DataFrame.Fusion.Typed (
     -- * Carrier
     DataFrame,
@@ -72,16 +70,10 @@ import DataFrame.Typed.Freeze (unsafeFreeze)
 import DataFrame.Typed.Schema
 import DataFrame.Typed.Types
 
-{- | A query plan whose row schema is tracked at the type level. The
-underlying handle is owned by Rust-side DataFusion; Haskell holds a
-'ForeignPtr' that frees it on garbage collection.
--}
+-- | A query plan whose row schema is tracked at the type level.
 newtype DataFrame (cols :: [(Symbol, Type)]) = DF {unDataFrame :: PlanHandle}
 
-{- | Scan a CSV file. The schema comes from the @cols@ phantom via 'KnownSchema';
-the user does not pass it separately. DataFusion currently infers column types
-from the file, so the constraint is reserved for future wire-format derivation.
--}
+-- | Scan a CSV file whose schema comes from the @cols@ phantom.
 scanCsv ::
     forall cols.
     (KnownSchema cols) =>
@@ -131,10 +123,7 @@ select (DF plan) = do
             ph <- runPlanOp (F.df_plan_select pp cjson)
             return (DF ph)
 
-{- | Add a computed column, appended to the input schema (mirroring
-'DataFrame.Typed.Lazy.derive'). The expression is lowered to JSON and decoded
-into a DataFusion 'Expr' on the Rust side.
--}
+-- | Add a computed column appended to the input schema.
 derive ::
     forall name a cols.
     (KnownSymbol name, IC.Columnable a, AssertAbsent name cols) =>
@@ -166,10 +155,7 @@ groupBy ::
     Grouped keys cols
 groupBy (DF plan) = GD (symbolVals @keys) plan
 
-{- | Aggregate a grouped query. The first argument is a chain of 'AGG.as'
-entries composed with @(.)@; the empty composition (@id@) yields just the
-group keys.
--}
+-- | Aggregate a grouped query from a chain of 'AGG.as' entries.
 aggregate ::
     forall keys cols aggs.
     (TAgg keys cols '[] -> TAgg keys cols aggs) ->
@@ -199,10 +185,7 @@ aggregate build (GD keys plan) = do
                     "DataFrame.Fusion.Typed.aggregate: unparseable JSON from encodeExprToBytes"
         Left err -> error ("DataFrame.Fusion.Typed.aggregate: " <> err)
 
-{- | Inner join on a single key pair. The result schema is currently the left
-schema (matching 'DataFrame.Typed.Lazy.join'); a sharper 'InnerJoinSchema'
-result is on the v1.5 list.
--}
+-- | Inner join on a single key pair; the result schema is the left schema.
 innerJoin ::
     T.Text -> T.Text -> DataFrame left -> DataFrame right -> IO (DataFrame left)
 innerJoin = joinWith "inner"
@@ -235,10 +218,7 @@ joinWith how leftKey rightKey (DF leftPlan) (DF rightPlan) = do
                     ph <- runPlanOp (F.df_plan_join lp rp cHow cOn)
                     return (DF ph)
 
-{- | Sort the result by a list of (column, direction) pairs.
-The 'SortOrder' is reused from "DataFrame.Lazy.Internal.LogicalPlan" so
-this signature lines up exactly with 'DataFrame.Typed.Lazy.sortBy'.
--}
+-- | Sort the result by a list of (column, direction) pairs.
 sortBy ::
     [(T.Text, SortOrder)] ->
     DataFrame cols ->
@@ -265,10 +245,7 @@ run ::
     IO (TypedDataFrame cols)
 run (DF plan) = unsafeFreeze <$> collectArrow plan
 
-{- | Pass a strict 'BS.ByteString' to a C function expecting a
-NUL-terminated UTF-8 string. The bytes must not contain interior NULs;
-JSON output never does.
--}
+-- | Pass a strict 'BS.ByteString' to C as a NUL-terminated UTF-8 string.
 withCStringBS :: BS.ByteString -> (CString -> IO a) -> IO a
 withCStringBS bs k =
     BS.useAsCString bs $ \cs ->

@@ -20,7 +20,7 @@ import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 import Data.Word (Word8)
 
--- | A bit-packed validity bitmap. Bit @i@ = 1 means row @i@ is valid (not null).
+-- | A bit-packed validity bitmap; bit @i@ = 1 means row @i@ is valid.
 type Bitmap = VU.Vector Word8
 
 -- | A bitmap attached to its row counts so we can splice it.
@@ -32,11 +32,7 @@ vBitmap (Validity bm _) = bm
 vRowCount :: Validity -> Int
 vRowCount (Validity _ n) = n
 
-{- | Test whether row @i@ is valid (not null) in a bitmap.
-
-The bit-level arithmetric is dense but read this as:
-`shiftR` 3 is equivalent to `div` 8, and `.&. 7` is equivalent to `mod` 8.
--}
+-- | Test whether row @i@ is valid (not null) in a bitmap.
 bitmapTestBit :: Bitmap -> Int -> Bool
 bitmapTestBit bm i = testBit (VU.unsafeIndex bm (i `shiftR` 3)) (i .&. 7)
 {-# INLINE bitmapTestBit #-}
@@ -61,9 +57,7 @@ allValidBitmap' n =
                 pure mv
 {-# INLINE allValidBitmap' #-}
 
-{- | Build a bitmap from a @VU.Vector Word8@ validity vector
-(1 = valid, 0 = null), as produced by Arrow / Parquet decoders.
--}
+-- | Build a bitmap from a validity vector (1 = valid, 0 = null).
 buildBitmapFromValid :: VU.Vector Word8 -> Bitmap
 buildBitmapFromValid valid =
     let n = VU.length valid
@@ -77,9 +71,7 @@ buildBitmapFromValid valid =
                             else acc
              in L.foldl' setBitIf (0 :: Word8) [0 .. 7]
 
-{- | Build a bitmap from a list of null-row indices.
-@nullIdxs@ are the positions that are NULL.
--}
+-- | Build a bitmap from a list of null-row indices.
 buildBitmapFromNulls :: Int -> [Int] -> Bitmap
 buildBitmapFromNulls n idxs = buildBitmapFromNulls' n (VU.fromList idxs)
 
@@ -109,11 +101,7 @@ bitmapSlice start len bm
                 VU.generate n $
                     \i -> if bitmapTestBit bm (start + i) then 1 else 0
 
-{- | Count the set bits among the first @n@ bits of a bitmap. A bitmap does
-not know the length of the column it describes, and 'bitmapSlice' keeps whole
-bytes on its aligned path, so the bits past @n@ may still describe rows
-outside the slice.
--}
+-- | Count the set bits among the first @n@ bits of a bitmap.
 popCountUpTo :: Int -> Bitmap -> Int
 popCountUpTo n bm = whole + partial
   where
@@ -144,9 +132,7 @@ bitmapConcat n1 bm1 n2 bm2 =
 andBitmaps :: Bitmap -> Bitmap -> Bitmap
 andBitmaps = VU.zipWith (.&.)
 
-{- | Splice chunk bitmaps end to end at the bit level. 'Nothing' if no chunk
-carries a bitmap; chunks without one count as all-valid otherwise.
--}
+-- | Splice chunk bitmaps end to end at the bit level.
 concatValidity :: [Validity] -> Maybe Bitmap
 concatValidity parts
     | all (isNothing . vBitmap) parts = Nothing

@@ -3,11 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | 'fit'/'predict' are frame-aware. Training on a 'TypedDataFrame' with a typed
-target ('DT.col') returns a 'Fitted' carrying the schema, and 'predict' on it
-yields a typed 'TExpr'; training on an untyped 'DataFrame' with an untyped target
-('F.col') returns the bare model and an 'Expr'. Both paths must agree numerically.
--}
+-- | Typed and untyped fit/predict paths must agree numerically.
 module Learn.TypedModel (tests) where
 
 import Data.Maybe (fromJust)
@@ -65,9 +61,7 @@ sameModel a b =
     and (zipWith (close 1e-12) (VU.toList (regCoef a)) (VU.toList (regCoef b)))
         && close 1e-12 (regIntercept a) (regIntercept b)
 
-{- | 'fit' on a 'TypedDataFrame' returns a 'Fitted' whose model matches the
-bare model from 'fit' on the equivalent 'DataFrame'.
--}
+-- | Typed fit returns a model matching the fit on the equivalent DataFrame.
 testTypedFitParity :: Test
 testTypedFitParity = TestCase $ do
     let onTyped = fit defaultLinearConfig (DT.col @"y") housesTDF
@@ -76,14 +70,12 @@ testTypedFitParity = TestCase $ do
         "fittedModel of typed fit == untyped fit"
         (sameModel (fittedModel onTyped) onUntyped)
 
-{- | 'predict' on the typed fit yields a 'TExpr Houses Double'; unwrapped and
-interpreted it matches 'predict' on the untyped fit.
--}
+-- | Typed predict matches predict on the untyped fit once interpreted.
 testTypedPredict :: Test
 testTypedPredict = TestCase $ do
     let onTyped = fit defaultLinearConfig (DT.col @"y") housesTDF
         onUntyped = fit defaultLinearConfig (F.col @Double "y") regDF
-        typedExpr = DT.unTExpr (predict onTyped) -- :: Expr Double via TExpr Houses Double
+        typedExpr = DT.unTExpr (predict onTyped)
         untypedExpr = predict onUntyped -- :: Expr Double
         truth = interpD regDF (F.col @Double "y")
     assertBool

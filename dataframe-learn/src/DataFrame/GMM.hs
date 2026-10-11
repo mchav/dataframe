@@ -5,12 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-{- | Gaussian mixture models fitted by EM. Full covariance by default (with a
-diagonal option and an automatic fall-back when a covariance is not positive
-definite), log-space responsibilities, and Cholesky-based densities for
-stability. 'predict' is the hard (arg-max) component assignment; per-component
-log-densities are available via 'gmmLogDensityExprs'.
--}
+-- | Gaussian mixture models fitted by EM, full or diagonal covariance.
 module DataFrame.GMM (
     module DataFrame.Model,
     CovType (..),
@@ -63,7 +58,7 @@ defaultGMMConfig =
         , gmmSeed = 0
         }
 
--- | A fitted mixture. 'gmmCovariances' are the per-component covariance matrices.
+-- | A fitted mixture with per-component covariance matrices.
 data GMMModel = GMMModel
     { gmmWeights :: !(VU.Vector Double)
     , gmmMeans :: !(V.Vector (VU.Vector Double))

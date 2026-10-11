@@ -1,7 +1,4 @@
-{- | The umbrella subset these internal tests use. The suite cannot depend on
-the meta @dataframe@ package (that would be a package-level cycle), so the
-names the tests reach for are re-exported under one alias here.
--}
+-- | The umbrella subset these internal tests use, re-exported under one alias.
 module DataFrameApi (
     DataFrame,
     fromColumns,

@@ -62,11 +62,7 @@ import DataFrame.Operations.Core
 import DataFrame.Operations.Subset
 import System.IO.Unsafe (unsafePerformIO)
 
-{- | Per-row key hash over the selected key columns. Delegates to the shared
-'computeRowHashesIO' kernel, which forks over contiguous row ranges for large
-frames (the hashing of a wide 1e7-row text/factor join key dominates that join)
-and is bit-for-bit identical to a single sequential pass at any capability count.
--}
+-- | Per-row key hash over the selected key columns, computed in parallel.
 computeRowHashes :: [Int] -> DataFrame -> VU.Vector Int
 computeRowHashes indices df =
     let n = fst (dimensions df)
@@ -74,30 +70,14 @@ computeRowHashes indices df =
      in unsafePerformIO (computeRowHashesIO n selectedCols)
 {-# NOINLINE computeRowHashes #-}
 
-{- | Aggregate a grouped dataframe using the expressions given.
-All ungrouped columns will be dropped.
-
-NOTE: this function deliberately never pattern-matches or strictly binds the
-'Grouped' per-row fields (this module is compiled with @-XStrict@, whose strict
-patterns and bindings would force them): on direct-grouped frames BOTH
-'valueIndices' (the placement permutation) and 'rowToGroup' are deferred
-thunks, and each aggregation path needs at most one of them — always passed as
-un-forced argument expressions. Key columns materialize through 'groupRepRows'
-(one representative row per group) instead of gathering
-@valueIndices[offsets[g]]@.
--}
+-- | Aggregate a grouped dataframe using the expressions given.
 aggregate :: [NamedExpr] -> GroupedDataFrame -> DataFrame
 aggregate aggs gdf =
     let
         df = fullDataframe gdf
         offs = offsets gdf
 
-        {- Key columns materialize through ONE fused parallel gather over the
-        representative rows ('atIndicesStableMulti'): the 1e8-group Q10 result
-        was six sequential latency-bound random-gather passes as per-column
-        'selectIndices'. Each result column is still identical to (and as
-        deferred as) the per-column gather; the row-count field uses the eager
-        @offsets@ so nothing here forces 'groupRepRows' early. -}
+        -- Key columns: one fused parallel gather over the representative rows.
         df' =
             let sub = select (groupedColumns gdf) df
              in sub
@@ -113,21 +93,7 @@ aggregate aggs gdf =
         !nGroups = VU.length offs - 1
         !nRows' = fst (dataframeDimensions df)
 
-        {- Fused multi-reduction fast path (Q3/Q4/Q5-shaped aggregates): every
-        recognised simple scatter reduction (sum/mean/count/min/max over a clean
-        unboxed Int/Double column) in this aggregate runs in ONE pass instead of
-        one full pass per expression. At or below 'streamGroupCap' groups that
-        pass streams over (rowToGroup, columns) with per-worker accumulators —
-        never touching the (possibly lazy) valueIndices; above it (necessarily a
-        hash-path grouping, whose valueIndices is already eager) the accumulator
-        arrays would thrash, so the pass gathers by disjoint group range instead
-        (register accumulators, bit-identical to the unfused gather kernels,
-        one traversal instead of one per expression). Only taken when at
-        least two reductions fuse; non-fusable expressions (median, var/std,
-        max-min, arbitrary DSL) keep their per-expression path below. -}
-        {- This binding is strict (-XStrict), so it must stay empty-and-cheap
-        whenever the moment path below already covers the aggregate — otherwise
-        the pass would run redundantly before the moment result is consulted. -}
+        -- Under -XStrict this must stay cheap when the moment path covers it.
         fusedScatterCols :: MS.Map T.Text Column
         fusedScatterCols = case fusedMoments of
             Just _ -> MS.empty
@@ -154,13 +120,7 @@ aggregate aggs gdf =
                             , Just ga <-
                                 [mkGatherAgg nGroups (valueIndices gdf) offs red c]
                             ]
-                     in {- Unlike the stream branch, a SINGLE candidate also
-                        takes this path: the per-expression fallback is a
-                        scatter over rowToGroup, which on a hash-path grouping
-                        is now a deferred thunk — the gather kernel (documented
-                        bit-identical to the unfused kernels) works off the
-                        already-eager valueIndices instead and skips that whole
-                        random-write pass. -}
+                     in -- Even a single candidate uses the gather path.
                         if not (null cands)
                             then
                                 MS.fromList
@@ -175,12 +135,7 @@ aggregate aggs gdf =
                                     )
                             else MS.empty
 
-        {- Fused median + std/var over one column (the Q6 shape): both are
-        holistic gathers over the same values, so one shared gather serves the
-        Welford fold and the median selection ('runMedianVarFused',
-        bit-identical to the separate kernels). Only built when a median and a
-        std/var on the same column appear together; empty-and-cheap otherwise
-        (same strictness caveat as 'fusedScatterCols'). -}
+        -- Median and std/var on one column share a single gather.
         medianVarCols :: MS.Map T.Text Column
         medianVarCols = case fusedMoments of
             Just _ -> MS.empty
@@ -202,9 +157,6 @@ aggregate aggs gdf =
                         ]
 
         -- Fast path: a recognised reduction scatters in one unboxed pass.
-        -- Anything 'planAgg' rejects keeps the existing interpreter, so the
-        -- general typed + DSL aggregate API stays correct for arbitrary
-        -- expressions.
         f ne@(name, uexpr) d =
             let value = case MS.lookup name medianVarCols of
                     Just c -> c
@@ -215,10 +167,7 @@ aggregate aggs gdf =
                             Nothing -> interpretNamed gdf ne
              in insertColumn name value d
 
-        -- Fused fast path: the Q9 regression family (count + five moment sums
-        -- of two base columns) becomes one scatter over the base columns,
-        -- dropping the derived product columns and the six separate folds.
-        -- 'planMoments' returns 'Nothing' on any other set, falling back below.
+        -- Fused fast path: the Q9 regression family becomes one scatter.
         fusedMoments = do
             mp <- planMoments gdf aggs :: Maybe MomentPlan
             runMomentPlan gdf nGroups mp
@@ -246,6 +195,5 @@ selectIndices xs df =
 distinct :: DataFrame -> DataFrame
 distinct df = selectIndices (VU.map (indices VU.!) (VU.init os)) df
   where
-    -- The trailing field stays a wildcard: under -XStrict a named pattern
-    -- variable would force the (possibly deferred) rowToGroup thunk.
+    -- Wildcard last field: a named pattern would force the deferred thunk.
     (Grouped _ _ indices os _) = groupBy (columnNames df) df

@@ -3,10 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Tree Alternating Optimization: hold the tree fixed and re-optimize one node
-at a time, bottom-up, minimizing care-point misroutes. Sibling subtrees at a
-depth level are independent and optimized in parallel.
--}
+-- | Tree Alternating Optimization: re-optimize one node at a time, bottom-up.
 module DataFrame.DecisionTree.Tao (
     taoOptimize,
     taoOptimizeCV,
@@ -40,9 +37,7 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 
-{- | The constant per-fit context threaded through the node-optimization
-recursion (the cache is rebuilt each iteration).
--}
+-- | The constant per-fit context threaded through node optimization.
 data TaoEnv = TaoEnv
     { teCache :: !CondCache
     , teCfg :: !TreeConfig
@@ -65,9 +60,7 @@ taoOptimize ::
 taoOptimize cfg target conds df =
     taoOptimizeCV @a cfg target (mapMaybe (materializeCondVec df) conds) df
 
-{- | TAO outer loop over pre-evaluated candidates: iterate until the iteration
-budget or convergence tolerance is reached, then prune dead branches.
--}
+-- | TAO outer loop over pre-evaluated candidates, then prune dead branches.
 taoOptimizeCV ::
     forall a.
     (Columnable a, Ord a) =>
@@ -143,9 +136,7 @@ optimizeAtDepth env indices tree currentDepth targetDepth
         Leaf v -> Leaf v
         Branch cond left right -> optimizeChildren @a env indices cond left right currentDepth targetDepth
 
-{- | Optimize the two subtrees over their disjoint index sets, scoring the left
-in parallel with the right (the cache is read-only, so this is pure).
--}
+-- | Optimize the two subtrees over their disjoint index sets in parallel.
 optimizeChildren ::
     forall a.
     (Columnable a, Ord a) =>
@@ -157,16 +148,12 @@ optimizeChildren env indices cond left right currentDepth targetDepth =
     left' = optimizeAtDepth @a env indicesL left (currentDepth + 1) targetDepth
     right' = optimizeAtDepth @a env indicesR right (currentDepth + 1) targetDepth
 
-{- | Force a subtree's optimization work to WHNF so the parallel scheduler has
-something substantial to evaluate; pure and value-preserving.
--}
+-- | Force a subtree's optimization work to WHNF for the parallel scheduler.
 forceTreeWork :: Tree a -> ()
 forceTreeWork (Leaf v) = v `seq` ()
 forceTreeWork (Branch c l r) = c `seq` forceTreeWork l `seq` forceTreeWork r
 
-{- | Re-optimize one node: pick its best split, or collapse to a leaf when the
-node is empty or the chosen split underflows 'minLeafSize'.
--}
+-- | Re-optimize one node: pick its best split, or collapse to a leaf.
 optimizeNode ::
     forall a. (Columnable a, Ord a) => TaoEnv -> V.Vector Int -> Tree a -> Tree a
 optimizeNode env indices tree
@@ -189,9 +176,7 @@ rebuiltBranch env indices oldCond left right leaf
     (l, r) = partitionIndicesCached (teCache env) newCond (teDf env) indices
     underflows = V.length l < minLeafSize (teCfg env) || V.length r < minLeafSize (teCfg env)
 
-{- | The lowest-penalty replacement condition for a node, falling back to the
-current condition when no valid candidate beats it.
--}
+-- | The lowest-penalty replacement condition for a node.
 findBestSplitTAO ::
     forall a.
     (Columnable a) =>
@@ -228,9 +213,7 @@ bestOfPool :: (CondVec -> (Int, Int)) -> Expr Bool -> [CondVec] -> Expr Bool
 bestOfPool _ currentCond [] = currentCond
 bestOfPool penaltyCV _ pool = cvExpr (minimumBy (compare `on` penaltyCV) pool)
 
-{- | Validity-filtered candidates the node could split on: both children must
-keep at least 'minLeafSize'. Scored in parallel chunks, order preserved.
--}
+-- | Candidates valid for a node: both children keep the minimum leaf size.
 filterValidCandidates :: TreeConfig -> V.Vector Int -> [CondVec] -> [CondVec]
 filterValidCandidates cfg indices condVecs = map snd (filter fst (zip validity condVecs))
   where
@@ -248,9 +231,7 @@ validAtNode cfg indices cv = nTrue >= minLeaf && (V.length indices - nTrue) >= m
             (0 :: Int)
             indices
 
-{- | The candidate pool to minimize over: the current condition, the best
-discrete candidate, and the linear candidate, each kept only if valid.
--}
+-- | The candidate pool to minimize over, each kept only if valid.
 candidatePool ::
     TaoEnv ->
     V.Vector Int ->

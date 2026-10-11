@@ -9,11 +9,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-{- | Class evidence for the column types the library supports, recovered from
-'Typeable'. A 'SomeExpr' carries only 'Columnable' (which includes 'Typeable' and
-'Eq'); code that builds new expressions from one (decoders, parsers) asks here for
-the 'Num', 'Ord', ... dictionaries an operator needs.
--}
+-- | Class evidence for the supported column types, recovered from 'Typeable'.
 module DataFrame.Internal.Expression.Reflect (
     Dict (..),
     RealUnbox,
@@ -39,7 +35,7 @@ import Type.Reflection (Typeable, typeRep)
 data Dict (c :: Constraint) where
     Dict :: (c) => Dict c
 
--- | 'Real' and 'VU.Unbox' together (variance, median and similar unboxed reductions).
+-- | 'Real' and 'VU.Unbox' together, for variance, median and similar.
 class (Real a, VU.Unbox a) => RealUnbox a
 
 instance (Real a, VU.Unbox a) => RealUnbox a

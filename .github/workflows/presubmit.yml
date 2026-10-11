@@ -57,3 +57,11 @@ jobs:
             "dataframe-parquet-th/", "dataframe-parsing/",
             "dataframe-persistent/", "dataframe-th/", "dataframe-viz/"]
           fail-on: warning
+
+  lint-comments:
+    name: Lint (comments)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: One-line, 80-column comments
+        run: ./scripts/lint-comments.sh

@@ -1,10 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Parallel stable sort of row indices by ascending unsigned order of a per-row
-'Int' hash, used by the join build side. A counting sort buckets rows into
-key-ordered partitions that workers LSD-radix-sort in parallel, with no merge step.
--}
+-- | Parallel stable sort of row indices by unsigned per-row hash.
 module DataFrame.Internal.Algorithms.Sort.Radix.Parallel (
     parSortByHash,
     parSortThreshold,
@@ -25,15 +22,11 @@ import DataFrame.Internal.Control.Concurrent (
  )
 import System.IO.Unsafe (unsafePerformIO)
 
-{- | Below this many rows the partition/fork overhead is not worth it; the
-caller's sequential LSD radix path is used instead.
--}
+-- | Below this many rows the sequential radix path is used instead.
 parSortThreshold :: Int
 parSortThreshold = 500000
 
-{- | Top-bits partition index of a hash: the high @64 - shift@ bits of its
-unsigned 'sortKey'. Ascending partition order equals ascending key order.
--}
+-- | Top-bits partition index of a hash, in ascending key order.
 partIx :: Int -> Int -> Int
 partIx shift h = fromIntegral ((fromIntegral (sortKey h) :: Word64) `unsafeShiftR` shift)
 {-# INLINE partIx #-}
@@ -52,9 +45,7 @@ intLog2 :: Int -> Int
 intLog2 x = 63 - countLeadingZeros x
 {-# INLINE intLog2 #-}
 
-{- | Parallel stable sort of @[0, n)@ by ascending unsigned hash order. See the
-module header for the ordering contract.
--}
+-- | Parallel stable sort of @[0, n)@ by ascending unsigned hash order.
 parSortByHash :: Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 parSortByHash n hashes
     | n <= 1 =
@@ -64,13 +55,7 @@ parSortByHash n hashes
     | otherwise = unsafePerformIO (parSortByHashIO n hashes)
 {-# NOINLINE parSortByHash #-}
 
--------------------------------------------------------------------------------
--- Sequential LSD radix sort (also the per-partition worker kernel)
--------------------------------------------------------------------------------
-
-{- | Stable LSD radix sort of @[0, n)@ by ascending 'sortKey' of their hash, 8
-bits per pass over the full 64-bit key. Returns @(sortedHashes, sortedIndices)@.
--}
+-- | Stable LSD radix sort of @[0, n)@ by ascending 'sortKey' of their hash.
 seqSortByHash :: Int -> VU.Vector Int -> (VU.Vector Int, VU.Vector Int)
 seqSortByHash n hashes = unsafePerformIO $ do
     keysA <- VUM.new n
@@ -88,10 +73,7 @@ seqSortByHash n hashes = unsafePerformIO $ do
     order <- VU.unsafeFreeze orderA
     pure (VU.unsafeBackpermute hashes order, order)
 
-{- | Run all eight stable 8-bit LSD passes, ping-ponging between the two
-key/order buffer pairs so the sorted order lands back in @(keysA, orderA)@.
-@keysA[i]@ must already hold @sortKey (hash of orderA[i])@ on entry.
--}
+-- | Run all eight stable 8-bit LSD passes, ping-ponging between buffers.
 radixPasses ::
     Int ->
     VUM.IOVector Int ->
@@ -101,12 +83,7 @@ radixPasses ::
     IO ()
 radixPasses = radixPassesN 8
 
-{- | Run the first @np@ stable 8-bit LSD passes (bits @0 .. 8*np-1@),
-ping-ponging between the buffer pairs. For odd @np@ the sorted order lands in
-@(keysB, orderB)@, for even in @(keysA, orderA)@. Callers whose rows share
-their top bytes (per-partition sorts partitioned on the top byte) can pass
-@np = 7@: the eighth pass would be a stable identity copy.
--}
+-- | Run the first @np@ stable 8-bit LSD passes, ping-ponging between buffers.
 radixPassesN ::
     Int ->
     Int ->
@@ -159,10 +136,6 @@ radixPassesN np n keysA orderA keysB orderB = do
             | otherwise = pass (8 * k) keysB orderB keysA orderA >> run (k + 1)
     run 0
 
--------------------------------------------------------------------------------
--- Parallel path: counting-sort partition, then per-partition sort in parallel
--------------------------------------------------------------------------------
-
 parSortByHashIO :: Int -> VU.Vector Int -> IO (VU.Vector Int, VU.Vector Int)
 parSortByHashIO n hashes = do
     caps <- getNumCapabilities
@@ -176,17 +149,7 @@ parSortByHashIO n hashes = do
     sortedHashes <- VU.unsafeFreeze outKeys
     pure (sortedHashes, order)
 
-{- | Bucket every row index into its top-bits partition by a counting sort.
-Returns the exclusive prefix sum @partStart@ (length @p+1@, @partStart[p] == n@),
-the row indices laid out partition-by-partition in ascending key order, and
-each sorted position's hash in the same layout (so downstream passes read
-hashes sequentially instead of a random @hashes[row]@ gather per row).
-
-Runs chunked across capabilities: per-chunk partition histograms are prefix
-summed (in chunk order) into disjoint per-chunk write cursors, so the scatter
-threads never contend and each partition keeps its rows in ascending original
-row order — bit-for-bit the sequential counting sort's layout.
--}
+-- | Bucket every row index into its top-bits partition by counting sort.
 partitionRows ::
     Int ->
     VU.Vector Int ->
@@ -197,8 +160,7 @@ partitionRows n hashes p shift = do
     caps <- getNumCapabilities
     let chunks = rowChunks caps n
     cursors <- forkJoin [histChunk hashes p shift lo hi | (lo, hi) <- chunks]
-    -- Exclusive prefix over partitions (outer) and chunks (inner): partStart
-    -- from the totals, and each chunk's histogram rewritten into its cursor.
+    -- Exclusive prefix over partitions and chunks; histograms become cursors.
     partStartM <- VUM.new (p + 1)
     let seed !pp !acc
             | pp >= p = VUM.unsafeWrite partStartM p acc
@@ -248,9 +210,7 @@ histChunk hashes p shift lo hi = do
                 go (i + 1)
     go lo
 
-{- | Scatter one row chunk into the partitioned layout using the chunk's
-pre-summed cursor (disjoint write regions per chunk, no contention).
--}
+-- | Scatter one row chunk into the partitioned layout using its cursor.
 scatterChunk ::
     VU.Vector Int ->
     Int ->
@@ -273,19 +233,7 @@ scatterChunk hashes shift cursor rowsM rowHashM lo hi = go lo
             VUM.unsafeWrite cursor pp (pos + 1)
             go (i + 1)
 
-{- | Stable-sort each partition by full key, writing sorted original indices
-into @outOrder@ and their hashes into @outKeys@ at the partition's slot range.
-Forks @caps@ workers that pull partition indices off a shared atomic counter.
-Within a partition the counting sort already left rows in ascending original
-order, so the LSD radix sort's stability reproduces the global @(key, row)@
-order. Partitions below two elements are already sorted (counting sort kept
-original order) and are copied directly.
-
-@partHashes@ is the partition-layout hash vector from 'partitionRows', so
-seeding reads hashes sequentially; only 7 LSD passes run (the top byte is the
-partition byte, constant within a partition), and the sorted hash is recovered
-from the sort key ('sortKey' is self-inverse) instead of a random gather.
--}
+-- | Stable-sort each partition by full key into the output slots.
 sortPartitions ::
     Int ->
     Int ->

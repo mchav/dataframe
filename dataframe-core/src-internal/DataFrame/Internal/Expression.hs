@@ -25,10 +25,7 @@ import DataFrame.Internal.Column
 import qualified DataFrame.Internal.Display.Pretty as P
 import Type.Reflection (Typeable, typeOf, typeRep)
 
-{- | Operators are an open typeclass: built-ins get their own 'Typeable' type so the
-simplifier can match them by 'cast', and users can add instances. The generic
-'UnUDF'/'BinUDF' carriers cover UDFs, dynamic-named, and arithmetic ops.
--}
+-- | Operators are an open typeclass so the simplifier can match them by 'cast'.
 class (Typeable op) => UnaryOp op where
     unaryFn :: op a b -> a -> b
     unaryName :: op a b -> T.Text
@@ -377,10 +374,7 @@ replaceExpr old new expr = case testEquality (typeRep @a) (typeRep @b) of
         (Agg op inner) -> Agg op (replaceExpr old new inner)
         (Over keys inner) -> Over keys (replaceExpr old new inner)
 
-{- | Simultaneously substitute 'Col' references from a name→expression map in a
-single parallel pass, so a swap like @{a ↦ col b, b ↦ col a}@ works. Raw-text
-references (in 'CastWith', 'Over' keys) are left untouched; type mismatch raises.
--}
+-- | Substitute 'Col' references from a name-to-expression map in one pass.
 substituteColumns ::
     forall a. (Columnable a) => M.Map T.Text SomeExpr -> Expr a -> Expr a
 substituteColumns subs = go
@@ -429,17 +423,11 @@ getColumns (Binary _op l r) = getColumns l <> getColumns r
 getColumns (Agg _strategy expr) = getColumns expr
 getColumns (Over keys inner) = keys <> getColumns inner
 
-{- | Render an expression as readable, width-aware pseudo-code at the default
-width ('P.defaultWidth'). See 'prettyPrintWidth' to control wrapping.
--}
+-- | Render an expression as readable pseudo-code at the default width.
 prettyPrint :: Expr a -> String
 prettyPrint = prettyPrintWidth P.defaultWidth
 
-{- | Render an expression as readable, width-aware pseudo-code: long binary chains
-wrap onto aligned continuation lines, conditionals are laid out like Python
-statements (@if cond@ / @else if cond@ / @else@ with 4-space indented branches, so
-nested conditionals nest visually), and sub-exprs are parenthesized by precedence.
--}
+-- | Render an expression as readable, width-aware pseudo-code.
 prettyPrintWidth :: Int -> Expr a -> String
 prettyPrintWidth width = P.render width . toDoc 0
   where

@@ -2,19 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE Strict #-}
 
-{- | Partitioned group-by: rows are counting-sorted into partitions by the top
-hash bits, then one task per capability groups its partitions independently,
-after which the group numbering is canonicalized to first-appearance order.
-Output is bit-for-bit identical to the sequential
-'DataFrame.Internal.Grouping.groupBy'.
-
-The name is the mechanism, not the threading: this is a genuinely different
-algorithm from the sequential single-hash-table path, not that path with a
-fork\/join wrapped around it. (Its sibling
-"DataFrame.Internal.Grouping.Direct" is also internally parallel.) Whether to
-take this path is 'DataFrame.Internal.Grouping.groupBy''s decision, not this
-module's.
--}
+-- | Partitioned group-by: counting-sort rows by hash bits, group per partition.
 module DataFrame.Internal.Grouping.Partitioned (
     parallelAssignGroups,
     rtgFromVisOffs,
@@ -44,10 +32,7 @@ import DataFrame.Internal.Data.HashTable (
  )
 import System.IO.Unsafe (unsafePerformIO)
 
-{- | Sign-preserving unsigned remap: ascending 'Word64' order of @key h@ equals
-ascending signed-'Int' order of @h@, so partitioning and sorting on it reproduce
-the sequential @compare \`on\` repHash@ ordering exactly.
--}
+-- | Sign-preserving unsigned remap of a hash, ordering like signed 'Int'.
 key :: Int -> Word64
 key h = fromIntegral h + 0x8000000000000000
 {-# INLINE key #-}
@@ -57,15 +42,7 @@ partIx :: Int -> Int -> Int
 partIx shift h = fromIntegral (key h `unsafeShiftR` shift)
 {-# INLINE partIx #-}
 
-{- | Number of partitions: a power of two, at least @4 * caps@ (P >> cores for
-skew tolerance), floored at 256 — and grown with the row count (up to
-'maxPartitions') so a partition's worst-case hash table (every row a distinct
-group: @nextPow2Above (2 * rows/p)@ slots x 3 arrays) stays cache-resident
-instead of thrashing DRAM. Partitioning is by the top hash bits and canonical
-ranking is ascending unsigned key both across and within partitions, so the
-grouping output is bit-for-bit identical at ANY partition count; only the
-constant matters for speed.
--}
+-- | Number of partitions: a power of two scaled by capabilities and rows.
 numPartitionsFor :: Int -> Int -> Int
 numPartitionsFor caps n = go 1
   where
@@ -88,12 +65,7 @@ intLog2 :: Int -> Int
 intLog2 x = 63 - countLeadingZeros x
 {-# INLINE intLog2 #-}
 
-{- | Parallel group assignment. @parallelAssignGroups n hashes eqRow@ returns
-@(valueIndices, offsets)@ in canonical group order. @eqRow a b@ must report
-whether rows @a@ and @b@ share all key columns (null-aware). @rowToGroup@ is
-NOT built here any more: gather-style aggregation over huge group counts never
-reads it, so callers derive it on demand with 'rtgFromVisOffs'.
--}
+-- | Parallel group assignment, returning @(valueIndices, offsets)@ canonically.
 parallelAssignGroups ::
     Int ->
     VU.Vector Int ->
@@ -125,21 +97,7 @@ parallelAssignGroups n hashes eqRow = do
     (globalBase, canonOf, nGroups) <- canonicalize p canonBoxes nLocalGroups
     assemble n p partStart sortedRows localGid globalBase canonOf nGroups
 
--------------------------------------------------------------------------------
--- Phase 1: counting sort by partition
--------------------------------------------------------------------------------
-
-{- | Bucket every row index into its partition by a counting sort. Returns the
-exclusive prefix-sum @partStart@ (length @p+1@, @partStart[p] == n@), the row
-indices laid out partition-by-partition in @sortedRows@, and each sorted
-position's hash in @sortedHash@ (same layout) so the grouping loop reads its
-hashes sequentially instead of a random @hashes[row]@ per row.
-
-Runs chunked across capabilities: per-chunk partition histograms are prefix
-summed (in chunk order) into disjoint per-chunk write cursors, so the scatter
-threads never contend and each partition keeps its rows in ascending original
-row order — bit-for-bit the sequential counting sort's layout.
--}
+-- | Bucket every row index into its partition by a counting sort.
 partitionRows ::
     Int ->
     VU.Vector Int ->
@@ -153,8 +111,7 @@ partitionRows n hashes eqRow link p shift = do
     let chunks = rowChunks caps n
     cursors <-
         forkJoin [histChunk hashes eqRow link p shift lo hi | (lo, hi) <- chunks]
-    -- Exclusive prefix over partitions (outer) and chunks (inner): partStart
-    -- from the totals, and each chunk's histogram rewritten into its cursor.
+    -- Exclusive prefix over partitions and chunks; histograms become cursors.
     partStartM <- VUM.new (p + 1)
     let seed !pp !acc
             | pp >= p = VUM.unsafeWrite partStartM p acc
@@ -193,11 +150,7 @@ rowChunks caps n =
   where
     !per = (n + max 1 caps - 1) `div` max 1 caps
 
-{- | Per-partition counts of one row chunk. Also links each row whose key equals
-a recently seen row of the chunk to that row (@link[i] = r@, else @-1@), using a
-small two-way cache, so the grouping pass can copy the group of a skewed
-key instead of probing and re-comparing it. A key's first row is never linked.
--}
+-- | Per-partition counts of one row chunk, linking rows to recent equal keys.
 histChunk ::
     VU.Vector Int ->
     (Int -> Int -> Bool) ->
@@ -236,9 +189,7 @@ histChunk hashes eqRow link p shift lo hi = do
                 go (i + 1)
     go lo
 
-{- | Cache set of a hash. The text row hash's low bits are weak, so they are
-mixed first; the top bits already pick the partition.
--}
+-- | Cache set of a hash, mixing the weak low bits first.
 cacheSet :: Int -> Int
 cacheSet h =
     fromIntegral
@@ -254,10 +205,7 @@ linkCacheBits = 12
 linkCacheSets :: Int
 linkCacheSets = 1 `unsafeShiftL` linkCacheBits
 
-{- | Scatter one row chunk into @sortedM@/@sortedHashM@/@sortedLinkM@ through the
-chunk's private cursor. Links travel with their rows so the grouping pass reads
-them in order.
--}
+-- | Scatter one row chunk through the chunk's private cursor.
 scatterChunk ::
     VU.Vector Int ->
     VUM.IOVector Int ->
@@ -283,13 +231,7 @@ scatterChunk hashes link shift cursor sortedM sortedHashM sortedLinkM lo hi = go
             VUM.unsafeWrite cursor pp (pos + 1)
             go (i + 1)
 
--------------------------------------------------------------------------------
--- Phase 2: per-partition grouping (parallel)
--------------------------------------------------------------------------------
-
-{- | Partition indices, largest first, so a partition swollen by a skewed key
-starts at once instead of finishing alone after the rest.
--}
+-- | Partition indices, largest first, so skewed partitions start early.
 largestFirst :: VU.Vector Int -> VU.Vector Int
 largestFirst partStart =
     let !p = VU.length partStart - 1
@@ -297,10 +239,7 @@ largestFirst partStart =
      in VU.fromList
             (map snd (L.sortBy (flip compare) [(size i, i) | i <- [0 .. p - 1]]))
 
-{- | Group each partition with its own hash table, then rank its local groups into
-canonical order — all inside the parallel worker. Forks @caps@ workers pulling
-partition indices off a shared counter; disjoint keys mean no cross-partition merge.
--}
+-- | Group each partition with its own hash table and rank its local groups.
 runPartitions ::
     Int ->
     Int ->
@@ -323,7 +262,7 @@ runPartitions caps p partStart sortedRows sortedHash eqRow sortedLink gidByRow l
             !e = VU.unsafeIndex partStart (pp + 1)
             !sz = e - s
         when (sz > 0) $ do
-            -- Linked rows never reach the table, so size it by the unlinked ones.
+            -- Linked rows skip the table, so size it by the unlinked ones.
             let countUnlinked !pos !k
                     | pos >= e = pure k
                     | otherwise =
@@ -339,7 +278,7 @@ runPartitions caps p partStart sortedRows sortedHash eqRow sortedLink gidByRow l
                             !r = VU.unsafeIndex sortedLink pos
                         if r >= 0
                             then do
-                                -- r is an earlier, unlinked row of this partition.
+                                -- r: an earlier unlinked row of this partition.
                                 gid <- VUM.unsafeRead gidByRow r
                                 VUM.unsafeWrite localGid pos gid
                                 loop (pos + 1) nextGid
@@ -357,14 +296,7 @@ runPartitions caps p partStart sortedRows sortedHash eqRow sortedLink gidByRow l
             canon <- rankByHash (VUM.unsafeRead repHashM) ng
             VM.unsafeWrite canonBoxes pp canon
 
--------------------------------------------------------------------------------
--- Phase 3: global base ids + assembly
--------------------------------------------------------------------------------
-
-{- | Exclusive prefix sum of the per-partition group counts into @globalBase@
-(@globalBase[pp]@ = first global id of partition @pp@). Ranks were computed in
-'runPartitions'; prepending the base to each yields the sequential order.
--}
+-- | Exclusive prefix sum of per-partition group counts into @globalBase@.
 canonicalize ::
     Int ->
     VM.IOVector (VU.Vector Int) ->
@@ -383,19 +315,7 @@ canonicalize p canonBoxes nLocalGroups = do
     canonOf <- V.unsafeFreeze canonBoxes
     pure (globalBase, canonOf, total)
 
-{- | Build the final @(valueIndices, offsets)@: the global group id of a
-sorted position is @globalBase[pp] + canonOf[pp][localGid]@. @valueIndices@ orders
-rows by group, @offsets@ the boundaries. (@rowToGroup@, the per-original-row
-inverse, is no longer built here — 'rtgFromVisOffs' derives it on demand, so
-aggregations that never read it skip its full random-write pass.)
-
-Each partition owns a disjoint @sortedRows@ range and a disjoint global group-id
-range, and its rows are exactly its groups' rows — so its first group's offset is
-its own @partStart@ and every pass (group ids, offsets, placement) runs per
-partition on parallel workers with no shared writes. @sortedRows@ keeps ascending
-original row order inside a partition, so per-group row order matches the
-sequential pass exactly.
--}
+-- | Build the final @(valueIndices, offsets)@ from global group ids.
 assemble ::
     Int ->
     Int ->
@@ -433,8 +353,7 @@ assemble n p partStart sortedRows localGid globalBase canonOf nGroups = do
                         VUM.unsafeWrite counts g (c + 1)
                         pass1 (pos + 1)
             pass1 s
-            -- Offsets for our group range (they start at our partStart);
-            -- counts becomes the per-group write cursor.
+            -- Offsets for our group range; counts becomes the write cursor.
             let offsLoop !g !acc
                     | g >= gEnd = pure ()
                     | otherwise = do
@@ -461,13 +380,7 @@ assemble n p partStart sortedRows localGid globalBase canonOf nGroups = do
     vis <- VU.unsafeFreeze visM
     pure (vis, offs)
 
-{- | Deferred @rowToGroup@ from @(valueIndices, offsets)@:
-@rtg[vis[i]] = g@ for every @i@ in group @g@'s range. @vis@ is a permutation,
-so any split of the position space writes disjoint slots; each worker binary
-searches its first group and then walks group ranges. Values are identical to
-the @rowToGroup@ the assembly pass used to build inline. Pure w.r.t. its
-immutable inputs, so the 'unsafePerformIO' is safe.
--}
+-- | Deferred @rowToGroup@ from @(valueIndices, offsets)@.
 rtgFromVisOffs :: Int -> VU.Vector Int -> VU.Vector Int -> VU.Vector Int
 rtgFromVisOffs n vis offs = unsafePerformIO $ do
     let !nGroups = VU.length offs - 1

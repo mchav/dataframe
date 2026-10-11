@@ -83,9 +83,7 @@ readByteStringInt s = case C.readInt (C.strip s) of
     Just (value, "") -> Just value
     _ -> Nothing
 #else
--- bytestring < 0.12: 'C.readInt' silently wraps on overflow. Fields of
--- <= 18 characters fit in an 'Int' and keep the fast path; longer ones fall
--- back to arbitrary-precision 'C.readInteger' with a range check.
+-- bytestring < 0.12 'C.readInt' wraps on overflow; long fields use Integer.
 readByteStringInt s
     | C.length t <= 18 = case C.readInt t of
         Just (value, "") -> Just value
@@ -141,10 +139,6 @@ readDoubleEither s =
         Right (value, "") -> Right value
         Right (_value, _) -> Left s
 {-# INLINE readDoubleEither #-}
-
--- ---------------------------------------------------------------------------
--- Attoparsec CSV parser combinators (shared between Lazy.IO.CSV and others)
--- ---------------------------------------------------------------------------
 
 parseSep :: Char -> T.Text -> [T.Text]
 parseSep c s = either error id (parseOnly (record c) s)

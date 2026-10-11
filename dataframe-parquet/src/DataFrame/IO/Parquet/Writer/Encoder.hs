@@ -82,9 +82,7 @@ buildEncoder col
                     col
                     (\buffer pos v -> write64 buffer pos (fromIntegral v))
                 )
-    -- Ints in GHC can be 32 bit or 64 bit integers depending on the
-    -- underlying computers architecture. So we'll do 64bit integers
-    -- to cover all our bases
+    -- Int is 32 or 64 bit by platform, so always write 64-bit integers.
     | hasElemType @Int col =
         pure $
             scalarEncoder
@@ -156,10 +154,7 @@ columnWriter ::
 columnWriter = columnWriterWith Nothing
 {-# INLINE columnWriter #-}
 
-{- | Encode a column whose element type has a 'VU.Unbox' instance. Using
-the caller's instance, rather than the one stored in the column, lets GHC
-read the array directly when the element type is known.
--}
+-- | Encode a column whose element type has a 'VU.Unbox' instance.
 unboxedColumnWriter ::
     forall a s.
     (Columnable a, VU.Unbox a) =>

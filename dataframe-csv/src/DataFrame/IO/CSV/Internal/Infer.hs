@@ -3,13 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-{- | Column inference over raw field bytes for the default CSV reader:
-classify a bounded sample with the shared lattice
-("DataFrame.Operations.Inference"), then build the column in one fused
-pass with in-place Int -> Double promotion (audit T2). Cells arrive as
-'Cells' — unboxed offsets into the input buffer plus a builder validity
-vector — so the passes parse slices without materializing cell values.
--}
+-- | Column inference over raw CSV field bytes for the default reader.
 module DataFrame.IO.CSV.Internal.Infer (
     inferColumnFromBS,
 ) where
@@ -65,8 +59,7 @@ inferColumnFromBS :: SafeReadMode -> ReadOptions -> Cells -> IO Column
 inferColumnFromBS mode opts cells =
     let sampleN = let n = typeInferenceSampleSize (typeSpec opts) in if n == 0 then 100 else n
         dfmt = dateFormat opts
-        -- The sample IS still Maybe-wrapped; it's bounded at 100 rows
-        -- by default, so the allocation is ignorable.
+        -- The sample is Maybe-wrapped but capped at 100 rows by default.
         samples = V.generate (min sampleN (cLen cells)) $ \i ->
             if validAt cells i then Just (cellAt cells i) else Nothing
         assumption = makeParsingAssumptionBytes dfmt samples
@@ -85,27 +78,20 @@ validAt :: Cells -> Int -> Bool
 validAt cells i = VU.unsafeIndex (cValid cells) i /= 0
 {-# INLINE validAt #-}
 
-{- | @%Y-%m-%d@ takes the WS-B slice fast path; custom formats keep the
-reference parser over a materialized cell.
--}
+-- | Fast slice path for @%Y-%m-%d@; other formats use the reference parser.
 dateSliceParser :: String -> Cells -> Int -> Maybe Day
 dateSliceParser "%Y-%m-%d" cells i = withCell cells i parseDateFieldSlice
 dateSliceParser fmt cells i = readByteStringDate fmt (cellAt cells i)
 {-# INLINE dateSliceParser #-}
 
-{- | 'EitherRead' wrap for the ByteString inference path: produce an
-@Either Text a@ column. Raw input bytes are preserved verbatim; rows that were
-marked invalid by the builder (e.g. empty cells before EitherRead disabled
-missing-indicator detection) become @Left \"\"@.
--}
+-- | Wrap a ByteString-inferred column as @Either Text a@, keeping raw bytes.
 handleBSEither :: String -> ParsingAssumption -> Cells -> Column
 handleBSEither dfmt assumption cells = case assumption of
     BoolAssumption -> wrap readByteStringBool
     IntAssumption -> wrap readByteStringInt
     DoubleAssumption -> wrap readByteStringDouble
     DateAssumption -> wrap (readByteStringDate dfmt)
-    -- Text / No assumption: column is Either Text Text; empty cells become
-    -- Left "" to keep the "Left means missing/failure" convention.
+    -- Empty cells become Left "" ("Left means missing/failure").
     TextAssumption -> fromVector (V.generate (cLen cells) textEither)
     NoAssumption -> fromVector (V.generate (cLen cells) textEither)
   where
@@ -133,11 +119,7 @@ handleBSBool cells =
     uncurry UnboxedColumn
         <$> parseUnboxedCells False (\i -> withCell cells i parseBoolFieldSlice) cells
 
-{- | Int columns: one fused pass with in-place Int -> Double promotion
-('promoteIntColumnIndexed', audit T2) instead of the full-column Double
-re-parse; both parsers are the WS-B slice parsers (bit-exact with the
-old @readByteString*@ pair).
--}
+-- | Int columns: one fused pass with in-place Int to Double promotion.
 handleBSInt :: Cells -> Maybe Column
 handleBSInt cells =
     promoteIntColumnIndexed
@@ -151,9 +133,7 @@ handleBSDouble cells =
     uncurry UnboxedColumn
         <$> parseUnboxedCells 0 (\i -> withCell cells i parseDoubleFieldSlice) cells
 
--- Dates are boxed ('Day' isn't 'VU.Unbox'), so fuse into a V.Vector
--- (Maybe Day) in one pass.  Bails on the first non-null cell that
--- fails to parse.
+-- Dates are boxed, so fuse into a V.Vector (Maybe Day); bails on a bad cell.
 handleBSDate :: String -> Cells -> Maybe Column
 handleBSDate dfmt cells =
     case parseBoxedMaybeCells (dateSliceParser dfmt cells) cells of
@@ -162,10 +142,7 @@ handleBSDate dfmt cells =
             | otherwise -> Just (fromVector (V.mapMaybe id out))
         Nothing -> Nothing
 
-{- | Text columns build through the WS-C 'TextBuilder': one shared byte
-array + offsets, 'Data.Text.Text' values sliced off it at freeze (UTF-8
-validated once, lenient per-field decode only when invalid).
--}
+-- | Text columns build through a shared-array 'TextBuilder'.
 textColumn :: Cells -> IO Column
 textColumn cells = do
     let n = cLen cells
@@ -206,8 +183,7 @@ handleBSNo dfmt cells
         pure (UnboxedColumn mbm out)
     | otherwise = maybe (textColumn cells) pure (handleBSDate dfmt cells)
 
--- Boxed counterpart to 'parseUnboxedCells' for types that aren't
--- 'VU.Unbox' (e.g. 'Day').  Same one-pass + early-bail shape.
+-- Boxed counterpart to 'parseUnboxedCells' for non-Unbox types (e.g. 'Day').
 parseBoxedMaybeCells ::
     (Int -> Maybe a) -> Cells -> Maybe (Bool, V.Vector (Maybe a))
 parseBoxedMaybeCells parser cells = runST $ do
@@ -227,11 +203,7 @@ parseBoxedMaybeCells parser cells = runST $ do
                 Nothing -> return Nothing
     loop 0 False
 
-{- | One-pass fused parse into a typed unboxed column, reading
-nullability from the builder's validity vector. Returns @Just@ only
-when every non-null cell parses; the first unparseable cell
-short-circuits so the caller can fall back to the next assumption.
--}
+-- | Fused parse into a typed unboxed column; Just only if every cell parses.
 parseUnboxedCells ::
     forall a.
     (VU.Unbox a) =>

@@ -49,11 +49,7 @@ shouldParallelize :: Int -> Int -> Bool
 shouldParallelize threshold n = n >= threshold && capabilities > 1
 {-# INLINE shouldParallelize #-}
 
-{- | Row count below which a fan-out does not pay for itself, for the fixed-cost
-per-row loops (grouping, the aggregation kernels). Pair it with
-'shouldParallelize'. Kernels with a materially different per-row cost —
-the join probe, the radix sort — set their own thresholds.
--}
+-- | Row count below which a fan-out does not pay for itself.
 parThreshold :: Int
 parThreshold = 200000
 
@@ -68,8 +64,7 @@ splitChunkRange k n
         , len > 0
         ]
   where
-    -- A non-positive width is a caller bug; clamp to one chunk rather than
-    -- return [] and silently skip the rows.
+    -- A non-positive width is a caller bug; clamp to one chunk.
     !k' = max 1 k
     (!q, !r) = n `quotRem` k'
 
@@ -79,11 +74,7 @@ chunksFor !threshold !n
     | otherwise = splitChunkRange capabilities n
 {-# INLINE chunksFor #-}
 
-{- | Adjacent pairs of a precomputed bounds vector of length @caps + 1@. Empty
-ranges are NOT dropped: the bounds are the caller's and the slot count is
-often meaningful. Endpoints are forced here, on the spawning thread, so a
-worker never starts by evaluating an index thunk that retains @bs@.
--}
+-- | Adjacent pairs of a precomputed bounds vector of length @caps + 1@.
 boundsChunks :: Int -> VU.Vector Int -> [(Int, Int)]
 boundsChunks caps bs =
     [ (lo, hi)

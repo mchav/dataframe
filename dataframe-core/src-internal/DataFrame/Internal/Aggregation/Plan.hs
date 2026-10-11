@@ -6,11 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | The aggregation fast-path planner. 'planAgg' recognises a supported
-aggregate shape over a clean unboxed Int/Double column and returns an 'AggPlan';
-'planMoments' recognises the six-fold regression shape and returns a
-'MomentPlan'. Planning only — the kernels live under "Kernel".
--}
+-- | The aggregation fast-path planner: recognises supported aggregate shapes.
 module DataFrame.Internal.Aggregation.Plan (
     AggPlan (..),
     planAgg,
@@ -39,10 +35,7 @@ import DataFrame.Internal.Expression (
  )
 import Type.Reflection (Typeable, typeRep)
 
-{- | The plan 'planAgg' produces for a recognised output expression. The median
-plan carries only the column name (the holistic grouped sort lives in the
-operations layer, where @vector-algorithms@ is available).
--}
+-- | The plan 'planAgg' produces for a recognised output expression.
 data AggPlan
     = -- | A single scatter reduction over one named column.
       PlanScatter Reduction T.Text
@@ -53,10 +46,7 @@ data AggPlan
     | -- | Exact distinct count over one named column.
       PlanCountDistinct T.Text
 
-{- | Inspect a named output expression; return @Just plan@ on a recognised shape
-over a present clean column, else 'Nothing'. Nullable or non-Int/Double columns
-are rejected here so the scatter only sees a clean unboxed vector.
--}
+-- | Plan a named output expression, or 'Nothing' if the shape is unsupported.
 planAgg :: GroupedDataFrame -> SomeExpr -> Maybe AggPlan
 planAgg gdf (SomeExpr (expr :: Expr a)) = case expr of
     Agg (FoldAgg tag _ _) (Col name) -> foldPlan tag name
@@ -110,10 +100,7 @@ isUnboxedNumeric = \case
                 Nothing -> False
     _ -> False
 
-{- | A recognised moment (Q9 regression) aggregate group: six output columns that
-form the sufficient statistics of two base columns @x@ and @y@. The caller runs
-'momentScatter' once and binds each output name to a field of the result.
--}
+-- | A recognised moment aggregate group: six sufficient-statistic columns.
 data MomentPlan = MomentPlan
     { mpColX :: T.Text
     , mpColY :: T.Text
@@ -125,19 +112,13 @@ data MomentPlan = MomentPlan
     , mpSxyName :: T.Text
     }
 
-{- | The shape of a sum's argument once unary coercions are peeled and derived
-columns are resolved through @derivingExpressions@: either linear in one base
-column or the product of two base columns (sorted).
--}
+-- | The shape of a sum's argument: linear in one base column, or a product.
 data Term
     = Lin T.Text
     | Prod T.Text T.Text
     deriving (Eq, Ord, Show)
 
-{- | Recognise the moment shape across a whole @aggregate@ list: exactly
-@count@, @sum(x)@, @sum(y)@, @sum(x*x)@, @sum(y*y)@, @sum(x*y)@ over two distinct
-clean unboxed base columns. 'Nothing' on any other set.
--}
+-- | Recognise the moment shape across a whole @aggregate@ list.
 planMoments :: GroupedDataFrame -> [(T.Text, SomeExpr)] -> Maybe MomentPlan
 planMoments gdf aggs
     | length aggs /= 6 = Nothing
@@ -189,10 +170,7 @@ termRole :: Term -> Role
 termRole (Lin a) = RoleLin a
 termRole (Prod a b) = RoleProd a b
 
-{- | Resolve a (sum-argument) expression to its 'Term'. Peels @toDouble@-style
-unary coercions, follows a derived column to its stored expression, and
-recognises a commutative product of two linear terms.
--}
+-- | Resolve a sum-argument expression to its 'Term'.
 resolveTerm :: M.Map T.Text SomeExpr -> SomeExpr -> Maybe Term
 resolveTerm exprs = go (8 :: Int)
   where
@@ -215,9 +193,7 @@ sortProd a b
     | a <= b = Prod a b
     | otherwise = Prod b a
 
-{- | From the classified roles, find the unordered pair of base columns that the
-linear sums name. There must be exactly two distinct linear-sum columns.
--}
+-- | Find the unordered pair of base columns that the linear sums name.
 pickBaseColumns :: [(T.Text, Role)] -> Maybe (T.Text, T.Text)
 pickBaseColumns roles =
     case lins of

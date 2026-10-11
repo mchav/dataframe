@@ -1,11 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{- | The shared read pipeline behind every "DataFrame.IO.CSV.Fast" entry
-point: scan for delimiters, classify rows, then build every column with
-the typed extraction passes — chunk-parallel when the input is large and
-capabilities allow ('autoChunkCount'), unless the caller pins a chunk
-count. The result is fully forced before it is returned.
--}
+-- | The shared read pipeline behind every fast CSV entry point.
 module DataFrame.IO.CSV.Fast.Core (
     readSeparatedCore,
     checkSeparatorAgrees,
@@ -59,9 +54,7 @@ import DataFrame.IO.CSV.Fast.Slice (
 import DataFrame.Internal.DataFrame (DataFrame (..), forceDataFrame)
 import DataFrame.Operations.Typing (effectiveSafeRead, parseWithTypes)
 
-{- | @readSeparatedCore chunkSpec separator opts buffer@; @chunkSpec@
-pins the chunk count ('Nothing' = capability\/size-gated automatic).
--}
+-- | Run the read pipeline; @chunkSpec@ pins the chunk count if given.
 readSeparatedCore ::
     Maybe Int ->
     Word8 ->
@@ -74,8 +67,7 @@ readSeparatedCore chunkSpec separator opts fileRaw = do
     let (file, _bomLen) = stripBom fileRaw
         contentLen = VS.length file
     nChunks <- maybe (autoChunkCount contentLen) pure chunkSpec
-    -- Parallel reads scan in parallel too; sequential reads (or builds
-    -- without SIMD) keep the original scan + row classification.
+    -- Parallel reads scan in parallel too.
     mPar <-
         if nChunks > 1
             then getDelimiterIndicesPar nChunks separator contentLen file
@@ -192,19 +184,14 @@ readSeparatedCore chunkSpec separator opts fileRaw = do
                                                 legacySchema
                                             )
                                             df
-                        -- The parallel merge already forced every column
-                        -- payload, so only the column thunks themselves
-                        -- need forcing; the deep walk would re-chase 6M+
-                        -- pointers per boxed column for nothing.
+                        -- Parallel merge already forced the payloads.
                         if nChunks > 1 && S.null legacySchema
                             then do
                                 Vector.foldl' (\() c -> c `seq` ()) () cols `seq`
                                     return df
                             else return $! forceDataFrame df'
 
-{- | The scanner is handed its separator as a byte, so a 'columnSeparator'
-saying anything else would be silently ignored. Reject that up front.
--}
+-- | Reject a 'columnSeparator' that disagrees with the separator byte.
 checkSeparatorAgrees :: Word8 -> ReadOptions -> IO ()
 checkSeparatorAgrees separator opts =
     unless (separator == fromIntegral (ord asked)) $
@@ -217,9 +204,6 @@ checkSeparatorAgrees separator opts =
   where
     asked = columnSeparator opts
 
-{- | An empty 'DataFrame' — returned when the input has no delimiters
-(empty file or single line with no separator and no newline). Guards
-against a divide-by-zero in the row-stride math when 'numCol == 0'.
--}
+-- | An empty 'DataFrame', for input with no delimiters.
 emptyDataFrame :: DataFrame
 emptyDataFrame = DataFrame Vector.empty M.empty (0, 0) M.empty

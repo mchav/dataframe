@@ -1,12 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | The "predict is the model's denotation" claim, discharged as a test rather
-than left as a slogan: the @Expr@ that 'predict' compiles must evaluate to the
-same numbers as the fitted record's own parameters, computed independently here
-in plain Haskell. If @affineExpr@ / @argMinExpr@ ever drift from the record they
-are built from, these fail.
--}
+-- | The Expr from predict must match the fitted parameters numerically.
 module Learn.Denotation (tests) where
 
 import qualified Data.Text as T
@@ -49,7 +44,7 @@ df =
 col :: D.DataFrame -> T.Text -> [Double]
 col d n = interpD d (F.col @Double n)
 
--- | @interpret (predict m)@ must equal @intercept + Σ coefⱼ·featureⱼ@ from the record.
+-- | @interpret (predict m)@ must equal @intercept + Σ coefⱼ·featureⱼ@.
 linearDenotation :: Test
 linearDenotation = TestCase $ do
     let m = fit defaultLinearConfig (F.col @Double "y") df
@@ -65,7 +60,7 @@ linearDenotation = TestCase $ do
         "linear: predict Expr matches the record's affine prediction"
         (and (zipWith (\a b -> abs (a - b) < 1e-9) native symbolic))
 
--- | @interpret (predict km)@ must equal the nearest-centroid label from @kmCenters@.
+-- | @interpret (predict km)@ must equal the nearest-centroid label.
 kmeansDenotation :: Test
 kmeansDenotation = TestCase $ do
     let feats = ["x1", "x2"]
