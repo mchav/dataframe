@@ -158,9 +158,43 @@ toDoubleCases =
           e = F.toDouble (operandExpr x)
     ]
 
+mergeAggCases :: [Test]
+mergeAggCases = concatMap sizeCases sizes
+  where
+    sizeCases n =
+        [ TestCase $
+            assertEqual
+                ("count over " ++ show n ++ " rows")
+                [n]
+                (take 1 (run (operandColumns xsI) (F.count (F.col @Int "x"))))
+        , TestCase $
+            assertEqual
+                ("countDistinct of an expression over " ++ show n ++ " rows")
+                [length (takeWhile (< n) [0 .. 6])]
+                (take 1 (run (operandColumns xsI) (F.countDistinct (F.col @Int "x" + 1))))
+        , TestCase $
+            assertBool
+                ("mean of ints over " ++ show n ++ " rows")
+                (all (approx (sumD / fromIntegral n)) (run (operandColumns xsI) (F.mean (F.col @Int "x"))))
+        , TestCase $
+            assertEqual
+                ("mean of doubles over " ++ show n ++ " rows")
+                [sum (take n smallDoubles) / fromIntegral n]
+                (take 1 (run (operandColumns xsD) (F.mean (F.col @Double "x"))))
+        ]
+      where
+        -- Seven distinct ints with a large spread; the sum fits in a Double.
+        xs = take n (cycle [3, -1, 0, 1, 7, 1000000007, -999999989 :: Int])
+        xsI = Column "x" xs
+        xsD = Column "x" (take n smallDoubles)
+        sumD = sum (map fromIntegral xs) :: Double
+    smallDoubles = cycle [0.5, 1, 2.5, -3, 0.25]
+    approx a b = abs (a - b) <= 1.0e-9 * max 1 (abs a)
+
 tests :: [Test]
 tests =
-    binaryCases doubles comparisons
+    mergeAggCases
+        ++ binaryCases doubles comparisons
         ++ binaryCases ints comparisons
         ++ binaryCases doubles arithmetic
         ++ binaryCases ints arithmetic

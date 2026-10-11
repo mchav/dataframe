@@ -277,7 +277,7 @@ packedCharCount p@(PackedTextData arr offs sel _) = case (sel, offs) of
 {- | @sum (map f v)@ as one parallel loop with no intermediate column. Inlined
 so a known @f@ and element type give a plain loop at each use.
 -}
-parSumBy :: (VU.Unbox a, Num a) => (a -> a) -> VU.Vector a -> a
+parSumBy :: (VU.Unbox a, Num b) => (a -> b) -> VU.Vector a -> b
 parSumBy f v = unsafePerformIO $ do
     parts <-
         parallelChunks parThreshold (VU.length v) (\lo hi -> pure $! go lo hi 0)

@@ -1300,6 +1300,10 @@ eval ctx expr@(Agg (FoldAgg _ (Just seed) (f :: a -> b -> a)) inner) =
             Group gs ->
                 Flat . fromVector
                     <$> V.mapM (foldlColumn @b @a f seed) gs
+eval (FlatCtx df) (Agg (MergeAgg "mean" _ _ _ (_ :: acc -> a)) (Col name))
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Double)
+    , Just v <- fusedMean df name =
+        Right (Scalar v)
 eval
     ctx
     expr@( Agg
@@ -1452,6 +1456,17 @@ interpretAggregation gdf expr = do
             Right $ Aggregated $ TColumn col
         Group _ ->
             Right $ UnAggregated $ BoxedColumn @T.Text Nothing V.empty
+
+-- | The mean of a clean Int or Double column. Empty gives NaN, like 'mean'.
+fusedMean :: DataFrame -> T.Text -> Maybe Double
+fusedMean df name = do
+    UnboxedColumn Nothing (v :: VU.Vector t) <- getColumn name df
+    total <- case testEquality (typeRep @t) (typeRep @Int) of
+        Just Refl -> Just (K.parSumBy fromIntegral v)
+        Nothing -> case testEquality (typeRep @t) (typeRep @Double) of
+            Just Refl -> Just (K.parSumBy id v)
+            Nothing -> Nothing
+    pure $! if VU.null v then 0 / 0 else total / fromIntegral (VU.length v)
 
 -- | The sum of a column, or of an arithmetic combination of a column and a literal.
 fusedSum :: forall a. (Columnable a) => DataFrame -> Expr a -> Maybe a
