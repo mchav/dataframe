@@ -170,7 +170,10 @@ mergeAggCases = concatMap sizeCases sizes
         , TestCase $
             assertBool
                 ("mean of ints over " ++ show n ++ " rows")
-                (all (approx (sumD / fromIntegral n)) (run (operandColumns xsI) (F.mean (F.col @Int "x"))))
+                ( all
+                    (approx (sumD / fromIntegral n))
+                    (run (operandColumns xsI) (F.mean (F.col @Int "x")))
+                )
         , TestCase $
             assertEqual
                 ("mean of doubles over " ++ show n ++ " rows")
