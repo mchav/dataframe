@@ -33,6 +33,7 @@ import DataFrame.Internal.Algorithms.Rank.Radix (rankByHash)
 import DataFrame.Internal.Column (
     Column (..),
     materializeMerged,
+    widenToInt,
  )
 import DataFrame.Internal.Column.Bitmap (
     Bitmap,
@@ -41,16 +42,14 @@ import DataFrame.Internal.Column.Bitmap (
 import DataFrame.Internal.Column.Encode (dictEncodeColumnUpTo)
 import DataFrame.Internal.Column.Types
 import DataFrame.Internal.Control.Concurrent (
-    capabilities,
     chunksFor,
     forkJoin,
     parThreshold,
     shouldParallelize,
-    splitChunkRange,
  )
 import DataFrame.Internal.Data.HashTable (htInsert, newHashTable)
 import DataFrame.Internal.Data.PackedText (
-    PackedSel,
+    PackedOffsets (..),
     PackedTextData (..),
     offCount,
     packedLength,
@@ -60,11 +59,9 @@ import DataFrame.Internal.Data.PackedText (
  )
 import DataFrame.Internal.DataFrame (DataFrame (..), GroupedDataFrame (..))
 import DataFrame.Internal.Grouping.Direct (
-    DirectGrouping (..),
     ascendingCodeGroups,
     directGroupThreshold,
     rangeOf,
-    tryDirectGroupColumn,
  )
 import qualified DataFrame.Internal.Grouping.Direct as GD
 import DataFrame.Internal.Grouping.Partitioned (
@@ -145,8 +142,8 @@ unboxed @Int@ of small range, or a non-null canonical dict-encoded text column
 of small dictionary. Anything else falls back to the hash group-by.
 -}
 fusedKey :: Column -> Maybe FusedKey
-fusedKey (UnboxedColumn Nothing (v :: VU.Vector a))
-    | Just Refl <- testEquality (typeRep @a) (typeRep @Int)
+fusedKey col@(UnboxedColumn Nothing (_ :: VU.Vector a))
+    | Just v <- asIntKeys col
     , not (VU.null v) =
         let (!mn, !mx) = rangeOf v
             !range = mx - mn + 1
@@ -167,6 +164,16 @@ fusedKey (PackedText Nothing p)
                         )
                 else Nothing
 fusedKey _ = Nothing
+
+{- | An integral key column as 'Int's. Narrow widths are copied once so they
+share the 'Int' direct path; hash grouping costs far more. Floats are refused:
+rounding them would merge distinct keys.
+-}
+asIntKeys :: Column -> Maybe (VU.Vector Int)
+asIntKeys (UnboxedColumn Nothing (v :: VU.Vector a)) = case sFloating @a of
+    STrue -> Nothing
+    SFalse -> widenToInt v
+asIntKeys _ = Nothing
 
 {- | Fuse the per-key codes into one mixed-radix code per row
 (@((k1*d2)+k2)*d3+...@) and feed the direct counting-sort machinery. Group
@@ -424,11 +431,12 @@ computeHashes df indicesToGroup n = do
 (validity first, a null equals only a null). Used to reject hash collisions.
 -}
 eqKeyRow :: DataFrame -> [Int] -> Int -> Int -> Bool
-eqKeyRow df indicesToGroup =
-    let !preds = map (colEqRow . (columns df V.!)) indicesToGroup
-        go [] _ _ = True
-        go (p : ps) a b = p a b && go ps a b
-     in go preds
+eqKeyRow df indicesToGroup = case map (colEqRow . (columns df V.!)) indicesToGroup of
+    [p] -> p
+    preds ->
+        let go [] _ _ = True
+            go (p : ps) a b = p a b && go ps a b
+         in go preds
 
 {- | Per-column row equality respecting nulls. Two rows are equal at a column
 when both are null, or both are valid and their values compare equal.
@@ -448,12 +456,33 @@ colEqRow (PackedText bm p) =
             Just sel
                 | ptCanonicalSel p ->
                     \a b -> selAt sel a == selAt sel b
-            _ -> \a b ->
-                let (arrA, oA, lA) = packedSlice p a
-                    (arrB, oB, lB) = packedSlice p b
-                 in sliceEqBytes arrA oA lA arrB oB lB
+            _ -> packedEqRow p
      in withNulls bm eqV
 {-# INLINE colEqRow #-}
+
+{- | Byte equality of two packed-text rows. The layout is matched once, outside
+the returned function, so each row pair costs two offset lookups and a compare.
+-}
+packedEqRow :: PackedTextData -> (Int -> Int -> Bool)
+packedEqRow (PackedTextData arr offs sel _) = case (sel, offs) of
+    (Nothing, Offs32 o) -> \a b -> a == b || eqBase (off32 o) a b
+    (Nothing, Offs64 o) -> \a b -> a == b || eqBase (VU.unsafeIndex o) a b
+    (Just s, Offs32 o) -> eqSel s (off32 o)
+    (Just s, Offs64 o) -> eqSel s (VU.unsafeIndex o)
+  where
+    off32 o i = fromIntegral (VU.unsafeIndex o i)
+    -- Base rows; equal ones share bytes, and -1 is the empty string.
+    eqSel s off a b =
+        let !ra = selAt s a
+            !rb = selAt s b
+         in ra == rb || eqBase off ra rb
+    eqBase off ra rb =
+        let span r = if r < 0 then (0, 0) else let o = off r in (o, off (r + 1) - o)
+            (!oa, !la) = span ra
+            (!ob, !lb) = span rb
+         in sliceEqBytes arr oa la arr ob lb
+    {-# INLINE eqSel #-}
+    {-# INLINE eqBase #-}
 
 {- | Wrap a value-equality with null handling: equal iff both valid and the
 values agree, or both null.

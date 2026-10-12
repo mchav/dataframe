@@ -22,7 +22,6 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified DataFrame.Internal.Column as DI
-import qualified DataFrame.Internal.Column.Bitmap as DI
 
 import Control.Monad (foldM_, forM, join, when, zipWithM_)
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))

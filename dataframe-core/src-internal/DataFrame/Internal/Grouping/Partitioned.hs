@@ -22,8 +22,9 @@ module DataFrame.Internal.Grouping.Partitioned (
 ) where
 
 import Control.Concurrent (getNumCapabilities)
-import Control.Monad (forM_, when)
-import Data.Bits (countLeadingZeros, unsafeShiftR)
+import Control.Monad (when)
+import Data.Bits (countLeadingZeros, unsafeShiftL, unsafeShiftR)
+import qualified Data.List as L
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import qualified Data.Vector.Unboxed as VU
@@ -102,8 +103,11 @@ parallelAssignGroups n hashes eqRow = do
     caps <- getNumCapabilities
     let !p = numPartitionsFor caps n
         !shift = 64 - intLog2 p
-    (partStart, sortedRows, sortedHash) <- partitionRows n hashes p shift
+    link <- VUM.new (max 1 n)
+    (partStart, sortedRows, sortedHash, sortedLink) <-
+        partitionRows n hashes eqRow link p shift
     localGid <- VUM.new (max 1 n)
+    gidByRow <- VUM.new (max 1 n)
     canonBoxes <- VM.replicate p (VU.empty :: VU.Vector Int)
     nLocalGroups <- VUM.replicate p (0 :: Int)
     runPartitions
@@ -113,6 +117,8 @@ parallelAssignGroups n hashes eqRow = do
         sortedRows
         sortedHash
         eqRow
+        sortedLink
+        gidByRow
         localGid
         canonBoxes
         nLocalGroups
@@ -137,13 +143,16 @@ row order — bit-for-bit the sequential counting sort's layout.
 partitionRows ::
     Int ->
     VU.Vector Int ->
+    (Int -> Int -> Bool) ->
+    VUM.IOVector Int ->
     Int ->
     Int ->
-    IO (VU.Vector Int, VU.Vector Int, VU.Vector Int)
-partitionRows n hashes p shift = do
+    IO (VU.Vector Int, VU.Vector Int, VU.Vector Int, VU.Vector Int)
+partitionRows n hashes eqRow link p shift = do
     caps <- getNumCapabilities
     let chunks = rowChunks caps n
-    cursors <- forkJoin [histChunk hashes p shift lo hi | (lo, hi) <- chunks]
+    cursors <-
+        forkJoin [histChunk hashes eqRow link p shift lo hi | (lo, hi) <- chunks]
     -- Exclusive prefix over partitions (outer) and chunks (inner): partStart
     -- from the totals, and each chunk's histogram rewritten into its cursor.
     partStartM <- VUM.new (p + 1)
@@ -161,14 +170,16 @@ partitionRows n hashes p shift = do
     seed 0 0
     sortedM <- VUM.new (max 1 n)
     sortedHashM <- VUM.new (max 1 n)
+    sortedLinkM <- VUM.new (max 1 n)
     forkJoin_
-        [ scatterChunk hashes shift cur sortedM sortedHashM lo hi
+        [ scatterChunk hashes link shift cur sortedM sortedHashM sortedLinkM lo hi
         | ((lo, hi), cur) <- zip chunks cursors
         ]
     partStart <- VU.unsafeFreeze partStartM
     sortedRows <- VU.unsafeFreeze sortedM
     sortedHash <- VU.unsafeFreeze sortedHashM
-    pure (partStart, sortedRows, sortedHash)
+    sortedLink <- VU.unsafeFreeze sortedLinkM
+    pure (partStart, sortedRows, sortedHash, sortedLink)
 
 -- | Contiguous near-equal row chunks, one per capability; empties dropped.
 rowChunks :: Int -> Int -> [(Int, Int)]
@@ -182,32 +193,83 @@ rowChunks caps n =
   where
     !per = (n + max 1 caps - 1) `div` max 1 caps
 
--- | Per-partition counts of one row chunk.
-histChunk :: VU.Vector Int -> Int -> Int -> Int -> Int -> IO (VUM.IOVector Int)
-histChunk hashes p shift lo hi = do
+{- | Per-partition counts of one row chunk. Also links each row whose key equals
+a recently seen row of the chunk to that row (@link[i] = r@, else @-1@), using a
+small two-way cache, so the grouping pass can copy the group of a skewed
+key instead of probing and re-comparing it. A key's first row is never linked.
+-}
+histChunk ::
+    VU.Vector Int ->
+    (Int -> Int -> Bool) ->
+    VUM.IOVector Int ->
+    Int ->
+    Int ->
+    Int ->
+    Int ->
+    IO (VUM.IOVector Int)
+histChunk hashes eqRow link p shift lo hi = do
     acc <- VUM.replicate p (0 :: Int)
-    let go !i
+    -- Two ways per set, so two hot keys sharing a set do not evict each other.
+    cacheHash <- VUM.new (2 * linkCacheSets)
+    cacheRow <- VUM.replicate (2 * linkCacheSets) (-1 :: Int)
+    let hit !w !h !i = do
+            r <- VUM.unsafeRead cacheRow w
+            h' <- VUM.unsafeRead cacheHash w
+            pure (if r >= 0 && h' == h && eqRow r i then r else -1)
+        go !i
             | i >= hi = pure acc
             | otherwise = do
-                let !pp = partIx shift (VU.unsafeIndex hashes i)
+                let !h = VU.unsafeIndex hashes i
+                    !pp = partIx shift h
+                    !w0 = 2 * cacheSet h
+                r0 <- hit w0 h i
+                r <- if r0 >= 0 then pure r0 else hit (w0 + 1) h i
+                VUM.unsafeWrite link i r
+                when (r < 0) $ do
+                    -- Way 0 holds the newest key; the older one moves to way 1.
+                    VUM.unsafeRead cacheHash w0 >>= VUM.unsafeWrite cacheHash (w0 + 1)
+                    VUM.unsafeRead cacheRow w0 >>= VUM.unsafeWrite cacheRow (w0 + 1)
+                    VUM.unsafeWrite cacheHash w0 h
+                    VUM.unsafeWrite cacheRow w0 i
                 c <- VUM.unsafeRead acc pp
                 VUM.unsafeWrite acc pp (c + 1)
                 go (i + 1)
     go lo
 
-{- | Scatter one row chunk into @sortedM@/@sortedHashM@ through the chunk's
-private cursor.
+{- | Cache set of a hash. The text row hash's low bits are weak, so they are
+mixed first; the top bits already pick the partition.
+-}
+cacheSet :: Int -> Int
+cacheSet h =
+    fromIntegral
+        ( (fromIntegral h * 0x9E3779B97F4A7C15 :: Word64)
+            `unsafeShiftR` (64 - linkCacheBits)
+        )
+{-# INLINE cacheSet #-}
+
+linkCacheBits :: Int
+linkCacheBits = 12
+
+-- | Sets in each chunk's cache of recent keys (a power of two).
+linkCacheSets :: Int
+linkCacheSets = 1 `unsafeShiftL` linkCacheBits
+
+{- | Scatter one row chunk into @sortedM@/@sortedHashM@/@sortedLinkM@ through the
+chunk's private cursor. Links travel with their rows so the grouping pass reads
+them in order.
 -}
 scatterChunk ::
     VU.Vector Int ->
+    VUM.IOVector Int ->
     Int ->
+    VUM.IOVector Int ->
     VUM.IOVector Int ->
     VUM.IOVector Int ->
     VUM.IOVector Int ->
     Int ->
     Int ->
     IO ()
-scatterChunk hashes shift cursor sortedM sortedHashM lo hi = go lo
+scatterChunk hashes link shift cursor sortedM sortedHashM sortedLinkM lo hi = go lo
   where
     go !i
         | i >= hi = pure ()
@@ -217,12 +279,23 @@ scatterChunk hashes shift cursor sortedM sortedHashM lo hi = go lo
             pos <- VUM.unsafeRead cursor pp
             VUM.unsafeWrite sortedM pos i
             VUM.unsafeWrite sortedHashM pos h
+            VUM.unsafeRead link i >>= VUM.unsafeWrite sortedLinkM pos
             VUM.unsafeWrite cursor pp (pos + 1)
             go (i + 1)
 
 -------------------------------------------------------------------------------
 -- Phase 2: per-partition grouping (parallel)
 -------------------------------------------------------------------------------
+
+{- | Partition indices, largest first, so a partition swollen by a skewed key
+starts at once instead of finishing alone after the rest.
+-}
+largestFirst :: VU.Vector Int -> VU.Vector Int
+largestFirst partStart =
+    let !p = VU.length partStart - 1
+        size i = VU.unsafeIndex partStart (i + 1) - VU.unsafeIndex partStart i
+     in VU.fromList
+            (map snd (L.sortBy (flip compare) [(size i, i) | i <- [0 .. p - 1]]))
 
 {- | Group each partition with its own hash table, then rank its local groups into
 canonical order — all inside the parallel worker. Forks @caps@ workers pulling
@@ -235,32 +308,50 @@ runPartitions ::
     VU.Vector Int ->
     VU.Vector Int ->
     (Int -> Int -> Bool) ->
+    VU.Vector Int ->
+    VUM.IOVector Int ->
     VUM.IOVector Int ->
     VM.IOVector (VU.Vector Int) ->
     VUM.IOVector Int ->
     IO ()
-runPartitions caps p partStart sortedRows sortedHash eqRow localGid canonBoxes nLocalGroups =
-    pooledIndices caps p groupPartition
+runPartitions caps p partStart sortedRows sortedHash eqRow sortedLink gidByRow localGid canonBoxes nLocalGroups =
+    pooledIndices caps p (groupPartition . VU.unsafeIndex order)
   where
+    !order = largestFirst partStart
     groupPartition !pp = do
         let !s = VU.unsafeIndex partStart pp
             !e = VU.unsafeIndex partStart (pp + 1)
             !sz = e - s
         when (sz > 0) $ do
-            ht <- newHashTable sz
-            repHashM <- VUM.new sz
+            -- Linked rows never reach the table, so size it by the unlinked ones.
+            let countUnlinked !pos !k
+                    | pos >= e = pure k
+                    | otherwise =
+                        countUnlinked (pos + 1) (if VU.unsafeIndex sortedLink pos < 0 then k + 1 else k)
+            nUnlinked <- countUnlinked s 0
+            ht <- newHashTable nUnlinked
+            repHashM <- VUM.new nUnlinked
             let loop !pos !nextGid
                     | pos >= e = pure nextGid
                     | otherwise = do
                         let !row = VU.unsafeIndex sortedRows pos
                             !h = VU.unsafeIndex sortedHash pos
-                        (gid, isNew) <- htInsert ht eqRow nextGid row h
-                        VUM.unsafeWrite localGid pos gid
-                        if isNew
+                            !r = VU.unsafeIndex sortedLink pos
+                        if r >= 0
                             then do
-                                VUM.unsafeWrite repHashM nextGid h
-                                loop (pos + 1) (nextGid + 1)
-                            else loop (pos + 1) nextGid
+                                -- r is an earlier, unlinked row of this partition.
+                                gid <- VUM.unsafeRead gidByRow r
+                                VUM.unsafeWrite localGid pos gid
+                                loop (pos + 1) nextGid
+                            else do
+                                (gid, isNew) <- htInsert ht eqRow nextGid row h
+                                VUM.unsafeWrite localGid pos gid
+                                VUM.unsafeWrite gidByRow row gid
+                                if isNew
+                                    then do
+                                        VUM.unsafeWrite repHashM nextGid h
+                                        loop (pos + 1) (nextGid + 1)
+                                    else loop (pos + 1) nextGid
             ng <- loop s 0
             VUM.unsafeWrite nLocalGroups pp ng
             canon <- rankByHash (VUM.unsafeRead repHashM) ng
@@ -363,7 +454,8 @@ assemble n p partStart sortedRows localGid globalBase canonOf nGroups = do
                         VUM.unsafeWrite counts g (c + 1)
                         pass2 (pos + 1)
             pass2 s
-    pooledIndices caps p doPartition
+    let !order = largestFirst partStart
+    pooledIndices caps p (doPartition . VU.unsafeIndex order)
     VUM.unsafeWrite offsM nGroups n
     offs <- VU.unsafeFreeze offsM
     vis <- VU.unsafeFreeze visM

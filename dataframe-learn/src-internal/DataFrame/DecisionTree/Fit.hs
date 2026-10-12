@@ -25,6 +25,7 @@ module DataFrame.DecisionTree.Fit (
     probExprs,
 ) where
 
+import qualified Data.List as L
 import DataFrame.DecisionTree.Cart (buildCartTree)
 import DataFrame.DecisionTree.Categorical (
     TargetInfo (..),
@@ -50,7 +51,7 @@ import DataFrame.Operations.Subset (exclude, filterWhere)
 
 import Control.Exception (throw)
 import Data.Function (on)
-import Data.List (foldl', maximumBy, nub, sort)
+import Data.List (maximumBy, nub, sort)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -130,7 +131,7 @@ getCounts target df = case interpret @a df (Col target) of
     Left e -> throw e
     Right (TColumn column) -> case toVector @a column of
         Left e -> throw e
-        Right vals -> foldl' (\acc x -> M.insertWith (+) x 1 acc) M.empty (V.toList vals)
+        Right vals -> L.foldl' (\acc x -> M.insertWith (+) x 1 acc) M.empty (V.toList vals)
 
 -- | The @p@-th percentile of an expression's values (@0@ on failure/empty).
 percentile :: Int -> Expr Double -> DataFrame -> Double

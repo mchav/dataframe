@@ -230,6 +230,7 @@ fromSExp e = case e of
     SList (SAtom fn : args) -> ACall (T.pack fn) <$> mapM fromSExp args
     SAtom a -> Left ("bare atom " ++ a)
     SList [] -> Left "empty list"
+    SList (SList _ : _) -> Left "list head must be an atom"
   where
     strLit s = case reads s :: [(String, String)] of
         [(v, "")] -> pure (T.pack v)
@@ -334,7 +335,9 @@ lexPretty schema = go
         | "else" `isPrefixOf` s && boundary (drop 4 s) = Just (TElse, drop 4 s)
         | "if" `isPrefixOf` s && boundary (drop 2 s) = Just (TIf, drop 2 s)
         | otherwise = Nothing
-    boundary more = null more || not (isAlphaNum (head more))
+    boundary more = case more of
+        [] -> True
+        (c : _) -> not (isAlphaNum c)
     longest cands s = case [n | n <- cands, T.unpack n `isPrefixOf` s] of
         (n : _) -> Just (n, drop (T.length n) s)
         [] -> Nothing

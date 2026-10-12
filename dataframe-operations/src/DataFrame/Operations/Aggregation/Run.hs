@@ -42,6 +42,7 @@ import DataFrame.Internal.Aggregation.Kernel.Dense (
     denseMaxMinusMin,
     denseReduce,
  )
+import DataFrame.Internal.Aggregation.Kernel.Distinct (countDistinctGroups)
 import DataFrame.Internal.Aggregation.Kernel.Moments (
     Moments (..),
     momentScatterPar,
@@ -96,6 +97,9 @@ runPlan gdf rtg nGroups plan = case plan of
                 Just out -> out
                 Nothing -> maxMinusMin vis offs nGroups ca cb
     PlanMedian name -> groupedMedian vis offs nGroups (col name)
+    PlanCountDistinct name -> case countDistinctGroups rtg nGroups (col name) of
+        Just counts -> fromUnboxedVector counts
+        Nothing -> error "runPlan: countDistinctGroups rejected a planned column"
   where
     vis = valueIndices gdf
     offs = offsets gdf
@@ -111,17 +115,6 @@ runPlan gdf rtg nGroups plan = case plan of
         let c = col name
             dense
                 | nGroups <= denseThreshold = denseReduce red rtg nGroups c
-                {- Top-2 selection merges exactly (a multiset selection, no
-                float adds until finalize), so like the fused passes it streams
-                off @rowToGroup@ up to 'streamGroupCap': on a direct-grouped
-                frame that skips the deferred @valueIndices@ placement, which
-                costs more than the accumulator cache misses it saves
-                (measured at 1e6 groups / 1e8 rows on -N16: stream 1.0s
-                against placement 0.7s + gather 0.4s). RTop2Snd shares the
-                same accumulator machinery and merge-exactness. -}
-                | red == RTop2Sum || red == RTop2Snd
-                , nGroups <= streamGroupCap =
-                    denseReduce red rtg nGroups c
                 | otherwise = Nothing
          in case dense of
                 Just out -> out

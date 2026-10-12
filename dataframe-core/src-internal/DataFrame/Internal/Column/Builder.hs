@@ -26,7 +26,9 @@ module DataFrame.Internal.Column.Builder (
     appendTextSliceFromPtr,
     freezeTextChunk,
     concatColumns,
+    concatColumnsIO,
     mergeTextChunks,
+    mergeTextChunksIO,
 ) where
 
 import qualified Data.Text as T
@@ -48,7 +50,9 @@ import DataFrame.Internal.Column.Bitmap (packValidity)
 import DataFrame.Internal.Column.Merge (
     TextChunk (..),
     concatColumns,
+    concatColumnsIO,
     mergeTextChunks,
+    mergeTextChunksIO,
  )
 import Foreign.Ptr (Ptr)
 

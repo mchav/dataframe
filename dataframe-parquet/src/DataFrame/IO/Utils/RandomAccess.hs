@@ -9,6 +9,7 @@ module DataFrame.IO.Utils.RandomAccess (
     ReaderIO (runReaderIO),
     LocalFile,
     MMappedFile,
+    ChunkBuffer (..),
     unsafeToByteString,
     WritableBinaryHandle,
     openWritableBinaryFile,
@@ -122,6 +123,14 @@ instance RandomAccess LocalFile where
         fSeek handle AbsoluteSeek offset'
         fGet handle length'
     readSuffix n = ReaderIO (readLastBytes $ fromIntegral n)
+
+-- | Bytes of one column chunk, already read; @base@ is their file offset.
+data ChunkBuffer = ChunkBuffer !Integer !ByteString
+
+instance RandomAccess (ReaderIO ChunkBuffer) where
+    readBytes (Range offset' length') = ReaderIO $ \(ChunkBuffer base bs) ->
+        pure (BU.unsafeTake length' (BU.unsafeDrop (fromInteger (offset' - base)) bs))
+    readSuffix _ = ReaderIO $ \_ -> error "ChunkBuffer: no file footer"
 
 type MMappedFile = ReaderIO (VS.Vector Word8)
 

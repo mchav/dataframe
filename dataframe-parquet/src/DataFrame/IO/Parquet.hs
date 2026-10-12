@@ -62,8 +62,11 @@ module DataFrame.IO.Parquet (
     ForceNonSeekable,
     withFileBufferedOrSeekable,
     _readParquetWithOpts,
+    readParquetWithMetadata,
+    FileMetadata,
 ) where
 
+import Control.Concurrent (getNumCapabilities)
 import Control.Exception (throw)
 import Control.Monad
 import Control.Monad.IO.Class (MonadIO (..))
@@ -72,7 +75,9 @@ import Data.Bits (Bits (shiftL), (.|.))
 import qualified Data.ByteString as BS
 import Data.Either (fromRight)
 import Data.Functor ((<&>))
+import Data.IORef (atomicModifyIORef', newIORef)
 import Data.Int (Int32, Int64)
+import Data.Maybe (fromJust, fromMaybe)
 #if !MIN_VERSION_base(4,20,0)
 import Data.List (foldl', transpose)
 #else
@@ -83,9 +88,21 @@ import qualified Data.Map as Map
 import qualified Data.Text as T
 import Data.Time.Calendar (Day (ModifiedJulianDay))
 import Data.Time.Clock (UTCTime (UTCTime), picosecondsToDiffTime)
+import Data.Type.Equality (testEquality, (:~:) (Refl))
 import qualified Data.Vector as Vector
+import qualified Data.Vector.Mutable as MVector
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 import DataFrame.Errors (DataFrameException (ColumnsNotFoundException))
+import DataFrame.IO.Parquet.Dictionary (
+    DictVals,
+    dictDouble,
+    dictFloat,
+    dictInt32,
+    dictInt64,
+    word32At,
+    word64At,
+ )
 import DataFrame.IO.Parquet.Page (
     PageDecoder,
     UnboxedPageDecoder,
@@ -93,6 +110,7 @@ import DataFrame.IO.Parquet.Page (
     appendStringPageIO,
     boolDecoder,
     byteArrayDecoder,
+    decodeRequiredNumericInto,
     doubleDecoder,
     fixedLenByteArrayDecoder,
     floatDecoder,
@@ -109,11 +127,13 @@ import DataFrame.IO.Parquet.Seeking (
  )
 import DataFrame.IO.Parquet.Thrift (
     ColumnChunk (..),
+    ColumnMetaData (..),
     DecimalType (..),
     FileMetadata (..),
     KeyValue (..),
     LogicalType (..),
     RowGroup (..),
+    Statistics (..),
     ThriftType (..),
     TimeUnit (..),
     TimestampType (..),
@@ -139,18 +159,26 @@ import DataFrame.IO.Parquet.Writer (
     writeParquetWithOptions,
  )
 import DataFrame.IO.Utils.RandomAccess (
+    ChunkBuffer (..),
     RandomAccess (..),
+    Range (Range),
     ReaderIO (runReaderIO),
  )
 import DataFrame.Internal.Column (Column, Columnable)
 import qualified DataFrame.Internal.Column as DI
 import DataFrame.Internal.Column.Builder (
+    concatColumnsIO,
     freezeTextChunk,
     mergeTextChunks,
     newTextBuilder,
  )
+import DataFrame.Internal.Control.Concurrent (forkJoin_)
 import DataFrame.Internal.DataFrame (DataFrame (..))
-import DataFrame.Internal.Expression (Expr, getColumns)
+import DataFrame.Internal.Expression (
+    BinaryOp (binaryName),
+    Expr (..),
+    getColumns,
+ )
 import DataFrame.Operations.Merge ()
 import qualified DataFrame.Operations.Subset as DS
 import DataFrame.Schema (
@@ -159,11 +187,13 @@ import DataFrame.Schema (
     makeSchema,
     schemaType,
  )
+import GHC.Float (castWord32ToFloat, castWord64ToDouble)
 import qualified Pinch
 import System.Directory (doesDirectoryExist)
 import System.FilePath ((</>))
 import System.FilePath.Glob (glob)
 import System.IO (IOMode (ReadMode))
+import Type.Reflection (typeRep)
 
 -- Options -----------------------------------------------------------------
 
@@ -189,6 +219,16 @@ data ParquetReadOptions = ParquetReadOptions
     -- ^ Optional row slice @(start, end)@ with start-inclusive/end-exclusive semantics.
     , safeColumns :: Bool
     -- ^ When True, every column is promoted to OptionalColumn after read, regardless of nullability in the schema.
+    , widenIntegers :: Bool
+    {- ^ When True, INT32 and INT64 columns are decoded as 'Int' instead of
+    'Int32' \/ 'Int64'. 'Int' is the width the fast comparison, arithmetic and
+    grouping kernels are compiled for.
+    -}
+    , parallel :: Bool
+    {- ^ When True, row groups are decoded concurrently, one task per
+    (row group, column) pair, using every RTS capability. Has no effect on
+    single-row-group files or with @+RTS -N1@.
+    -}
     }
     deriving (Show)
 
@@ -202,6 +242,8 @@ ParquetReadOptions
     , predicate = Nothing
     , rowRange = Nothing
     , safeColumns = False
+    , widenIntegers = False
+    , parallel = True
     }
 @
 -}
@@ -212,6 +254,8 @@ defaultParquetReadOptions =
         , predicate = Nothing
         , rowRange = Nothing
         , safeColumns = False
+        , widenIntegers = False
+        , parallel = True
         }
 
 -- Public API --------------------------------------------------------------
@@ -244,9 +288,284 @@ readParquetWithOpts = _readParquetWithOpts Nothing
 -- | Internal entry point used by tests to force non-seekable mode.
 _readParquetWithOpts ::
     ForceNonSeekable -> ParquetReadOptions -> FilePath -> IO DataFrame
-_readParquetWithOpts extraConfig opts path =
-    withFileBufferedOrSeekable extraConfig path ReadMode $ \file ->
-        runReaderIO (parseParquetWithOpts opts) file
+_readParquetWithOpts extraConfig opts path = do
+    metadata <-
+        withFileBufferedOrSeekable
+            extraConfig
+            path
+            ReadMode
+            (runReaderIO parseFileMetadata)
+    readParquetWithMetadata extraConfig metadata opts path
+
+{- | Read a Parquet file whose footer has already been parsed (see
+'readMetadataFromPath'). Parsing the footer costs about as much as decoding a
+small column on files with many row groups, so a process that reads the same
+file repeatedly should parse it once.
+-}
+readParquetWithMetadata ::
+    ForceNonSeekable ->
+    FileMetadata ->
+    ParquetReadOptions ->
+    FilePath ->
+    IO DataFrame
+readParquetWithMetadata extraConfig metadata opts path = do
+    caps <- getNumCapabilities
+    let nRowGroups = length (unField metadata.row_groups)
+    if parallel opts && extraConfig /= Just True && caps > 1 && nRowGroups > 1
+        then decodeRowGroupsParallel caps opts path metadata
+        else withFileBufferedOrSeekable extraConfig path ReadMode $ \file ->
+            runReaderIO (parseParquetWithOpts opts) file
+
+{- | Decode row groups in parallel: every (row group, column) pair is one task,
+pulled from a shared counter by @caps@ workers that each own a file handle.
+Per-row-group columns are then concatenated in file order.
+-}
+decodeRowGroupsParallel ::
+    Int -> ParquetReadOptions -> FilePath -> FileMetadata -> IO DataFrame
+decodeRowGroupsParallel caps opts0 path metadata = do
+    let plan = planColumns opts0 metadata
+        descs = Vector.fromList (planDescs plan)
+        allRowGroupRows =
+            map (fromIntegral . unField . rg_num_rows) (unField metadata.row_groups)
+        allOffsets = scanl (+) 0 allRowGroupRows
+        -- Row groups whose column statistics rule out every row of the
+        -- predicate are skipped outright.
+        statsGroups =
+            [ g
+            | (g, rg) <- zip [0 ..] (unField metadata.row_groups)
+            , maybe True (rowGroupMayMatch metadata rg) (predicate opts0)
+            ]
+        -- A row range only touches the row groups it overlaps; the range is
+        -- then rebased onto the rows those groups produce.
+        (keptGroups, opts) = case rowRange opts0 of
+            Nothing -> (statsGroups, opts0)
+            Just (s, e) ->
+                let groups =
+                        [ g
+                        | (g, off, n) <- zip3 [0 ..] allOffsets allRowGroupRows
+                        , off < e
+                        , off + n > s
+                        ]
+                    base = case groups of
+                        [] -> 0
+                        (g : _) -> allOffsets !! g
+                 in (groups, opts0{rowRange = Just (s - base, e - base)})
+        chunks =
+            Vector.fromList
+                [Vector.fromList [cs !! g | g <- keptGroups] | cs <- planChunks plan]
+        rowGroupRows = Vector.fromList [allRowGroupRows !! g | g <- keptGroups]
+        rowOffsets = Vector.prescanl' (+) 0 rowGroupRows
+        totalRows = Vector.sum rowGroupRows
+        nCols = Vector.length descs
+        nRg = Vector.length rowGroupRows
+        nTasks = nCols * nRg
+        taskChunk t = let (r, c) = t `divMod` nCols in chunks Vector.! c Vector.! r
+    sinks <- Vector.mapM (newSink (widenIntegers opts) totalRows) descs
+    results <- MVector.new nTasks
+    counter <- newIORef (0 :: Int)
+    -- Each worker owns a handle: chunk reads then run in parallel too, and
+    -- decoding sees only its own chunk's bytes.
+    let worker = withFileBufferedOrSeekable Nothing path ReadMode $ \file ->
+            let loop = do
+                    t <- atomicModifyIORef' counter (\n -> (n + 1, n))
+                    when (t < nTasks) $ do
+                        let (r, c) = t `divMod` nCols
+                            desc = descs Vector.! c
+                            chunk = taskChunk t
+                            (base, len) = chunkRange chunk
+                        bytes <- runReaderIO (readBytes (Range base len)) file
+                        let buffer = ChunkBuffer base bytes
+                            into ::
+                                forall a.
+                                (VU.Unbox a) =>
+                                (DictVals -> Maybe (VU.Vector a)) ->
+                                (BS.ByteString -> Int -> a) ->
+                                Int ->
+                                VUM.IOVector a ->
+                                IO ()
+                            into pick plainAt width out =
+                                void $
+                                    runReaderIO
+                                        ( decodeRequiredNumericInto
+                                            pick
+                                            plainAt
+                                            width
+                                            desc
+                                            chunk
+                                            out
+                                            (rowOffsets Vector.! r)
+                                        )
+                                        buffer
+                        case sinks Vector.! c of
+                            SinkInt out width ->
+                                if width == 4
+                                    then into (fmap (VU.map fromIntegral) . dictInt32) plainIntFrom32 4 out
+                                    else into (fmap (VU.map fromIntegral) . dictInt64) plainIntFrom64 8 out
+                            SinkInt32 out -> into dictInt32 plainInt32 4 out
+                            SinkInt64 out -> into dictInt64 plainInt64 8 out
+                            SinkFloat out -> into dictFloat plainFloat 4 out
+                            SinkDouble out -> into dictDouble plainDouble 8 out
+                            SinkRows -> do
+                                col <-
+                                    runReaderIO
+                                        (parseColumnChunks (rowGroupRows Vector.! r) [chunk] desc)
+                                        buffer
+                                MVector.write results (c * nRg + r) col
+                        loop
+             in loop
+    forkJoin_ (replicate (max 1 (min caps nTasks)) worker)
+    cols <- forM [0 .. nCols - 1] $ \c -> case sinks Vector.! c of
+        SinkInt out _ -> DI.UnboxedColumn Nothing <$> VU.unsafeFreeze out
+        SinkInt32 out -> DI.UnboxedColumn Nothing <$> VU.unsafeFreeze out
+        SinkInt64 out -> DI.UnboxedColumn Nothing <$> VU.unsafeFreeze out
+        SinkFloat out -> DI.UnboxedColumn Nothing <$> VU.unsafeFreeze out
+        SinkDouble out -> DI.UnboxedColumn Nothing <$> VU.unsafeFreeze out
+        SinkRows ->
+            concatColumnsIO
+                =<< forM [0 .. nRg - 1] (\r -> MVector.read results (c * nRg + r))
+    pure (assembleDataFrame opts totalRows metadata plan cols)
+
+{- | Where a column's decoded values go: required numeric columns stream into
+one preallocated buffer; everything else decodes per row group and is
+concatenated afterwards.
+-}
+data ColumnSink
+    = -- | Widened integers; the width is the source's bytes per value.
+      SinkInt !(VUM.IOVector Int) !Int
+    | SinkInt32 !(VUM.IOVector Int32)
+    | SinkInt64 !(VUM.IOVector Int64)
+    | SinkFloat !(VUM.IOVector Float)
+    | SinkDouble !(VUM.IOVector Double)
+    | SinkRows
+
+newSink :: Bool -> Int -> ColumnDescription -> IO ColumnSink
+newSink widen totalRows description
+    | description.maxRepetitionLevel /= 0 || description.maxDefinitionLevel /= 0 =
+        pure SinkRows
+    | otherwise = case description.colElementType of
+        Just (INT32 _)
+            | widen -> (`SinkInt` 4) <$> VUM.unsafeNew totalRows
+            | otherwise -> SinkInt32 <$> VUM.unsafeNew totalRows
+        Just (INT64 _)
+            | widen -> (`SinkInt` 8) <$> VUM.unsafeNew totalRows
+            | otherwise -> SinkInt64 <$> VUM.unsafeNew totalRows
+        Just (FLOAT _) -> SinkFloat <$> VUM.unsafeNew totalRows
+        Just (DOUBLE _) -> SinkDouble <$> VUM.unsafeNew totalRows
+        _ -> pure SinkRows
+
+plainIntFrom32 :: BS.ByteString -> Int -> Int
+plainIntFrom32 bs o = fromIntegral (fromIntegral (word32At bs o) :: Int32)
+{-# INLINE plainIntFrom32 #-}
+
+plainIntFrom64 :: BS.ByteString -> Int -> Int
+plainIntFrom64 bs o = fromIntegral (word64At bs o)
+{-# INLINE plainIntFrom64 #-}
+
+plainInt32 :: BS.ByteString -> Int -> Int32
+plainInt32 bs o = fromIntegral (word32At bs o)
+{-# INLINE plainInt32 #-}
+
+plainInt64 :: BS.ByteString -> Int -> Int64
+plainInt64 bs o = fromIntegral (word64At bs o)
+{-# INLINE plainInt64 #-}
+
+plainFloat :: BS.ByteString -> Int -> Float
+plainFloat bs o = castWord32ToFloat (word32At bs o)
+{-# INLINE plainFloat #-}
+
+plainDouble :: BS.ByteString -> Int -> Double
+plainDouble bs o = castWord64ToDouble (word64At bs o)
+{-# INLINE plainDouble #-}
+
+{- | Whether a row group can hold a row satisfying the predicate, judged from
+its column chunk min\/max statistics. Only conjunctions of comparisons between
+an integer column and an 'Int' literal are decided; anything else is assumed
+to match.
+-}
+rowGroupMayMatch :: FileMetadata -> RowGroup -> Expr Bool -> Bool
+rowGroupMayMatch metadata rg = go
+  where
+    leafNames =
+        map (last . T.splitOn ".") (getColumnNames (drop 1 (unField metadata.schema)))
+    chunks = unField (rg_columns rg)
+    go :: Expr Bool -> Bool
+    go (Binary op l r)
+        | binaryName op == "and" = case (l, r) of
+            (l' :: Expr lt, r' :: Expr rt)
+                | Just Refl <- testEquality (typeRep @lt) (typeRep @Bool)
+                , Just Refl <- testEquality (typeRep @rt) (typeRep @Bool) ->
+                    go l' && go r'
+            _ -> True
+        | otherwise = case (l, r) of
+            (Col name :: Expr lt, Lit (v :: rt))
+                | Just Refl <- testEquality (typeRep @lt) (typeRep @Int)
+                , Just Refl <- testEquality (typeRep @rt) (typeRep @Int) ->
+                    decide name (binaryName op) v
+            (Lit (v :: lt), Col name :: Expr rt)
+                | Just Refl <- testEquality (typeRep @lt) (typeRep @Int)
+                , Just Refl <- testEquality (typeRep @rt) (typeRep @Int) ->
+                    decide name (flipped (binaryName op)) v
+            _ -> True
+    go _ = True
+    flipped :: T.Text -> T.Text
+    flipped n = case n of
+        "lt" -> "gt"
+        "gt" -> "lt"
+        "leq" -> "geq"
+        "geq" -> "leq"
+        other -> other
+    -- @column <cmp> v@ can hold for some row in [lo, hi].
+    decide :: T.Text -> T.Text -> Int -> Bool
+    decide name cmp v = case columnRange name of
+        Nothing -> True
+        Just (lo, hi) -> case cmp of
+            "eq" -> lo <= v && v <= hi
+            "neq" -> not (lo == v && hi == v)
+            "lt" -> lo < v
+            "leq" -> lo <= v
+            "gt" -> hi > v
+            "geq" -> hi >= v
+            _ -> True
+    columnRange :: T.Text -> Maybe (Int, Int)
+    columnRange name = do
+        i <- L.elemIndex name leafNames
+        cc <- chunks `atMay` i
+        meta <- unField (cc_meta_data cc)
+        stats <- unField (cmd_statistics meta)
+        let decodeInt bs = case unField (cmd_type meta) of
+                INT32 _
+                    | BS.length bs == 4 ->
+                        Just (fromIntegral (fromIntegral (word32At bs 0) :: Int32))
+                INT64 _ | BS.length bs == 8 -> Just (fromIntegral (word64At bs 0))
+                _ -> Nothing
+        lo <-
+            decodeInt
+                =<< (unField (stats_min_value stats) `orElse` unField (stats_min stats))
+        hi <-
+            decodeInt
+                =<< (unField (stats_max_value stats) `orElse` unField (stats_max stats))
+        pure (lo, hi)
+    orElse (Just x) _ = Just x
+    orElse Nothing y = y
+    atMay xs i = if i >= 0 && i < length xs then Just (xs !! i) else Nothing
+
+-- | File offset and byte length of a column chunk (dictionary page included).
+chunkRange :: ColumnChunk -> (Integer, Int)
+chunkRange columnChunk =
+    let meta = fromJust . unField $ columnChunk.cc_meta_data
+        dataOffset = fromIntegral . unField $ meta.cmd_data_page_offset
+        dictOffset = fromIntegral <$> unField meta.cmd_dictionary_page_offset
+     in ( fromMaybe dataOffset dictOffset
+        , fromIntegral . unField $ meta.cmd_total_compressed_size
+        )
+
+-- | The columns a read decodes, after projection, in schema order.
+data ColumnPlan = ColumnPlan
+    { planNames :: [T.Text]
+    , planDescs :: [ColumnDescription]
+    , planChunks :: [[ColumnChunk]]
+    -- ^ Per column, one chunk per row group.
+    }
 
 {- | Read Parquet files from a directory or glob path.
 
@@ -304,7 +623,24 @@ parseParquetWithOpts ::
 {-# INLINEABLE parseParquetWithOpts #-}
 parseParquetWithOpts opts = do
     metadata <- parseFileMetadata
+    let plan = planColumns opts metadata
+        vectorLength = fileRowCount metadata
+    rawCols <-
+        zipWithM (parseColumnChunks vectorLength) (planChunks plan) (planDescs plan)
+    return (assembleDataFrame opts vectorLength metadata plan rawCols)
 
+-- | Row count from the footer, falling back to the sum of row-group counts.
+fileRowCount :: FileMetadata -> Int
+fileRowCount metadata =
+    let topLevelRows = fromIntegral . unField $ metadata.num_rows :: Int
+        rgRows =
+            sum $ map (fromIntegral . unField . rg_num_rows) (unField metadata.row_groups) ::
+                Int
+     in if topLevelRows > 0 then topLevelRows else rgRows
+
+-- | Validate the requested columns against the schema and pick what to decode.
+planColumns :: ParquetReadOptions -> FileMetadata -> ColumnPlan
+planColumns opts metadata =
     let schemaElems = unField metadata.schema
         allNames = getColumnNames (drop 1 schemaElems)
         leafNames = L.nub (map (last . T.splitOn ".") allNames)
@@ -313,79 +649,90 @@ parseParquetWithOpts opts = do
             Nothing -> Nothing
             Just selected -> Just (L.nub (selected ++ predicateColumns))
 
-    -- TODO: When rowRange is set, compute cumulative row offsets from
-    -- rg_num_rows in each RowGroup and skip any group whose row interval does
-    -- not overlap the requested range, avoiding all decoding for those groups.
+        -- TODO: When rowRange is set, compute cumulative row offsets from
+        -- rg_num_rows in each RowGroup and skip any group whose row interval does
+        -- not overlap the requested range, avoiding all decoding for those groups.
 
-    -- TODO: When predicate is set, inspect cmd_statistics min/max values for
-    -- predicate-referenced columns in each RowGroup and skip groups where
-    -- statistics prove the predicate cannot be satisfied.
+        -- TODO: When predicate is set, inspect cmd_statistics min/max values for
+        -- predicate-referenced columns in each RowGroup and skip groups where
+        -- statistics prove the predicate cannot be satisfied.
 
-    -- Validate selected columns
-    case selectedColumnsForRead of
-        Nothing -> pure ()
-        Just requested ->
-            let missing = requested L.\\ leafNames
-             in unless (L.null missing) $
-                    liftIO $
-                        throw
-                            ( ColumnsNotFoundException
-                                missing
-                                "readParquetWithOpts"
-                                leafNames
-                            )
+        -- Validate selected columns
+        validated = case selectedColumnsForRead of
+            Nothing -> ()
+            Just requested ->
+                let missing = requested L.\\ leafNames
+                 in if L.null missing
+                        then ()
+                        else
+                            throw
+                                ( ColumnsNotFoundException
+                                    missing
+                                    "readParquetWithOpts"
+                                    leafNames
+                                )
 
-    let descriptions = generateColumnDescriptions schemaElems
+        descriptions = generateColumnDescriptions schemaElems
         chunks = columnChunksForAll metadata
         nCols = length chunks
         nDescs = length descriptions
 
-    unless (nCols == nDescs) $
-        error $
-            "Column count mismatch: got "
-                <> show nCols
-                <> " columns but schema implied "
-                <> show nDescs
-                <> " columns"
+        counted =
+            if nCols == nDescs
+                then ()
+                else
+                    error $
+                        "Column count mismatch: got "
+                            <> show nCols
+                            <> " columns but schema implied "
+                            <> show nDescs
+                            <> " columns"
 
-    -- Some files omit the top-level num_rows field; fall back to summing row-group counts.
-    let topLevelRows = fromIntegral . unField $ metadata.num_rows :: Int
-        rgRows =
-            sum $ map (fromIntegral . unField . rg_num_rows) (unField metadata.row_groups) ::
-                Int
-        vectorLength = if topLevelRows > 0 then topLevelRows else rgRows
-
-    -- Column-projection pushdown: decode only the columns needed for the
-    -- requested output plus any predicate, instead of decoding every column
-    -- and dropping the unwanted ones afterward. A 'Nothing' selection keeps
-    -- all columns, so full reads are unchanged.
-    let keep name = case selectedColumnsForRead of
+        -- Column-projection pushdown: decode only the columns needed for the
+        -- requested output plus any predicate, instead of decoding every column
+        -- and dropping the unwanted ones afterward. A 'Nothing' selection keeps
+        -- all columns, so full reads are unchanged.
+        keep name = case selectedColumnsForRead of
             Nothing -> True
             Just req -> last (T.splitOn "." name) `elem` req
         kept = filter (\(n, _, _) -> keep n) (zip3 allNames chunks descriptions)
-        keptNames = [n | (n, _, _) <- kept]
-        keptChunks = [c | (_, c, _) <- kept]
-        keptDescs = [d | (_, _, d) <- kept]
+     in validated `seq`
+            counted `seq`
+                ColumnPlan
+                    { planNames = [n | (n, _, _) <- kept]
+                    , planDescs = [d | (_, _, d) <- kept]
+                    , planChunks = [c | (_, c, _) <- kept]
+                    }
 
-    rawCols <- zipWithM (parseColumnChunks vectorLength) keptChunks keptDescs
-
+-- | Apply logical types and read options to the decoded columns.
+assembleDataFrame ::
+    ParquetReadOptions -> Int -> FileMetadata -> ColumnPlan -> [Column] -> DataFrame
+assembleDataFrame opts totalRows metadata plan rawCols =
     let hints = nativeTypeHints metadata
+        keptNames = planNames plan
+        widen col
+            | not (widenIntegers opts) = col
+            | otherwise = case col of
+                DI.UnboxedColumn Nothing (v :: VU.Vector t)
+                    | Just Refl <- testEquality (typeRep @t) (typeRep @Int32) ->
+                        DI.UnboxedColumn Nothing (VU.map (fromIntegral @Int32 @Int) v)
+                    | Just Refl <- testEquality (typeRep @t) (typeRep @Int64) ->
+                        DI.UnboxedColumn Nothing (VU.map (fromIntegral @Int64 @Int) v)
+                _ -> col
         finalCols =
             zipWith
                 (restoreNativeType hints)
                 keptNames
-                (zipWith applyDescLogicalType keptDescs rawCols)
+                (map widen (zipWith applyDescLogicalType (planDescs plan) rawCols))
         indices = Map.fromList $ zip keptNames [0 ..]
-        dimensions = (vectorLength, length finalCols)
-
-    let df =
+        dimensions = (totalRows, length finalCols)
+        df =
             DataFrame
                 (Vector.fromListN (length finalCols) finalCols)
                 indices
                 dimensions
                 Map.empty
-
-    return (applyReadOptions opts df)
+     in applyReadOptions opts df
 
 {- | Parse the file-level Thrift metadata from the Parquet file footer.
 Validates the trailing 4-byte magic marker (\"PAR1\") before decoding.
@@ -438,6 +785,12 @@ parseColumnChunks ::
     ColumnDescription ->
     ReaderIO FileBufferedOrSeekable Column
     #-}
+{-# SPECIALIZE parseColumnChunks ::
+    Int ->
+    [ColumnChunk] ->
+    ColumnDescription ->
+    ReaderIO ChunkBuffer Column
+    #-}
 {-# INLINEABLE parseColumnChunks #-}
 parseColumnChunks totalRows chunks description
     | description.maxRepetitionLevel == 0 && description.maxDefinitionLevel == 0 =
@@ -487,7 +840,8 @@ getNonNullableColumn totalRows description chunks =
     -- layout: no retained per-row 'Text' headers, no eager UTF-8 validation.
     goPackedText :: m Column
     goPackedText = do
-        builder <- liftIO $ stToIO (newTextBuilder totalRows (totalRows * 8))
+        builder <-
+            liftIO $ stToIO (newTextBuilder totalRows (textByteHint totalRows chunks))
         _ <-
             foldColumnDataPagesM
                 description
@@ -506,6 +860,19 @@ getNonNullableColumn totalRows description chunks =
         m Column
     unboxedGo decoder =
         foldNonNullableUnboxed totalRows (foldColumnPagesM description decoder chunks)
+
+{- | Initial byte capacity for a text column: the chunks' uncompressed size is
+exact for PLAIN pages and a fair guess for dictionary pages, and saves the
+doubling copies a per-row guess would cost.
+-}
+textByteHint :: Int -> [ColumnChunk] -> Int
+textByteHint totalRows chunks =
+    max (totalRows * 8) $
+        sum
+            [ fromIntegral (unField (cmd_total_uncompressed_size meta))
+            | cc <- chunks
+            , Just meta <- [unField (cc_meta_data cc)]
+            ]
 
 -- | Decode an optional (nullable) column.
 {-# INLINEABLE getNullableColumn #-}
@@ -547,7 +914,8 @@ getNullableColumn totalRows description chunks =
     -- generic 'foldNullable' path would build.
     goPackedTextNullable :: m Column
     goPackedTextNullable = do
-        builder <- liftIO $ stToIO (newTextBuilder totalRows (totalRows * 8))
+        builder <-
+            liftIO $ stToIO (newTextBuilder totalRows (textByteHint totalRows chunks))
         _ <-
             foldColumnDataPagesM
                 description

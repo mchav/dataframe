@@ -14,7 +14,6 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
-import DataFrame.Model (fit, predict)
 import Test.HUnit
 
 import qualified DataFrame as D

@@ -23,6 +23,7 @@ import qualified Data.Text as T
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import qualified Data.Vector.Unboxed as VU
 
+import DataFrame.Internal.Aggregation.Kernel.Distinct (distinctSupported)
 import DataFrame.Internal.Aggregation.Reduction (Reduction (..))
 import DataFrame.Internal.Column (Column (..))
 import DataFrame.Internal.DataFrame (
@@ -49,6 +50,8 @@ data AggPlan
       PlanMaxMinusMin T.Text T.Text
     | -- | Holistic median over one named column.
       PlanMedian T.Text
+    | -- | Exact distinct count over one named column.
+      PlanCountDistinct T.Text
 
 {- | Inspect a named output expression; return @Just plan@ on a recognised shape
 over a present clean column, else 'Nothing'. Nullable or non-Int/Double columns
@@ -76,6 +79,10 @@ planAgg gdf (SomeExpr (expr :: Expr a)) = case expr of
     mergePlan tag name = case tag of
         "mean" -> outputType @Double >> require name (PlanScatter RMean name)
         "count" -> outputType @Int >> require name (PlanScatter RCount name)
+        "countDistinct" -> do
+            outputType @Int
+            c <- getColumn name (fullDataframe gdf)
+            if distinctSupported c then Just (PlanCountDistinct name) else Nothing
         _ -> Nothing
     outputType :: forall t. (Typeable t) => Maybe ()
     outputType = case testEquality (typeRep @a) (typeRep @t) of
@@ -84,8 +91,6 @@ planAgg gdf (SomeExpr (expr :: Expr a)) = case expr of
     collectPlan tag name = case tag of
         "stddev" -> require name (PlanScatter RStd name)
         "variance" -> require name (PlanScatter RVar name)
-        "top2Sum" -> require name (PlanScatter RTop2Sum name)
-        "top2Snd" -> require name (PlanScatter RTop2Snd name)
         "median" -> require name (PlanMedian name)
         _ -> Nothing
     require name plan = colUnboxedNumeric name >> Just plan

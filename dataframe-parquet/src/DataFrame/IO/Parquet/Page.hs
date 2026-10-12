@@ -19,6 +19,7 @@ module DataFrame.IO.Parquet.Page (
     foldColumnPagesM,
     foldColumnDataPagesM,
     RawPage,
+    decodeRequiredNumericInto,
     appendStringPageIO,
     appendNullableStringPageIO,
 ) where
@@ -36,13 +37,21 @@ import Data.Time (UTCTime)
 import qualified Data.Vector as VB
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 import Data.Word (Word8)
 import DataFrame.IO.Parquet.Decompress (decompressData)
 import DataFrame.IO.Parquet.Dictionary (
     DictVals (..),
+    dictText,
     readDictVals,
+    word32At,
+    word64At,
  )
-import DataFrame.IO.Parquet.Encoding (decodeDictIndices)
+import DataFrame.IO.Parquet.Encoding (
+    decodeDictIndices,
+    decodeRLEBitPackedHybrid,
+    rleHybridFold,
+ )
 import DataFrame.IO.Parquet.Levels (readLevelsV1, readLevelsV2)
 import DataFrame.IO.Parquet.Thrift (
     ColumnChunk (..),
@@ -60,15 +69,10 @@ import DataFrame.IO.Parquet.Thrift (
 import DataFrame.IO.Parquet.Time (int96ToUTCTime)
 import DataFrame.IO.Parquet.Utils (ColumnDescription (..))
 import DataFrame.IO.Utils.RandomAccess (RandomAccess (..), Range (Range))
-import DataFrame.Internal.Binary (
-    littleEndianInt32,
-    littleEndianWord32,
-    littleEndianWord64,
- )
+import DataFrame.Internal.Binary (littleEndianInt32)
 import DataFrame.Internal.Column.Builder (
     TextBuilder,
     appendNull,
-    appendText,
     appendTextSliceFromPtr,
  )
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
@@ -103,32 +107,32 @@ boolDecoder mDict enc nPresent bs = case enc of
     PLAIN _ ->
         VU.generate nPresent $ \i ->
             (BSU.unsafeIndex bs (i `shiftR` 3) `shiftR` (i .&. 7)) .&. 1 == 1
-    RLE_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getBool
-    PLAIN_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getBool
+    RLE_DICTIONARY _ -> gatherDict "boolDecoder" getBool mDict nPresent bs
+    PLAIN_DICTIONARY _ -> gatherDict "boolDecoder" getBool mDict nPresent bs
     _ -> error ("boolDecoder: unsupported encoding " ++ show enc)
   where
-    getBool (DBool ds) i = ds VB.! i
-    getBool d _ = error ("boolDecoder: wrong dict type, got " ++ show d)
+    getBool (DBool ds) = Just ds
+    getBool _ = Nothing
 
 int32Decoder :: UnboxedPageDecoder Int32
 int32Decoder mDict enc nPresent bs = case enc of
-    PLAIN _ -> VU.convert (readNInt32 nPresent bs)
-    RLE_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getInt32
-    PLAIN_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getInt32
+    PLAIN _ -> readNInt32 nPresent bs
+    RLE_DICTIONARY _ -> gatherDict "int32Decoder" getInt32 mDict nPresent bs
+    PLAIN_DICTIONARY _ -> gatherDict "int32Decoder" getInt32 mDict nPresent bs
     _ -> error ("int32Decoder: unsupported encoding " ++ show enc)
   where
-    getInt32 (DInt32 ds) i = ds VB.! i
-    getInt32 d _ = error ("int32Decoder: wrong dict type, got " ++ show d)
+    getInt32 (DInt32 ds) = Just ds
+    getInt32 _ = Nothing
 
 int64Decoder :: UnboxedPageDecoder Int64
 int64Decoder mDict enc nPresent bs = case enc of
-    PLAIN _ -> VU.convert (readNInt64 nPresent bs)
-    RLE_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getInt64
-    PLAIN_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getInt64
+    PLAIN _ -> readNInt64 nPresent bs
+    RLE_DICTIONARY _ -> gatherDict "int64Decoder" getInt64 mDict nPresent bs
+    PLAIN_DICTIONARY _ -> gatherDict "int64Decoder" getInt64 mDict nPresent bs
     _ -> error ("int64Decoder: unsupported encoding " ++ show enc)
   where
-    getInt64 (DInt64 ds) i = ds VB.! i
-    getInt64 d _ = error ("int64Decoder: wrong dict type, got " ++ show d)
+    getInt64 (DInt64 ds) = Just ds
+    getInt64 _ = Nothing
 
 int96Decoder :: PageDecoder UTCTime
 int96Decoder mDict enc nPresent bs = case enc of
@@ -137,28 +141,28 @@ int96Decoder mDict enc nPresent bs = case enc of
     PLAIN_DICTIONARY _ -> lookupDict mDict nPresent bs getInt96
     _ -> error ("int96Decoder: unsupported encoding " ++ show enc)
   where
-    getInt96 (DInt96 ds) i = ds VB.! i
+    getInt96 (DInt96 ds) i = VB.unsafeIndex ds i
     getInt96 d _ = error ("int96Decoder: wrong dict type, got " ++ show d)
 
 floatDecoder :: UnboxedPageDecoder Float
 floatDecoder mDict enc nPresent bs = case enc of
-    PLAIN _ -> VU.convert (readNFloat nPresent bs)
-    RLE_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getFloat
-    PLAIN_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getFloat
+    PLAIN _ -> readNFloat nPresent bs
+    RLE_DICTIONARY _ -> gatherDict "floatDecoder" getFloat mDict nPresent bs
+    PLAIN_DICTIONARY _ -> gatherDict "floatDecoder" getFloat mDict nPresent bs
     _ -> error ("floatDecoder: unsupported encoding " ++ show enc)
   where
-    getFloat (DFloat ds) i = ds VB.! i
-    getFloat d _ = error ("floatDecoder: wrong dict type, got " ++ show d)
+    getFloat (DFloat ds) = Just ds
+    getFloat _ = Nothing
 
 doubleDecoder :: UnboxedPageDecoder Double
 doubleDecoder mDict enc nPresent bs = case enc of
-    PLAIN _ -> VU.convert (readNDouble nPresent bs)
-    RLE_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getDouble
-    PLAIN_DICTIONARY _ -> unboxedLookupDict mDict nPresent bs getDouble
+    PLAIN _ -> readNDouble nPresent bs
+    RLE_DICTIONARY _ -> gatherDict "doubleDecoder" getDouble mDict nPresent bs
+    PLAIN_DICTIONARY _ -> gatherDict "doubleDecoder" getDouble mDict nPresent bs
     _ -> error ("doubleDecoder: unsupported encoding " ++ show enc)
   where
-    getDouble (DDouble ds) i = ds VB.! i
-    getDouble d _ = error ("doubleDecoder: wrong dict type, got " ++ show d)
+    getDouble (DDouble ds) = Just ds
+    getDouble _ = Nothing
 
 byteArrayDecoder :: PageDecoder T.Text
 byteArrayDecoder mDict enc nPresent bs = case enc of
@@ -167,8 +171,7 @@ byteArrayDecoder mDict enc nPresent bs = case enc of
     PLAIN_DICTIONARY _ -> lookupDict mDict nPresent bs getText
     _ -> error ("byteArrayDecoder: unsupported encoding " ++ show enc)
   where
-    getText (DText ds) i = ds VB.! i
-    getText d _ = error ("byteArrayDecoder: wrong dict type, got " ++ show d)
+    getText = dictText
 
 fixedLenByteArrayDecoder :: Int -> PageDecoder T.Text
 fixedLenByteArrayDecoder len mDict enc nPresent bs = case enc of
@@ -177,8 +180,7 @@ fixedLenByteArrayDecoder len mDict enc nPresent bs = case enc of
     PLAIN_DICTIONARY _ -> lookupDict mDict nPresent bs getText
     _ -> error ("fixedLenByteArrayDecoder: unsupported encoding " ++ show enc)
   where
-    getText (DText ds) i = ds VB.! i
-    getText d _ = error ("fixedLenByteArrayDecoder: wrong dict type, got " ++ show d)
+    getText = dictText
 
 {- | Shared dictionary-path helper: decode @nPresent@ RLE/bit-packed indices
 and look each one up in the dictionary.
@@ -195,18 +197,27 @@ lookupDict mDict nPresent bs f = case mDict of
         let (idxs, _) = decodeDictIndices nPresent bs
          in VB.generate nPresent (f dict . VU.unsafeIndex idxs)
 
-unboxedLookupDict ::
+{- | Decode @nPresent@ dictionary indices and gather the entries from an
+unboxed dictionary. Inlined per element type so the gather is a plain loop.
+-}
+gatherDict ::
     (VU.Unbox a) =>
+    String ->
+    (DictVals -> Maybe (VU.Vector a)) ->
     Maybe DictVals ->
     Int ->
     BS.ByteString ->
-    (DictVals -> Int -> a) ->
     VU.Vector a
-unboxedLookupDict mDict nPresent bs f = case mDict of
-    Nothing -> error "Dictionary-encoded page but no dictionary page seen"
-    Just dict ->
-        let (idxs, _) = decodeDictIndices nPresent bs
-         in VU.generate nPresent (f dict . VU.unsafeIndex idxs)
+gatherDict who pick mDict nPresent bs = case mDict of
+    Nothing -> error (who ++ ": dictionary-encoded page but no dictionary page seen")
+    Just dict -> case pick dict of
+        Nothing -> error (who ++ ": wrong dict type, got " ++ show dict)
+        Just ds -> case BS.uncons bs of
+            Nothing -> error (who ++ ": empty index stream")
+            Just (w0, rest) ->
+                let (idxs, _) = decodeRLEBitPackedHybrid (fromIntegral w0) nPresent rest
+                 in VU.map (VU.unsafeIndex ds . fromIntegral) idxs
+{-# INLINE gatherDict #-}
 
 -- ---------------------------------------------------------------------------
 -- Core page-iteration loop
@@ -372,9 +383,17 @@ appendStringPageIO builder mDict enc nPresent bs = case enc of
     _ -> error ("appendStringPageIO: unsupported encoding " ++ show enc)
   where
     dictAppend = case mDict of
-        Just (DText ds) ->
-            let (idxs, _) = decodeDictIndices nPresent bs
-             in stToIO (VU.mapM_ (\i -> appendText builder (ds VB.! i)) idxs)
+        Just (DText starts lens dictBytes) ->
+            BSU.unsafeUseAsCStringLen dictBytes $ \(cptr, _) -> do
+                let p = castPtr cptr :: Ptr Word8
+                    (idxs, _) = decodeDictIndices nPresent bs
+                VU.forM_ idxs $ \i ->
+                    stToIO
+                        ( appendTextSliceFromPtr
+                            builder
+                            (p `plusPtr` VU.unsafeIndex starts i)
+                            (VU.unsafeIndex lens i)
+                        )
         Just d -> error ("appendStringPageIO: wrong dict type, got " ++ show d)
         Nothing -> error "appendStringPageIO: dictionary-encoded page but no dictionary seen"
 
@@ -427,13 +446,20 @@ appendNullableStringPageIO builder maxDef mDict enc nPresent bs defs = case enc 
   where
     nDefs = VU.length defs
     dictAppend = case mDict of
-        Just (DText ds) -> do
-            let (idxs, _) = decodeDictIndices nPresent bs
+        Just (DText starts lens dictBytes) -> BSU.unsafeUseAsCStringLen dictBytes $ \(cptr, _) -> do
+            let p = castPtr cptr :: Ptr Word8
+                (idxs, _) = decodeDictIndices nPresent bs
                 go !_ !i | i >= nDefs = pure ()
                 go !j !i
-                    | VU.unsafeIndex defs i == maxDef =
-                        stToIO (appendText builder (ds VB.! VU.unsafeIndex idxs j))
-                            >> go (j + 1) (i + 1)
+                    | VU.unsafeIndex defs i == maxDef = do
+                        let d = VU.unsafeIndex idxs j
+                        stToIO
+                            ( appendTextSliceFromPtr
+                                builder
+                                (p `plusPtr` VU.unsafeIndex starts d)
+                                (VU.unsafeIndex lens d)
+                            )
+                        go (j + 1) (i + 1)
                     | otherwise = stToIO (appendNull builder) >> go j (i + 1)
             go 0 0
         Just d -> error ("appendNullableStringPageIO: wrong dict type, got " ++ show d)
@@ -453,23 +479,20 @@ parsePageHeader = decodeWithLeftovers Pinch.compactProtocol
 -- ---------------------------------------------------------------------------
 
 readNInt32 :: Int -> BS.ByteString -> VU.Vector Int32
-readNInt32 n bs = VU.generate n $ \i -> littleEndianInt32 (BS.drop (4 * i) bs)
+readNInt32 n bs = VU.generate n $ \i -> fromIntegral (word32At bs (4 * i))
 
 readNInt64 :: Int -> BS.ByteString -> VU.Vector Int64
-readNInt64 n bs = VU.generate n $ \i ->
-    fromIntegral (littleEndianWord64 (BS.drop (8 * i) bs))
+readNInt64 n bs = VU.generate n $ \i -> fromIntegral (word64At bs (8 * i))
 
 readNInt96 :: Int -> BS.ByteString -> [UTCTime]
 readNInt96 0 _ = []
 readNInt96 n bs = int96ToUTCTime (BS.take 12 bs) : readNInt96 (n - 1) (BS.drop 12 bs)
 
 readNFloat :: Int -> BS.ByteString -> VU.Vector Float
-readNFloat n bs = VU.generate n $ \i ->
-    castWord32ToFloat (littleEndianWord32 (BS.drop (4 * i) bs))
+readNFloat n bs = VU.generate n $ \i -> castWord32ToFloat (word32At bs (4 * i))
 
 readNDouble :: Int -> BS.ByteString -> VU.Vector Double
-readNDouble n bs = VU.generate n $ \i ->
-    castWord64ToDouble (littleEndianWord64 (BS.drop (8 * i) bs))
+readNDouble n bs = VU.generate n $ \i -> castWord64ToDouble (word64At bs (8 * i))
 
 readNTexts :: Int -> BS.ByteString -> [T.Text]
 readNTexts 0 _ = []
@@ -483,3 +506,104 @@ readNFixedTexts _ 0 _ = []
 readNFixedTexts len n bs =
     decodeUtf8Lenient (BS.take len bs)
         : readNFixedTexts len (n - 1) (BS.drop len bs)
+
+{- | Decode a required numeric column chunk (no levels) straight into
+@out[off ..]@ and return the next free index. Each page is one loop from the
+decompressed bytes to the destination: no per-page vectors, no concatenation.
+Inlined so each element type gets its own copy.
+-}
+decodeRequiredNumericInto ::
+    forall a m.
+    (VU.Unbox a, RandomAccess m, MonadIO m) =>
+    (DictVals -> Maybe (VU.Vector a)) ->
+    (BS.ByteString -> Int -> a) ->
+    Int ->
+    ColumnDescription ->
+    ColumnChunk ->
+    VUM.IOVector a ->
+    Int ->
+    m Int
+decodeRequiredNumericInto pick plainAt width description chunk out off0 = do
+    (codec, pType, rawBytes) <- readChunkBytes chunk
+    goPages Nothing codec pType rawBytes off0
+  where
+    goPages ::
+        Maybe (VU.Vector a) ->
+        CompressionCodec ->
+        ThriftType ->
+        BS.ByteString ->
+        Int ->
+        m Int
+    goPages dict codec pType bs !off
+        | BS.null bs = return off
+        | otherwise = case parsePageHeader bs of
+            Left e -> error ("decodeRequiredNumericInto: failed to parse page header: " ++ e)
+            Right (rest, hdr) -> do
+                let compSz = fromIntegral . unField $ hdr.ph_compressed_page_size
+                    uncmpSz = fromIntegral . unField $ hdr.ph_uncompressed_page_size
+                    (pageData, rest') = BS.splitAt compSz rest
+                case unField hdr.ph_type of
+                    DICTIONARY_PAGE _ -> do
+                        let dictHdr =
+                                fromMaybe
+                                    (error "DICTIONARY_PAGE: missing dictionary page header")
+                                    (unField hdr.ph_dictionary_page_header)
+                            numVals = unField dictHdr.diph_num_values
+                        decompressed <- liftIO $ decompressData uncmpSz codec pageData
+                        let d = readDictVals pType decompressed numVals description.typeLength
+                        case pick d of
+                            Nothing -> error "decodeRequiredNumericInto: dictionary page mistyped"
+                            Just !ds -> goPages (Just ds) codec pType rest' off
+                    DATA_PAGE _ -> do
+                        let dph =
+                                fromMaybe
+                                    (error "DATA_PAGE: missing data page header")
+                                    (unField hdr.ph_data_page_header)
+                            n = fromIntegral . unField $ dph.dph_num_values
+                            enc = unField dph.dph_encoding
+                        decompressed <- liftIO $ decompressData uncmpSz codec pageData
+                        liftIO (writePage dict enc n decompressed off)
+                        goPages dict codec pType rest' (off + n)
+                    DATA_PAGE_V2 _ -> do
+                        let dph2 =
+                                fromMaybe
+                                    (error "DATA_PAGE_V2: missing data page header v2")
+                                    (unField hdr.ph_data_page_header_v2)
+                            n = fromIntegral . unField $ dph2.dph2_num_values
+                            enc = unField dph2.dph2_encoding
+                            levelBytes =
+                                fromIntegral (unField dph2.dph2_definition_levels_byte_length)
+                                    + fromIntegral (unField dph2.dph2_repetition_levels_byte_length)
+                            isCompressed = fromMaybe True (unField dph2.dph2_is_compressed)
+                            compValBytes = BS.drop levelBytes pageData
+                        valBytes <-
+                            if isCompressed
+                                then liftIO $ decompressData (uncmpSz - levelBytes) codec compValBytes
+                                else pure compValBytes
+                        liftIO (writePage dict enc n valBytes off)
+                        goPages dict codec pType rest' (off + n)
+                    INDEX_PAGE _ -> goPages dict codec pType rest' off
+
+    writePage ::
+        Maybe (VU.Vector a) -> Encoding -> Int -> BS.ByteString -> Int -> IO ()
+    writePage dict enc n vals off = case enc of
+        PLAIN _ ->
+            let go !i
+                    | i >= n = pure ()
+                    | otherwise = do
+                        VUM.unsafeWrite out (off + i) (plainAt vals (width * i))
+                        go (i + 1)
+             in go 0
+        RLE_DICTIONARY _ -> gather
+        PLAIN_DICTIONARY _ -> gather
+        _ -> error ("decodeRequiredNumericInto: unsupported encoding " ++ show enc)
+      where
+        gather = case dict of
+            Nothing -> error "decodeRequiredNumericInto: dictionary page missing"
+            Just ds -> case BS.uncons vals of
+                Nothing -> error "decodeRequiredNumericInto: empty index stream"
+                Just (w0, rest) ->
+                    stToIO $
+                        rleHybridFold (fromIntegral w0) n rest $ \i w ->
+                            VUM.unsafeWrite out (off + i) (VU.unsafeIndex ds (fromIntegral w))
+{-# INLINE decodeRequiredNumericInto #-}

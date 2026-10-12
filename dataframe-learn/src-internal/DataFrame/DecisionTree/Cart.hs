@@ -17,6 +17,7 @@ module DataFrame.DecisionTree.Cart (
     cartTargetLabels,
 ) where
 
+import qualified Data.List as L
 import DataFrame.DecisionTree.Types (Tree (..), TreeConfig (..))
 import DataFrame.Errors (DataFrameException (..), TypeErrorContext (..))
 import DataFrame.Expression.Operators
@@ -35,7 +36,6 @@ import DataFrame.Operations.Core (nRows)
 import Control.Exception (throw)
 import Data.Either (fromRight)
 import Data.Function (on)
-import Data.List (foldl')
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -201,7 +201,7 @@ bestSplit ::
     Int ->
     Maybe (Int, Double)
 bestSplit ctx sortedByFeat counts n =
-    fmap (\(_, j, t) -> (j, t)) (foldl' consider Nothing [0 .. ctxNFeats ctx - 1])
+    fmap (\(_, j, t) -> (j, t)) (L.foldl' consider Nothing [0 .. ctxNFeats ctx - 1])
   where
     total = VU.toList counts
     consider acc fj = case sweepFeature ctx total (sortedByFeat V.! fj) (ctxFeats ctx V.! fj) n of
@@ -227,7 +227,7 @@ sweepFeature ::
     Maybe (Double, Double)
 sweepFeature ctx total si feat n =
     swBest
-        ( foldl'
+        ( L.foldl'
             step
             (Sweep Nothing (replicate (ctxNClasses ctx) 0) 0 (0 / 0))
             [0 .. VU.length si - 1]

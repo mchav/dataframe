@@ -7,11 +7,13 @@ module DataFrame.IO.Parquet.Encoding (
     bitWidthForMaxLevel,
     -- Vector-based RLE/bit-packed decoder (from new parser)
     decodeRLEBitPackedHybrid,
+    rleHybridFold,
     extractBitsInto,
     fillRun,
     decodeDictIndices,
 ) where
 
+import Control.Monad (when)
 import Control.Monad.ST (ST, runST)
 import Data.Bits
 import qualified Data.ByteString as BS
@@ -130,3 +132,58 @@ decodeDictIndices need bs = case BS.uncons bs of
             (raw, rest1) = decodeRLEBitPackedHybrid bw need rest0
          in (VU.map fromIntegral raw, rest1)
 {-# INLINE decodeDictIndices #-}
+
+{- | Stream @need@ values of an RLE\/bit-packed hybrid run to @sink index value@.
+Inlined at each use so a known sink becomes one loop, with no index vector
+in between.
+-}
+rleHybridFold ::
+    Int -> Int -> BS.ByteString -> (Int -> Word32 -> ST s ()) -> ST s ()
+rleHybridFold bw need bs sink
+    | bw == 0 = zeros 0
+    | otherwise = go 0 bs
+  where
+    !mask = if bw == 32 then maxBound else (1 `unsafeShiftL` bw) - 1 :: Word32
+    zeros !i = when (i < need) (sink i 0 >> zeros (i + 1))
+    go !filled !buf
+        | filled >= need = pure ()
+        | BS.null buf = pure ()
+        | otherwise =
+            let (hdr64, afterHdr) = readUVarInt buf
+                isPacked = (hdr64 .&. 1) == 1
+             in if isPacked
+                    then do
+                        let groups = fromIntegral (hdr64 `shiftR` 1) :: Int
+                            totalVals = groups * 8
+                            takeN = min (need - filled) totalVals
+                            bytesN = (bw * totalVals + 7) `div` 8
+                            (chunk, rest) = BS.splitAt bytesN afterHdr
+                        extractBitsFold bw takeN chunk (\j w -> sink (filled + j) w)
+                        go (filled + takeN) rest
+                    else do
+                        let runLen = fromIntegral (hdr64 `shiftR` 1) :: Int
+                            nbytes = (bw + 7) `div` 8
+                            val = littleEndianWord32 (BS.take 4 afterHdr) .&. mask
+                            takeN = min (need - filled) runLen
+                            run !j = when (j < takeN) (sink (filled + j) val >> run (j + 1))
+                        run 0
+                        go (filled + takeN) (BS.drop nbytes afterHdr)
+{-# INLINE rleHybridFold #-}
+
+-- | 'extractBitsInto' with a sink instead of a destination vector.
+extractBitsFold ::
+    Int -> Int -> BS.ByteString -> (Int -> Word32 -> ST s ()) -> ST s ()
+extractBitsFold bw count bs sink = go 0 (0 :: Word64) 0 0
+  where
+    !mask = if bw == 32 then maxBound else (1 `unsafeShiftL` bw) - 1 :: Word64
+    !len = BS.length bs
+    go !byteIdx !acc !accBits !done
+        | done >= count = return ()
+        | accBits >= bw = do
+            sink done (fromIntegral (acc .&. mask))
+            go byteIdx (acc `unsafeShiftR` bw) (accBits - bw) (done + 1)
+        | byteIdx >= len = return ()
+        | otherwise =
+            let b = fromIntegral (BSU.unsafeIndex bs byteIdx) :: Word64
+             in go (byteIdx + 1) (acc .|. (b `unsafeShiftL` accBits)) (accBits + 8) done
+{-# INLINE extractBitsFold #-}

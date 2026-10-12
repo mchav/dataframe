@@ -634,6 +634,15 @@ firstOrNothing = liftDecorated Maybe.listToMaybe "firstOrNothing" Nothing
 lastOrNothing :: (Columnable a) => Expr [a] -> Expr (Maybe a)
 lastOrNothing = liftDecorated (Maybe.listToMaybe . reverse) "lastOrNothing" Nothing
 
+-- | Whether the text contains the literal substring.
+contains :: T.Text -> Expr T.Text -> Expr Bool
+contains needle expr =
+    lift2Decorated (flip T.isInfixOf) "contains" Nothing False 4 expr (Lit needle)
+
+-- | Character count.
+length :: Expr T.Text -> Expr Int
+length = liftDecorated T.length "textLength" Nothing
+
 splitOn :: T.Text -> Expr T.Text -> Expr [T.Text]
 splitOn delim = liftDecorated (T.splitOn delim) "splitOn" Nothing
 

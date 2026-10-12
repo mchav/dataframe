@@ -253,8 +253,6 @@ parGenSelInline n f
 {-# INLINE parGenSelInline #-}
 
 parGenSel :: (VU.Unbox c) => Int -> (Int -> c) -> VU.Vector c
-{-# SPECIALIZE parGenSel :: Int -> (Int -> Int32) -> VU.Vector Int32 #-}
-{-# SPECIALIZE parGenSel :: Int -> (Int -> Int) -> VU.Vector Int #-}
 parGenSel n f
     | not (shouldParallelize parThreshold n) = VU.generate n f
     | otherwise = unsafePerformIO $ do

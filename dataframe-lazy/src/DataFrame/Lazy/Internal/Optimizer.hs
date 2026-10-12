@@ -137,7 +137,8 @@ eliminateDeadColumns plan = go (referencedCols plan) plan
         let keySet = fmap (S.union (S.fromList [l, r])) needed
          in Join jt l r (go keySet left) (go keySet right)
     go needed (Aggregate keys aggs child) =
-        let aggCols = fmap (S.union (S.fromList (keys <> concatMap (someExprCols . snd) aggs))) needed
+        let aggCols =
+                fmap (S.union (S.fromList (keys <> concatMap (someExprCols . snd) aggs))) needed
          in Aggregate keys aggs (go aggCols child)
     go needed (Sort cols child) =
         Sort cols (go (fmap (S.union (S.fromList (fmap fst cols))) needed) child)

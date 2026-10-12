@@ -22,17 +22,16 @@ import DataFrame.Internal.Interpreter (interpret)
 
 import DataFrame.KMeans
 import DataFrame.LinearModel
-import DataFrame.Model (fit, predict)
 
 import Test.HUnit
 
 interpD :: D.DataFrame -> Expr Double -> [Double]
-interpD df e = case interpret @Double df e of
+interpD frame e = case interpret @Double frame e of
     Right (TColumn c) -> either (const []) VU.toList (toVector @Double @VU.Vector c)
     Left err -> error (show err)
 
 interpI :: D.DataFrame -> Expr Int -> [Int]
-interpI df e = case interpret @Int df e of
+interpI frame e = case interpret @Int frame e of
     Right (TColumn c) -> either (const []) VU.toList (toVector @Int @VU.Vector c)
     Left err -> error (show err)
 
@@ -88,7 +87,7 @@ transposeL :: [[a]] -> [[a]]
 transposeL [] = []
 transposeL xss
     | any null xss = []
-    | otherwise = map head xss : transposeL (map tail xss)
+    | otherwise = [x | (x : _) <- xss] : transposeL [xs | (_ : xs) <- xss]
 
 tests :: [Test]
 tests = [linearDenotation, kmeansDenotation]

@@ -91,13 +91,13 @@ checkGrouping df =
             Nothing -> error "missing column"
         key i = (k1 !! i, k2 !! i)
         -- The group slices read out of vis/os.
-        slices = [take (e - s) (drop s vis) | (s, e) <- zip os (tail os)]
+        slices = [take (e - s) (drop s vis) | (s, e) <- zip os (drop 1 os)]
         -- valueIndices must be a permutation of all rows.
         permutationOk = L.sort vis == [0 .. n - 1]
         -- Every slice is non-empty and internally key-constant.
         constKeys = all (\sl -> not (L.null sl) && allSame (map key sl)) slices
         -- Distinct groups have distinct keys.
-        groupKeys = map (key . head) slices
+        groupKeys = [key s | (s : _) <- slices]
         distinctKeys = L.length (L.nub groupKeys) == L.length groupKeys
         -- The number of groups equals the number of distinct key tuples.
         nGroupsOk = L.length slices == M.size (M.fromList [(key i, ()) | i <- [0 .. n - 1]])

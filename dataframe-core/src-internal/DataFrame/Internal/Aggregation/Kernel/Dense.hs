@@ -23,7 +23,6 @@ module DataFrame.Internal.Aggregation.Kernel.Dense (
     denseMaxMinusMin,
 ) where
 
-import Control.Monad (when)
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
@@ -74,9 +73,7 @@ denseReduce red g nGroups col = case col of
 {-# INLINEABLE denseReduce #-}
 
 {- | The reductions admitted over an Int column. Sum/min/max/mean/count are
-exact in the Int domain (any merge order gives the same bits); top2sum selects
-the two largest values (order-independent as a multiset selection) and only
-adds them once at finalize. Var/std stay with the group-range gather kernel:
+exact in the Int domain (any merge order gives the same bits). Var/std stay with the group-range gather kernel:
 its per-group Welford recurrence replays the interpreter's update order
 bit-for-bit, which no chunk-merged direct pass can.
 -}
@@ -87,11 +84,9 @@ denseInt red g nGroups v = case red of
     RMin -> Just (fromUnboxedVector (extremaIntDense True g nGroups v))
     RMax -> Just (fromUnboxedVector (extremaIntDense False g nGroups v))
     RMean -> Just (fromUnboxedVector (meanIntDense g nGroups v))
-    RTop2Sum -> Just (fromUnboxedVector (top2Dense g nGroups v))
-    RTop2Snd -> Just (fromUnboxedVector (top2SndDense g nGroups v))
     _ -> Nothing
 
-{- | The reductions admitted over a Double column. Count/min/max/top2sum are
+{- | The reductions admitted over a Double column. Count/min/max are
 order-independent (exact per-worker merge, byte-identical at any @-N@). The
 float sum/mean run sequentially in row order below 'seqFloatGroups' (matching
 the gather kernel's per-group addition order exactly) and as deterministic
@@ -105,8 +100,6 @@ denseDouble red g nGroups v = case red of
     RMean -> Just (fromUnboxedVector (meanDblDense g nGroups v))
     RMin -> Just (fromUnboxedVector (extremaDblDense True g nGroups v))
     RMax -> Just (fromUnboxedVector (extremaDblDense False g nGroups v))
-    RTop2Sum -> Just (fromUnboxedVector (top2Dense g nGroups v))
-    RTop2Snd -> Just (fromUnboxedVector (top2SndDense g nGroups v))
     _ -> Nothing
 
 {- | The fused @max a - min b@ direct pass: BOTH extrema accumulate in one
@@ -493,153 +486,6 @@ finalizeMaxMinusMin nGroups mx mn = do
                 a <- VUM.unsafeRead mx k
                 b <- VUM.unsafeRead mn k
                 VUM.unsafeWrite out k (a - b)
-                go (k + 1)
-    go 0
-    VU.unsafeFreeze out
-
--------------------------------------------------------------------------------
--- Top-2 sum (order-independent multiset selection; one float add at finalize)
--------------------------------------------------------------------------------
-
-{- | Sum of the two largest values per group. Each accumulator holds the
-(largest, second-largest) pair seen so far; merging two pairs keeps the top two
-of the four candidates. No float ADDITION happens until the single @m1 + m2@ at
-finalize, so the result is byte-identical to the gather kernel regardless of
-chunking. Mirrors the gather kernel exactly, including the @realToFrac@ per
-element and the @-inf -> 0@ guards at finalize.
--}
-top2Dense ::
-    (VU.Unbox a, Real a) => VU.Vector Int -> Int -> VU.Vector a -> VU.Vector Double
-{-# SPECIALIZE top2Dense ::
-    VU.Vector Int -> Int -> VU.Vector Int -> VU.Vector Double
-    #-}
-{-# SPECIALIZE top2Dense ::
-    VU.Vector Int -> Int -> VU.Vector Double -> VU.Vector Double
-    #-}
-top2Dense g nGroups v
-    | not (shouldPar n) = unsafePerformIO $ do
-        (m1, m2) <- top2Chunk g v nGroups 0 n
-        finalizeTop2 nGroups m1 m2
-    | otherwise = unsafePerformIO $ do
-        parts <- runPartialsOver n capabilities (top2Chunk g v nGroups)
-        (m1, m2) <- mergeTop2 nGroups parts
-        finalizeTop2 nGroups m1 m2
-  where
-    !n = VU.length v
-{- INLINEABLE (not NOINLINE) so the SPECIALIZE pragmas above take effect; pure
-function of its arguments, so unsafePerformIO sharing is not a concern. -}
-{-# INLINEABLE top2Dense #-}
-
-{- | Second-largest value per group: the exact same per-worker
-(largest, second-largest) accumulator and merge as 'top2Dense'
-('top2Chunk'/'mergeTop2'), finalized to the second max alone. A group of
-size < 2 finalizes its @-inf@ seed to NaN — documented behaviour (the
-db-benchmark Q8 data has no size-1 @id6@ groups). Order-independent multiset
-selection, so byte-identical at any @-N@.
--}
-top2SndDense ::
-    (VU.Unbox a, Real a) => VU.Vector Int -> Int -> VU.Vector a -> VU.Vector Double
-{-# SPECIALIZE top2SndDense ::
-    VU.Vector Int -> Int -> VU.Vector Int -> VU.Vector Double
-    #-}
-{-# SPECIALIZE top2SndDense ::
-    VU.Vector Int -> Int -> VU.Vector Double -> VU.Vector Double
-    #-}
-top2SndDense g nGroups v
-    | not (shouldPar n) = unsafePerformIO $ do
-        (m1, m2) <- top2Chunk g v nGroups 0 n
-        finalizeTop2Snd nGroups m1 m2
-    | otherwise = unsafePerformIO $ do
-        parts <- runPartialsOver n capabilities (top2Chunk g v nGroups)
-        (m1, m2) <- mergeTop2 nGroups parts
-        finalizeTop2Snd nGroups m1 m2
-  where
-    !n = VU.length v
-{- INLINEABLE (not NOINLINE) so the SPECIALIZE pragmas above take effect; pure
-function of its arguments, so unsafePerformIO sharing is not a concern. -}
-{-# INLINEABLE top2SndDense #-}
-
-top2Chunk ::
-    (VU.Unbox a, Real a) =>
-    VU.Vector Int ->
-    VU.Vector a ->
-    Int ->
-    Int ->
-    Int ->
-    IO (VUM.IOVector Double, VUM.IOVector Double)
-top2Chunk g v nGroups lo hi = do
-    let ninf = negate (1 / 0) :: Double
-    m1 <- VUM.replicate nGroups ninf
-    m2 <- VUM.replicate nGroups ninf
-    let go !i
-            | i >= hi = pure ()
-            | otherwise = do
-                let !k = VU.unsafeIndex g i
-                    !x = realToFrac (VU.unsafeIndex v i)
-                a1 <- VUM.unsafeRead m1 k
-                if x > a1
-                    then do
-                        VUM.unsafeWrite m1 k x
-                        VUM.unsafeWrite m2 k a1
-                    else do
-                        a2 <- VUM.unsafeRead m2 k
-                        when (x > a2) (VUM.unsafeWrite m2 k x)
-                go (i + 1)
-    go lo
-    pure (m1, m2)
-
-{- | Top two of the four candidates @{a1, a2, b1, b2}@ per group (each pair
-already ordered @m1 >= m2@, @-inf@ seeds included).
--}
-mergeTop2 ::
-    Int ->
-    [(VUM.IOVector Double, VUM.IOVector Double)] ->
-    IO (VUM.IOVector Double, VUM.IOVector Double)
-mergeTop2 nGroups parts = case parts of
-    [] -> error "mergeTop2: no partials"
-    ((m10, m20) : rest) -> do
-        let add (m1, m2) = do
-                let go !k
-                        | k >= nGroups = pure ()
-                        | otherwise = do
-                            a1 <- VUM.unsafeRead m10 k
-                            a2 <- VUM.unsafeRead m20 k
-                            b1 <- VUM.unsafeRead m1 k
-                            b2 <- VUM.unsafeRead m2 k
-                            if b1 > a1
-                                then do
-                                    VUM.unsafeWrite m10 k b1
-                                    VUM.unsafeWrite m20 k (max a1 b2)
-                                else VUM.unsafeWrite m20 k (max a2 b1)
-                            go (k + 1)
-                go 0
-        mapM_ add rest
-        pure (m10, m20)
-
-finalizeTop2 ::
-    Int -> VUM.IOVector Double -> VUM.IOVector Double -> IO (VU.Vector Double)
-finalizeTop2 nGroups m1 m2 = do
-    out <- VUM.new nGroups
-    let go !k
-            | k >= nGroups = pure ()
-            | otherwise = do
-                a1 <- VUM.unsafeRead m1 k
-                a2 <- VUM.unsafeRead m2 k
-                let s = (if isInfinite a1 then 0 else a1) + (if isInfinite a2 then 0 else a2)
-                VUM.unsafeWrite out k s
-                go (k + 1)
-    go 0
-    VU.unsafeFreeze out
-
-finalizeTop2Snd ::
-    Int -> VUM.IOVector Double -> VUM.IOVector Double -> IO (VU.Vector Double)
-finalizeTop2Snd nGroups _m1 m2 = do
-    out <- VUM.new nGroups
-    let go !k
-            | k >= nGroups = pure ()
-            | otherwise = do
-                a2 <- VUM.unsafeRead m2 k
-                VUM.unsafeWrite out k (if isInfinite a2 then 0 / 0 else a2)
                 go (k + 1)
     go 0
     VU.unsafeFreeze out

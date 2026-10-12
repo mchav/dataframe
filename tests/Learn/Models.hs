@@ -21,11 +21,9 @@ import DataFrame.Transform
 import Control.Exception (evaluate, try)
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as M
-import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import DataFrame.Errors (DataFrameException)
-import DataFrame.Model (fit, predict)
 import Test.HUnit
 
 interpD :: D.DataFrame -> Expr Double -> [Double]
@@ -213,7 +211,7 @@ testKMeans = TestCase $ do
         cfg = defaultKMeansConfig{kmK = 2, kmNInit = 5, kmSeed = 1}
         m = fit cfg [F.col @Double "a", F.col @Double "b"] df
         labels = VU.toList (kmLabels m)
-    assertBool "two blobs split" (head labels /= last labels)
+    assertBool "two blobs split" (VU.head (kmLabels m) /= VU.last (kmLabels m))
     assertEqual "two centers" 2 (V.length (kmCenters m))
     let m2 = fit cfg [F.col @Double "a", F.col @Double "b"] df
     assertEqual "kmeans deterministic" (kmCenters m) (kmCenters m2)

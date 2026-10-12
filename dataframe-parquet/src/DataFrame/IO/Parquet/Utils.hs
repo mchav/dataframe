@@ -200,15 +200,7 @@ foldNonNullableUnboxed totalRows runPages = do
         runPages
             ( \off (chunk, _, _) -> liftIO $ do
                 let n = VU.length chunk
-                    go i
-                        | i >= n = return ()
-                        | otherwise = do
-                            VUM.unsafeWrite
-                                mv
-                                (off + i)
-                                (VU.unsafeIndex chunk i)
-                            go (i + 1)
-                go 0
+                VU.unsafeCopy (VUM.unsafeSlice off n mv) chunk
                 return (off + n)
             )
             (0 :: Int)

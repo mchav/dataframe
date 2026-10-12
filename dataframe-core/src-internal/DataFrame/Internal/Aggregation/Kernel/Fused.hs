@@ -30,7 +30,7 @@ module DataFrame.Internal.Aggregation.Kernel.Fused (
 ) where
 
 import Control.Exception (evaluate)
-import Control.Monad (replicateM, when)
+import Control.Monad (replicateM)
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
@@ -94,7 +94,7 @@ fusedSeqFloatGroups = 65536
 
 {- | Build the fused-pass reduction for one @(reduction, column)@ pair, or
 'Nothing' when the pair cannot stream (nullable/boxed columns; the
-order-sensitive var/std/top2 reductions, which keep their per-expression
+order-sensitive var/std reductions, which keep their per-expression
 kernels; or a Double sum/mean below 'fusedSeqFloatGroups', which keeps its
 byte-identical sequential pass). Sum/min/max/count/mean over Int are exact
 under any chunk merge; the admitted Double sum and mean merge their per-worker
@@ -125,10 +125,6 @@ mkFusedAgg nGroups rtg red col
                             Just (meanDblFusedAgg nGroups rtg v)
                     RMin -> Just (extremaDblFusedAgg True nGroups rtg v)
                     RMax -> Just (extremaDblFusedAgg False nGroups rtg v)
-                    -- Top-2 selection is an exact multiset selection (no float
-                    -- arithmetic before finalize), so its per-worker merge is
-                    -- byte-identical to the per-expression kernels at any -N.
-                    RTop2Snd -> Just (top2SndDblFusedAgg nGroups rtg v)
                     _ -> Nothing
         _ -> Nothing
 
@@ -401,78 +397,6 @@ extremaStepDbl isMin rtg v acc lo hi = go lo
             VUM.unsafeWrite acc k (if isMin then min c x else max c x)
             go (i + 1)
 
-{- | Fused second-largest over a Double column. The per-group
-(largest, second-largest) pair is INTERLEAVED at slots @2g@/@2g+1@ (one cache
-line per group, as 'meanDblFusedAgg'); the update is the same top-2 selection
-as every other top2 kernel, the merge keeps the top two of the four candidates
-per group (exact — no float arithmetic), and the finalize returns the second
-max, NaN for a group of size < 2 (the @-inf@ seed; see
-'DataFrame.Internal.AggKernel.top2SndScatter').
--}
-top2SndDblFusedAgg :: Int -> VU.Vector Int -> VU.Vector Double -> FusedAgg
-top2SndDblFusedAgg nGroups rtg v =
-    FusedAgg
-        (VUM.replicate (2 * nGroups) (negate (1 / 0) :: Double))
-        (top2SndStepDbl rtg v)
-        mergeTop2Range
-        ( \s -> do
-            sv <- VU.unsafeFreeze s
-            pure
-                ( fromUnboxedVector
-                    ( VU.generate
-                        nGroups
-                        ( \g ->
-                            let !a2 = VU.unsafeIndex sv (2 * g + 1)
-                             in if isInfinite a2 then 0 / 0 else a2
-                        )
-                    )
-                )
-        )
-
-top2SndStepDbl ::
-    VU.Vector Int ->
-    VU.Vector Double ->
-    VUM.IOVector Double ->
-    Int ->
-    Int ->
-    IO ()
-top2SndStepDbl rtg v s lo hi = go lo
-  where
-    go !i
-        | i >= hi = pure ()
-        | otherwise = do
-            let !k2 = 2 * VU.unsafeIndex rtg i
-                !x = VU.unsafeIndex v i
-            a1 <- VUM.unsafeRead s k2
-            if x > a1
-                then do
-                    VUM.unsafeWrite s k2 x
-                    VUM.unsafeWrite s (k2 + 1) a1
-                else do
-                    a2 <- VUM.unsafeRead s (k2 + 1)
-                    when (x > a2) $ VUM.unsafeWrite s (k2 + 1) x
-            go (i + 1)
-
--- | Top two of the four candidates per group (pairs already ordered m1 >= m2).
-mergeTop2Range ::
-    VUM.IOVector Double -> VUM.IOVector Double -> Int -> Int -> IO ()
-mergeTop2Range a b lo hi = go lo
-  where
-    go !g
-        | g >= hi = pure ()
-        | otherwise = do
-            let !g2 = 2 * g
-            a1 <- VUM.unsafeRead a g2
-            a2 <- VUM.unsafeRead a (g2 + 1)
-            b1 <- VUM.unsafeRead b g2
-            b2 <- VUM.unsafeRead b (g2 + 1)
-            if b1 > a1
-                then do
-                    VUM.unsafeWrite a g2 b1
-                    VUM.unsafeWrite a (g2 + 1) (max a1 b2)
-                else VUM.unsafeWrite a (g2 + 1) (max a2 b1)
-            go (g + 1)
-
 addIntRange :: VUM.IOVector Int -> VUM.IOVector Int -> Int -> Int -> IO ()
 addIntRange a b lo hi = go lo
   where
@@ -539,7 +463,7 @@ data GatherAgg
         (s -> IO Column)
 
 {- | Build the fused gather reduction for one @(reduction, column)@ pair, or
-'Nothing' when the pair cannot fuse (nullable/boxed columns, or var/std/top2,
+'Nothing' when the pair cannot fuse (nullable/boxed columns, or var/std,
 which keep their per-expression gather kernels). @vis@/@offs@ are captured
 lazily: nothing is forced until the pass actually runs.
 -}

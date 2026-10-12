@@ -11,7 +11,7 @@ module DataFrame.Internal.Algorithms.Sort.Radix.Parallel (
 ) where
 
 import Control.Concurrent (getNumCapabilities)
-import Control.Monad (forM_, when)
+import Control.Monad (when)
 import Data.Bits (countLeadingZeros, unsafeShiftR, (.&.))
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM

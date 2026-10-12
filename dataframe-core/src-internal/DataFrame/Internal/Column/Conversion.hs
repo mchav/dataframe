@@ -29,9 +29,10 @@ import qualified Data.Vector.Unboxed.Mutable as VUM
 
 import Control.Exception (throw)
 import Control.Monad.ST (ST)
+import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Kind (Type)
 import Data.Type.Equality (TestEquality (..))
-import Data.Word (Word8)
+import Data.Word (Word16, Word32, Word64, Word8)
 import DataFrame.Errors (
     DataFrameException (ExpectedNonNullableException, TypeMismatchException),
     TypeErrorContext (
@@ -350,9 +351,9 @@ toIntVector column =
             Just Refl -> Right f
             Nothing -> case sFloating @a of
                 STrue -> Right (VU.map (round . (realToFrac :: a -> Double)) f)
-                SFalse -> case sIntegral @a of
-                    STrue -> Right (VU.map fromIntegral f)
-                    SFalse ->
+                SFalse -> case widenToInt f of
+                    Just v -> Right v
+                    Nothing ->
                         Left $
                             TypeMismatchException
                                 ( MkTypeErrorContext
@@ -374,6 +375,37 @@ toIntVector column =
                             , errorColumnName = Nothing
                             }
                         )
+
+{- | Widen an integral vector to 'Int', or 'Nothing' for a non-integral type.
+Each width is matched to its concrete type first so @fromIntegral@ compiles to
+one primop; through the 'Integral' dictionary it goes via 'Integer', about 5x
+slower and allocating per element.
+-}
+widenToInt ::
+    forall a. (Columnable a, VU.Unbox a) => VU.Vector a -> Maybe (VU.Vector Int)
+widenToInt v
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Int) = Just v
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Int64) =
+        Just (VU.map fromIntegral v)
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Int32) =
+        Just (VU.map fromIntegral v)
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Int16) =
+        Just (VU.map fromIntegral v)
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Int8) =
+        Just (VU.map fromIntegral v)
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Word) =
+        Just (VU.map fromIntegral v)
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Word64) =
+        Just (VU.map fromIntegral v)
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Word32) =
+        Just (VU.map fromIntegral v)
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Word16) =
+        Just (VU.map fromIntegral v)
+    | Just Refl <- testEquality (typeRep @a) (typeRep @Word8) =
+        Just (VU.map fromIntegral v)
+    | otherwise = case sIntegral @a of
+        STrue -> Just (VU.map fromIntegral v)
+        SFalse -> Nothing
 
 toUnboxedVector ::
     forall a.

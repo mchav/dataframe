@@ -11,13 +11,19 @@ parallel threshold.
 -}
 module Operations.ParallelGroupBy where
 
+import qualified Data.ByteString as BS
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
+import qualified Data.Text.Array as A
+import qualified Data.Text.Encoding as TE
+import Data.Text.Internal (Text (Text))
 import qualified Data.Vector.Unboxed as VU
 
 import qualified DataFrame as D
+import DataFrame.Expression.Operators ((./=.))
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
+import DataFrame.Internal.Data.PackedText (mkPackedContiguous)
 import qualified DataFrame.Internal.DataFrame as DD
 import DataFrame.Internal.Grouping (groupByPar, groupBySeq)
 
@@ -196,7 +202,6 @@ directGroupAggMatches n =
     TestCase $
         let df = caseFrame n
             v = F.col @Int "v"
-            ki = F.col @Int "ki"
             aggs =
                 [ "vsum" F..= F.sum v
                 , "vcount" F..= F.count v
@@ -225,12 +230,42 @@ keyedAgg res =
     zip4 (a : as) (b : bs) (c : cs) (d : ds) = (a, b, c, d) : zip4 as bs cs ds
     zip4 _ _ _ _ = []
 
+-- | A packed UTF-8 column, the layout the Parquet reader produces.
+packedCol :: [T.Text] -> DI.Column
+packedCol ts =
+    let bytes = BS.concat (map TE.encodeUtf8 ts)
+        offs = scanl (+) 0 (map (BS.length . TE.encodeUtf8) ts)
+        Text arr _ _ = TE.decodeUtf8 bytes
+     in DI.PackedText Nothing (mkPackedContiguous (arr :: A.Array) (VU.fromList offs))
+
+{- | Skewed packed-text keys: most rows share a few hot keys, so the partitioned
+path links repeats to earlier rows and one partition swells. Filtering first
+gives the selection layout.
+-}
+skewedTextParity :: Bool -> Test
+skewedTextParity filtered = TestCase $ do
+    let n = 300000
+        key i
+            | i `mod` 3 == 0 = ""
+            | i `mod` 5 == 0 = "hot"
+            | i `mod` 7 == 0 = "warm"
+            | otherwise = T.pack ("k" ++ show ((i * 7919) `mod` 40000))
+        df0 =
+            D.fromColumns [("k", packedCol (map key [0 .. n - 1])), mkInt "v" [0 .. n - 1]]
+        df = if filtered then D.filterWhere (F.col @T.Text "k" ./=. "") df0 else df0
+    assertBool
+        "skewed packed text: par == seq"
+        (sameGrouping (groupByPar ["k"] df) (groupBySeq ["k"] df))
+
 tests :: [Test]
 tests =
-    [ TestLabel ("parity " ++ show n ++ " " ++ show keys) (parityFor n keys)
-    | n <- sizes
-    , keys <- keySets
+    [ TestLabel ("skewedTextParity " ++ show f) (skewedTextParity f)
+    | f <- [False, True]
     ]
+        ++ [ TestLabel ("parity " ++ show n ++ " " ++ show keys) (parityFor n keys)
+           | n <- sizes
+           , keys <- keySets
+           ]
         ++ [TestLabel ("aggParity " ++ show n) (aggParityFor n) | n <- [50, 200001]]
         ++ [TestLabel "collisionParity" collisionParity]
         ++ [TestLabel ("momentParity " ++ show n) (momentParity n) | n <- [3, 50, 200001]]

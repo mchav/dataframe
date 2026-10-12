@@ -222,6 +222,7 @@ import DataFrame.Operations.Permutation as Permutation (
     SortOrder (..),
     shuffle,
     sortBy,
+    topBy,
  )
 import DataFrame.Operations.Statistics as Statistics (
     correlation,

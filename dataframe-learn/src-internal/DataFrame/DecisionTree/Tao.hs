@@ -16,6 +16,7 @@ module DataFrame.DecisionTree.Tao (
     findBestSplitTAO,
 ) where
 
+import qualified Data.List as L
 import DataFrame.DecisionTree.CondVec
 import DataFrame.DecisionTree.Linear (bestLinearCandidate)
 import DataFrame.DecisionTree.Pool (
@@ -33,7 +34,7 @@ import DataFrame.Internal.Expression (Expr)
 import Control.Parallel (par, pseq)
 import Control.Parallel.Strategies (parListChunk, rdeepseq, using)
 import Data.Function (on)
-import Data.List (foldl', minimumBy)
+import Data.List (minimumBy)
 import Data.Maybe (catMaybes, mapMaybe)
 import qualified Data.Text as T
 import qualified Data.Vector as V
@@ -120,7 +121,7 @@ taoIterationCV ::
     Tree a ->
     Tree a
 taoIterationCV cache cfg target condVecs df rootIndices tree =
-    foldl'
+    L.foldl'
         (optimizeDepthLevel env rootIndices)
         tree
         [treeDepth tree, treeDepth tree - 1 .. 0]

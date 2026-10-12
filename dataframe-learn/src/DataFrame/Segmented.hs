@@ -25,7 +25,8 @@ module DataFrame.Segmented (
 ) where
 
 import Control.Exception (throw)
-import Data.List (foldl', (\\))
+import Data.List ((\\))
+import qualified Data.List as L
 import qualified Data.Map.Strict as M
 import Data.Maybe (isJust)
 import qualified Data.Set as Set
@@ -285,7 +286,7 @@ groupByKey df catCols =
     validRow i = all (maybe True (`bitmapTestBit` i)) bitmaps
     keyOf i = [tv V.! i | tv <- textVecs]
     grouped =
-        foldl'
+        L.foldl'
             (\m i -> if validRow i then M.insertWith (++) (keyOf i) [i] m else m)
             M.empty
             [0 .. n - 1]

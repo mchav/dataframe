@@ -19,7 +19,6 @@ import DataFrame.ModelSelection
 
 import Data.Maybe (isJust, isNothing, listToMaybe)
 import qualified Data.Vector.Unboxed as VU
-import DataFrame.Model (fit, predict)
 import Test.HUnit
 
 interpD :: D.DataFrame -> Expr Double -> [Double]

@@ -24,13 +24,15 @@ appending, and the mutable-column IO helpers.
 module DataFrame.Internal.Column.Operations where
 
 import qualified Data.Text as T
+import qualified Data.Text.Array as A
+import Data.Text.Internal (Text (Text))
 import qualified Data.Vector as VB
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Mutable as VBM
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
-import Control.Monad (join, when)
+import Control.Monad (forM_, join, when)
 import Control.Monad.ST (runST)
 import Data.Bits (setBit, shiftL, shiftR)
 import Data.Int (Int32)
@@ -54,16 +56,22 @@ import DataFrame.Internal.Column.Conversion
 import DataFrame.Internal.Column.Properties
 import DataFrame.Internal.Column.Types
 import DataFrame.Internal.Control.Concurrent (
+    capabilities,
+    forkJoin,
+    forkJoin_,
     parThreshold,
+    parallelChunks,
     parallelChunks_,
     shouldParallelize,
+    splitChunkRange,
  )
 import DataFrame.Internal.Data.PackedText (
-    PackedOffsets,
     PackedSel (..),
     PackedTextData (..),
+    mkPackedContiguous,
     offCount,
     packedGather,
+    packedIndexText,
     packedLength,
  )
 import System.IO.Unsafe (unsafePerformIO)
@@ -151,9 +159,22 @@ mapColumn ::
 mapColumn f = \case
     BoxedColumn bm (col :: VB.Vector a) -> runBoxed bm col
     UnboxedColumn bm (col :: VU.Vector a) -> runUnboxed bm col
+    PackedText Nothing p
+        | Just Refl <- testEquality (typeRep @b) (typeRep @T.Text) ->
+            Right (mapPacked p)
     c@(PackedText _ _) -> mapColumn f (materializePacked c)
     c@(MergedColumn _ _) -> mapColumn f (materializeMerged c)
   where
+    -- Rows are decoded one at a time from the packed bytes; text results are
+    -- packed again per chunk, so no boxed vector of the whole column exists.
+    mapPacked :: (b ~ T.Text) => PackedTextData -> Column
+    mapPacked p =
+        let !n = packedLength p
+         in case testEquality (typeRep @c) (typeRep @T.Text) of
+                Just Refl -> packedMapText n (f . packedIndexText p)
+                Nothing -> case sUnbox @c of
+                    STrue -> UnboxedColumn Nothing (parGenerateUnboxed n (f . packedIndexText p))
+                    SFalse -> fromVector @c (VB.generate n (f . packedIndexText p))
     runBoxed ::
         forall a.
         (Columnable a) =>
@@ -642,6 +663,32 @@ getIndices indices xs = VB.generate (VU.length indices) (\i -> xs VB.! (indices 
 getIndicesUnboxed :: (VU.Unbox a) => VU.Vector Int -> VU.Vector a -> VU.Vector a
 getIndicesUnboxed indices xs = VU.generate (VU.length indices) (\i -> xs VU.! (indices VU.! i))
 {-# INLINE getIndicesUnboxed #-}
+
+{- | Positions of the 'True' entries, in order. Chunks count their hits, then
+fill disjoint slices of the output in parallel.
+-}
+maskIndices :: VU.Vector Bool -> VU.Vector Int
+maskIndices mask
+    | not (shouldParallelize parThreshold n) = VU.findIndices id mask
+    | otherwise = unsafePerformIO $ do
+        let chunks = splitChunkRange capabilities n
+            countChunk (lo, hi) = pure $! countFrom lo hi 0
+            countFrom !i !hi !c
+                | i >= hi = c
+                | otherwise = countFrom (i + 1) hi (c + fromEnum (VU.unsafeIndex mask i))
+        counts <- forkJoin (map countChunk chunks)
+        let starts = scanl (+) 0 counts
+        out <- VUM.unsafeNew (last starts)
+        let fill (lo, hi) start =
+                let go !i !k
+                        | i >= hi = pure ()
+                        | VU.unsafeIndex mask i = VUM.unsafeWrite out k i >> go (i + 1) (k + 1)
+                        | otherwise = go (i + 1) k
+                 in go lo start
+        forkJoin_ (zipWith fill chunks starts)
+        VU.unsafeFreeze out
+  where
+    !n = VU.length mask
 
 findIndices ::
     forall a.
@@ -1551,3 +1598,46 @@ mgFillSel64To64 ixs s !base dst lo hi = go lo
             VUM.unsafeWrite dst i out
             go (i + 1)
 {-# NOINLINE mgFillSel64To64 #-}
+
+{- | A packed text column of @f i@ for each row, built chunk by chunk in
+parallel: each chunk packs its rows into one byte array, then the chunks are
+spliced into the final array with their offsets rebased.
+-}
+packedMapText :: Int -> (Int -> T.Text) -> Column
+packedMapText n f = unsafePerformIO $ do
+    chunks <-
+        if shouldParallelize parThreshold n
+            then parallelChunks parThreshold n (\lo hi -> pure $! packRows lo hi)
+            else pure [packRows 0 n]
+    let totalBytes = sum [VU.unsafeIndex o (VU.length o - 1) | (_, o) <- chunks]
+        totalRows = sum [VU.length o - 1 | (_, o) <- chunks]
+    pure $! runST $ do
+        arr <- A.new (max 1 totalBytes)
+        offs <- VUM.unsafeNew (totalRows + 1)
+        VUM.unsafeWrite offs 0 0
+        let splice !byteBase !rowBase ((a, o) : rest) = do
+                let rows = VU.length o - 1
+                    used = VU.unsafeIndex o rows
+                A.copyI used arr byteBase a 0
+                forM_ [1 .. rows] $ \i ->
+                    VUM.unsafeWrite offs (rowBase + i) (byteBase + VU.unsafeIndex o i)
+                splice (byteBase + used) (rowBase + rows) rest
+            splice _ _ [] = pure ()
+        splice 0 0 chunks
+        farr <- A.unsafeFreeze arr
+        foffs <- VU.unsafeFreeze offs
+        pure (PackedText Nothing (mkPackedContiguous farr foffs))
+  where
+    -- One chunk's rows as (bytes, offsets); offsets are chunk-relative.
+    packRows lo hi =
+        let texts = VB.generate (hi - lo) (\i -> f (lo + i))
+            lens = VU.generate (hi - lo) (textBytes . VB.unsafeIndex texts)
+            offs = VU.scanl' (+) 0 lens
+            bytes = VU.unsafeIndex offs (hi - lo)
+            arr = runST $ do
+                m <- A.new (max 1 bytes)
+                VB.iforM_ texts $ \i (Text src off len) ->
+                    A.copyI len m (VU.unsafeIndex offs i) src off
+                A.unsafeFreeze m
+         in (arr, offs)
+    textBytes (Text _ _ len) = len

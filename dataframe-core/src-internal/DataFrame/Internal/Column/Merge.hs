@@ -11,7 +11,9 @@ per-chunk 'Data.Text.Text' values are ever materialized.
 module DataFrame.Internal.Column.Merge (
     TextChunk (..),
     concatColumns,
+    concatColumnsIO,
     mergeTextChunks,
+    mergeTextChunksIO,
     packedFromTextChunk,
     concatValidity,
     tcRows,
@@ -22,8 +24,8 @@ import qualified Data.Vector as VB
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 
-import Control.Monad (foldM_, forM_)
-import Control.Monad.ST (runST)
+import Control.Monad (foldM_, forM_, when)
+import Control.Monad.ST (runST, stToIO)
 import Data.Type.Equality (testEquality, (:~:) (Refl))
 import DataFrame.Internal.Column (
     Column (..),
@@ -38,7 +40,18 @@ import DataFrame.Internal.Column.Bitmap (
     Validity (Validity),
     concatValidity,
  )
-import DataFrame.Internal.Data.PackedText (mkPackedContiguous)
+import DataFrame.Internal.Control.Concurrent (
+    forkJoin_,
+    parThreshold,
+    shouldParallelize,
+ )
+import DataFrame.Internal.Data.PackedText (
+    PackedOffsets (..),
+    mkPackedContiguous,
+    offAt,
+    offCount,
+    packedRowOffsets,
+ )
 import Type.Reflection (typeRep)
 
 {- | A frozen text-builder chunk: raw UTF-8 bytes plus row offsets (row @i@
@@ -89,6 +102,44 @@ mergeTextChunks cs = runST $ do
     let !bm = concatValidity [Validity (tcBitmap c) (tcRows c) | c <- cs]
     pure (PackedText bm (mkPackedContiguous farr foffs))
 
+{- | 'mergeTextChunks' with the byte copies and offset rebases spread over
+worker threads, one per chunk. Chunks from a parallel reader are big enough
+that the serial merge otherwise costs as much as decoding did.
+-}
+mergeTextChunksIO :: [TextChunk] -> IO Column
+mergeTextChunksIO [] = error "DataFrame.Internal.ColumnMerge.mergeTextChunksIO: empty list"
+mergeTextChunksIO [c] = pure (packedFromTextChunk c)
+mergeTextChunksIO cs
+    | not (shouldParallelize parThreshold totalRows) = pure (mergeTextChunks cs)
+    | otherwise = do
+        arr <- stToIO (A.new (max 1 totalBytes))
+        offs <- VUM.unsafeNew (totalRows + 1)
+        VUM.unsafeWrite offs 0 0
+        let byteBases = scanl (+) 0 (map tcUsed cs)
+            rowBases = scanl (+) 0 (map tcRows cs)
+            splice byteBase rowBase c = do
+                let n = tcRows c
+                    co = tcOffsets c
+                    go !i = when (i <= n) $ do
+                        VUM.unsafeWrite offs (rowBase + i) (byteBase + VU.unsafeIndex co i)
+                        go (i + 1)
+                stToIO (A.copyI (tcUsed c) arr byteBase (tcBytes c) 0)
+                go 1
+        forkJoin_ (zipWith3 splice byteBases rowBases cs)
+        farr <- stToIO (A.unsafeFreeze arr)
+        foffs <- VU.unsafeFreeze offs
+        let !bm = concatValidity [Validity (tcBitmap c) (tcRows c) | c <- cs]
+        pure (PackedText bm (mkPackedContiguous farr foffs))
+  where
+    totalBytes = sum (map tcUsed cs)
+    totalRows = sum (map tcRows cs)
+
+-- | 'concatColumns', merging packed text in parallel.
+concatColumnsIO :: [Column] -> IO Column
+concatColumnsIO cols
+    | Just chunks <- mapM packedChunk cols = mergeTextChunksIO chunks
+    | otherwise = pure (concatColumns cols)
+
 {- | Merge per-chunk columns into one column.
 
 TODO: mchavinda - this is very similar to mappendColumns can could possibly
@@ -99,6 +150,8 @@ concatColumns [] = error "DataFrame.Internal.Column.Builder.concatColumns: empty
 concatColumns [c] = c
 -- Normalize on the whole list, not the head: a packed or merged chunk in any
 -- position must demote every chunk to the common boxed form.
+concatColumns cols
+    | Just chunks <- mapM packedChunk cols = mergeTextChunks chunks
 concatColumns cols@(c0 : _)
     | any isMergedColumn cols = concatColumns (map materializeMerged cols)
     | any isPackedText cols = concatColumns (map materializePacked cols)
@@ -136,3 +189,15 @@ mergeMismatch :: a
 mergeMismatch =
     error
         "DataFrame.Internal.Column.Builder.concatColumns: chunk column types differ"
+
+-- | A packed-text column without a selection, viewed as a builder chunk.
+packedChunk :: Column -> Maybe TextChunk
+packedChunk (PackedText bm p) = case packedRowOffsets p of
+    Just (arr, offs) ->
+        let n = offCount offs - 1
+            offsV = case offs of
+                Offs64 v -> v
+                Offs32 v -> VU.map fromIntegral v
+         in Just (TextChunk arr (offAt offs n) offsV bm)
+    Nothing -> Nothing
+packedChunk _ = Nothing

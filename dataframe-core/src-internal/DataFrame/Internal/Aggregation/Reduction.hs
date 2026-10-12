@@ -32,8 +32,6 @@ data Reduction
     | RMean
     | RStd
     | RVar
-    | RTop2Sum
-    | RTop2Snd
     deriving (Eq, Show)
 
 cleanDoubleVector :: Column -> Maybe (VU.Vector Double)

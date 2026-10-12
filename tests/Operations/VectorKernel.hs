@@ -6,7 +6,7 @@
 that 'D.aggregate' (which routes recognised reductions through the fast scatter
 kernel) produces a result byte-identical to the same aggregation forced through
 the expression interpreter ('interpretOnly'). Covered: sum/min/max/count over
-Int and Double, mean, stddev/variance, top2Sum, median, the @max - min@
+Int and Double, mean, stddev/variance, median, the @max - min@
 compound (Q7), and a mixed multi-aggregation over single and multi-key
 groupings, on Int/Double/nullable/Text-key grids and sizes straddling the
 parallel threshold.
@@ -24,9 +24,7 @@ exercise the multi-capability scatter).
 module Operations.VectorKernel where
 
 import Control.Exception (throw)
-import qualified Data.List as L
 import qualified Data.Text as T
-import qualified Data.Vector as V
 
 import qualified DataFrame as D
 import DataFrame.Errors (DataFrameException (..))
@@ -34,7 +32,6 @@ import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
 import DataFrame.Internal.DataFrame (GroupedDataFrame, insertColumn)
 import DataFrame.Internal.Expression (
-    AggStrategy (..),
     Expr (..),
     SomeExpr (..),
  )
@@ -60,13 +57,6 @@ interpretOnly aggs gdf =
                     Right (Aggregated (DI.TColumn col)) -> col
              in insertColumn name value d
      in foldl (flip f) base aggs
-
--- | Per-group sum of the two largest values (the benchmark's Q8 reduction).
-top2Sum :: Expr Double -> Expr Double
-top2Sum = Agg (CollectAgg "top2Sum" f)
-  where
-    f :: V.Vector Double -> Double
-    f v = sum (take 2 (L.sortBy (flip compare) (V.toList v)))
 
 grid :: Int -> D.DataFrame
 grid n =
@@ -99,7 +89,6 @@ aggSets =
     , ["mnd" F..= F.minimum vd, "mxd" F..= F.maximum vd]
     , ["m" F..= F.mean vi, "md" F..= F.mean vd]
     , ["sd" F..= F.stddev vd, "var" F..= F.variance vd]
-    , ["t2" F..= top2Sum vd]
     , ["med" F..= F.median vd]
     , ["diff" F..= (F.maximum vi - F.minimum vj)]
     ,

@@ -7,7 +7,8 @@ module DataFrame.SymbolicRegression.GP (
     runGP,
 ) where
 
-import Data.List (foldl', minimumBy, sortBy)
+import Data.List (minimumBy, sortBy)
+import qualified Data.List as L
 import qualified Data.Map.Strict as M
 import Data.Ord (comparing)
 import qualified Data.Vector as V
@@ -45,7 +46,7 @@ runGP :: GPParams -> Gen -> (SRExpr, [(Int, Double, SRExpr)], Int)
 runGP p g0 =
     let (pop0, g1) = initPop p g0
         scored0 = map (scoreOf p) pop0
-        arch0 = foldl' (archiveInsert p) M.empty scored0
+        arch0 = L.foldl' (archiveInsert p) M.empty scored0
         (_, finalArch, gN, _) =
             iterate' 0 scored0 arch0 g1
         best = bestOfArchive finalArch
@@ -59,7 +60,7 @@ runGP p g0 =
         | gen >= gpGenerations p = (pop, arch, gen, g)
         | otherwise =
             let (pop', g') = nextGen p pop g
-                arch' = foldl' (archiveInsert p) arch pop'
+                arch' = L.foldl' (archiveInsert p) arch pop'
              in iterate' (gen + 1) pop' arch' g'
     fst3 (a, _, _) = a
     snd3 (_, b, _) = b

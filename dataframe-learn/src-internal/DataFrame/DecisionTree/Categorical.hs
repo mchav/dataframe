@@ -37,7 +37,6 @@ import DataFrame.DecisionTree.Types (
  )
 import DataFrame.Expression.Operators
 import DataFrame.Internal.Column
-import DataFrame.Internal.Column.Bitmap
 import DataFrame.Internal.DataFrame (DataFrame, columnNames, unsafeGetColumn)
 import DataFrame.Internal.Expression (Expr (..))
 import DataFrame.Internal.Interpreter (interpret)

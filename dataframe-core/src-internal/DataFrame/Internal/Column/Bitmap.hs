@@ -14,7 +14,7 @@ import Data.Bits (
     (.&.),
     (.|.),
  )
-import Data.List (foldl')
+import qualified Data.List as L
 import Data.Maybe (fromMaybe, isNothing)
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
@@ -75,7 +75,7 @@ buildBitmapFromValid valid =
                      in if idx < n && VU.unsafeIndex valid idx /= 0
                             then setBit acc bit
                             else acc
-             in foldl' setBitIf (0 :: Word8) [0 .. 7]
+             in L.foldl' setBitIf (0 :: Word8) [0 .. 7]
 
 {- | Build a bitmap from a list of null-row indices.
 @nullIdxs@ are the positions that are NULL.

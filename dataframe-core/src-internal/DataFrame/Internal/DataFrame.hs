@@ -38,6 +38,7 @@ module DataFrame.Internal.DataFrame (
     (=:),
 ) where
 
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Vector as V
@@ -45,7 +46,7 @@ import qualified Data.Vector.Unboxed as VU
 
 import Control.Exception (throw)
 import Data.Function (on)
-import Data.List (foldl', sortBy, (\\))
+import Data.List (sortBy, (\\))
 import Data.Maybe (fromMaybe)
 import Data.Type.Equality (
     TestEquality (testEquality),
@@ -339,7 +340,7 @@ insertColumn name column d =
 
 -- | Build a DataFrame from a list of @(name, column)@ pairs using 'insertColumn'.
 fromColumns :: [(T.Text, Column)] -> DataFrame
-fromColumns = foldl' (\df (name, column) -> insertColumn name column df) empty
+fromColumns = L.foldl' (\df (name, column) -> insertColumn name column df) empty
 
 mkColumn :: (Columnable a) => T.Text -> [a] -> (T.Text, Column)
 mkColumn name column = (name, fromList column)

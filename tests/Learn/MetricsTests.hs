@@ -20,7 +20,6 @@ import DataFrame.Transform
 import Data.List (sortBy)
 import Data.Ord (comparing)
 import qualified Data.Vector.Unboxed as VU
-import DataFrame.Model (fit, predict)
 import System.Random (mkStdGen, randomRs)
 import Test.HUnit
 
@@ -142,7 +141,7 @@ referenceAuc scores truth
 
 testRocAucMatchesReference :: Test
 testRocAucMatchesReference = TestCase $ do
-    let cases =
+    let grid =
             [ (n, levels, seed)
             | n <- [1, 2, 17, 1000]
             , levels <- [2, 7, 100000]
@@ -153,7 +152,7 @@ testRocAucMatchesReference = TestCase $ do
             ("n=" ++ show n ++ " levels=" ++ show levels ++ " seed=" ++ show seed)
             (referenceAuc scores truth)
             (rocAuc (VU.fromList scores) (VU.fromList truth))
-        | (n, levels, seed) <- cases
+        | (n, levels, seed) <- grid
         , let scores = map fromIntegral (take n (randomRs (0, levels - 1 :: Int) (mkStdGen seed)))
               truth = map fromIntegral (take n (randomRs (0, 1 :: Int) (mkStdGen (seed + 100))))
         ]

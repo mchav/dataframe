@@ -1,6 +1,17 @@
 {-# LANGUAGE BangPatterns #-}
 
-module DataFrame.IO.Parquet.Dictionary (DictVals (..), readDictVals, decodeRLEBitPackedHybrid) where
+module DataFrame.IO.Parquet.Dictionary (
+    DictVals (..),
+    readDictVals,
+    dictText,
+    dictInt32,
+    dictInt64,
+    dictFloat,
+    dictDouble,
+    word32At,
+    word64At,
+    decodeRLEBitPackedHybrid,
+) where
 
 import Data.Bits
 import qualified Data.ByteString as BS
@@ -10,25 +21,26 @@ import qualified Data.Text as T
 import Data.Text.Encoding
 import Data.Time (UTCTime)
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 import Data.Word
 import DataFrame.IO.Parquet.Binary (readUVarInt)
 import DataFrame.IO.Parquet.Thrift (ThriftType (..))
 import DataFrame.IO.Parquet.Time (int96ToUTCTime)
-import DataFrame.Internal.Binary (
-    littleEndianInt32,
-    littleEndianWord32,
-    littleEndianWord64,
- )
+import DataFrame.Internal.Binary (littleEndianWord32)
 import GHC.Float
 
+{- | A decoded dictionary page. Numeric entries are unboxed so a lookup is one
+indexed load. Byte-array entries stay in the page buffer: entry @i@ is the
+@lens!i@ bytes at @starts!i@.
+-}
 data DictVals
-    = DBool (V.Vector Bool)
-    | DInt32 (V.Vector Int32)
-    | DInt64 (V.Vector Int64)
-    | DInt96 (V.Vector UTCTime)
-    | DFloat (V.Vector Float)
-    | DDouble (V.Vector Double)
-    | DText (V.Vector T.Text)
+    = DBool !(VU.Vector Bool)
+    | DInt32 !(VU.Vector Int32)
+    | DInt64 !(VU.Vector Int64)
+    | DInt96 !(V.Vector UTCTime)
+    | DFloat !(VU.Vector Float)
+    | DDouble !(VU.Vector Double)
+    | DText !(VU.Vector Int) !(VU.Vector Int) !BS.ByteString
     deriving (Show, Eq)
 
 {- | Decode the values from a dictionary page.
@@ -39,80 +51,83 @@ no natural delimiter).
 
 The @typeLength@ argument is only meaningful for FIXED_LEN_BYTE_ARRAY: it is
 the byte-width of each individual dictionary entry, NOT the total number of
-entries.  Passing @numVals@ here (the old behaviour) would cause it to be
-misread as an element size, yielding a dictionary that is far too small.
+entries.
 -}
 readDictVals :: ThriftType -> BS.ByteString -> Int32 -> Maybe Int32 -> DictVals
-readDictVals (BOOLEAN _) bs count _ = DBool (V.fromList (take (fromIntegral count) $ readPageBool bs))
-readDictVals (INT32 _) bs _ _ = DInt32 (V.fromList (readPageInt32 bs))
-readDictVals (INT64 _) bs _ _ = DInt64 (V.fromList (readPageInt64 bs))
-readDictVals (INT96 _) bs _ _ = DInt96 (V.fromList (readPageInt96Times bs))
-readDictVals (FLOAT _) bs _ _ = DFloat (V.fromList (readPageFloat bs))
-readDictVals (DOUBLE _) bs _ _ = DDouble (V.fromList (readPageWord64 bs))
-readDictVals (BYTE_ARRAY _) bs _ _ = DText (V.fromList (readPageBytes bs))
+readDictVals (BOOLEAN _) bs count _ =
+    let n = min (fromIntegral count) (8 * BS.length bs)
+     in DBool $ VU.generate n $ \i ->
+            (BSU.unsafeIndex bs (i `shiftR` 3) `shiftR` (i .&. 7)) .&. 1 == 1
+readDictVals (INT32 _) bs _ _ =
+    DInt32 $ VU.generate (BS.length bs `div` 4) $ \i -> fromIntegral (word32At bs (4 * i))
+readDictVals (INT64 _) bs _ _ =
+    DInt64 $ VU.generate (BS.length bs `div` 8) $ \i -> fromIntegral (word64At bs (8 * i))
+readDictVals (INT96 _) bs _ _ =
+    DInt96 $ V.generate (BS.length bs `div` 12) $ \i ->
+        int96ToUTCTime (BSU.unsafeTake 12 (BSU.unsafeDrop (12 * i) bs))
+readDictVals (FLOAT _) bs _ _ =
+    DFloat $ VU.generate (BS.length bs `div` 4) $ \i -> castWord32ToFloat (word32At bs (4 * i))
+readDictVals (DOUBLE _) bs _ _ =
+    DDouble $ VU.generate (BS.length bs `div` 8) $ \i -> castWord64ToDouble (word64At bs (8 * i))
+readDictVals (BYTE_ARRAY _) bs _ _ = textDict bs
 readDictVals (FIXED_LEN_BYTE_ARRAY _) bs _ (Just len) =
-    DText (V.fromList (readPageFixedBytes bs (fromIntegral len)))
+    let w = fromIntegral len
+        n = if w <= 0 then 0 else BS.length bs `div` w
+     in DText (VU.generate n (* w)) (VU.replicate n w) bs
 readDictVals t _ _ _ = error $ "Unsupported dictionary type: " ++ show t
 
-readPageInt32 :: BS.ByteString -> [Int32]
-readPageInt32 xs
-    | BS.null xs = []
-    | otherwise = littleEndianInt32 (BS.take 4 xs) : readPageInt32 (BS.drop 4 xs)
+-- | Length-prefixed byte-array entries: one pass to count, one to record positions.
+textDict :: BS.ByteString -> DictVals
+textDict bs = DText starts lens bs
+  where
+    !len = BS.length bs
+    count !off !n
+        | off + 4 > len = n
+        | otherwise = count (off + 4 + fromIntegral (word32At bs off)) (n + 1)
+    !n = count 0 0
+    positions = VU.unfoldrExactN n step 0
+    step off = let l = fromIntegral (word32At bs off) in ((off + 4, l), off + 4 + l)
+    (starts, lens) = VU.unzip positions
 
-readPageWord64 :: BS.ByteString -> [Double]
-readPageWord64 xs
-    | BS.null xs = []
-    | otherwise =
-        castWord64ToDouble (littleEndianWord64 (BS.take 8 xs))
-            : readPageWord64 (BS.drop 8 xs)
+-- | Dictionary entry @i@ as 'T.Text' (lenient decode, for the boxed paths).
+dictText :: DictVals -> Int -> T.Text
+dictText (DText starts lens bs) i =
+    decodeUtf8Lenient
+        ( BSU.unsafeTake
+            (VU.unsafeIndex lens i)
+            (BSU.unsafeDrop (VU.unsafeIndex starts i) bs)
+        )
+dictText d _ = error ("dictText: wrong dict type, got " ++ show d)
 
-readPageBytes :: BS.ByteString -> [T.Text]
-readPageBytes xs
-    | BS.null xs = []
-    | otherwise =
-        let lenBytes = fromIntegral (littleEndianInt32 $ BS.take 4 xs)
-            totalBytesRead = lenBytes + 4
-         in decodeUtf8Lenient (BS.take lenBytes (BS.drop 4 xs))
-                : readPageBytes (BS.drop totalBytesRead xs)
+dictInt32 :: DictVals -> Maybe (VU.Vector Int32)
+dictInt32 (DInt32 ds) = Just ds
+dictInt32 _ = Nothing
 
-readPageBool :: BS.ByteString -> [Bool]
-readPageBool bs =
-    concatMap (\b -> map (\i -> (b `shiftR` i) .&. 1 == 1) [0 .. 7]) (BS.unpack bs)
+dictInt64 :: DictVals -> Maybe (VU.Vector Int64)
+dictInt64 (DInt64 ds) = Just ds
+dictInt64 _ = Nothing
 
-readPageInt64 :: BS.ByteString -> [Int64]
-readPageInt64 xs
-    | BS.null xs = []
-    | otherwise =
-        fromIntegral (littleEndianWord64 (BS.take 8 xs)) : readPageInt64 (BS.drop 8 xs)
+dictFloat :: DictVals -> Maybe (VU.Vector Float)
+dictFloat (DFloat ds) = Just ds
+dictFloat _ = Nothing
 
-readPageFloat :: BS.ByteString -> [Float]
-readPageFloat xs
-    | BS.null xs = []
-    | otherwise =
-        castWord32ToFloat (littleEndianWord32 (BS.take 4 xs))
-            : readPageFloat (BS.drop 4 xs)
+dictDouble :: DictVals -> Maybe (VU.Vector Double)
+dictDouble (DDouble ds) = Just ds
+dictDouble _ = Nothing
 
-readNInt96Times :: Int -> BS.ByteString -> ([UTCTime], BS.ByteString)
-readNInt96Times 0 bs = ([], bs)
-readNInt96Times k bs =
-    let timestamp96 = BS.take 12 bs
-        utcTime = int96ToUTCTime timestamp96
-        bs' = BS.drop 12 bs
-        (times, rest) = readNInt96Times (k - 1) bs'
-     in (utcTime : times, rest)
+word32At :: BS.ByteString -> Int -> Word32
+word32At bs o =
+    fromIntegral (BSU.unsafeIndex bs o)
+        .|. (fromIntegral (BSU.unsafeIndex bs (o + 1)) `unsafeShiftL` 8)
+        .|. (fromIntegral (BSU.unsafeIndex bs (o + 2)) `unsafeShiftL` 16)
+        .|. (fromIntegral (BSU.unsafeIndex bs (o + 3)) `unsafeShiftL` 24)
+{-# INLINE word32At #-}
 
-readPageInt96Times :: BS.ByteString -> [UTCTime]
-readPageInt96Times bs
-    | BS.null bs = []
-    | otherwise =
-        let (times, _) = readNInt96Times (BS.length bs `div` 12) bs
-         in times
-
-readPageFixedBytes :: BS.ByteString -> Int -> [T.Text]
-readPageFixedBytes xs len
-    | BS.null xs = []
-    | otherwise =
-        decodeUtf8Lenient (BS.take len xs) : readPageFixedBytes (BS.drop len xs) len
+word64At :: BS.ByteString -> Int -> Word64
+word64At bs o =
+    fromIntegral (word32At bs o)
+        .|. (fromIntegral (word32At bs (o + 4)) `unsafeShiftL` 32)
+{-# INLINE word64At #-}
 
 unpackBitPacked :: Int -> Int -> BS.ByteString -> ([Word32], BS.ByteString)
 unpackBitPacked bw count bs

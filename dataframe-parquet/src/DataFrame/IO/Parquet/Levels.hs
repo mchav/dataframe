@@ -66,7 +66,8 @@ readLevelsV1 n maxDef maxRep bs =
      in (defVec, repVec, nPresent, afterDef)
   where
     -- For rep block we don't need nPresent; we still get one cheaply.
-    decodeLevelBlock 0 n' buf = (VU.replicate n' 0, n' * fromEnum (maxDef == 0), buf)
+    -- No levels to read: the non-nullable, non-repeated paths never look at them.
+    decodeLevelBlock 0 n' buf = (VU.empty, n' * fromEnum (maxDef == 0), buf)
     decodeLevelBlock bw n' buf =
         let blockLen = fromIntegral (littleEndianWord32 (BS.take 4 buf)) :: Int
             blockData = BS.take blockLen (BS.drop 4 buf)
@@ -94,13 +95,13 @@ readLevelsV2 n maxDef maxRep repLen defLen bs =
         bwRep = bitWidthForMaxLevel maxRep
         bwDef = bitWidthForMaxLevel maxDef
         repVec
-            | bwRep == 0 = VU.replicate n 0
+            | bwRep == 0 = VU.empty
             | otherwise =
                 let (raw, _) = decodeRLEBitPackedHybrid bwRep n repBytes
                     (out, _) = convertAndCount maxDef raw
                  in out
         (defVec, nPresent)
-            | bwDef == 0 = (VU.replicate n 0, n * fromEnum (maxDef == 0))
+            | bwDef == 0 = (VU.empty, n * fromEnum (maxDef == 0))
             | otherwise =
                 let (raw, _) = decodeRLEBitPackedHybrid bwDef n defBytes
                  in convertAndCount maxDef raw

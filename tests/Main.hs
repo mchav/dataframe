@@ -34,6 +34,7 @@ import qualified Monad
 import qualified Operations.Aggregations
 import qualified Operations.Apply
 import qualified Operations.Core
+import qualified Operations.CountDistinct
 import qualified Operations.Derive
 import qualified Operations.ExprParse
 import qualified Operations.Filter
@@ -55,9 +56,12 @@ import qualified Operations.RowWise
 import qualified Operations.SetOps
 import qualified Operations.Shuffle
 import qualified Operations.Sort
+import qualified Operations.SortMask
 import qualified Operations.Statistics
 import qualified Operations.Subset
 import qualified Operations.Take
+import qualified Operations.TextKernels
+import qualified Operations.TopBy
 import qualified Operations.Typing
 import qualified Operations.VectorKernel
 import qualified Operations.Window
@@ -91,6 +95,10 @@ tests =
             ++ Learn.Metamorphic.tests
             ++ Learn.Segmented.tests
             ++ Operations.Aggregations.tests
+            ++ Operations.CountDistinct.tests
+            ++ Operations.SortMask.tests
+            ++ Operations.TextKernels.tests
+            ++ Operations.TopBy.tests
             ++ Operations.Apply.tests
             ++ Operations.Core.tests
             ++ Operations.Derive.tests

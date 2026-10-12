@@ -123,7 +123,7 @@ testScaleFeature = TestCase $ do
         coef1 = VU.toList (regCoef m1)
     assertBool
         "scale feature: x1 coefficient scaled by 1/k"
-        (close 1e-7 (head coef0 / k) (head coef1))
+        (close 1e-7 (VU.head (regCoef m0) / k) (VU.head (regCoef m1)))
     assertBool
         "scale feature: x2 coefficient unchanged"
         (close 1e-7 (coef0 !! 1) (coef1 !! 1))
@@ -189,7 +189,7 @@ testConstantFeatureIgnored = TestCase $ do
     let coef1 = VU.toList (regCoef m1)
     assertBool
         "constant feature: x1 coefficient unchanged"
-        (close 1e-6 (head (VU.toList (regCoef m0))) (head coef1))
+        (close 1e-6 (VU.head (regCoef m0)) (VU.head (regCoef m1)))
     assertBool
         "constant feature: x2 coefficient unchanged"
         (close 1e-6 (VU.toList (regCoef m0) !! 1) (coef1 !! 1))

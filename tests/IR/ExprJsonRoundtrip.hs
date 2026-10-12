@@ -31,7 +31,6 @@ import DataFrame.Transform.Serialize (
  )
 
 import DataFrame.Expr.Serialize (
-    SomeExpr (..),
     decodeExprAny,
     decodeExprAt,
     decodeExprFromBytes,

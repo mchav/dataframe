@@ -64,7 +64,7 @@ import DataFrame.IR.ExprJson (
     parseSomeExpr,
  )
 import DataFrame.Internal.Column (Columnable)
-import DataFrame.Internal.Expression (Expr, NamedExpr, SomeExpr (..))
+import DataFrame.Internal.Expression (Expr, NamedExpr)
 
 -- | Decode a single expression from a strict JSON 'BS.ByteString'.
 decodeExprFromBytes :: BS.ByteString -> Either String SomeExpr

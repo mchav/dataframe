@@ -16,7 +16,14 @@ import Control.Monad.ST (stToIO)
 import Data.Int (Int32, Int64)
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
-import DataFrame.IO.Parquet (readParquet, readParquetFiles)
+import DataFrame.IO.Parquet (
+    ParquetReadOptions (..),
+    defaultParquetReadOptions,
+    readParquet,
+    readParquetFiles,
+    readParquetWithOpts,
+    _readParquetWithOpts,
+ )
 import DataFrame.IO.Parquet.Writer (
     ParquetWriteOptions (..),
     defaultParquetWriteOptions,
@@ -31,6 +38,7 @@ import DataFrame.Internal.DataFrame (
     fromColumns,
     getColumn,
  )
+import DataFrame.Operations.Subset (range, select)
 import System.Directory (listDirectory)
 
 directWrites :: Test
@@ -128,6 +136,20 @@ writerRoundTripTiny label path = TestCase $
         writeParquetWithOptions tinyWriteOpts out df
         df' <- readParquet out
         assertEqual label df df'
+
+-- Row groups of 512 rows give the parallel reader several tasks per column.
+parallelMatchesSequential :: String -> FilePath -> Test
+parallelMatchesSequential label path = TestCase $
+    withSystemTempDirectory "dfpq-parallel" $ \dir -> do
+        df <- readParquet path
+        let out = dir </> "out.parquet"
+        writeParquetWithOptions tinyWriteOpts out df
+        sequential <-
+            readParquetWithOpts defaultParquetReadOptions{parallel = False} out
+        parallelRead <-
+            readParquetWithOpts defaultParquetReadOptions{parallel = True} out
+        assertEqual (label ++ ": sequential") df sequential
+        assertEqual (label ++ ": parallel") df parallelRead
 
 writerRoundTripLargeText :: Test
 writerRoundTripLargeText = TestCase $
@@ -244,6 +266,12 @@ tests =
             "writer roundtrip: alltypes_tiny_pages"
             (writerRoundTrip "alltypes_tiny_pages" "tests/data/alltypes_tiny_pages.parquet")
         , TestLabel
+            "parallel read matches sequential: transactions"
+            (parallelMatchesSequential "transactions" "tests/data/transactions.parquet")
+        , TestLabel
+            "parallel read matches sequential: mtcars"
+            (parallelMatchesSequential "mtcars" "tests/data/mtcars.parquet")
+        , TestLabel
             "writer roundtrip: transactions"
             (writerRoundTrip "transactions" "tests/data/transactions.parquet")
         , TestLabel
@@ -274,7 +302,75 @@ tests =
                 "tests/data/alltypes_plain.parquet"
             )
         , TestLabel "writer roundtrip: large text" writerRoundTripLargeText
+        , TestLabel "parallel read: many row groups" parallelReadRowGroups
+        , TestLabel "parallel read: row range skips row groups" parallelReadRowRange
+        , TestLabel "parallel read: widened integers" parallelReadWidenIntegers
         ]
+
+-- | A frame big enough for 'tinyWriteOpts' to split into many row groups.
+manyRowGroupsFrame :: DataFrame
+manyRowGroupsFrame =
+    fromColumns
+        [ ("n", fromList [i * 7 - 3000 | i <- [0 .. 2999 :: Int]])
+        , ("d", fromList [fromIntegral i / 8 :: Double | i <- [0 .. 2999 :: Int]])
+        ,
+            ( "t"
+            , fromList
+                [T.pack (show i) <> T.replicate (i `mod` 5) "é" | i <- [0 .. 2999 :: Int]]
+            )
+        ]
+
+withManyRowGroups :: (FilePath -> IO ()) -> IO ()
+withManyRowGroups body = withSystemTempDirectory "dfpq-rg" $ \dir -> do
+    let out = dir </> "rg.parquet"
+    writeParquetWithOptions tinyWriteOpts out manyRowGroupsFrame
+    body out
+
+-- | The parallel reader agrees with the sequential one and with the source frame.
+parallelReadRowGroups :: Test
+parallelReadRowGroups = TestCase $ withManyRowGroups $ \out -> do
+    parallel <- readParquet out
+    sequential <- _readParquetWithOpts (Just True) defaultParquetReadOptions out
+    assertEqual "parallel vs source" manyRowGroupsFrame parallel
+    assertEqual "parallel vs sequential" sequential parallel
+    projected <-
+        readParquetWithOpts
+            defaultParquetReadOptions{selectedColumns = Just ["t", "n"]}
+            out
+    assertEqual "projection" (select ["t", "n"] manyRowGroupsFrame) projected
+
+-- | A row range only decodes the row groups it overlaps, and still slices exactly.
+parallelReadRowRange :: Test
+parallelReadRowRange = TestCase $ withManyRowGroups $ \out -> do
+    let ranges = [(0, 5), (7, 1300), (1299, 1301), (2990, 3000), (2995, 4000), (100, 100)]
+    mapM_
+        ( \r -> do
+            got <- readParquetWithOpts defaultParquetReadOptions{rowRange = Just r} out
+            assertEqual ("range " ++ show r) (range r manyRowGroupsFrame) got
+        )
+        ranges
+
+-- | 'widenIntegers' turns Int32 and Int64 columns into Int on both read paths.
+parallelReadWidenIntegers :: Test
+parallelReadWidenIntegers = TestCase $ withSystemTempDirectory "dfpq-widen" $ \dir -> do
+    let n = 3000 :: Int
+        df =
+            fromColumns
+                [ ("i32", fromList [fromIntegral (i - 1500) :: Int32 | i <- [0 .. n - 1]])
+                , ("i64", fromList [fromIntegral i * 4000000000 :: Int64 | i <- [0 .. n - 1]])
+                ]
+        expected =
+            fromColumns
+                [ ("i32", fromList [i - 1500 | i <- [0 .. n - 1]])
+                , ("i64", fromList [i * 4000000000 | i <- [0 .. n - 1]])
+                ]
+        out = dir </> "ints.parquet"
+        opts = defaultParquetReadOptions{widenIntegers = True}
+    writeParquetWithOptions tinyWriteOpts out df
+    parallel <- readParquetWithOpts opts out
+    sequential <- _readParquetWithOpts (Just True) opts out
+    assertEqual "parallel" expected parallel
+    assertEqual "sequential" expected sequential
 
 main :: IO ()
 main = do

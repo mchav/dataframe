@@ -47,7 +47,6 @@ import DataFrame.DecisionTree.Types (CarePoint (..), Direction (..))
 import DataFrame.Expression.Operators
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
-import qualified DataFrame.Internal.Column.Bitmap as DI
 import DataFrame.Internal.Data.PackedText (mkPackedContiguous)
 import DataFrame.Internal.Expression (Expr (..), eqExpr, getColumns)
 import DataFrame.Internal.Interpreter (interpret)
@@ -630,9 +629,12 @@ missingnessCondsTest :: Test
 missingnessCondsTest = TestCase $ do
     let conds = missingnessConditions (D.exclude ["label"] nullsMixedDF)
     assertEqual "one nullable column -> one missingness cond" 1 (length conds)
-    assertBool
-        "cond is isNothing x"
-        (eqExpr (head conds) (F.isNothing (F.col @(Maybe Double) "x")))
+    case conds of
+        [c] ->
+            assertBool
+                "cond is isNothing x"
+                (eqExpr c (F.isNothing (F.col @(Maybe Double) "x")))
+        _ -> assertFailure "expected exactly one condition"
     assertBool
         "no missingness conds for a non-nullable DataFrame"
         (null (missingnessConditions fixtureDF))
@@ -705,7 +707,9 @@ packedMissingnessTest = TestCase $ do
         isMissingS = F.isNothing (F.col @(Maybe T.Text) "s")
         conds = missingnessConditions df
     assertEqual "one missingness cond for nullable PackedText" 1 (length conds)
-    assertBool "cond is isNothing s" (eqExpr (head conds) isMissingS)
+    case conds of
+        [c] -> assertBool "cond is isNothing s" (eqExpr c isMissingS)
+        _ -> assertFailure "expected exactly one condition"
     assertBool
         "no missingness cond for non-nullable PackedText"
         ( null

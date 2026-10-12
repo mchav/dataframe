@@ -4,7 +4,6 @@ module Learn.Numerics (tests) where
 
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
-import DataFrame.Model (fit, predict)
 import Test.HUnit
 
 import DataFrame.LinearAlgebra

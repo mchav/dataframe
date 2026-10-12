@@ -90,6 +90,7 @@ import DataFrame.Internal.Column (
     columnToTextVec,
     findIndices,
     hasMissing,
+    maskIndices,
     materializeMerged,
     materializePacked,
     mkRandom,
@@ -293,9 +294,12 @@ filterWhere expr df =
         (TColumn col') = case interpret @Bool df (normalize expr) of
             Left e -> throw e
             Right c -> c
-        indexes = case findIndices id col' of
-            Right ixs -> ixs
-            Left e -> throw e
+        indexes = case col' of
+            UnboxedColumn Nothing (mask :: VU.Vector b)
+                | Just Refl <- testEquality (typeRep @b) (typeRep @Bool) -> maskIndices mask
+            _ -> case findIndices id col' of
+                Right ixs -> ixs
+                Left e -> throw e
         c' = snd $ dataframeDimensions df
      in
         df

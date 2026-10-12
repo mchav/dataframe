@@ -22,7 +22,6 @@ module DataFrame.Internal.Aggregation.Kernel.Scatter (
     scatterReduce,
     scatterReducePar,
     maxMinusMinScatterPar,
-    top2SndScatter,
 
     -- * Group-range helpers
     -- $shared
@@ -33,7 +32,6 @@ module DataFrame.Internal.Aggregation.Kernel.Scatter (
     streamGroupCap,
 ) where
 
-import Control.Monad (when)
 import Control.Monad.ST (ST, runST)
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import qualified Data.Vector.Unboxed as VU
@@ -99,8 +97,6 @@ reduceTyped red g nGroups v idents = case red of
     RMean -> fromUnboxedVector (meanScatter g nGroups v)
     RVar -> fromUnboxedVector (varScatter False g nGroups v)
     RStd -> fromUnboxedVector (varScatter True g nGroups v)
-    RTop2Sum -> fromUnboxedVector (top2Scatter g nGroups v)
-    RTop2Snd -> fromUnboxedVector (top2SndScatter g nGroups v)
 {-# INLINE reduceTyped #-}
 
 countScatter :: VU.Vector Int -> Int -> VU.Vector Int
@@ -233,41 +229,6 @@ varScatter takeSqrt g nGroups v = runST $ do
     VU.unsafeFreeze out
 {-# INLINE varScatter #-}
 
-top2Scatter ::
-    (VU.Unbox a, Real a) => VU.Vector Int -> Int -> VU.Vector a -> VU.Vector Double
-top2Scatter g nGroups v = runST $ do
-    let ninf = negate (1 / 0) :: Double
-    m1 <- VUM.replicate nGroups ninf
-    m2 <- VUM.replicate nGroups ninf
-    let n = VU.length v
-        go !i
-            | i >= n = pure ()
-            | otherwise = do
-                let !k = VU.unsafeIndex g i
-                    !x = realToFrac (VU.unsafeIndex v i)
-                a1 <- VUM.unsafeRead m1 k
-                if x > a1
-                    then do
-                        VUM.unsafeWrite m1 k x
-                        VUM.unsafeWrite m2 k a1
-                    else do
-                        a2 <- VUM.unsafeRead m2 k
-                        when (x > a2) (VUM.unsafeWrite m2 k x)
-                go (i + 1)
-    go 0
-    out <- VUM.new nGroups
-    let fin !k
-            | k >= nGroups = pure ()
-            | otherwise = do
-                a1 <- VUM.unsafeRead m1 k
-                a2 <- VUM.unsafeRead m2 k
-                let s = (if isInfinite a1 then 0 else a1) + (if isInfinite a2 then 0 else a2)
-                VUM.unsafeWrite out k s
-                fin (k + 1)
-    fin 0
-    VU.unsafeFreeze out
-{-# INLINE top2Scatter #-}
-
 groupRangeBounds :: VU.Vector Int -> Int -> Int -> VU.Vector Int
 groupRangeBounds offs nGroups caps = VU.create $ do
     b <- VUM.new (caps + 1)
@@ -347,7 +308,7 @@ reduceParTyped ::
     Idents a ->
     Column
 {- The SPECIALIZE pragmas matter: without them the @realToFrac@ in the
-mean/var/top2 kernels survives to runtime as a dictionary call through
+mean/var kernels survives to runtime as a dictionary call through
 'Rational' (the Double->Double/Int->Double rewrite rules only fire once the
 type is concrete), costing ~4x on the whole pass. -}
 {-# SPECIALIZE reduceParTyped ::
@@ -386,9 +347,6 @@ reduceParTyped red vis offs nGroups v idents =
                     (unsafePerformIO (varPar False vis offs nGroups v caps bounds))
             RStd ->
                 fromUnboxedVector (unsafePerformIO (varPar True vis offs nGroups v caps bounds))
-            RTop2Sum -> fromUnboxedVector (unsafePerformIO (top2Par vis offs nGroups v caps bounds))
-            RTop2Snd ->
-                fromUnboxedVector (unsafePerformIO (top2SndPar vis offs nGroups v caps bounds))
 {-# INLINEABLE reduceParTyped #-}
 
 {- | For each group in @[gs, ge)@, fold the group's rows (in @valueIndices@
@@ -550,77 +508,6 @@ varPar takeSqrt vis offs nGroups v caps bounds = do
     VU.unsafeFreeze out
 {-# INLINE varPar #-}
 
-top2Par ::
-    (VU.Unbox a, Real a) =>
-    VU.Vector Int ->
-    VU.Vector Int ->
-    Int ->
-    VU.Vector a ->
-    Int ->
-    VU.Vector Int ->
-    IO (VU.Vector Double)
-top2Par vis offs nGroups v caps bounds = do
-    let ninf = negate (1 / 0) :: Double
-    out <- VUM.replicate nGroups (0 :: Double)
-    parallelBounds_ caps bounds $ \gs ge ->
-        -- The (largest, second-largest) pair carried in registers per group.
-        let grp !g
-                | g >= ge = pure ()
-                | otherwise = do
-                    let !e = VU.unsafeIndex offs (g + 1)
-                        inner !pos !a1 !a2
-                            | pos >= e =
-                                (if isInfinite a1 then 0 else a1)
-                                    + (if isInfinite a2 then 0 else a2)
-                            | otherwise =
-                                let !x = realToFrac (VU.unsafeIndex v (VU.unsafeIndex vis pos))
-                                 in if x > a1
-                                        then inner (pos + 1) x a1
-                                        else inner (pos + 1) a1 (max a2 x)
-                        !res = inner (VU.unsafeIndex offs g) ninf ninf
-                    VUM.unsafeWrite out g res
-                    grp (g + 1)
-         in grp gs
-    VU.unsafeFreeze out
-{-# INLINE top2Par #-}
-
-{- | Second-largest value per group: the same (largest, second-largest)
-register pair as 'top2Par', finalized to the second max alone. Size-1 groups
-finalize the @-inf@ seed to NaN (documented; see
-'DataFrame.Internal.AggKernel.top2SndScatter').
--}
-top2SndPar ::
-    (VU.Unbox a, Real a) =>
-    VU.Vector Int ->
-    VU.Vector Int ->
-    Int ->
-    VU.Vector a ->
-    Int ->
-    VU.Vector Int ->
-    IO (VU.Vector Double)
-top2SndPar vis offs nGroups v caps bounds = do
-    let ninf = negate (1 / 0) :: Double
-    out <- VUM.replicate nGroups (0 :: Double)
-    parallelBounds_ caps bounds $ \gs ge ->
-        -- The (largest, second-largest) pair carried in registers per group.
-        let grp !g
-                | g >= ge = pure ()
-                | otherwise = do
-                    let !e = VU.unsafeIndex offs (g + 1)
-                        inner !pos !a1 !a2
-                            | pos >= e = if isInfinite a2 then 0 / 0 else a2
-                            | otherwise =
-                                let !x = realToFrac (VU.unsafeIndex v (VU.unsafeIndex vis pos))
-                                 in if x > a1
-                                        then inner (pos + 1) x a1
-                                        else inner (pos + 1) a1 (max a2 x)
-                        !res = inner (VU.unsafeIndex offs g) ninf ninf
-                    VUM.unsafeWrite out g res
-                    grp (g + 1)
-         in grp gs
-    VU.unsafeFreeze out
-{-# INLINE top2SndPar #-}
-
 -------------------------------------------------------------------------------
 -- Parallel fused max(a) - min(b) (Q7 at wide group domains)
 -------------------------------------------------------------------------------
@@ -776,43 +663,3 @@ Below 4096 groups (or single-capability) the merge stays on one thread.
 -}
 groupSlices :: Int -> [(Int, Int)]
 groupSlices = chunksFor 4096
-
-{- | Second-largest value per group: the same (largest, second-largest)
-accumulator pair as 'top2Scatter', but the finalize returns the second max
-alone. A group of size 1 (or 0) leaves the @-inf@ seed in the second slot, so
-its output is NaN — documented behaviour (the db-benchmark Q8 data has no
-size-1 @id6@ groups). Like 'top2Scatter''s @-inf -> 0@ guard, an actual
-infinite data value in the second slot is indistinguishable from the seed.
--}
-top2SndScatter ::
-    (VU.Unbox a, Real a) => VU.Vector Int -> Int -> VU.Vector a -> VU.Vector Double
-top2SndScatter g nGroups v = runST $ do
-    let ninf = negate (1 / 0) :: Double
-    m1 <- VUM.replicate nGroups ninf
-    m2 <- VUM.replicate nGroups ninf
-    let n = VU.length v
-        go !i
-            | i >= n = pure ()
-            | otherwise = do
-                let !k = VU.unsafeIndex g i
-                    !x = realToFrac (VU.unsafeIndex v i)
-                a1 <- VUM.unsafeRead m1 k
-                if x > a1
-                    then do
-                        VUM.unsafeWrite m1 k x
-                        VUM.unsafeWrite m2 k a1
-                    else do
-                        a2 <- VUM.unsafeRead m2 k
-                        when (x > a2) (VUM.unsafeWrite m2 k x)
-                go (i + 1)
-    go 0
-    out <- VUM.new nGroups
-    let fin !k
-            | k >= nGroups = pure ()
-            | otherwise = do
-                a2 <- VUM.unsafeRead m2 k
-                VUM.unsafeWrite out k (if isInfinite a2 then 0 / 0 else a2)
-                fin (k + 1)
-    fin 0
-    VU.unsafeFreeze out
-{-# INLINE top2SndScatter #-}

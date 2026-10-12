@@ -57,7 +57,9 @@ twoSegDF =
 
 segByKey ::
     [T.Text] -> SegmentedModel a LinearRegressor -> Segment LinearRegressor
-segByKey k m = head [s | s <- smSegments m, segKey s == k]
+segByKey k m = case [s | s <- smSegments m, segKey s == k] of
+    (s : _) -> s
+    [] -> error ("segByKey: no segment for " ++ show k)
 
 lowFloor :: Segmented cfg -> Segmented cfg
 lowFloor s = s{segMinRows = 3}
