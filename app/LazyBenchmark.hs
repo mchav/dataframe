@@ -2,15 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-{- | Benchmark for the Lazy streaming API:
-     generate a CSV then run five Lazy queries over it.
-
-     Usage:
-       cabal run lazy-bench [-- [OPTIONS]]        (+RTS -s -RTS for heap stats)
-       --rows N     rows to generate (default 1_000_000_000)
-       --file PATH  output CSV path (default: lazy_1b.csv in the system temp dir)
-       --skip-gen   reuse the file if it already exists
--}
+-- | Benchmark for the Lazy API: generate a CSV, then run five Lazy queries.
 module Main where
 
 import Control.Monad (foldM, forM_, when)
@@ -24,7 +16,7 @@ import qualified DataFrame.Lazy as L
 import DataFrame.Schema (Schema (..), schemaType)
 import System.Directory (doesFileExist, getFileSize, getTemporaryDirectory)
 import System.Environment (getArgs)
-import System.Exit (exitFailure)
+import System.Exit (exitFailure, exitSuccess)
 import System.IO (
     BufferMode (..),
     IOMode (..),
@@ -44,6 +36,16 @@ defaultFile = (<> "/lazy_1b.csv") <$> getTemporaryDirectory
 -- Rows written per Builder flush to disk.
 chunkSize :: Int
 chunkSize = 500_000
+
+usage :: String
+usage =
+    unlines
+        [ "Usage: cabal run lazy-bench [-- [OPTIONS]]  (+RTS -s -RTS for heap stats)"
+        , "  --rows N     rows to generate (default 1_000_000_000)"
+        , "  --file PATH  output CSV path (default: lazy_1b.csv in the temp dir)"
+        , "  --skip-gen   reuse the file if it already exists"
+        , "  --help       show this message"
+        ]
 
 data Opts = Opts
     { optRows :: Int
@@ -145,9 +147,10 @@ main :: IO ()
 main = do
     hSetBuffering stdout LineBuffering
     args <- getArgs
+    when ("--help" `elem` args) $ putStr usage >> exitSuccess
     defFile <- defaultFile
     opts <- case parseArgs defFile args of
-        Left err -> putStrLn ("Error: " ++ err) >> exitFailure
+        Left err -> putStrLn ("Error: " ++ err) >> putStr usage >> exitFailure
         Right o -> return o
 
     let path = optFile opts
