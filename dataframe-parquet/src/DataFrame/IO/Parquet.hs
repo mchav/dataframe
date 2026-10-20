@@ -415,8 +415,7 @@ plainDouble bs o = castWord64ToDouble (word64At bs o)
 rowGroupMayMatch :: FileMetadata -> RowGroup -> Expr Bool -> Bool
 rowGroupMayMatch metadata rg = go
   where
-    leafNames =
-        map (last . T.splitOn ".") (getColumnNames (drop 1 (unField metadata.schema)))
+    allNames = getColumnNames (drop 1 (unField metadata.schema))
     chunks = unField (rg_columns rg)
     go :: Expr Bool -> Bool
     go (Binary op l r)
@@ -458,7 +457,7 @@ rowGroupMayMatch metadata rg = go
             _ -> True
     columnRange :: T.Text -> Maybe (Int, Int)
     columnRange name = do
-        i <- L.elemIndex name leafNames
+        i <- L.findIndex (columnMatches allNames name) allNames
         cc <- chunks `atMay` i
         meta <- unField (cc_meta_data cc)
         stats <- unField (cmd_statistics meta)
@@ -547,12 +546,21 @@ fileRowCount metadata =
                 Int
      in if topLevelRows > 0 then topLevelRows else rgRows
 
+columnMatches :: [T.Text] -> T.Text -> T.Text -> Bool
+columnMatches allNames requested name =
+    name == requested
+        || (leafOf name == requested && requested `notElem` allNames)
+
+-- | The last dot-separated segment of a column path.
+leafOf :: T.Text -> T.Text
+leafOf = last . T.splitOn "."
+
 -- | Validate the requested columns against the schema and pick what to decode.
 planColumns :: ParquetReadOptions -> FileMetadata -> ColumnPlan
 planColumns opts metadata =
     let schemaElems = unField metadata.schema
         allNames = getColumnNames (drop 1 schemaElems)
-        leafNames = L.nub (map (last . T.splitOn ".") allNames)
+        knownNames = L.nub (allNames ++ map leafOf allNames)
         predicateColumns = maybe [] (L.nub . getColumns) (predicate opts)
         selectedColumnsForRead = case selectedColumns opts of
             Nothing -> Nothing
@@ -566,7 +574,7 @@ planColumns opts metadata =
         validated = case selectedColumnsForRead of
             Nothing -> ()
             Just requested ->
-                let missing = requested L.\\ leafNames
+                let missing = [r | r <- requested, not (any (columnMatches allNames r) allNames)]
                  in if L.null missing
                         then ()
                         else
@@ -574,7 +582,7 @@ planColumns opts metadata =
                                 ( ColumnsNotFoundException
                                     missing
                                     "readParquetWithOpts"
-                                    leafNames
+                                    knownNames
                                 )
 
         descriptions = generateColumnDescriptions schemaElems
@@ -596,7 +604,7 @@ planColumns opts metadata =
         -- Decode only the columns needed for the output plus any predicate.
         keep name = case selectedColumnsForRead of
             Nothing -> True
-            Just req -> last (T.splitOn "." name) `elem` req
+            Just req -> any (\r -> columnMatches allNames r name) req
         kept = filter (\(n, _, _) -> keep n) (zip3 allNames chunks descriptions)
      in validated `seq`
             counted `seq`
@@ -968,13 +976,16 @@ stampedSchemaTypes =
         ]
 
 restoreNativeType :: Schema -> T.Text -> DI.Column -> DI.Column
-restoreNativeType hints name col = case Map.lookup leaf (elements hints) of
+restoreNativeType hints name col = case lookupHint of
     Just ty
         | stampedAs @Int ty -> narrow (fromIntegral @Int64 @Int)
         | stampedAs @Integer ty -> narrow (fromIntegral @Int64 @Integer)
     _ -> col
   where
-    leaf = last (T.splitOn "." name)
+    lookupHint =
+        case Map.lookup name (elements hints) of
+            Just ty -> Just ty
+            Nothing -> Map.lookup (leafOf name) (elements hints)
     stampedAs ::
         forall a. (Columnable a, Read a, Columnable (Maybe a)) => SchemaType -> Bool
     stampedAs ty = ty == schemaType @a || ty == schemaType @(Maybe a)

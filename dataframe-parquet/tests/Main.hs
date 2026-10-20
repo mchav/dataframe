@@ -1,4 +1,6 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | Tests for the writer-buffer logic in "DataFrame.IO.Utils.RandomAccess".
 module Main where
@@ -39,6 +41,8 @@ import DataFrame.Internal.DataFrame (
     getColumn,
  )
 import DataFrame.Operations.Subset (range, select)
+import qualified DataFrame.Typed.IO.Parquet as Typed
+import qualified DataFrame.Typed.Operations as DT
 import System.Directory (listDirectory)
 
 directWrites :: Test
@@ -238,10 +242,45 @@ tinyWriteOpts =
         , subBatchRows = 3
         }
 
+dottedColumnNames :: Test
+dottedColumnNames = TestCase $
+    withSystemTempDirectory "dfpq-dotted" $ \dir -> do
+        let df =
+                fromColumns
+                    [ ("sepal.length", fromList [5.1, 4.9, 4.7 :: Double])
+                    , ("length", fromList [1, 2, 3 :: Int])
+                    , ("variety", fromList ["a", "b", "c" :: T.Text])
+                    ]
+            out = dir </> "dotted.parquet"
+        writeParquet out df
+        whole <- readParquet out
+        assertEqual "names survive the round trip" (columnNames df) (columnNames whole)
+        projected <-
+            readParquetWithOpts
+                defaultParquetReadOptions{selectedColumns = Just ["sepal.length", "variety"]}
+                out
+        assertEqual
+            "projection keeps the dotted column"
+            ["sepal.length", "variety"]
+            (columnNames projected)
+        assertEqual
+            "projected rows match"
+            (select ["sepal.length", "variety"] df)
+            projected
+        leaf <-
+            readParquetWithOpts
+                defaultParquetReadOptions{selectedColumns = Just ["length"]}
+                out
+        assertEqual "a full name wins over a leaf alias" ["length"] (columnNames leaf)
+        typed <-
+            Typed.readParquet @'[ '("sepal.length", Double), '("variety", T.Text)] out
+        assertEqual "the typed reader projects a dotted schema" 3 (DT.nRows typed)
+
 tests :: Test
 tests =
     TestList
-        [ TestLabel "direct buffer writes" directWrites
+        [ TestLabel "dotted column names project by full name" dottedColumnNames
+        , TestLabel "direct buffer writes" directWrites
         , TestLabel "direct buffer-to-buffer flush" directBufferFlush
         , TestLabel "direct buffer-to-file flush" directFileFlush
         , TestLabel
