@@ -42,8 +42,6 @@ ALL_PKGS=(
   dataframe-arrow-bridge
   dataframe-learn
   dataframe-persistent
-  dataframe-fusion
-  dataframe-huggingface
   dataframe
   dataframe-arrow
 )

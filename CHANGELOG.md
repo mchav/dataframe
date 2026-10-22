@@ -1,8 +1,36 @@
 # Revision history for dataframe
 
+## 3.7.0.0
+
+* `dataframe-viz`: column names are escaped in Vega-Lite field references
+  (`sepal.length` → `sepal\.length`), so a chart of a dotted column no longer
+  renders empty. Data keys are unchanged.
+* `dataframe-parquet`: a requested column is matched by its full name first,
+  so a top-level column named with a dot (`sepal.length`) is read and projected
+  as written; the last segment is only an alias for nested leaves. Fixes typed
+  reads of such files, which failed with "Columns not found".
+* `fromNamedColumns` is now `fromColumns`.
+* `HasSchema`'s methods `toColumns`/`fromColumns` are now
+  `recordsToColumns`/`recordsFromFrame`.
+* `UExpr` is now `SomeExpr` (`toUExpr`/`fromUExpr` →
+  `toSomeExpr`/`fromSomeExpr`).
+* `dataframe-learn`: `GBConfig` gained fields (`gbMaxBins`, `gbL2`,
+  `gbSubsample`, ...) and lost its `Eq` instance.
+* `dataframe-parquet`: writer internals now run in `ST s` instead of `IO`.
+* More ergonomic conditionals with `caseWhen`/`orElse`.
+* `countDistinct`, `topBy`, and `(=:)` for building columns by hand.
+* Tree learners handle nullable columns.
+* Parallel parquet reader with streaming numeric decode.
+* Faster parquet writer.
+* Fused parallel kernels for whole-frame `sum`/`mean`, `countDistinct` and
+  packed-text kernels.
+* `pow` and `daysBetween` no longer treat their arguments as commutative.
+* Nullable int32/int64 decimal parquet columns keep their nulls.
+* The parquet reader selects and filters columns whose names contain dots.
+* `countRows` reads files as UTF-8.
+
 ## 3.6.1.0
 
-* More ergonomic conditionals with `caseWhen` (basically `ifThen`)/`orElse`
 * splices for deriving schema
 * writeParquet and friends added.
 * skewness computed as g1
