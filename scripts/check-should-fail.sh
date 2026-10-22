@@ -14,6 +14,7 @@ cd "$(dirname "$0")/.." || exit 1
 # file:expected-substring
 CASES=(
     "ImputePlain.hs:impute needs a nullable column"
+    "ChartNullable.hs:Couldn't match type ‘Double’ with ‘Maybe Double’"
 )
 
 status=0

@@ -51,7 +51,13 @@ import System.IO (hPutStrLn, stderr)
 import Type.Reflection (TypeRep, tyConName, typeRep, typeRepTyCon, pattern App)
 
 import Control.Exception (throw)
-import DataFrame.Internal.Column (Column, Columnable)
+import DataFrame.Internal.Column (
+    Column (MergedColumn),
+    Columnable,
+    bitmapTestBit,
+    columnBitmap,
+    materializeMerged,
+ )
 import DataFrame.Internal.DataFrame (DataFrame, dataframeDimensions, getColumn)
 import DataFrame.Internal.Expression (Expr (Col))
 import DataFrame.Internal.Interpreter (Ctx (..), eval, materialize)
@@ -223,9 +229,19 @@ materialiseExpr df expr = either throw id $ do
     v <- eval (FlatCtx df) expr
     pure $ materialize @a (fst (dataframeDimensions df)) v
 
+{- | A column's values as JSON, with null slots as 'Null'. Vega-Lite groups a
+null category as its own bar and drops null positions from a numeric scale.
+-}
 columnToValues :: FieldType -> Column -> [Value]
-columnToValues Quantitative col = map toJSON (columnToDoubles col)
-columnToValues _ col = map (toJSON :: T.Text -> Value) (columnToStrings col)
+columnToValues ft col = case col of
+    MergedColumn _ _ -> columnToValues ft (materializeMerged col)
+    _ -> maskNulls (raw ft)
+  where
+    raw Quantitative = map toJSON (columnToDoubles col)
+    raw _ = map (toJSON :: T.Text -> Value) (columnToStrings col)
+    maskNulls vs = case columnBitmap col of
+        Nothing -> vs
+        Just bm -> zipWith (\i v -> if bitmapTestBit bm i then v else Null) [0 ..] vs
 
 -- | A nominal field built directly from text values (for pre-computed data).
 textField :: T.Text -> [T.Text] -> ResolvedField
@@ -278,7 +294,9 @@ channelValue :: ChannelEnc -> Value
 channelValue e =
     object $
         catMaybes
-            [ if T.null (ceField e) then Nothing else Just ("field" .= ceField e)
+            [ if T.null (ceField e)
+                then Nothing
+                else Just ("field" .= fieldRef (ceField e))
             , Just ("type" .= fieldTypeName (ceType e))
             , fmap ("aggregate" .=) (ceAggregate e)
             , if ceBin e then Just ("bin" .= True) else Nothing
@@ -307,9 +325,20 @@ scaleTypeName LogS = "log"
 
 transformValue :: Transform -> Value
 transformValue (RegressionT yField xField) =
-    object ["regression" .= yField, "on" .= xField]
+    object ["regression" .= fieldRef yField, "on" .= fieldRef xField]
 transformValue (DensityT field) =
-    object ["density" .= field]
+    object ["density" .= fieldRef field]
+
+{- | A column name as a Vega-Lite field reference. Vega-Lite reads @.@, @[@ and
+@]@ in a field string as nested access, so a column called @sepal.length@
+must be written @sepal\\.length@ or every datum resolves to undefined.
+-}
+fieldRef :: T.Text -> T.Text
+fieldRef = T.concatMap esc
+  where
+    esc c
+        | c `elem` ['.', '[', ']', '\\'] = T.pack ['\\', c]
+        | otherwise = T.singleton c
 
 -- | Build the @data.values@ array of row objects, deduplicating fields by name.
 inlineRows :: [ResolvedField] -> Value

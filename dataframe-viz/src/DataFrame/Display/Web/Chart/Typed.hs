@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- | Schema-checked typed-expression analogue of "DataFrame.Display.Web.Chart".
 module DataFrame.Display.Web.Chart.Typed (
@@ -58,10 +59,14 @@ import DataFrame.Display.Internal.VegaLite (
  )
 import qualified DataFrame.Display.Web.Chart as C
 import DataFrame.Internal.Column (Columnable)
+import DataFrame.Internal.Expression.Operators.Nullable (BaseType)
 import DataFrame.Typed.Types (TExpr (..), TypedDataFrame (..))
 import GHC.TypeLits (Symbol)
 
--- | A typed chart: a phantom-@cols@ wrapper over the untyped builder.
+{- | A typed chart: a phantom-@cols@ wrapper over the untyped builder.
+Encoded expressions must be non-nullable (@a ~ BaseType a@); drop nulls first
+with 'DataFrame.Typed.filterJust' or fill them with 'DataFrame.Typed.impute'.
+-}
 newtype Chart (cols :: [(Symbol, Type)]) = Chart C.Chart
 
 -- | Start a typed chart from a typed frame.
@@ -73,12 +78,14 @@ mark :: Mark -> Chart cols -> Chart cols
 mark m (Chart c) = Chart (C.mark m c)
 
 -- | Encode a typed expression on a channel (field type inferred from its type).
-enc :: (Columnable a) => Channel -> TExpr cols a -> Chart cols -> Chart cols
+enc ::
+    (Columnable a, a ~ BaseType a) =>
+    Channel -> TExpr cols a -> Chart cols -> Chart cols
 enc ch te (Chart c) = Chart (C.enc ch (unTExpr te) c)
 
 -- | Like 'enc' but force the Vega-Lite field type.
 encAs ::
-    (Columnable a) =>
+    (Columnable a, a ~ BaseType a) =>
     Channel -> TExpr cols a -> FieldType -> Chart cols -> Chart cols
 encAs ch te ft (Chart c) = Chart (C.encAs ch (unTExpr te) ft c)
 
@@ -100,12 +107,18 @@ includeZero :: Channel -> Bool -> Chart cols -> Chart cols
 includeZero ch b (Chart c) = Chart (C.includeZero ch b c)
 
 -- | Facet into small multiples by a column (alias for 'column').
-facet :: (Columnable a) => TExpr cols a -> Chart cols -> Chart cols
+facet ::
+    (Columnable a, a ~ BaseType a) => TExpr cols a -> Chart cols -> Chart cols
 facet = column
 
--- | Facet across columns / down rows.
-column, row :: (Columnable a) => TExpr cols a -> Chart cols -> Chart cols
+-- | Facet across columns.
+column ::
+    (Columnable a, a ~ BaseType a) => TExpr cols a -> Chart cols -> Chart cols
 column te (Chart c) = Chart (C.column (unTExpr te) c)
+
+-- | Facet down rows.
+row ::
+    (Columnable a, a ~ BaseType a) => TExpr cols a -> Chart cols -> Chart cols
 row te (Chart c) = Chart (C.row (unTExpr te) c)
 
 -- | Set the chart title.
@@ -122,12 +135,13 @@ layer cs = Chart (C.layer [c | Chart c <- cs])
 
 -- | Add a least-squares regression line fitting @y@ on @x@.
 regression ::
-    (Columnable a, Columnable b) =>
+    (Columnable a, Columnable b, a ~ BaseType a, b ~ BaseType b) =>
     TExpr cols a -> TExpr cols b -> Chart cols -> Chart cols
 regression xE yE (Chart c) = Chart (C.regression (unTExpr xE) (unTExpr yE) c)
 
 -- | Kernel-density estimate of an expression, drawn as an area.
-density :: (Columnable a) => TExpr cols a -> Chart cols -> Chart cols
+density ::
+    (Columnable a, a ~ BaseType a) => TExpr cols a -> Chart cols -> Chart cols
 density e (Chart c) = Chart (C.density (unTExpr e) c)
 
 -- | The Vega-Lite spec as an aeson 'Value' (escape hatch, e.g. for hvega).
@@ -144,28 +158,30 @@ showChart (Chart c) = C.showChart c
 
 -- | Scatter plot of two typed expressions.
 scatter ::
-    (Columnable a, Columnable b) =>
+    (Columnable a, Columnable b, a ~ BaseType a, b ~ BaseType b) =>
     TExpr cols a -> TExpr cols b -> TypedDataFrame cols -> IO ()
 scatter xE yE tdf = C.scatter (unTExpr xE) (unTExpr yE) (unTDF tdf)
 
--- | Count of rows per category, as bars.
+-- | Count of rows per category, as bars; a nullable column counts its nulls.
 bar :: (Columnable a) => TExpr cols a -> TypedDataFrame cols -> IO ()
 bar xE tdf = C.bar (unTExpr xE) (unTDF tdf)
 
 -- | Histogram of a numeric expression.
-histogram :: (Columnable a) => TExpr cols a -> TypedDataFrame cols -> IO ()
+histogram ::
+    (Columnable a, a ~ BaseType a) => TExpr cols a -> TypedDataFrame cols -> IO ()
 histogram xE tdf = C.histogram (unTExpr xE) (unTDF tdf)
 
 -- | Line chart of @y@ over @x@.
 line ::
-    (Columnable a, Columnable b) =>
+    (Columnable a, Columnable b, a ~ BaseType a, b ~ BaseType b) =>
     TExpr cols a -> TExpr cols b -> TypedDataFrame cols -> IO ()
 line xE yE tdf = C.line (unTExpr xE) (unTExpr yE) (unTDF tdf)
 
--- | Pie chart counting rows per category.
+-- | Pie chart counting rows per category; a nullable column counts its nulls.
 pie :: (Columnable a) => TExpr cols a -> TypedDataFrame cols -> IO ()
 pie cE tdf = C.pie (unTExpr cE) (unTDF tdf)
 
 -- | Box-and-whisker plot of a numeric expression.
-box :: (Columnable a) => TExpr cols a -> TypedDataFrame cols -> IO ()
+box ::
+    (Columnable a, a ~ BaseType a) => TExpr cols a -> TypedDataFrame cols -> IO ()
 box yE tdf = C.box (unTExpr yE) (unTDF tdf)

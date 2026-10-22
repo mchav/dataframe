@@ -109,9 +109,35 @@ escapingSafe = TestCase $ do
         "weird column name present as a data key"
         (Data.Maybe.isJust (lookupKey weird row0))
     assertEqual
-        "encoding references the weird field name"
-        (Just (String weird))
+        "encoding references the weird field name, backslash escaped"
+        (Just (String "we\"ir\\\\d"))
         (jpath ["encoding", "x", "field"] spec)
+
+dottedFieldName :: Test
+dottedFieldName = TestCase $ do
+    let name = "sepal.length"
+        df =
+            D.fromColumns
+                [ (name, D.fromList ([5.1, 4.9] :: [Double]))
+                , ("variety", D.fromList (["a", "b"] :: [T.Text]))
+                ]
+        spec =
+            C.toVegaSpec
+                ( C.chart df
+                    & C.mark C.Bar
+                    & C.enc C.X (col @T.Text "variety")
+                    & C.enc C.Y (col @Double name)
+                    & C.aggregateOn C.Y C.Sum
+                )
+        row0 = fromMaybe Null (dataValues spec V.!? 0)
+    assertEqual
+        "data key keeps the dot"
+        (Just (toJSON (5.1 :: Double)))
+        (lookupKey name row0)
+    assertEqual
+        "field reference escapes the dot so Vega-Lite does not nest"
+        (Just (String "sepal\\.length"))
+        (jpath ["encoding", "y", "field"] spec)
 
 computedExpr :: Test
 computedExpr = TestCase $ do
@@ -204,13 +230,34 @@ typedParity = TestCase $ do
                 )
     assertEqual "typed spec equals untyped spec" specU specT
 
+nullableBecomesNull :: Test
+nullableBecomesNull = TestCase $ do
+    let df =
+            D.fromColumns
+                [ ("g", D.fromList ([Just "a", Nothing, Just "b"] :: [Maybe T.Text]))
+                , ("n", D.fromList ([Just 1, Nothing, Just 3] :: [Maybe Double]))
+                ]
+        spec =
+            C.toVegaSpec
+                ( C.chart df
+                    & C.mark C.Bar
+                    & C.enc C.X (col @(Maybe T.Text) "g")
+                    & C.enc C.Y (col @(Maybe Double) "n")
+                )
+        row1 = fromMaybe Null (dataValues spec V.!? 1)
+    assertEqual "null category is JSON null" (Just Null) (lookupKey "g" row1)
+    assertEqual "null number is JSON null, not 0" (Just Null) (lookupKey "n" row1)
+    assertEqual "row count kept" 3 (V.length (dataValues spec))
+
 tests :: [Test]
 tests =
     [ TestLabel "Plotting.fieldTypeInference" fieldTypeInference
     , TestLabel "Plotting.boxIsBoxplot" boxIsBoxplot
     , TestLabel "Plotting.legacyBoxIsBoxplot" legacyBoxIsBoxplot
     , TestLabel "Plotting.nanBecomesNull" nanBecomesNull
+    , TestLabel "Plotting.nullableBecomesNull" nullableBecomesNull
     , TestLabel "Plotting.escapingSafe" escapingSafe
+    , TestLabel "Plotting.dottedFieldName" dottedFieldName
     , TestLabel "Plotting.computedExpr" computedExpr
     , TestLabel "Plotting.includeZeroChart" includeZeroChart
     , TestLabel "Plotting.includeZeroMergesWithLog" includeZeroMergesWithLog
