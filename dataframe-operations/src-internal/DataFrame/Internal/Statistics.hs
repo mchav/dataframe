@@ -14,6 +14,10 @@ import Control.Exception (throw)
 import Control.Monad.ST (runST)
 import DataFrame.Errors (DataFrameException (..))
 
+-- | The present values of a nullable vector, as doubles, in reverse order.
+optionalToDoubleVector :: (Real a) => V.Vector (Maybe a) -> VU.Vector Double
+optionalToDoubleVector = VU.fromList . V.foldl' (\acc e -> maybe acc ((: acc) . realToFrac) e) []
+
 mean' :: (Real a, VU.Unbox a) => VU.Vector a -> Double
 mean' samp
     | VU.null samp = throw $ EmptyDataSetException "mean"

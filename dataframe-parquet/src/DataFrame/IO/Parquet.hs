@@ -175,8 +175,10 @@ import DataFrame.Internal.Column.Builder (
 import DataFrame.Internal.Control.Concurrent (forkJoin_)
 import DataFrame.Internal.DataFrame (DataFrame (..))
 import DataFrame.Internal.Expression (
-    BinaryOp (binaryName),
+    BinOpId (..),
+    BinaryOp (binaryId),
     Expr (..),
+    builtinOf,
     getColumns,
  )
 import DataFrame.Operations.Merge ()
@@ -419,7 +421,8 @@ rowGroupMayMatch metadata rg = go
     chunks = unField (rg_columns rg)
     go :: Expr Bool -> Bool
     go (Binary op l r)
-        | binaryName op == "and" = case (l, r) of
+        | Just tag <- builtinOf (binaryId op)
+        , tag `elem` [BAnd, BNullAnd] = case (l, r) of
             (l' :: Expr lt, r' :: Expr rt)
                 | Just Refl <- testEquality (typeRep @lt) (typeRep @Bool)
                 , Just Refl <- testEquality (typeRep @rt) (typeRep @Bool) ->
@@ -429,31 +432,31 @@ rowGroupMayMatch metadata rg = go
             (Col name :: Expr lt, Lit (v :: rt))
                 | Just Refl <- testEquality (typeRep @lt) (typeRep @Int)
                 , Just Refl <- testEquality (typeRep @rt) (typeRep @Int) ->
-                    decide name (binaryName op) v
+                    maybe True (\t -> decide name t v) (builtinOf (binaryId op))
             (Lit (v :: lt), Col name :: Expr rt)
                 | Just Refl <- testEquality (typeRep @lt) (typeRep @Int)
                 , Just Refl <- testEquality (typeRep @rt) (typeRep @Int) ->
-                    decide name (flipped (binaryName op)) v
+                    maybe True (\t -> decide name (flipped t) v) (builtinOf (binaryId op))
             _ -> True
     go _ = True
-    flipped :: T.Text -> T.Text
+    flipped :: BinOpId -> BinOpId
     flipped n = case n of
-        "lt" -> "gt"
-        "gt" -> "lt"
-        "leq" -> "geq"
-        "geq" -> "leq"
+        BLt -> BGt
+        BGt -> BLt
+        BLeq -> BGeq
+        BGeq -> BLeq
         other -> other
     -- @column <cmp> v@ can hold for some row in [lo, hi].
-    decide :: T.Text -> T.Text -> Int -> Bool
+    decide :: T.Text -> BinOpId -> Int -> Bool
     decide name cmp v = case columnRange name of
         Nothing -> True
         Just (lo, hi) -> case cmp of
-            "eq" -> lo <= v && v <= hi
-            "neq" -> not (lo == v && hi == v)
-            "lt" -> lo < v
-            "leq" -> lo <= v
-            "gt" -> hi > v
-            "geq" -> hi >= v
+            BEq -> lo <= v && v <= hi
+            BNeq -> not (lo == v && hi == v)
+            BLt -> lo < v
+            BLeq -> lo <= v
+            BGt -> hi > v
+            BGeq -> hi >= v
             _ -> True
     columnRange :: T.Text -> Maybe (Int, Int)
     columnRange name = do

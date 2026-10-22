@@ -53,10 +53,17 @@ import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column (Columnable)
 import DataFrame.Internal.Expression (
     AggStrategy (..),
-    BinaryOp (binaryName),
+    BinOpId (..),
+    BinaryOp (binaryId),
     Expr (..),
+    OpRef (..),
     SomeExpr (..),
-    UnaryOp (unaryName),
+    UnOpId (..),
+    UnaryOp (unaryId),
+    aggName,
+    aggStrategyId,
+    binOpName,
+    unOpName,
  )
 import qualified DataFrame.Internal.Expression as F
 import DataFrame.Internal.Expression.Reflect (
@@ -196,7 +203,7 @@ encodeExpr expr = case expr of
     Unary op (arg :: Expr b) -> do
         outTag <- requireTypeTag @a
         argTag <- requireTypeTag @b
-        opTag <- recognizeUnary (unaryName op)
+        opTag <- recognizeUnary (unaryId op)
         argEnc <- encodeExpr arg
         Right $
             object
@@ -209,7 +216,7 @@ encodeExpr expr = case expr of
     Binary op (lhs :: Expr c) (rhs :: Expr b) -> do
         outTag <- requireTypeTag @a
         argTag <- requireTypeTag @c
-        opTag <- recognizeBinary (binaryName op)
+        opTag <- recognizeBinary (binaryId op)
         lEnc <- encodeExpr lhs
         rEnc <- encodeExpr rhs
         Right $
@@ -244,11 +251,12 @@ encodeExpr expr = case expr of
         outTag <- requireTypeTag @a
         argTag <- requireTypeTag @b
         innerEnc <- encodeExpr inner
+        aggTag <- aggStrategyName strat
         Right $
             object
                 [ "node" .= ("agg" :: T.Text)
                 , "out_type" .= outTag
-                , "agg" .= aggStrategyName strat
+                , "agg" .= aggTag
                 , "arg_type" .= argTag
                 , "arg" .= innerEnc
                 ]
@@ -271,10 +279,14 @@ encodeExpr expr = case expr of
                 "DataFrame.IR.ExprJson.encodeExpr: unsupported type: " <> show (typeRep @x)
 
 -- | Wire-format name for an aggregation strategy.
-aggStrategyName :: AggStrategy a b -> T.Text
-aggStrategyName (CollectAgg n _) = n
-aggStrategyName (FoldAgg n _ _) = n
-aggStrategyName (MergeAgg n _ _ _ _) = n
+aggStrategyName :: AggStrategy a b -> Either String T.Text
+aggStrategyName strat = case aggStrategyId strat of
+    Builtin a -> Right (aggName a)
+    Named n -> Right n
+    Anonymous l ->
+        Left $
+            "DataFrame.IR.ExprJson: anonymous aggregation (cannot serialize): "
+                <> T.unpack l
 
 -- | Encode an 'Expr' to a strict 'BS.ByteString' of JSON.
 encodeExprToBytes ::
@@ -321,64 +333,81 @@ encodeLit v
         Left $
             "DataFrame.IR.ExprJson.encodeLit: unsupported type: " <> show (typeRep @a)
 
--- | Map a 'binaryName' string to a wire-format op name.
-recognizeBinary :: T.Text -> Either String T.Text
-recognizeBinary n = case n of
-    "add" -> Right "add"
-    "sub" -> Right "sub"
-    "mult" -> Right "mult"
-    "divide" -> Right "divide"
-    "eq" -> Right "eq"
-    "neq" -> Right "neq"
-    "lt" -> Right "lt"
-    "leq" -> Right "leq"
-    "gt" -> Right "gt"
-    "geq" -> Right "geq"
-    "and" -> Right "and"
-    "or" -> Right "or"
-    -- Nullable-aware aliases (lossless on non-null inputs)
-    "nulladd" -> Right "add"
-    "nullsub" -> Right "sub"
-    "nullmul" -> Right "mult"
-    "nulldiv" -> Right "divide"
-    "nulland" -> Right "and"
-    "nullor" -> Right "or"
-    "exponentiate" -> Right "exponentiate"
-    "logBase" -> Right "logBase"
-    "div" -> Right "div"
-    "mod" -> Right "mod"
-    "pow" -> Right "pow"
-    other ->
+-- | Wire-format op name of a binary builtin.
+recognizeBinary :: OpRef BinOpId -> Either String T.Text
+recognizeBinary ident = case ident of
+    Builtin op -> case op of
+        BNullAdd -> Right "add"
+        BNullSub -> Right "sub"
+        BNullMul -> Right "mult"
+        BNullDiv -> Right "divide"
+        BNullAnd -> Right "and"
+        BNullOr -> Right "or"
+        BPowFrac -> Right "powFrac"
+        _
+            | op `elem` wireBinary -> Right (binOpName op)
+            | otherwise -> unsupported (binOpName op)
+    Named n -> unsupported n
+    Anonymous l -> unsupported l
+  where
+    unsupported n =
         Left $
             "DataFrame.IR.ExprJson: unsupported binary op (cannot serialize): "
-                <> T.unpack other
+                <> T.unpack n
+    wireBinary =
+        [ BAdd
+        , BSub
+        , BMult
+        , BDivide
+        , BEq
+        , BNeq
+        , BLt
+        , BLeq
+        , BGt
+        , BGeq
+        , BAnd
+        , BOr
+        , BExponentiate
+        , BLogBase
+        , BDiv
+        , BMod
+        , BPow
+        ]
 
--- | Map a 'unaryName' string to a wire-format op name.
-recognizeUnary :: T.Text -> Either String T.Text
-recognizeUnary n = case n of
-    "not" -> Right "not"
-    "negate" -> Right "negate"
-    "abs" -> Right "abs"
-    "signum" -> Right "signum"
-    "exp" -> Right "exp"
-    "sqrt" -> Right "sqrt"
-    "log" -> Right "log"
-    "sin" -> Right "sin"
-    "cos" -> Right "cos"
-    "tan" -> Right "tan"
-    "asin" -> Right "asin"
-    "acos" -> Right "acos"
-    "atan" -> Right "atan"
-    "sinh" -> Right "sinh"
-    "cosh" -> Right "cosh"
-    "asinh" -> Right "asinh"
-    "acosh" -> Right "acosh"
-    "atanh" -> Right "atanh"
-    "toDouble" -> Right "toDouble"
-    other ->
+-- | Wire-format op name of a unary builtin.
+recognizeUnary :: OpRef UnOpId -> Either String T.Text
+recognizeUnary ident = case ident of
+    Builtin op
+        | op `elem` wireUnary -> Right (unOpName op)
+        | otherwise -> unsupported (unOpName op)
+    Named n -> unsupported n
+    Anonymous l -> unsupported l
+  where
+    unsupported n =
         Left $
             "DataFrame.IR.ExprJson: unsupported unary op (cannot serialize): "
-                <> T.unpack other
+                <> T.unpack n
+    wireUnary =
+        [ UNot
+        , UNegate
+        , UAbs
+        , USignum
+        , UExp
+        , USqrt
+        , ULog
+        , USin
+        , UCos
+        , UTan
+        , UAsin
+        , UAcos
+        , UAtan
+        , USinh
+        , UCosh
+        , UAsinh
+        , UAcosh
+        , UAtanh
+        , UToDouble
+        ]
 
 -- | Decode a JSON value into a 'SomeExpr' using the root @out_type@.
 decodeExprAny :: Aeson.Value -> Either String SomeExpr
@@ -644,6 +673,11 @@ parseBinary op outType argType rawLhs rawRhs = case op of
         l <- parseExprAt @a rawLhs
         r <- parseExprAt @a rawRhs
         return $ SomeExpr (l ** r)
+    "logBase" -> withFloatingTypeTag outType $ \(_ :: Proxy a) -> do
+        requireSame outType argType
+        l <- parseExprAt @a rawLhs
+        r <- parseExprAt @a rawRhs
+        return $ SomeExpr (logBase l r)
     "nulladd" -> parseBinary "add" outType argType rawLhs rawRhs
     "nullsub" -> parseBinary "sub" outType argType rawLhs rawRhs
     "nullmul" -> parseBinary "mult" outType argType rawLhs rawRhs
@@ -674,6 +708,12 @@ parseAgg aggName outType argType rawArg = case aggName of
             return $ SomeExpr (F.mean arg)
     "variance" -> realUnboxAgg F.variance
     "median" -> realUnboxAgg F.median
+    "stddev" -> realUnboxAgg F.stddev
+    "countDistinct" -> do
+        requireTag outType "int"
+        withOrdTypeTag argType $ \(_ :: Proxy a) -> do
+            arg <- parseExprAt @a rawArg
+            return $ SomeExpr (F.countDistinct arg)
     "collect" ->
         fail
             "DataFrame.IR.ExprJson: 'collect' is not supported in the wire format \

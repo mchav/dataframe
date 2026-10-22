@@ -11,17 +11,20 @@ import qualified Data.Text as T
 import DataFrame.Internal.Column (Columnable)
 import DataFrame.Internal.Column.Types (Promote, PromoteDiv)
 import DataFrame.Internal.Expression (
+    BinOpId (..),
     BinUDF (MkBinaryOp),
     BinaryOp (
         binaryCommutative,
         binaryFn,
-        binaryName,
+        binaryId,
         binaryPrecedence,
         binarySymbol
     ),
     Expr (Binary, Col, If, Lit, Unary),
     NamedExpr,
+    OpRef (..),
     SomeExpr (SomeExpr),
+    UnOpId,
     UnUDF (MkUnaryOp),
  )
 import DataFrame.Internal.Expression.Operators.Nullable (
@@ -77,10 +80,16 @@ lit = Lit
 (.=) :: (Columnable a) => T.Text -> Expr a -> NamedExpr
 (.=) = flip as
 
+-- | A user op; equal names must mean equal functions. Never hits builtins.
 liftDecorated ::
     (Columnable a, Columnable b) =>
     (a -> b) -> T.Text -> Maybe T.Text -> Expr a -> Expr b
-liftDecorated f opName rep = Unary (MkUnaryOp f opName rep)
+liftDecorated f opName rep = Unary (MkUnaryOp f (Named opName) rep)
+
+liftBuiltin ::
+    (Columnable a, Columnable b) =>
+    UnOpId -> (a -> b) -> Maybe T.Text -> Expr a -> Expr b
+liftBuiltin op f rep = Unary (MkUnaryOp f (Builtin op) rep)
 
 lift2Decorated ::
     (Columnable c, Columnable b, Columnable a) =>
@@ -93,7 +102,19 @@ lift2Decorated ::
     Expr b ->
     Expr a
 lift2Decorated f opName rep comm prec =
-    Binary (MkBinaryOp f opName rep comm prec)
+    Binary (MkBinaryOp f (Named opName) rep comm prec)
+
+lift2Builtin ::
+    (Columnable c, Columnable b, Columnable a) =>
+    BinOpId ->
+    (c -> b -> a) ->
+    Maybe T.Text ->
+    Bool ->
+    Int ->
+    Expr c ->
+    Expr b ->
+    Expr a
+lift2Builtin op f rep comm prec = Binary (MkBinaryOp f (Builtin op) rep comm prec)
 
 data NullEq a b c where
     NullEq ::
@@ -155,45 +176,45 @@ data NullOr a b c where
 
 instance BinaryOp NullEq where
     binaryFn NullEq = applyNull2 (widenCmpOp (==))
-    binaryName NullEq = "eq"
+    binaryId NullEq = Builtin BEq
     binarySymbol NullEq = Just ".=="
     binaryCommutative NullEq = True
     binaryPrecedence NullEq = 4
 instance BinaryOp NullNeq where
     binaryFn NullNeq = applyNull2 (widenCmpOp (/=))
-    binaryName NullNeq = "neq"
+    binaryId NullNeq = Builtin BNeq
     binarySymbol NullNeq = Just "./="
     binaryCommutative NullNeq = True
     binaryPrecedence NullNeq = 4
 instance BinaryOp NullLt where
     binaryFn NullLt = applyNull2 (widenCmpOp (<))
-    binaryName NullLt = "lt"
+    binaryId NullLt = Builtin BLt
     binarySymbol NullLt = Just ".<"
     binaryPrecedence NullLt = 4
 instance BinaryOp NullGt where
     binaryFn NullGt = applyNull2 (widenCmpOp (>))
-    binaryName NullGt = "gt"
+    binaryId NullGt = Builtin BGt
     binarySymbol NullGt = Just ".>"
     binaryPrecedence NullGt = 4
 instance BinaryOp NullLeq where
     binaryFn NullLeq = applyNull2 (widenCmpOp (<=))
-    binaryName NullLeq = "leq"
+    binaryId NullLeq = Builtin BLeq
     binarySymbol NullLeq = Just ".<="
     binaryPrecedence NullLeq = 4
 instance BinaryOp NullGeq where
     binaryFn NullGeq = applyNull2 (widenCmpOp (>=))
-    binaryName NullGeq = "geq"
+    binaryId NullGeq = Builtin BGeq
     binarySymbol NullGeq = Just ".>="
     binaryPrecedence NullGeq = 4
 instance BinaryOp NullAnd where
     binaryFn NullAnd = nullCmpOp (&&)
-    binaryName NullAnd = "nulland"
+    binaryId NullAnd = Builtin BNullAnd
     binarySymbol NullAnd = Just ".&&"
     binaryCommutative NullAnd = True
     binaryPrecedence NullAnd = 3
 instance BinaryOp NullOr where
     binaryFn NullOr = nullCmpOp (||)
-    binaryName NullOr = "nullor"
+    binaryId NullOr = Builtin BNullOr
     binarySymbol NullOr = Just ".||"
     binaryCommutative NullOr = True
     binaryPrecedence NullOr = 2
@@ -203,42 +224,42 @@ instance BinaryOp NullOr where
     Expr a ->
     Expr a ->
     Expr Bool
-(.==.) = lift2Decorated (==) "eq" (Just ".==.") True 4
+(.==.) = lift2Builtin BEq (==) (Just ".==.") True 4
 
 (./=.) ::
     (Columnable a, Eq a) =>
     Expr a ->
     Expr a ->
     Expr Bool
-(./=.) = lift2Decorated (/=) "neq" (Just "./=.") True 4
+(./=.) = lift2Builtin BNeq (/=) (Just "./=.") True 4
 
 (.<.) ::
     (Columnable a, Ord a) =>
     Expr a ->
     Expr a ->
     Expr Bool
-(.<.) = lift2Decorated (<) "lt" (Just ".<.") False 4
+(.<.) = lift2Builtin BLt (<) (Just ".<.") False 4
 
 (.>.) ::
     (Columnable a, Ord a) =>
     Expr a ->
     Expr a ->
     Expr Bool
-(.>.) = lift2Decorated (>) "gt" (Just ".>.") False 4
+(.>.) = lift2Builtin BGt (>) (Just ".>.") False 4
 
 (.<=.) ::
     (Columnable a, Ord a) =>
     Expr a ->
     Expr a ->
     Expr Bool
-(.<=.) = lift2Decorated (<=) "leq" (Just ".<=.") False 4
+(.<=.) = lift2Builtin BLeq (<=) (Just ".<=.") False 4
 
 (.>=.) ::
     (Columnable a, Ord a) =>
     Expr a ->
     Expr a ->
     Expr Bool
-(.>=.) = lift2Decorated (>=) "geq" (Just ".>=.") False 4
+(.>=.) = lift2Builtin BGeq (>=) (Just ".>=.") False 4
 
 (.+.) :: (Columnable a, Num a) => Expr a -> Expr a -> Expr a
 (.+.) = (+)
@@ -263,7 +284,7 @@ instance BinaryOp NullOr where
     Expr a ->
     Expr b ->
     Expr (WidenResult a b)
-(.+) = lift2Decorated (applyNull2 (widenArithOp (+))) "nulladd" (Just ".+") True 6
+(.+) = lift2Builtin BNullAdd (applyNull2 (widenArithOp (+))) (Just ".+") True 6
 
 -- | Nullable-aware subtraction.
 (.-) ::
@@ -274,7 +295,7 @@ instance BinaryOp NullOr where
     Expr a ->
     Expr b ->
     Expr (WidenResult a b)
-(.-) = lift2Decorated (applyNull2 (widenArithOp (-))) "nullsub" (Just ".-") False 6
+(.-) = lift2Builtin BNullSub (applyNull2 (widenArithOp (-))) (Just ".-") False 6
 
 -- | Nullable-aware multiplication.
 (.*) ::
@@ -285,7 +306,7 @@ instance BinaryOp NullOr where
     Expr a ->
     Expr b ->
     Expr (WidenResult a b)
-(.*) = lift2Decorated (applyNull2 (widenArithOp (*))) "nullmul" (Just ".*") True 7
+(.*) = lift2Builtin BNullMul (applyNull2 (widenArithOp (*))) (Just ".*") True 7
 
 -- | Nullable-aware division. Integral operands are promoted to Double.
 (./) ::
@@ -296,7 +317,7 @@ instance BinaryOp NullOr where
     Expr a ->
     Expr b ->
     Expr (WidenResultDiv a b)
-(./) = lift2Decorated (applyNull2 (divArithOp (/))) "nulldiv" (Just "./") False 7
+(./) = lift2Builtin BNullDiv (applyNull2 (divArithOp (/))) (Just "./") False 7
 
 -- Three-valued comparisons: Nothing if either operand is Nothing.
 
@@ -367,10 +388,10 @@ instance BinaryOp NullOr where
 (.>=) = Binary NullGeq
 
 (.&&.) :: Expr Bool -> Expr Bool -> Expr Bool
-(.&&.) = lift2Decorated (&&) "and" (Just ".&&.") True 3
+(.&&.) = lift2Builtin BAnd (&&) (Just ".&&.") True 3
 
 (.||.) :: Expr Bool -> Expr Bool -> Expr Bool
-(.||.) = lift2Decorated (||) "or" (Just ".||.") True 2
+(.||.) = lift2Builtin BOr (||) (Just ".||.") True 2
 
 -- | Nullable-aware logical AND, giving @Maybe Bool@ if either side is nullable.
 (.&&) ::
@@ -398,7 +419,7 @@ instance BinaryOp NullOr where
     , Num (Promote (BaseType a) (BaseType b))
     ) =>
     Expr a -> Expr b -> Expr a
-(.^^) = lift2Decorated (applyNull2 (^^)) "pow" (Just ".^^") False 8
+(.^^) = lift2Builtin BPowFrac (applyNull2 (^^)) (Just ".^^") False 8
 
 (.^) ::
     ( Columnable (BaseType a)
@@ -410,16 +431,16 @@ instance BinaryOp NullOr where
     , Num (Promote (BaseType a) (BaseType b))
     ) =>
     Expr a -> Expr b -> Expr a
-(.^) = lift2Decorated (applyNull2 (^)) "pow" (Just ".^") False 8
+(.^) = lift2Builtin BPow (applyNull2 (^)) (Just ".^") False 8
 
 -- Same-type (non-nullable) exponentiation operators
 
 (.^^.) ::
     (Columnable a, Columnable b, Fractional a, Integral b) =>
     Expr a -> Expr b -> Expr a
-(.^^.) = lift2Decorated (^^) "pow" (Just ".^^.") False 8
+(.^^.) = lift2Builtin BPowFrac (^^) (Just ".^^.") False 8
 
 (.^.) ::
     (Columnable a, Columnable b, Num a, Integral b) =>
     Expr a -> Expr b -> Expr a
-(.^.) = lift2Decorated (^) "pow" (Just ".^.") False 8
+(.^.) = lift2Builtin BPow (^) (Just ".^.") False 8

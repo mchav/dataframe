@@ -41,7 +41,6 @@ import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as TH
 
 import DataFrame.Expression.Operators (col)
-import DataFrame.Functions (sanitize)
 import DataFrame.Internal.Column (columnTypeString)
 import DataFrame.Internal.DataFrame (
     DataFrame (..),
@@ -49,6 +48,7 @@ import DataFrame.Internal.DataFrame (
  )
 import DataFrame.Internal.Expression (Expr)
 import DataFrame.Internal.Schema.TH (schemaTypeE)
+import DataFrame.TH.Identifier (sanitize)
 import DataFrame.Schema (Schema, makeSchema)
 import Prelude as P
 

@@ -40,7 +40,7 @@ andExpr =
     E.Binary
         ( E.MkBinaryOp
             { E.binaryFn = (&&)
-            , E.binaryName = "and"
+            , E.binaryId = E.Builtin E.BAnd
             , E.binarySymbol = Just "&&"
             , E.binaryCommutative = True
             , E.binaryPrecedence = 3

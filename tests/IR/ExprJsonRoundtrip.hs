@@ -82,6 +82,7 @@ exprRoundtripTests =
     , testCase "division" (roundtrips (F.col @Double "x" / F.lit 2))
     , testCase "comparison" (roundtrips (F.col @Double "x" .>. F.lit 0))
     , testCase "unary sqrt" (roundtrips (sqrt (F.col @Double "x")))
+    , testCase "logBase" (roundtrips (logBase (F.lit 2) (F.col @Double "x")))
     , testCase
         "if/then/else"
         ( roundtrips
@@ -101,6 +102,8 @@ aggRoundtripTests =
     , testCase "mean" (roundtrips (F.mean (F.col @Double "x")))
     , testCase "variance" (roundtrips (F.variance (F.col @Double "x")))
     , testCase "median" (roundtrips (F.median (F.col @Double "x")))
+    , testCase "stddev" (roundtrips (F.stddev (F.col @Double "x")))
+    , testCase "countDistinct" (roundtrips (F.countDistinct (F.col @Int "x")))
     , testCase "over" (roundtrips (F.over ["g"] (F.sum (F.col @Double "x"))))
     ]
 
@@ -110,6 +113,9 @@ limitationTests =
     [ testCase
         "collect cannot encode"
         (isLeft (encodeExpr (F.collect (F.col @Double "x"))))
+    , testCase
+        "anonymous udf cannot encode"
+        (isLeft (encodeExpr (F.lift (+ 1) (F.col @Double "x"))))
     ]
 
 -- Pin the wire shape Python decodes against: (x * 2) + 1 over doubles.

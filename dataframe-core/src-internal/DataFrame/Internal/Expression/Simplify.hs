@@ -27,9 +27,11 @@ import DataFrame.Internal.Column (Columnable)
 import DataFrame.Internal.Expression (
     BinaryOp,
     Expr (..),
-    UnaryOp (unaryName),
+    OpRef (..),
+    UnOpId (..),
+    UnaryOp (unaryId),
     eqExpr,
-    normalize,
+    structuralKey,
  )
 import DataFrame.Internal.Expression.Operators (
     NullAnd,
@@ -80,7 +82,7 @@ simplifyB expr = case expr of
     Unary (op :: op b a) inner
         | Just Refl <- testEquality (typeRep @a) (typeRep @Bool)
         , Just Refl <- testEquality (typeRep @b) (typeRep @Bool)
-        , unaryName op == "not" ->
+        , Builtin UNot <- unaryId op ->
             simplifyNot op (simplifyB inner)
         | otherwise -> expr
     If c t f ->
@@ -104,7 +106,7 @@ simplifyNot op inner = case asBoolLit inner of
     Just b -> Lit (not b)
     Nothing -> case inner of
         Unary (op2 :: op2 b2 Bool) inner2
-            | unaryName op2 == "not"
+            | Builtin UNot <- unaryId op2
             , Just Refl <- testEquality (typeRep @b2) (typeRep @Bool) ->
                 inner2
         _ -> Unary op inner
@@ -214,7 +216,7 @@ litDouble _ = Nothing
 
 -- | True for a column lifted from an integral type (never NaN).
 integralColE :: forall c. (Columnable c) => Expr c -> Bool
-integralColE (Unary op _) = unaryName op == "toDouble"
+integralColE (Unary op _) | Builtin UToDouble <- unaryId op = True
 integralColE _ =
     or
         [ matches @Int
@@ -226,15 +228,17 @@ integralColE _ =
 
 atomOf :: forall a. (Columnable a) => Expr a -> Maybe Atom
 atomOf (Unary fm (Binary (op :: op c b r) (colE :: Expr c) litE))
-    | unaryName fm == "fromMaybe"
+    | Builtin (UFromMaybe "False") <- unaryId fm
     , Just cmp <- cmpOf op
-    , Just t <- litDouble litE =
-        Just (Atom cmp t (show (normalize colE)) FalseOnNull (integralColE colE))
+    , Just t <- litDouble litE
+    , Just key <- structuralKey colE =
+        Just (Atom cmp t key FalseOnNull (integralColE colE))
 atomOf (Binary (op :: op c b a) (colE :: Expr c) litE)
     | Just cmp <- cmpOf op
-    , Just t <- litDouble litE =
+    , Just t <- litDouble litE
+    , Just key <- structuralKey colE =
         let nk = if isMaybeTy @c then UnknownOnNull else Total
-         in Just (Atom cmp t (show (normalize colE)) nk (integralColE colE))
+         in Just (Atom cmp t key nk (integralColE colE))
 atomOf _ = Nothing
 
 simplifyPredicatePair ::

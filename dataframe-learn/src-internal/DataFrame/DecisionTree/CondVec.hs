@@ -24,10 +24,12 @@ import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column (TypedColumn (..), toVector)
 import DataFrame.Internal.DataFrame (DataFrame)
 import DataFrame.Internal.Expression (
-    BinaryOp (binaryName),
+    BinOpId (..),
+    BinaryOp (binaryId),
     Expr (..),
+    builtinOf,
     eqExpr,
-    normalize,
+    structuralKey,
  )
 import DataFrame.Internal.Interpreter (interpret)
 
@@ -57,13 +59,14 @@ eitherToMaybe = either (const Nothing) Just
 -- | Truth vectors keyed by structural form, read-only once built.
 type CondCache = M.Map T.Text (VU.Vector Bool)
 
--- | Structural key matching the candidate-dedup key.
-condCacheKey :: Expr Bool -> T.Text
-condCacheKey = T.pack . show . normalize
+-- | Structural key; Nothing for conditions with anonymous operators.
+condCacheKey :: Expr Bool -> Maybe T.Text
+condCacheKey = fmap T.pack . structuralKey
 
 -- | Seed a cache from already-materialized candidate 'CondVec's (no interpret).
 condCacheFromVecs :: [CondVec] -> CondCache
-condCacheFromVecs cvs = M.fromList [(condCacheKey (cvExpr cv), cvVec cv) | cv <- cvs]
+condCacheFromVecs cvs =
+    M.fromList [(k, cvVec cv) | cv <- cvs, Just k <- [condCacheKey (cvExpr cv)]]
 
 -- | Add a tree's branch-condition vectors to a cache.
 addTreeCondsToCache :: DataFrame -> Tree a -> CondCache -> CondCache
@@ -73,16 +76,16 @@ addTreeCondsToCache df = go
     go (Branch cond l r) c = go r (go l (insertCond df cond c))
 
 insertCond :: DataFrame -> Expr Bool -> CondCache -> CondCache
-insertCond df cond c
-    | M.member k c = c
-    | otherwise =
-        maybe c (\cv -> M.insert k (cvVec cv) c) (materializeCondVec df cond)
-  where
-    k = condCacheKey cond
+insertCond df cond c = case condCacheKey cond of
+    Nothing -> c
+    Just k
+        | M.member k c -> c
+        | otherwise ->
+            maybe c (\cv -> M.insert k (cvVec cv) c) (materializeCondVec df cond)
 
 -- | A condition's truth vector: a cache hit, else interpret.
 lookupCondVec :: CondCache -> DataFrame -> Expr Bool -> Maybe (VU.Vector Bool)
-lookupCondVec cache df cond = case M.lookup (condCacheKey cond) cache of
+lookupCondVec cache df cond = case (`M.lookup` cache) =<< condCacheKey cond of
     hit@(Just _) -> hit
     Nothing -> cvVec <$> materializeCondVec df cond
 
@@ -99,7 +102,7 @@ countErrorsByVec boolVals = length . filter misrouted
 -- | A same-column same-direction Double threshold comparison.
 data ThreshCmp = ThreshCmp
     { tcCol :: !T.Text
-    , tcName :: !T.Text
+    , tcOp :: !BinOpId
     , tcThr :: !Double
     , tcRebuild :: Double -> Expr Bool
     }
@@ -108,29 +111,31 @@ asDoubleThreshold :: Expr Bool -> Maybe ThreshCmp
 asDoubleThreshold (Binary op (Col c :: Expr cc) (Lit (t :: tt))) =
     case ( testEquality (typeRep @cc) (typeRep @Double)
          , testEquality (typeRep @tt) (typeRep @Double)
+         , builtinOf (binaryId op)
          ) of
-        (Just Refl, Just Refl) -> Just (ThreshCmp c (binaryName op) t (Binary op (Col c) . Lit))
+        (Just Refl, Just Refl, Just tag) ->
+            Just (ThreshCmp c tag t (Binary op (Col c) . Lit))
         _ -> Nothing
 asDoubleThreshold _ = Nothing
 
-directionalNames :: [T.Text]
-directionalNames = ["lt", "leq", "gt", "geq"]
+directionalOps :: [BinOpId]
+directionalOps = [BLt, BLeq, BGt, BGeq]
 
 -- | Tighter (AND) or looser (OR) of two same-direction thresholds.
-chooseThreshold :: Bool -> T.Text -> Double -> Double -> Double
-chooseThreshold isAnd name t1 t2
+chooseThreshold :: Bool -> BinOpId -> Double -> Double -> Double
+chooseThreshold isAnd op t1 t2
     | leftDir = if isAnd then min t1 t2 else max t1 t2
     | otherwise = if isAnd then max t1 t2 else min t1 t2
   where
-    leftDir = name == "lt" || name == "leq"
+    leftDir = op == BLt || op == BLeq
 
 -- | Collapse two same-direction Double comparisons into one, if possible.
 consolidateThreshold :: Bool -> Expr Bool -> Expr Bool -> Maybe (Expr Bool)
 consolidateThreshold isAnd ea eb = do
     a <- asDoubleThreshold ea
     b <- asDoubleThreshold eb
-    if tcCol a == tcCol b && tcName a == tcName b && tcName a `elem` directionalNames
-        then Just (tcRebuild a (chooseThreshold isAnd (tcName a) (tcThr a) (tcThr b)))
+    if tcCol a == tcCol b && tcOp a == tcOp b && tcOp a `elem` directionalOps
+        then Just (tcRebuild a (chooseThreshold isAnd (tcOp a) (tcThr a) (tcThr b)))
         else Nothing
 
 -- | AND-combine two cached conditions, consolidating thresholds if possible.

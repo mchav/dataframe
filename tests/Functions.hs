@@ -5,11 +5,9 @@ module Functions where
 
 import Data.Time.Calendar (Day, fromGregorian)
 import qualified DataFrame as D
-import DataFrame.Functions (
-    sanitize,
- )
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
+import DataFrame.TH.Identifier (sanitize)
 import Test.HUnit
 
 -- Test cases for the sanitize function

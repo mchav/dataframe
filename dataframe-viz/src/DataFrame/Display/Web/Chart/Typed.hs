@@ -63,10 +63,7 @@ import DataFrame.Internal.Expression.Operators.Nullable (BaseType)
 import DataFrame.Typed.Types (TExpr (..), TypedDataFrame (..))
 import GHC.TypeLits (Symbol)
 
-{- | A typed chart: a phantom-@cols@ wrapper over the untyped builder.
-Encoded expressions must be non-nullable (@a ~ BaseType a@); drop nulls first
-with 'DataFrame.Typed.filterJust' or fill them with 'DataFrame.Typed.impute'.
--}
+-- | A typed chart over the untyped builder; encoded exprs must be non-null.
 newtype Chart (cols :: [(Symbol, Type)]) = Chart C.Chart
 
 -- | Start a typed chart from a typed frame.

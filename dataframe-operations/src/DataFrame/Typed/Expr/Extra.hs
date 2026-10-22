@@ -1,9 +1,33 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- | Typed counterparts of the remaining "DataFrame.Functions" combinators.
 module DataFrame.Typed.Expr.Extra (
+    cast,
+    castWithDefault,
+    castEither,
+    unsafeCast,
+    eq,
+    lt,
+    gt,
+    leq,
+    geq,
+    and,
+    or,
+    countDistinct,
+    topK,
+    bottomK,
+    isNull,
+    isNotNull,
+    contains,
+    length,
     div,
     mod,
     mode,
@@ -40,14 +64,115 @@ module DataFrame.Typed.Expr.Extra (
     bind,
 ) where
 
+import Data.Proxy (Proxy (..))
 import qualified Data.Text as T
 import Data.Time (Day, ParseTime)
 import qualified Data.Vector.Unboxed as VU
-import Prelude hiding (div, max, min, mod)
+import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
+import Prelude hiding (and, div, length, max, min, mod, or)
 
 import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column (Columnable)
+import DataFrame.Internal.Expression.Operators.Nullable (BaseType)
+import DataFrame.Typed.Schema (AssertPresent)
 import DataFrame.Typed.Types (TExpr (..))
+
+colName :: forall (name :: Symbol). (KnownSymbol name) => T.Text
+colName = T.pack (symbolVal (Proxy @name))
+
+-- | Parse a schema-checked column as @a@; failures become 'Nothing'.
+cast ::
+    forall (name :: Symbol) a cols.
+    (KnownSymbol name, AssertPresent name cols, Columnable a, Read a) =>
+    TExpr cols (Maybe a)
+cast = TExpr (F.cast @a (colName @name))
+
+-- | Parse a schema-checked column as @a@, with a default for failures.
+castWithDefault ::
+    forall (name :: Symbol) a cols.
+    (KnownSymbol name, AssertPresent name cols, Columnable a, Read a) =>
+    a -> TExpr cols a
+castWithDefault d = TExpr (F.castWithDefault d (colName @name))
+
+-- | Parse a schema-checked column as @a@, keeping failures as 'Left'.
+castEither ::
+    forall (name :: Symbol) a cols.
+    (KnownSymbol name, AssertPresent name cols, Columnable a, Read a) =>
+    TExpr cols (Either T.Text a)
+castEither = TExpr (F.castEither @a (colName @name))
+
+-- | Parse a schema-checked column as @a@, erroring on failures.
+unsafeCast ::
+    forall (name :: Symbol) a cols.
+    (KnownSymbol name, AssertPresent name cols, Columnable a, Read a) =>
+    TExpr cols a
+unsafeCast = TExpr (F.unsafeCast @a (colName @name))
+
+-- | Equality.
+eq ::
+    (Columnable a, Eq a, a ~ BaseType a) =>
+    TExpr cols a -> TExpr cols a -> TExpr cols Bool
+eq (TExpr a) (TExpr b) = TExpr (F.eq a b)
+
+-- | Less than.
+lt ::
+    (Columnable a, Ord a, a ~ BaseType a) =>
+    TExpr cols a -> TExpr cols a -> TExpr cols Bool
+lt (TExpr a) (TExpr b) = TExpr (F.lt a b)
+
+-- | Greater than.
+gt ::
+    (Columnable a, Ord a, a ~ BaseType a) =>
+    TExpr cols a -> TExpr cols a -> TExpr cols Bool
+gt (TExpr a) (TExpr b) = TExpr (F.gt a b)
+
+-- | Less than or equal.
+leq ::
+    (Columnable a, Ord a, a ~ BaseType a) =>
+    TExpr cols a -> TExpr cols a -> TExpr cols Bool
+leq (TExpr a) (TExpr b) = TExpr (F.leq a b)
+
+-- | Greater than or equal.
+geq ::
+    (Columnable a, Ord a, a ~ BaseType a) =>
+    TExpr cols a -> TExpr cols a -> TExpr cols Bool
+geq (TExpr a) (TExpr b) = TExpr (F.geq a b)
+
+-- | Logical and.
+and :: TExpr cols Bool -> TExpr cols Bool -> TExpr cols Bool
+and (TExpr a) (TExpr b) = TExpr (F.and a b)
+
+-- | Logical or.
+or :: TExpr cols Bool -> TExpr cols Bool -> TExpr cols Bool
+or (TExpr a) (TExpr b) = TExpr (F.or a b)
+
+-- | Number of distinct values (aggregation).
+countDistinct :: (Columnable a, Ord a) => TExpr cols a -> TExpr cols Int
+countDistinct (TExpr e) = TExpr (F.countDistinct e)
+
+-- | The k largest values per group (aggregation).
+topK :: (Columnable a, Ord a) => Int -> TExpr cols a -> TExpr cols [a]
+topK k (TExpr e) = TExpr (F.topK k e)
+
+-- | The k smallest values per group (aggregation).
+bottomK :: (Columnable a, Ord a) => Int -> TExpr cols a -> TExpr cols [a]
+bottomK k (TExpr e) = TExpr (F.bottomK k e)
+
+-- | SQL spelling of 'isNothing'.
+isNull :: (Columnable a) => TExpr cols (Maybe a) -> TExpr cols Bool
+isNull (TExpr e) = TExpr (F.isNull e)
+
+-- | SQL spelling of 'isJust'.
+isNotNull :: (Columnable a) => TExpr cols (Maybe a) -> TExpr cols Bool
+isNotNull (TExpr e) = TExpr (F.isNotNull e)
+
+-- | Whether the text contains the literal substring.
+contains :: T.Text -> TExpr cols T.Text -> TExpr cols Bool
+contains needle (TExpr e) = TExpr (F.contains needle e)
+
+-- | Character count.
+length :: TExpr cols T.Text -> TExpr cols Int
+length (TExpr e) = TExpr (F.length e)
 
 -- | Integer division.
 div ::

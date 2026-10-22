@@ -12,6 +12,7 @@ import System.Random (mkStdGen)
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
+import DataFrame.Internal.Expression (eqExpr)
 import qualified DataFrame.Typed as DT
 import qualified DataFrame.Typed.Statistics as TS
 
@@ -89,8 +90,29 @@ exprParity =
             "recodeWithDefault"
             (DT.recodeWithDefault 0 [(1 :: Int, 100 :: Int)] (DT.col @"x"))
             (F.recodeWithDefault 0 [(1 :: Int, 100 :: Int)] (F.col @Int "x"))
+        , deriveEq
+            "eq"
+            (DT.eq (DT.col @"x") (DT.lit 3))
+            (F.eq (F.col @Int "x") (F.lit @Int 3))
+        , deriveEq
+            "and"
+            (DT.and (DT.lt (DT.col @"x") (DT.lit 5)) (DT.geq (DT.col @"x") (DT.lit 2)))
+            (F.and (F.lt x (F.lit @Int 5)) (F.geq x (F.lit @Int 2)))
+        , deriveEq "contains" (DT.contains "a" (DT.col @"g")) (F.contains "a" g)
+        , deriveEq "length" (DT.length (DT.col @"g")) (F.length g)
+        , deriveEq
+            "isNull"
+            (DT.isNull (DT.toMaybe (DT.col @"x")))
+            (F.isNull (F.toMaybe x))
+        , deriveEq "cast" (DT.cast @"x" @Int) (F.cast @Int "x")
+        , deriveEq
+            "castWithDefault"
+            (DT.castWithDefault @"g" (0 :: Int))
+            (F.castWithDefault (0 :: Int) "g")
         ]
   where
+    x = F.col @Int "x"
+    g = F.col @T.Text "g"
     deriveEq ::
         (DI.Columnable a) =>
         String -> DT.TExpr S a -> D.Expr a -> Test
@@ -101,6 +123,20 @@ exprParity =
                 (D.derive "r" ue baseDF)
                 (DT.thaw (DT.derive @"r" te tdf))
             )
+
+-- Typed aggregations build the same expression as their untyped forms.
+aggParity :: Test
+aggParity =
+    TestList
+        [ same "countDistinct" (DT.countDistinct (DT.col @"x")) (F.countDistinct x)
+        , same "topK" (DT.topK 2 (DT.col @"x")) (F.topK 2 x)
+        , same "bottomK" (DT.bottomK 2 (DT.col @"x")) (F.bottomK 2 x)
+        , same "not" (DT.not (DT.eq (DT.col @"x") 1)) (F.not (F.eq x 1))
+        ]
+  where
+    x = F.col @Int "x"
+    same :: (DI.Columnable a) => String -> DT.TExpr S a -> D.Expr a -> Test
+    same lbl te ue = TestCase (assertBool lbl (eqExpr (DT.unTExpr te) ue))
 
 -- apply / valueCounts / horizontal merge.
 applyParity :: Test
@@ -199,6 +235,7 @@ tests :: [Test]
 tests =
     [ statParity
     , exprParity
+    , aggParity
     , applyParity
     , samplingParity
     , accessParity

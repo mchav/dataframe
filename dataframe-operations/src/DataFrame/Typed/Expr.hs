@@ -105,7 +105,6 @@ module DataFrame.Typed.Expr (
     module DataFrame.Typed.Expr.Extra,
 ) where
 
-import Data.Either (fromRight)
 import Data.Proxy (Proxy (..))
 import Data.String (IsString (..))
 import qualified Data.Text as T
@@ -116,15 +115,16 @@ import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column (Columnable)
 import DataFrame.Internal.Column.Types (Promote, PromoteDiv)
 import DataFrame.Internal.Expression (
+    BinOpId (..),
     BinUDF (..),
     Expr (..),
-    UnUDF (..),
+    OpRef (..),
  )
 import DataFrame.Internal.Expression.Operators.Nullable (
     BaseType,
     DivWidenOp,
     NullCmpResult,
-    NullLift1Op (applyNull1),
+    NullLift1Op,
     NullLift1Result,
     NullLift2Op (applyNull2),
     NullLift2Result,
@@ -229,13 +229,13 @@ instance (IsString a, Columnable a) => IsString (TExpr cols a) where
 -- | Lift a unary function into a typed expression.
 lift ::
     (Columnable a, Columnable b) => (a -> b) -> TExpr cols a -> TExpr cols b
-lift f (TExpr e) = TExpr (Unary (MkUnaryOp f "unaryUdf" Nothing) e)
+lift f (TExpr e) = TExpr (F.lift f e)
 
 -- | Lift a binary function into typed expressions.
 lift2 ::
     (Columnable a, Columnable b, Columnable c) =>
     (a -> b -> c) -> TExpr cols a -> TExpr cols b -> TExpr cols c
-lift2 f (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp f "binaryUdf" Nothing False 0) a b)
+lift2 f (TExpr a) (TExpr b) = TExpr (F.lift2 f a b)
 
 -- | Typed 'nullLift': lift a unary function with nullable propagation.
 nullLift ::
@@ -243,7 +243,7 @@ nullLift ::
     (BaseType a -> r) ->
     TExpr cols a ->
     TExpr cols (NullLift1Result a r)
-nullLift f (TExpr e) = TExpr (Unary (MkUnaryOp (applyNull1 f) "nullLift" Nothing) e)
+nullLift f (TExpr e) = TExpr (F.nullLift f e)
 
 -- | Typed 'nullLift2': lift a binary function with nullable propagation.
 nullLift2 ::
@@ -252,7 +252,7 @@ nullLift2 ::
     TExpr cols a ->
     TExpr cols b ->
     TExpr cols (NullLift2Result a b r)
-nullLift2 f (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (applyNull2 f) "nullLift2" Nothing False 0) a b)
+nullLift2 f (TExpr a) (TExpr b) = TExpr (F.nullLift2 f a b)
 
 infixl 4 .==., ./=., .<., .<=., .>=., .>.
 infix 4 .==, ./=, .<, .<=, .>=, .>
@@ -264,27 +264,27 @@ infixr 8 .^^., .^^, .^., .^
 
 (.==.) ::
     (Columnable a, Eq a) => TExpr cols a -> TExpr cols a -> TExpr cols Bool
-(.==.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (==) "eq" (Just "==") True 4) a b)
+(.==.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (==) (Builtin BEq) (Just "==") True 4) a b)
 
 (./=.) ::
     (Columnable a, Eq a) => TExpr cols a -> TExpr cols a -> TExpr cols Bool
-(./=.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (/=) "neq" (Just "/=") True 4) a b)
+(./=.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (/=) (Builtin BNeq) (Just "/=") True 4) a b)
 
 (.<.) ::
     (Columnable a, Ord a) => TExpr cols a -> TExpr cols a -> TExpr cols Bool
-(.<.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (<) "lt" (Just "<") False 4) a b)
+(.<.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (<) (Builtin BLt) (Just "<") False 4) a b)
 
 (.<=.) ::
     (Columnable a, Ord a) => TExpr cols a -> TExpr cols a -> TExpr cols Bool
-(.<=.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (<=) "leq" (Just "<=") False 4) a b)
+(.<=.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (<=) (Builtin BLeq) (Just "<=") False 4) a b)
 
 (.>=.) ::
     (Columnable a, Ord a) => TExpr cols a -> TExpr cols a -> TExpr cols Bool
-(.>=.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (>=) "geq" (Just ">=") False 4) a b)
+(.>=.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (>=) (Builtin BGeq) (Just ">=") False 4) a b)
 
 (.>.) ::
     (Columnable a, Ord a) => TExpr cols a -> TExpr cols a -> TExpr cols Bool
-(.>.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (>) "gt" (Just ">") False 4) a b)
+(.>.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (>) (Builtin BGt) (Just ">") False 4) a b)
 
 -- Same-type arithmetic operators
 
@@ -306,18 +306,18 @@ infixr 8 .^^., .^^, .^., .^
 (.^^.) ::
     (Columnable a, Columnable b, Fractional a, Integral b) =>
     TExpr cols a -> TExpr cols b -> TExpr cols a
-(.^^.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (^^) "pow" (Just ".^^.") False 8) a b)
+(.^^.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (^^) (Builtin BPowFrac) (Just ".^^.") False 8) a b)
 
 (.^.) ::
     (Columnable a, Columnable b, Num a, Integral b) =>
     TExpr cols a -> TExpr cols b -> TExpr cols a
-(.^.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (^) "pow" (Just ".^.") False 8) a b)
+(.^.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (^) (Builtin BPow) (Just ".^.") False 8) a b)
 
 (.&&.) :: TExpr cols Bool -> TExpr cols Bool -> TExpr cols Bool
-(.&&.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (&&) "and" (Just ".&&.") True 3) a b)
+(.&&.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (&&) (Builtin BAnd) (Just ".&&.") True 3) a b)
 
 (.||.) :: TExpr cols Bool -> TExpr cols Bool -> TExpr cols Bool
-(.||.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (||) "or" (Just ".||.") True 2) a b)
+(.||.) (TExpr a) (TExpr b) = TExpr (Binary (MkBinaryOp (||) (Builtin BOr) (Just ".||.") True 2) a b)
 
 -- | Nullable-aware logical AND; @Maybe Bool@ when either operand is nullable.
 (.&&) ::
@@ -326,7 +326,8 @@ infixr 8 .^^., .^^, .^., .^
     TExpr cols b ->
     TExpr cols (NullCmpResult a b)
 (.&&) (TExpr a) (TExpr b) =
-    TExpr (Binary (MkBinaryOp (nullCmpOp (&&)) "nulland" (Just ".&&") True 3) a b)
+    TExpr
+        (Binary (MkBinaryOp (nullCmpOp (&&)) (Builtin BNullAnd) (Just ".&&") True 3) a b)
 
 -- | Nullable-aware logical OR; @Maybe Bool@ when either operand is nullable.
 (.||) ::
@@ -335,7 +336,8 @@ infixr 8 .^^., .^^, .^., .^
     TExpr cols b ->
     TExpr cols (NullCmpResult a b)
 (.||) (TExpr a) (TExpr b) =
-    TExpr (Binary (MkBinaryOp (nullCmpOp (||)) "nullor" (Just ".||") True 2) a b)
+    TExpr
+        (Binary (MkBinaryOp (nullCmpOp (||)) (Builtin BNullOr) (Just ".||") True 2) a b)
 
 infixl 6 .+, .-
 infixl 7 .*, ./
@@ -352,7 +354,7 @@ infixl 7 .*, ./
 (.+) (TExpr a) (TExpr b) =
     TExpr
         ( Binary
-            (MkBinaryOp (applyNull2 (widenArithOp (+))) "nulladd" (Just "+") True 6)
+            (MkBinaryOp (applyNull2 (widenArithOp (+))) (Builtin BNullAdd) (Just "+") True 6)
             a
             b
         )
@@ -369,7 +371,7 @@ infixl 7 .*, ./
 (.-) (TExpr a) (TExpr b) =
     TExpr
         ( Binary
-            (MkBinaryOp (applyNull2 (widenArithOp (-))) "nullsub" (Just "-") False 6)
+            (MkBinaryOp (applyNull2 (widenArithOp (-))) (Builtin BNullSub) (Just "-") False 6)
             a
             b
         )
@@ -386,7 +388,7 @@ infixl 7 .*, ./
 (.*) (TExpr a) (TExpr b) =
     TExpr
         ( Binary
-            (MkBinaryOp (applyNull2 (widenArithOp (*))) "nullmul" (Just "*") True 7)
+            (MkBinaryOp (applyNull2 (widenArithOp (*))) (Builtin BNullMul) (Just "*") True 7)
             a
             b
         )
@@ -403,7 +405,7 @@ infixl 7 .*, ./
 (./) (TExpr a) (TExpr b) =
     TExpr
         ( Binary
-            (MkBinaryOp (applyNull2 (divArithOp (/))) "nulldiv" (Just "/") False 7)
+            (MkBinaryOp (applyNull2 (divArithOp (/))) (Builtin BNullDiv) (Just "/") False 7)
             a
             b
         )
@@ -420,7 +422,12 @@ infixl 7 .*, ./
     ) =>
     TExpr cols a -> TExpr cols b -> TExpr cols a
 (.^^) (TExpr a) (TExpr b) =
-    TExpr (Binary (MkBinaryOp (applyNull2 (^^)) "pow" (Just ".^^") False 8) a b)
+    TExpr
+        ( Binary
+            (MkBinaryOp (applyNull2 (^^)) (Builtin BPowFrac) (Just ".^^") False 8)
+            a
+            b
+        )
 
 -- | Nullable-aware exponentiation (num base, integral exponent).
 (.^) ::
@@ -434,7 +441,8 @@ infixl 7 .*, ./
     ) =>
     TExpr cols a -> TExpr cols b -> TExpr cols a
 (.^) (TExpr a) (TExpr b) =
-    TExpr (Binary (MkBinaryOp (applyNull2 (^)) "pow" (Just ".^") False 8) a b)
+    TExpr
+        (Binary (MkBinaryOp (applyNull2 (^)) (Builtin BPow) (Just ".^") False 8) a b)
 
 -- | Nullable-aware equality that widens numeric operands to a common type.
 (.==) ::
@@ -447,7 +455,11 @@ infixl 7 .*, ./
     TExpr cols (NullCmpResult a b)
 (.==) (TExpr a) (TExpr b) =
     TExpr
-        (Binary (MkBinaryOp (applyNull2 (widenCmpOp (==))) "eq" (Just "==") True 4) a b)
+        ( Binary
+            (MkBinaryOp (applyNull2 (widenCmpOp (==))) (Builtin BEq) (Just "==") True 4)
+            a
+            b
+        )
 
 -- | Nullable-aware inequality. Widens numeric operands to their common type.
 (./=) ::
@@ -460,7 +472,11 @@ infixl 7 .*, ./
     TExpr cols (NullCmpResult a b)
 (./=) (TExpr a) (TExpr b) =
     TExpr
-        (Binary (MkBinaryOp (applyNull2 (widenCmpOp (/=))) "neq" (Just "/=") True 4) a b)
+        ( Binary
+            (MkBinaryOp (applyNull2 (widenCmpOp (/=))) (Builtin BNeq) (Just "/=") True 4)
+            a
+            b
+        )
 
 -- | Nullable-aware less-than. Widens numeric operands to their common type.
 (.<) ::
@@ -473,7 +489,11 @@ infixl 7 .*, ./
     TExpr cols (NullCmpResult a b)
 (.<) (TExpr a) (TExpr b) =
     TExpr
-        (Binary (MkBinaryOp (applyNull2 (widenCmpOp (<))) "lt" (Just "<") False 4) a b)
+        ( Binary
+            (MkBinaryOp (applyNull2 (widenCmpOp (<))) (Builtin BLt) (Just "<") False 4)
+            a
+            b
+        )
 
 -- | Nullable-aware <=. Widens numeric operands to their common type.
 (.<=) ::
@@ -486,7 +506,11 @@ infixl 7 .*, ./
     TExpr cols (NullCmpResult a b)
 (.<=) (TExpr a) (TExpr b) =
     TExpr
-        (Binary (MkBinaryOp (applyNull2 (widenCmpOp (<=))) "leq" (Just "<=") False 4) a b)
+        ( Binary
+            (MkBinaryOp (applyNull2 (widenCmpOp (<=))) (Builtin BLeq) (Just "<=") False 4)
+            a
+            b
+        )
 
 -- | Nullable-aware >=. Widens numeric operands to their common type.
 (.>=) ::
@@ -499,7 +523,11 @@ infixl 7 .*, ./
     TExpr cols (NullCmpResult a b)
 (.>=) (TExpr a) (TExpr b) =
     TExpr
-        (Binary (MkBinaryOp (applyNull2 (widenCmpOp (>=))) "geq" (Just ">=") False 4) a b)
+        ( Binary
+            (MkBinaryOp (applyNull2 (widenCmpOp (>=))) (Builtin BGeq) (Just ">=") False 4)
+            a
+            b
+        )
 
 -- | Nullable-aware greater-than. Widens numeric operands to their common type.
 (.>) ::
@@ -512,10 +540,14 @@ infixl 7 .*, ./
     TExpr cols (NullCmpResult a b)
 (.>) (TExpr a) (TExpr b) =
     TExpr
-        (Binary (MkBinaryOp (applyNull2 (widenCmpOp (>))) "gt" (Just ">") False 4) a b)
+        ( Binary
+            (MkBinaryOp (applyNull2 (widenCmpOp (>))) (Builtin BGt) (Just ">") False 4)
+            a
+            b
+        )
 
 not :: TExpr cols Bool -> TExpr cols Bool
-not (TExpr e) = TExpr (Unary (MkUnaryOp Prelude.not "not" (Just "!")) e)
+not (TExpr e) = TExpr (F.not e)
 
 sum :: (Columnable a, Num a) => TExpr cols a -> TExpr cols a
 sum (TExpr e) = TExpr (F.sum e)
@@ -552,43 +584,23 @@ over (TExpr e) = TExpr{unTExpr = F.over (symbolVals @names) e}
 castExpr ::
     forall b cols src.
     (Columnable b, Columnable src, Read b) => TExpr cols src -> TExpr cols (Maybe b)
-castExpr (TExpr e) =
-    TExpr
-        (CastExprWith @b @(Maybe b) @src "castExpr" (either (const Nothing) Just) e)
+castExpr (TExpr e) = TExpr (F.castExpr @b e)
 
 castExprWithDefault ::
     forall b cols src.
     (Columnable b, Columnable src, Read b) => b -> TExpr cols src -> TExpr cols b
-castExprWithDefault def (TExpr e) =
-    TExpr
-        ( CastExprWith @b @b @src
-            ("castExprWithDefault:" <> T.pack (show def))
-            (fromRight def)
-            e
-        )
+castExprWithDefault def (TExpr e) = TExpr (F.castExprWithDefault def e)
 
 castExprEither ::
     forall b cols src.
     (Columnable b, Columnable src, Read b) =>
     TExpr cols src -> TExpr cols (Either T.Text b)
-castExprEither (TExpr e) =
-    TExpr
-        ( CastExprWith @b @(Either T.Text b) @src
-            "castExprEither"
-            (either (Left . T.pack) Right)
-            e
-        )
+castExprEither (TExpr e) = TExpr (F.castExprEither @b e)
 
 unsafeCastExpr ::
     forall b cols src.
     (Columnable b, Columnable src, Read b) => TExpr cols src -> TExpr cols b
-unsafeCastExpr (TExpr e) =
-    TExpr
-        ( CastExprWith @b @b @src
-            "unsafeCastExpr"
-            (fromRight (error "unsafeCastExpr: unexpected Nothing in column"))
-            e
-        )
+unsafeCastExpr (TExpr e) = TExpr (F.unsafeCastExpr @b e)
 
 toDouble :: (Columnable a, Real a) => TExpr cols a -> TExpr cols Double
 toDouble (TExpr e) = TExpr (F.toDouble e)

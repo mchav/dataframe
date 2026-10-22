@@ -27,7 +27,6 @@ import DataFrame.Internal.Expression
 import DataFrame.Internal.Statistics
 
 import Control.Applicative
-import qualified Data.Char as Char
 import Data.Either
 import Data.Function (on)
 import Data.Int
@@ -56,7 +55,8 @@ import Prelude as P
 
 lift :: (Columnable a, Columnable b) => (a -> b) -> Expr a -> Expr b
 lift f =
-    Unary (MkUnaryOp{unaryFn = f, unaryName = "unaryUdf", unarySymbol = Nothing})
+    Unary
+        (MkUnaryOp{unaryFn = f, unaryId = Anonymous "unaryUdf", unarySymbol = Nothing})
 
 lift2 ::
     (Columnable c, Columnable b, Columnable a) =>
@@ -68,7 +68,7 @@ lift2 f =
     Binary
         ( MkBinaryOp
             { binaryFn = f
-            , binaryName = "binaryUdf"
+            , binaryId = Anonymous "binaryUdf"
             , binarySymbol = Nothing
             , binaryCommutative = False
             , binaryPrecedence = 0
@@ -83,7 +83,12 @@ nullLift ::
     Expr (NullLift1Result a r)
 nullLift f =
     Unary
-        (MkUnaryOp{unaryFn = applyNull1 f, unaryName = "nullLift", unarySymbol = Nothing})
+        ( MkUnaryOp
+            { unaryFn = applyNull1 f
+            , unaryId = Anonymous "nullLift"
+            , unarySymbol = Nothing
+            }
+        )
 
 -- | Lift a binary function over nullable or non-nullable column expressions.
 nullLift2 ::
@@ -96,7 +101,7 @@ nullLift2 f =
     Binary
         ( MkBinaryOp
             { binaryFn = applyNull2 f
-            , binaryName = "nullLift2"
+            , binaryId = Anonymous "nullLift2"
             , binarySymbol = Nothing
             , binaryCommutative = False
             , binaryPrecedence = 0
@@ -105,24 +110,24 @@ nullLift2 f =
 
 -- | Lenient coercion of a column to @Maybe a@; failures become 'Nothing'.
 cast :: forall a. (Columnable a, Read a) => T.Text -> Expr (Maybe a)
-cast colName = CastWith colName "cast" (either (const Nothing) Just)
+cast colName = CastWith colName (Builtin CCast) (either (const Nothing) Just)
 
 -- | Lenient coercion that substitutes a default for unconvertible values.
 castWithDefault :: forall a. (Columnable a, Read a) => a -> T.Text -> Expr a
 castWithDefault def colName =
-    CastWith colName ("castWithDefault:" <> T.pack (show def)) (fromRight def)
+    CastWith colName (Builtin (CCastWithDefault (T.pack (show def)))) (fromRight def)
 
 -- | Lenient coercion to @Either T.Text a@, keeping unparsed values as 'Left'.
 castEither ::
     forall a. (Columnable a, Read a) => T.Text -> Expr (Either T.Text a)
-castEither colName = CastWith colName "castEither" (either (Left . T.pack) Right)
+castEither colName = CastWith colName (Builtin CCastEither) (either (Left . T.pack) Right)
 
 -- | Lenient coercion that crashes at evaluation if a @Nothing@ is found.
 unsafeCast :: forall a. (Columnable a, Read a) => T.Text -> Expr a
 unsafeCast colName =
     CastWith
         colName
-        "unsafeCast"
+        (Builtin CUnsafeCast)
         (fromRight (error "unsafeCast: unexpected Nothing in column"))
 
 castExpr ::
@@ -130,13 +135,13 @@ castExpr ::
     (Columnable b, Columnable src, Read b) =>
     Expr src ->
     Expr (Maybe b)
-castExpr = CastExprWith @b @(Maybe b) @src "castExpr" (either (const Nothing) Just)
+castExpr = CastExprWith @b @(Maybe b) @src (Builtin CCast) (either (const Nothing) Just)
 
 castExprWithDefault ::
     forall b src. (Columnable b, Columnable src, Read b) => b -> Expr src -> Expr b
 castExprWithDefault def =
     CastExprWith @b @b @src
-        ("castExprWithDefault:" <> T.pack (show def))
+        (Builtin (CCastWithDefault (T.pack (show def))))
         (fromRight def)
 
 castExprEither ::
@@ -146,14 +151,14 @@ castExprEither ::
     Expr (Either T.Text b)
 castExprEither =
     CastExprWith @b @(Either T.Text b) @src
-        "castExprEither"
+        (Builtin CCastEither)
         (either (Left . T.pack) Right)
 
 unsafeCastExpr ::
     forall b src. (Columnable b, Columnable src, Read b) => Expr src -> Expr b
 unsafeCastExpr =
     CastExprWith @b @b @src
-        "unsafeCastExpr"
+        (Builtin CUnsafeCast)
         (fromRight (error "unsafeCastExpr: unexpected Nothing in column"))
 
 toDouble :: (Columnable a, Real a) => Expr a -> Expr Double
@@ -161,34 +166,34 @@ toDouble =
     Unary
         ( MkUnaryOp
             { unaryFn = realToFrac
-            , unaryName = "toDouble"
+            , unaryId = Builtin UToDouble
             , unarySymbol = Nothing
             }
         )
 
 infix 8 `div`
 div :: (Integral a, Columnable a) => Expr a -> Expr a -> Expr a
-div = lift2Decorated Prelude.div "div" (Just "//") False 7
+div = lift2Builtin BDiv Prelude.div (Just "//") False 7
 
 mod :: (Integral a, Columnable a) => Expr a -> Expr a -> Expr a
-mod = lift2Decorated Prelude.mod "mod" Nothing False 7
+mod = lift2Builtin BMod Prelude.mod Nothing False 7
 
 eq :: (Columnable a, Eq a, a ~ BaseType a) => Expr a -> Expr a -> Expr Bool
-eq = lift2Decorated (==) "eq" (Just "==") True 4
+eq = lift2Builtin BEq (==) (Just "==") True 4
 
 lt :: (Columnable a, Ord a, a ~ BaseType a) => Expr a -> Expr a -> Expr Bool
-lt = lift2Decorated (<) "lt" (Just "<") False 4
+lt = lift2Builtin BLt (<) (Just "<") False 4
 
 gt :: (Columnable a, Ord a, a ~ BaseType a) => Expr a -> Expr a -> Expr Bool
-gt = lift2Decorated (>) "gt" (Just ">") False 4
+gt = lift2Builtin BGt (>) (Just ">") False 4
 
 leq ::
     (Columnable a, Ord a, Eq a, a ~ BaseType a) => Expr a -> Expr a -> Expr Bool
-leq = lift2Decorated (<=) "leq" (Just "<=") False 4
+leq = lift2Builtin BLeq (<=) (Just "<=") False 4
 
 geq ::
     (Columnable a, Ord a, Eq a, a ~ BaseType a) => Expr a -> Expr a -> Expr Bool
-geq = lift2Decorated (>=) "geq" (Just ">=") False 4
+geq = lift2Builtin BGeq (>=) (Just ">=") False 4
 
 and :: Expr Bool -> Expr Bool -> Expr Bool
 and = (.&&)
@@ -199,10 +204,10 @@ or = (.||)
 not :: Expr Bool -> Expr Bool
 not =
     Unary
-        (MkUnaryOp{unaryFn = Prelude.not, unaryName = "not", unarySymbol = Just "~"})
+        (MkUnaryOp{unaryFn = Prelude.not, unaryId = Builtin UNot, unarySymbol = Just "~"})
 
 count :: (Columnable a) => Expr a -> Expr Int
-count = Agg (MergeAgg "count" (0 :: Int) (\c _ -> c + 1) (+) id)
+count = Agg (MergeAgg (Builtin ACount) (0 :: Int) (\c _ -> c + 1) (+) id)
 {-# SPECIALIZE count :: Expr Double -> Expr Int #-}
 {-# SPECIALIZE count :: Expr Float -> Expr Int #-}
 {-# SPECIALIZE count :: Expr Int -> Expr Int #-}
@@ -217,7 +222,7 @@ countDistinct :: forall a. (Columnable a, Ord a) => Expr a -> Expr Int
 countDistinct =
     Agg
         ( MergeAgg
-            "countDistinct"
+            (Builtin ACountDistinct)
             (S.empty :: S.Set a)
             (flip S.insert)
             S.union
@@ -237,7 +242,7 @@ countAll = count (Lit (0 :: Int))
 {-# INLINE countAll #-}
 
 collect :: (Columnable a) => Expr a -> Expr [a]
-collect = Agg (FoldAgg "collect" (Just []) (flip (:)))
+collect = Agg (FoldAgg (Builtin ACollect) (Just []) (flip (:)))
 {-# SPECIALIZE collect :: Expr Double -> Expr [Double] #-}
 {-# SPECIALIZE collect :: Expr Float -> Expr [Float] #-}
 {-# SPECIALIZE collect :: Expr Int -> Expr [Int] #-}
@@ -247,7 +252,7 @@ mode :: (Ord a, Columnable a, Eq a) => Expr a -> Expr a
 mode =
     Agg
         ( CollectAgg
-            "mode"
+            (Builtin AMode)
             ( fst
                 . L.maximumBy (compare `on` snd)
                 . M.toList
@@ -264,7 +269,7 @@ mode =
 {-# INLINEABLE mode #-}
 
 minimum :: (Columnable a, Ord a) => Expr a -> Expr a
-minimum = Agg (FoldAgg "minimum" Nothing Prelude.min)
+minimum = Agg (FoldAgg (Builtin AMinimum) Nothing Prelude.min)
 {-# SPECIALIZE DataFrame.Functions.minimum :: Expr Double -> Expr Double #-}
 {-# SPECIALIZE DataFrame.Functions.minimum :: Expr Float -> Expr Float #-}
 {-# SPECIALIZE DataFrame.Functions.minimum :: Expr Int -> Expr Int #-}
@@ -275,7 +280,7 @@ minimum = Agg (FoldAgg "minimum" Nothing Prelude.min)
 {-# INLINEABLE DataFrame.Functions.minimum #-}
 
 maximum :: (Columnable a, Ord a) => Expr a -> Expr a
-maximum = Agg (FoldAgg "maximum" Nothing Prelude.max)
+maximum = Agg (FoldAgg (Builtin AMaximum) Nothing Prelude.max)
 {-# SPECIALIZE DataFrame.Functions.maximum :: Expr Double -> Expr Double #-}
 {-# SPECIALIZE DataFrame.Functions.maximum :: Expr Float -> Expr Float #-}
 {-# SPECIALIZE DataFrame.Functions.maximum :: Expr Int -> Expr Int #-}
@@ -286,7 +291,7 @@ maximum = Agg (FoldAgg "maximum" Nothing Prelude.max)
 {-# INLINEABLE DataFrame.Functions.maximum #-}
 
 sum :: forall a. (Columnable a, Num a) => Expr a -> Expr a
-sum = Agg (FoldAgg "sum" Nothing (+))
+sum = Agg (FoldAgg (Builtin ASum) Nothing (+))
 {-# SPECIALIZE DataFrame.Functions.sum :: Expr Double -> Expr Double #-}
 {-# SPECIALIZE DataFrame.Functions.sum :: Expr Float -> Expr Float #-}
 {-# SPECIALIZE DataFrame.Functions.sum :: Expr Int -> Expr Int #-}
@@ -297,7 +302,7 @@ sum = Agg (FoldAgg "sum" Nothing (+))
 {-# INLINEABLE DataFrame.Functions.sum #-}
 
 sumMaybe :: forall a. (Columnable a, Num a) => Expr (Maybe a) -> Expr a
-sumMaybe = Agg (CollectAgg "sumMaybe" (P.sum . Maybe.catMaybes . V.toList))
+sumMaybe = Agg (CollectAgg (Builtin ASumMaybe) (P.sum . Maybe.catMaybes . V.toList))
 {-# SPECIALIZE sumMaybe :: Expr (Maybe Double) -> Expr Double #-}
 {-# SPECIALIZE sumMaybe :: Expr (Maybe Float) -> Expr Float #-}
 {-# SPECIALIZE sumMaybe :: Expr (Maybe Int) -> Expr Int #-}
@@ -311,7 +316,7 @@ mean :: (Columnable a, Real a) => Expr a -> Expr Double
 mean =
     Agg
         ( MergeAgg
-            "mean"
+            (Builtin AMean)
             ((0.0, 0) :: (Double, Int))
             (\(!s, !c) x -> (s + realToFrac x, c + 1))
             (\(!s1, !c1) (!s2, !c2) -> (s1 + s2, c1 + c2))
@@ -328,29 +333,27 @@ mean =
 
 -- | The k largest values per group.
 topK :: (Columnable a, Ord a) => Int -> Expr a -> Expr [a]
-topK = kExtremes "topK" (>)
+topK = kExtremes True
 {-# INLINEABLE topK #-}
 
 -- | The k smallest values per group.
 bottomK :: (Columnable a, Ord a) => Int -> Expr a -> Expr [a]
-bottomK = kExtremes "bottomK" (<)
+bottomK = kExtremes False
 {-# INLINEABLE bottomK #-}
 
--- | Top k values after applying an ordering function, dropping NaNs.
-kExtremes ::
-    forall a.
-    (Columnable a, Ord a) =>
-    T.Text -> (a -> a -> Bool) -> Int -> Expr a -> Expr [a]
-kExtremes opName wins k =
+-- | The k largest (True) or smallest (False) values, dropping NaNs.
+kExtremes :: forall a. (Columnable a, Ord a) => Bool -> Int -> Expr a -> Expr [a]
+kExtremes largest k =
     Agg
         ( MergeAgg
-            (opName <> "_" <> T.pack (show k))
+            (Builtin (if largest then ATopK k else ABottomK k))
             []
             step
             (L.foldl' step)
             id
         )
   where
+    wins = if largest then (>) else (<)
     step acc x
         | isNaNLike x = acc
         | otherwise = insert x acc
@@ -366,7 +369,7 @@ kExtremes opName wins k =
         | otherwise = False
 
 meanMaybe :: forall a. (Columnable a, Real a) => Expr (Maybe a) -> Expr Double
-meanMaybe = Agg (CollectAgg "meanMaybe" (mean' . optionalToDoubleVector))
+meanMaybe = Agg (CollectAgg (Builtin AMeanMaybe) (mean' . optionalToDoubleVector))
 {-# SPECIALIZE meanMaybe :: Expr (Maybe Double) -> Expr Double #-}
 {-# SPECIALIZE meanMaybe :: Expr (Maybe Float) -> Expr Double #-}
 {-# SPECIALIZE meanMaybe :: Expr (Maybe Int) -> Expr Double #-}
@@ -377,7 +380,7 @@ meanMaybe = Agg (CollectAgg "meanMaybe" (mean' . optionalToDoubleVector))
 {-# INLINEABLE meanMaybe #-}
 
 variance :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
-variance = Agg (CollectAgg "variance" variance')
+variance = Agg (CollectAgg (Builtin AVariance) variance')
 {-# SPECIALIZE variance :: Expr Double -> Expr Double #-}
 {-# SPECIALIZE variance :: Expr Float -> Expr Double #-}
 {-# SPECIALIZE variance :: Expr Int -> Expr Double #-}
@@ -388,7 +391,7 @@ variance = Agg (CollectAgg "variance" variance')
 {-# INLINEABLE variance #-}
 
 median :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
-median = Agg (CollectAgg "median" median')
+median = Agg (CollectAgg (Builtin AMedian) median')
 {-# SPECIALIZE median :: Expr Double -> Expr Double #-}
 {-# SPECIALIZE median :: Expr Float -> Expr Double #-}
 {-# SPECIALIZE median :: Expr Int -> Expr Double #-}
@@ -399,7 +402,7 @@ median = Agg (CollectAgg "median" median')
 {-# INLINEABLE median #-}
 
 medianMaybe :: (Columnable a, Real a) => Expr (Maybe a) -> Expr Double
-medianMaybe = Agg (CollectAgg "meanMaybe" (median' . optionalToDoubleVector))
+medianMaybe = Agg (CollectAgg (Builtin AMedianMaybe) (median' . optionalToDoubleVector))
 {-# SPECIALIZE medianMaybe :: Expr (Maybe Double) -> Expr Double #-}
 {-# SPECIALIZE medianMaybe :: Expr (Maybe Float) -> Expr Double #-}
 {-# SPECIALIZE medianMaybe :: Expr (Maybe Int) -> Expr Double #-}
@@ -409,23 +412,16 @@ medianMaybe = Agg (CollectAgg "meanMaybe" (median' . optionalToDoubleVector))
 {-# SPECIALIZE medianMaybe :: Expr (Maybe Int64) -> Expr Double #-}
 {-# INLINEABLE medianMaybe #-}
 
-optionalToDoubleVector :: (Real a) => V.Vector (Maybe a) -> VU.Vector Double
-optionalToDoubleVector =
-    VU.fromList
-        . V.foldl'
-            (\acc e -> if Maybe.isJust e then realToFrac (Maybe.fromMaybe 0 e) : acc else acc)
-            []
-
 percentile :: Int -> Expr Double -> Expr Double
 percentile n =
     Agg
         ( CollectAgg
-            (T.pack $ "percentile " ++ show n)
+            (Builtin (APercentile n))
             (percentile' n)
         )
 
 stddev :: (Columnable a, Real a, VU.Unbox a) => Expr a -> Expr Double
-stddev = Agg (CollectAgg "stddev" (sqrt . variance'))
+stddev = Agg (CollectAgg (Builtin AStddev) (sqrt . variance'))
 {-# SPECIALIZE stddev :: Expr Double -> Expr Double #-}
 {-# SPECIALIZE stddev :: Expr Float -> Expr Double #-}
 {-# SPECIALIZE stddev :: Expr Int -> Expr Double #-}
@@ -436,7 +432,9 @@ stddev = Agg (CollectAgg "stddev" (sqrt . variance'))
 {-# INLINEABLE stddev #-}
 
 stddevMaybe :: forall a. (Columnable a, Real a) => Expr (Maybe a) -> Expr Double
-stddevMaybe = Agg (CollectAgg "stddevMaybe" (sqrt . variance' . optionalToDoubleVector))
+stddevMaybe =
+    Agg
+        (CollectAgg (Builtin AStddevMaybe) (sqrt . variance' . optionalToDoubleVector))
 {-# SPECIALIZE stddevMaybe :: Expr (Maybe Double) -> Expr Double #-}
 {-# SPECIALIZE stddevMaybe :: Expr (Maybe Float) -> Expr Double #-}
 {-# SPECIALIZE stddevMaybe :: Expr (Maybe Int) -> Expr Double #-}
@@ -450,21 +448,21 @@ zScore :: Expr Double -> Expr Double
 zScore c = (c - mean c) / stddev c
 
 pow :: (Columnable a, Num a) => Expr a -> Int -> Expr a
-pow expr i = lift2Decorated (^) "pow" (Just "^") False 8 expr (Lit i)
+pow expr i = lift2Builtin BPow (^) (Just "^") False 8 expr (Lit i)
 {-# SPECIALIZE pow :: Expr Double -> Int -> Expr Double #-}
 {-# SPECIALIZE pow :: Expr Float -> Int -> Expr Float #-}
 {-# SPECIALIZE pow :: Expr Int -> Int -> Expr Int #-}
 {-# INLINEABLE pow #-}
 
 relu :: (Columnable a, Num a, Ord a) => Expr a -> Expr a
-relu = liftDecorated (Prelude.max 0) "relu" Nothing
+relu = liftBuiltin URelu (Prelude.max 0) Nothing
 {-# SPECIALIZE relu :: Expr Double -> Expr Double #-}
 {-# SPECIALIZE relu :: Expr Float -> Expr Float #-}
 {-# SPECIALIZE relu :: Expr Int -> Expr Int #-}
 {-# INLINEABLE relu #-}
 
 min :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr a
-min = lift2Decorated Prelude.min "min" Nothing True 1
+min = lift2Builtin BMin Prelude.min Nothing True 1
 {-# SPECIALIZE DataFrame.Functions.min ::
     Expr Double -> Expr Double -> Expr Double
     #-}
@@ -475,7 +473,7 @@ min = lift2Decorated Prelude.min "min" Nothing True 1
 {-# INLINEABLE DataFrame.Functions.min #-}
 
 max :: (Columnable a, Ord a) => Expr a -> Expr a -> Expr a
-max = lift2Decorated Prelude.max "max" Nothing True 1
+max = lift2Builtin BMax Prelude.max Nothing True 1
 {-# SPECIALIZE DataFrame.Functions.max ::
     Expr Double -> Expr Double -> Expr Double
     #-}
@@ -492,31 +490,31 @@ reduce ::
     a ->
     (a -> b -> a) ->
     Expr a
-reduce expr start f = Agg (FoldAgg "foldUdf" (Just start) f) expr
+reduce expr start f = Agg (FoldAgg (Anonymous "foldUdf") (Just start) f) expr
 {-# INLINEABLE reduce #-}
 
 toMaybe :: (Columnable a) => Expr a -> Expr (Maybe a)
-toMaybe = liftDecorated Just "toMaybe" Nothing
+toMaybe = liftBuiltin UToMaybe Just Nothing
 {-# SPECIALIZE toMaybe :: Expr Double -> Expr (Maybe Double) #-}
 {-# SPECIALIZE toMaybe :: Expr Float -> Expr (Maybe Float) #-}
 {-# SPECIALIZE toMaybe :: Expr Int -> Expr (Maybe Int) #-}
 {-# INLINEABLE toMaybe #-}
 
 fromMaybe :: (Columnable a) => a -> Expr (Maybe a) -> Expr a
-fromMaybe d = liftDecorated (Maybe.fromMaybe d) "fromMaybe" Nothing
+fromMaybe d = liftBuiltin (UFromMaybe (T.pack (show d))) (Maybe.fromMaybe d) Nothing
 {-# SPECIALIZE fromMaybe :: Double -> Expr (Maybe Double) -> Expr Double #-}
 {-# SPECIALIZE fromMaybe :: Float -> Expr (Maybe Float) -> Expr Float #-}
 {-# SPECIALIZE fromMaybe :: Int -> Expr (Maybe Int) -> Expr Int #-}
 {-# INLINEABLE fromMaybe #-}
 
 isJust :: (Columnable a) => Expr (Maybe a) -> Expr Bool
-isJust = liftDecorated Maybe.isJust "isJust" Nothing
+isJust = liftBuiltin UIsJust Maybe.isJust Nothing
 {-# SPECIALIZE isJust :: Expr (Maybe Double) -> Expr Bool #-}
 {-# SPECIALIZE isJust :: Expr (Maybe Int) -> Expr Bool #-}
 {-# INLINEABLE isJust #-}
 
 isNothing :: (Columnable a) => Expr (Maybe a) -> Expr Bool
-isNothing = liftDecorated Maybe.isNothing "isNothing" Nothing
+isNothing = liftBuiltin UIsNothing Maybe.isNothing Nothing
 {-# SPECIALIZE isNothing :: Expr (Maybe Double) -> Expr Bool #-}
 {-# SPECIALIZE isNothing :: Expr (Maybe Int) -> Expr Bool #-}
 {-# INLINEABLE isNothing #-}
@@ -532,7 +530,7 @@ isNotNull = isJust
 {-# INLINEABLE isNotNull #-}
 
 fromJust :: (Columnable a) => Expr (Maybe a) -> Expr a
-fromJust = liftDecorated Maybe.fromJust "fromJust" Nothing
+fromJust = liftBuiltin UFromJust Maybe.fromJust Nothing
 {-# SPECIALIZE fromJust :: Expr (Maybe Double) -> Expr Double #-}
 {-# SPECIALIZE fromJust :: Expr (Maybe Int) -> Expr Int #-}
 {-# INLINEABLE fromJust #-}
@@ -543,7 +541,7 @@ whenPresent ::
     (a -> b) ->
     Expr (Maybe a) ->
     Expr (Maybe b)
-whenPresent f = liftDecorated (fmap f) "whenPresent" Nothing
+whenPresent f = Unary (MkUnaryOp (fmap f) (Anonymous "whenPresent") Nothing)
 {-# INLINEABLE whenPresent #-}
 
 whenBothPresent ::
@@ -553,7 +551,9 @@ whenBothPresent ::
     Expr (Maybe a) ->
     Expr (Maybe b) ->
     Expr (Maybe c)
-whenBothPresent f = lift2Decorated (\l r -> f <$> l <*> r) "whenBothPresent" Nothing False 0
+whenBothPresent f =
+    Binary
+        (MkBinaryOp (\l r -> f <$> l <*> r) (Anonymous "whenBothPresent") Nothing False 0)
 {-# INLINEABLE whenBothPresent #-}
 
 recode ::
@@ -566,7 +566,7 @@ recode mapping =
     Unary
         ( MkUnaryOp
             { unaryFn = (`lookup` mapping)
-            , unaryName = "recode " <> T.pack (show mapping)
+            , unaryId = Builtin (URecode (T.pack (show mapping)))
             , unarySymbol = Nothing
             }
         )
@@ -592,57 +592,57 @@ recodeWithDefault d mapping =
     Unary
         ( MkUnaryOp
             { unaryFn = Maybe.fromMaybe d . (`lookup` mapping)
-            , unaryName =
-                "recodeWithDefault " <> T.pack (show d) <> " " <> T.pack (show mapping)
+            , unaryId =
+                Builtin (URecodeWithDefault (T.pack (show d)) (T.pack (show mapping)))
             , unarySymbol = Nothing
             }
         )
 
 firstOrNothing :: (Columnable a) => Expr [a] -> Expr (Maybe a)
-firstOrNothing = liftDecorated Maybe.listToMaybe "firstOrNothing" Nothing
+firstOrNothing = liftBuiltin UFirstOrNothing Maybe.listToMaybe Nothing
 
 lastOrNothing :: (Columnable a) => Expr [a] -> Expr (Maybe a)
-lastOrNothing = liftDecorated (Maybe.listToMaybe . reverse) "lastOrNothing" Nothing
+lastOrNothing = liftBuiltin ULastOrNothing (Maybe.listToMaybe . reverse) Nothing
 
 -- | Whether the text contains the literal substring.
 contains :: T.Text -> Expr T.Text -> Expr Bool
 contains needle expr =
-    lift2Decorated (flip T.isInfixOf) "contains" Nothing False 4 expr (Lit needle)
+    lift2Builtin BContains (flip T.isInfixOf) Nothing False 4 expr (Lit needle)
 
 -- | Character count.
 length :: Expr T.Text -> Expr Int
-length = liftDecorated T.length "textLength" Nothing
+length = liftBuiltin UTextLength T.length Nothing
 
 splitOn :: T.Text -> Expr T.Text -> Expr [T.Text]
-splitOn delim = liftDecorated (T.splitOn delim) "splitOn" Nothing
+splitOn delim = liftBuiltin (USplitOn delim) (T.splitOn delim) Nothing
 
 match :: T.Text -> Expr T.Text -> Expr (Maybe T.Text)
 match regex =
-    liftDecorated
+    liftBuiltin
+        (UMatch regex)
         ((\r -> if T.null r then Nothing else Just r) . (=~ regex))
-        ("match " <> T.pack (show regex))
         Nothing
 
 matchAll :: T.Text -> Expr T.Text -> Expr [T.Text]
 matchAll regex =
-    liftDecorated
+    liftBuiltin
+        (UMatchAll regex)
         (getAllTextMatches . (=~ regex))
-        ("matchAll " <> T.pack (show regex))
         Nothing
 
 parseDate ::
     (ParseTime t, Columnable t) => T.Text -> Expr T.Text -> Expr (Maybe t)
 parseDate format =
-    liftDecorated
+    liftBuiltin
+        (UParseDate format)
         (parseTimeM True defaultTimeLocale (T.unpack format) . T.unpack)
-        ("parseDate " <> format)
         Nothing
 
 daysBetween :: Expr Day -> Expr Day -> Expr Int
 daysBetween =
-    lift2Decorated
+    lift2Builtin
+        BDaysBetween
         (\d1 d2 -> fromIntegral (diffDays d1 d2))
-        "daysBetween"
         Nothing
         False
         2
@@ -653,71 +653,8 @@ bind ::
     (a -> m b) ->
     Expr (m a) ->
     Expr (m b)
-bind f = liftDecorated (>>= f) "bind" Nothing
+bind f = Unary (MkUnaryOp (>>= f) (Anonymous "bind") Nothing)
 
 -- | Window function: evaluate an expression partitioned by the given columns.
 over :: (Columnable a) => [T.Text] -> Expr a -> Expr a
 over = Over
-
--- Haskell Report 2.4: https://www.haskell.org/definition/haskell2010.pdf
-isReservedId :: T.Text -> Bool
-isReservedId t = case t of
-    "case" -> True
-    "class" -> True
-    "data" -> True
-    "default" -> True
-    "deriving" -> True
-    "do" -> True
-    "else" -> True
-    "foreign" -> True
-    "if" -> True
-    "import" -> True
-    "in" -> True
-    "infix" -> True
-    "infixl" -> True
-    "infixr" -> True
-    "instance" -> True
-    "let" -> True
-    "module" -> True
-    "newtype" -> True
-    "of" -> True
-    "then" -> True
-    "type" -> True
-    "where" -> True
-    _ -> False
-
-isVarId :: T.Text -> Bool
-isVarId t = case T.uncons t of
-    -- '_' is skipped on purpose so "Name" and "_Name_" cannot collide.
-    Just (c, _) -> Char.isLower c && Char.isAlpha c
-    Nothing -> False
-
-isHaskellIdentifier :: T.Text -> Bool
-isHaskellIdentifier t = Prelude.not (isVarId t) || isReservedId t
-
-sanitize :: T.Text -> T.Text
-sanitize t
-    | isValid = t
-    | isHaskellIdentifier t' = "_" <> t' <> "_"
-    | otherwise = t'
-  where
-    isValid =
-        Prelude.not (isHaskellIdentifier t)
-            && isVarId t
-            && T.all Char.isAlphaNum t
-    t' = T.map replaceInvalidCharacters . T.filter (Prelude.not . parentheses) $ t
-    replaceInvalidCharacters c
-        | Char.isUpper c = Char.toLower c
-        | Char.isSpace c = '_'
-        | Char.isPunctuation c = '_' -- '-' will also become a '_'
-        | Char.isSymbol c = '_'
-        | Char.isAlphaNum c = c -- Blanket condition
-        | otherwise = '_' -- If we're unsure we'll default to an underscore
-    parentheses c = case c of
-        '(' -> True
-        ')' -> True
-        '{' -> True
-        '}' -> True
-        '[' -> True
-        ']' -> True
-        _ -> False

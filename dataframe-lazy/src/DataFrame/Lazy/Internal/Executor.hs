@@ -351,6 +351,13 @@ buildAggPlan aggs = foldl combine ([], [], id) (map processAgg aggs)
   where
     combine (p1, m1, f1) (p2, m2, f2) = (p1 ++ p2, m1 ++ m2, f1 . f2)
 
+    -- Partial and merge steps are new operators, never the builtin itself.
+    phase :: T.Text -> E.OpRef E.AggId -> E.OpRef E.AggId
+    phase p ident = case ident of
+        E.Builtin a -> E.Named (p <> E.aggName a)
+        E.Named n -> E.Named (p <> n)
+        E.Anonymous l -> E.Anonymous (p <> l)
+
     processAgg ::
         (T.Text, E.SomeExpr) ->
         ([(T.Text, E.SomeExpr)], [(T.Text, E.SomeExpr)], D.DataFrame -> D.DataFrame)
@@ -370,7 +377,10 @@ buildAggPlan aggs = foldl combine ([], [], id) (map processAgg aggs)
                                 [
                                     ( name
                                     , E.SomeExpr
-                                        (E.Agg (E.FoldAgg "sum" Nothing ((+) :: Int -> Int -> Int)) (E.Col @Int name))
+                                        ( E.Agg
+                                            (E.FoldAgg (E.Builtin E.ASum) Nothing ((+) :: Int -> Int -> Int))
+                                            (E.Col @Int name)
+                                        )
                                     )
                                 ]
                             , id
@@ -384,7 +394,10 @@ buildAggPlan aggs = foldl combine ([], [], id) (map processAgg aggs)
                         [
                             ( name
                             , E.SomeExpr
-                                (E.Agg (E.FoldAgg "sum" Nothing ((+) :: Int -> Int -> Int)) (E.Col @Int name))
+                                ( E.Agg
+                                    (E.FoldAgg (E.Builtin E.ASum) Nothing ((+) :: Int -> Int -> Int))
+                                    (E.Col @Int name)
+                                )
                             )
                         ]
                     , id
@@ -411,13 +424,13 @@ buildAggPlan aggs = foldl combine ([], [], id) (map processAgg aggs)
                 let partialExpr =
                         E.SomeExpr
                             ( E.Agg
-                                (E.FoldAgg ("partial_" <> n) (Just seed) step)
+                                (E.FoldAgg (phase "partial_" n) (Just seed) step)
                                 inner
                             )
                     mergeExpr =
                         E.SomeExpr
                             ( E.Agg
-                                (E.FoldAgg ("merge_" <> n) Nothing merge)
+                                (E.FoldAgg (phase "merge_" n) Nothing merge)
                                 (E.Col @acc name)
                             )
                     finalize df =
