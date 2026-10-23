@@ -26,6 +26,7 @@ common warnings
 library
     import:             warnings
     exposed-modules:    DataFrame.IO.JSON
+                        DataFrame.Typed.IO.JSON
     build-depends:      base >= 4 && < 5,
                         aeson >= 0.11.0.0 && < 3,
                         bytestring >= 0.11 && < 0.14,

@@ -20,7 +20,7 @@ module DataFrame.Monad (
     deriveM,
     insertM,
     renameM,
-    filterWhereM,
+    filterM,
     sampleM,
     takeM,
     dropM,
@@ -103,8 +103,8 @@ renameM :: (Columnable a) => Expr a -> T.Text -> FrameM (Expr a)
 renameM (Col oldName) newName = execWithExpr newName (D.rename oldName newName)
 renameM expr newName = deriveM newName expr
 
-filterWhereM :: Expr Bool -> FrameM ()
-filterWhereM p = modifyM (D.filterWhere p)
+filterM :: Expr Bool -> FrameM ()
+filterM p = modifyM (D.filter p)
 
 sampleM :: (RandomGen g) => g -> Double -> FrameM ()
 sampleM pureGen p = modifyM (D.sample pureGen p)

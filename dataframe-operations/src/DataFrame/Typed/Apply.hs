@@ -8,7 +8,9 @@
 
 -- | Typed column transformations that track schema changes in the types.
 module DataFrame.Typed.Apply (
-    applyColumn,
+    apply,
+    applyInt,
+    applyDouble,
     applyMany,
     applyWhere,
     applyAtIndex,
@@ -47,7 +49,7 @@ import DataFrame.Typed.Schema (
 import DataFrame.Typed.Types (TExpr (..), TypedDataFrame (..))
 
 -- | Map a function over a column, rewriting its element type from @a@ to @b@.
-applyColumn ::
+apply ::
     forall name a b cols.
     ( KnownSymbol name
     , a ~ SafeLookup name cols
@@ -58,11 +60,37 @@ applyColumn ::
     (a -> b) ->
     TypedDataFrame cols ->
     TypedDataFrame (SetColumnType name b cols)
-applyColumn f (TDF df) = unsafeFreeze (D.apply f colName df)
+apply f (TDF df) = unsafeFreeze (D.apply f colName df)
   where
     colName = T.pack (symbolVal (Proxy @name))
 
--- | Like 'applyColumn' but returns the error instead of throwing.
+-- | 'apply' specialised to an @Int@ column.
+applyInt ::
+    forall name b cols.
+    ( KnownSymbol name
+    , Int ~ SafeLookup name cols
+    , Columnable b
+    , AssertPresent name cols
+    ) =>
+    (Int -> b) ->
+    TypedDataFrame cols ->
+    TypedDataFrame (SetColumnType name b cols)
+applyInt = apply @name
+
+-- | 'apply' specialised to a @Double@ column.
+applyDouble ::
+    forall name b cols.
+    ( KnownSymbol name
+    , Double ~ SafeLookup name cols
+    , Columnable b
+    , AssertPresent name cols
+    ) =>
+    (Double -> b) ->
+    TypedDataFrame cols ->
+    TypedDataFrame (SetColumnType name b cols)
+applyDouble = apply @name
+
+-- | Like 'apply' but returns the error instead of throwing.
 safeApply ::
     forall name a b cols.
     ( KnownSymbol name

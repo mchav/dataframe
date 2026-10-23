@@ -125,8 +125,8 @@ orderSample =
 basicTypedRoundTrip :: Test
 basicTypedRoundTrip = TestCase $ do
     let df :: DT.TypedDataFrame OrderSchema
-        df = DT.fromRecordsTyped orderSample
-    case DT.toRecordsTyped df of
+        df = DT.fromRecords orderSample
+    case DT.toRecords df of
         Left e -> assertFailure (T.unpack e)
         Right xs -> assertEqual "typed round-trip" orderSample xs
 
@@ -173,8 +173,8 @@ schemaNameOverride :: Test
 schemaNameOverride = TestCase $ do
     let xs = [Item 1 9.99, Item 2 19.99]
         df :: DT.TypedDataFrame ItemsSchema
-        df = DT.fromRecordsTyped xs
-    case DT.toRecordsTyped df of
+        df = DT.fromRecords xs
+    case DT.toRecords df of
         Left e -> assertFailure (T.unpack e)
         Right ys -> assertEqual "schema-name override round-trip" xs ys
 
@@ -323,7 +323,7 @@ deriveSchemaAccessorFilter = TestCase $ do
                 , Order 4 "us" 25.0
                 ]
         big =
-            D.filterWhere
+            D.filter
                 (orderAmount .>. F.lit @Double 15.0 .&&. orderRegion .==. F.lit @T.Text "us")
                 df
     case D.toRecords big :: Either T.Text [Order] of
@@ -350,9 +350,9 @@ deriveSchemaAccessorDerive = TestCase $ do
 labelColumnFilter :: Test
 labelColumnFilter = TestCase $ do
     let df :: DT.TypedDataFrame OrderSchema
-        df = DT.fromRecordsTyped orderSample
-        usOnly = DT.filterWhere (#region DT..==. "us") df
-    case DT.toRecordsTyped usOnly of
+        df = DT.fromRecords orderSample
+        usOnly = DT.filter (#region DT..==. "us") df
+    case DT.toRecords usOnly of
         Left e -> assertFailure (T.unpack e)
         Right xs ->
             assertEqual

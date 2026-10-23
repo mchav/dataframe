@@ -3,6 +3,33 @@
 ## Unreleased
 
 ### Breaking changes
+* `filter` takes a boolean expression (`Expr Bool -> DataFrame -> DataFrame`),
+  matching the lazy APIs. `filterWhere` is removed; use `filter`.
+* The old `filter :: Expr a -> (a -> Bool) -> …` is removed; use `filterBy`,
+  which takes the predicate first. The same applies to the typed API.
+* `DataFrame.Monad.filterWhereM` is renamed to `filterM`.
+* `DataFrame.Typed` mirrors `DataFrame`: expression combinators (`sum`,
+  `mean`, `count`, `lift`, `not`, casts, `asc`/`desc`, …) move to the new
+  `DataFrame.Typed.Functions`, imported like `DataFrame.Functions`.
+  `DataFrame.Typed` keeps `col`, `lit`, conditionals and operators, and now
+  exports the frame statistics (`mean`, `summarize`, `correlation`, …).
+* `DataFrame.Lazy` takes the eager shapes: `groupBy keys` then
+  `aggregate aggs`; `join jt [keys]` (multi-key) plus `innerJoin`,
+  `leftJoin`, `rightJoin`, `fullOuterJoin`; `sortBy` takes the eager
+  `SortOrder` (`Asc`/`Desc` expressions). `runDataFrame` is renamed `run`.
+  The lazy `SortOrder (Ascending | Descending)` type is removed.
+  `DataFrame.Lazy` re-exports the expression operators like `DataFrame`.
+* `DataFrame.Typed.Lazy` mirrors `DataFrame.Typed`: `sortBy` takes
+  `TSortOrder`, joins take a key list, `aggregate` takes an `as` builder, and
+  scans read their schema from the type (`scanCsv @Schema path`).
+  `fromTypedDataFrame` is removed (use `fromDataFrame`); expression
+  combinators come from `DataFrame.Typed.Functions`.
+* Typed eager `innerJoin` and `fullOuterJoin` and lazy INNER/FULL_OUTER joins
+  put left columns before right ones, matching eager joins and the typed
+  join schemas.
+* Typed `applyColumn` is renamed `apply`; typed `fromRecordsTyped` /
+  `toRecordsTyped` are exported from `DataFrame.Typed` as `fromRecords` /
+  `toRecords`.
 * Operators are identified by tag, not name. `UnaryOp`/`BinaryOp` expose
   `unaryId`/`binaryId :: OpRef …` (`Builtin` tag, `Named` text or
   `Anonymous` label); `unaryName`/`binaryName` are now plain functions.
@@ -23,12 +50,23 @@
   `DataFrame.Internal.Statistics`.
 
 ### Additions
-* `DataFrame.Typed` gains `cast`, `castWithDefault`, `castEither`,
+* `joinOn jt [(leftKey, rightKey)]` in all four APIs (typed:
+  `joinOn @'INNER @'[ '("id", "uid")]`); the result keeps the left names.
+* Typed parity with the untyped API: `topBy`, `deriveMany` (built with
+  `as`), `join @'INNER @'["key"]`, `applyInt`, `applyDouble`, `fold`,
+  `empty`, `null`, `(|>)`, display/rendering (`display`, `toCsv`,
+  `toMarkdown`, …), and IO re-exports from `DataFrame.Typed`.
+* Typed `writeParquet`, `writeParquetWithOptions`,
+  `readParquetFilesWithOpts`, `readSeparated`, `writeSeparated`, and the new
+  `DataFrame.Typed.IO.JSON` (`readJSON`, `readJSONEither`).
+* `DataFrame.Typed.Functions` gains `cast`, `castWithDefault`, `castEither`,
   `unsafeCast` (schema-checked column), `eq`, `lt`, `gt`, `leq`, `geq`,
   `and`, `or`, `countDistinct`, `topK`, `bottomK`, `isNull`, `isNotNull`,
   `contains` and `length`, completing parity with `DataFrame.Functions`.
 
 ### Fixes
+* Streaming CSV scans return columns in file order, like eager reads,
+  instead of alphabetical order.
 * A user function named like a builtin (e.g. `"add"`) no longer runs the
   builtin's kernel instead of the user's function.
 * `eqExpr` no longer equates different `lift`/`lift2` functions, `fromMaybe`

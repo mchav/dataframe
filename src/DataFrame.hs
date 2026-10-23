@@ -173,7 +173,7 @@ import DataFrame.Typed.TH.Records as SchemaTH (deriveSchemaFromType, deriveSchem
 import DataFrame.Lazy as Lazy (
     LazyDataFrame,
     fromDataFrame,
-    runDataFrame,
+    run,
     scanCsv,
     scanCsvWith,
     scanParquet,
@@ -192,6 +192,7 @@ import DataFrame.Operations.Join as Join (
     fullOuterJoin,
     innerJoin,
     join,
+    joinOn,
     leftJoin,
     rightJoin,
  )
@@ -243,7 +244,6 @@ import DataFrame.Operations.Subset as Subset (
     filterBy,
     filterJust,
     filterNothing,
-    filterWhere,
     kFolds,
     randomSplit,
     range,

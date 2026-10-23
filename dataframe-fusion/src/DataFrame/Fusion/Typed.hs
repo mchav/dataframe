@@ -59,7 +59,6 @@ import Prelude hiding (filter, take)
 
 import qualified DataFrame.Internal.Column as IC
 import qualified DataFrame.Internal.Expression as IE
-import DataFrame.Lazy (SortOrder (..))
 import qualified DataFrame.Typed.Aggregate as AGG
 
 import qualified DataFrame.Fusion.FFI as F
@@ -217,6 +216,10 @@ joinWith how leftKey rightKey (DF leftPlan) (DF rightPlan) = do
                 withCStringBS onJson $ \cOn -> do
                     ph <- runPlanOp (F.df_plan_join lp rp cHow cOn)
                     return (DF ph)
+
+-- | Sort direction for 'sortBy'.
+data SortOrder = Ascending | Descending
+    deriving (Show, Eq)
 
 -- | Sort the result by a list of (column, direction) pairs.
 sortBy ::

@@ -9,6 +9,7 @@ import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 
 import Data.Function
 import DataFrame.Expression.Operators
@@ -82,8 +83,8 @@ countAllAggregationTyped =
                          , '("test6", Integer)
                          ]
                 & DT.groupBy @'["test1"]
-                & DT.aggregate (DT.as @"n" DT.countAll)
-                & DT.sortBy [DT.asc (DT.col @"test1")]
+                & DT.aggregate (DT.as @"n" DTF.countAll)
+                & DT.sortBy [DTF.asc (DT.col @"test1")]
                 & DT.thaw
             )
         )
@@ -109,8 +110,8 @@ foldAggregationTyped =
                          , '("test6", Integer)
                          ]
                 & DT.groupBy @'["test1"]
-                & DT.aggregate (DT.as @"test2_count" (DT.count (DT.col @"test2")))
-                & DT.sortBy [DT.asc (DT.col @"test1")]
+                & DT.aggregate (DT.as @"test2_count" (DTF.count (DT.col @"test2")))
+                & DT.sortBy [DTF.asc (DT.col @"test1")]
                 & DT.thaw
             )
         )
@@ -153,8 +154,8 @@ numericAggregationTyped =
                          , '("test6", Integer)
                          ]
                 & DT.groupBy @'["test1"]
-                & DT.aggregate (DT.as @"test2_mean" (DT.mean (DT.col @"test2")))
-                & DT.sortBy [DT.asc (DT.col @"test1")]
+                & DT.aggregate (DT.as @"test2_mean" (DTF.mean (DT.col @"test2")))
+                & DT.sortBy [DTF.asc (DT.col @"test1")]
                 & DT.thaw
             )
         )

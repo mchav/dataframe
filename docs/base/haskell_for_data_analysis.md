@@ -370,14 +370,14 @@ pipelined = execFrameM housing $ do
     roomsPerHousehold <- deriveM "rooms_per_household" (total_rooms / households)
     meanBeds          <- inspectM (D.meanMaybe total_bedrooms)
     totalBedrooms     <- imputeM  total_bedrooms meanBeds
-    filterWhereM (isExpensive .&&. roomsPerHousehold .>=. 7 .&&. totalBedrooms .>=. 200)
+    filterM (isExpensive .&&. roomsPerHousehold .>=. 7 .&&. totalBedrooms .>=. 200)
 
 TIO.putStrLn $ D.toMarkdown $ D.take 5 pipelined
 ```
 
 `$(D.declareColumnsFromCsvFile path)` generates compile-time column bindings by reading the CSV header at splice time — no live dataframe needs to be in scope, unlike `$(D.declareColumns df)` which requires a bound frame.
 
-Inside the `do`-block, `<-` binds the typed `Expr` returned by each step; those expressions can be reused in later steps (e.g. `isExpensive` in the final `filterWhereM`) without any extra plumbing.
+Inside the `do`-block, `<-` binds the typed `Expr` returned by each step; those expressions can be reused in later steps (e.g. `isExpensive` in the final `filterM`) without any extra plumbing.
 
 **Extracting results alongside the final frame** — `runFrameM` returns a pair `(a, DataFrame)`:
 
@@ -397,7 +397,7 @@ The three exit functions:
 | `runFrameM  df block` | `(a, DataFrame)` | you need extracted values *and* the frame |
 | `evalFrameM df block` | `a` | you only need the extracted values |
 
-Available monadic operations: `deriveM`, `imputeM`, `filterWhereM`, `inspectM`, `renameM`.
+Available monadic operations: `deriveM`, `imputeM`, `filterM`, `inspectM`, `renameM`.
 
 ---
 
@@ -500,7 +500,7 @@ TIO.putStrLn $ D.toMarkdown (D.take 5 withIncomeCast)
 
 ### Streaming large files with DataFrame.Lazy
 
-All of the above reads the entire file into memory upfront. For datasets larger than available RAM, `DataFrame.Lazy` offers a pull-based streaming executor: operations build a logical plan tree and nothing is read from disk until `runDataFrame` is called. The optimizer pushes `filter` predicates down to the scan, so unneeded rows are discarded before any column is allocated.
+All of the above reads the entire file into memory upfront. For datasets larger than available RAM, `DataFrame.Lazy` offers a pull-based streaming executor: operations build a logical plan tree and nothing is read from disk until `run` is called. The optimizer pushes `filter` predicates down to the scan, so unneeded rows are discarded before any column is allocated.
 
 The Lazy path requires an explicit schema — there is no inference. Build one with `schemaType @T`:
 
@@ -533,7 +533,7 @@ lazyQuery =
         |> L.select ["longitude","latitude","median_house_value","ocean_proximity"]
         |> L.take 10
 
-lazyResult <- L.runDataFrame lazyQuery
+lazyResult <- L.run lazyQuery
 
 TIO.putStrLn $ D.toMarkdown lazyResult
 ```
@@ -548,7 +548,7 @@ Key API:
 | `L.fromDataFrame df` | lift an eager frame into the lazy plan |
 | `L.filter`, `L.select`, `L.derive` | lazy counterparts of the eager operations |
 | `L.take`, `L.sortBy`, `L.groupBy`, `L.join` | same semantics, deferred execution |
-| `L.runDataFrame plan` | execute the plan and materialise a `DataFrame` |
+| `L.run plan` | execute the plan and materialise a `DataFrame` |
 
 The optimizer automatically reorders `filter` before `select` and prunes columns that are not referenced downstream — columns excluded by `L.select` are never allocated at the scan level.
 
@@ -1083,6 +1083,7 @@ The trade-off is more explicit upfront ceremony (a TH splice, a freeze call, and
 
 ```haskell
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 
 $(DT.deriveSchemaFromCsvFile "Housing" "../data/housing.csv")
 ```
@@ -1132,7 +1133,7 @@ TIO.putStrLn $ D.toMarkdown (DT.thaw typedResult)
 ```haskell
 typedGrouped = thousing
     |> DT.groupBy @'["ocean_proximity"]
-    |> DT.aggregate (DT.as @"count" (DT.count (DT.col @"median_house_value")))
+    |> DT.aggregate (DT.as @"count" (DTF.count (DT.col @"median_house_value")))
 
 TIO.putStrLn $ D.toMarkdown (DT.thaw typedGrouped)
 ```

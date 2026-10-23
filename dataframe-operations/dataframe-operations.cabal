@@ -52,6 +52,7 @@ library
                         DataFrame.Typed.Apply
                         DataFrame.Typed.Expr
                         DataFrame.Typed.Expr.Extra
+                        DataFrame.Typed.Functions
                         DataFrame.Typed.Join
                         DataFrame.Typed.Operations
                         DataFrame.Typed.Sampling

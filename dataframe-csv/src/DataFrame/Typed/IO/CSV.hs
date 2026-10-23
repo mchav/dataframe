@@ -8,8 +8,10 @@ module DataFrame.Typed.IO.CSV (
     readCsvWithError,
     readTsv,
     readCsvWithOpts,
+    readSeparated,
     writeCsv,
     writeTsv,
+    writeSeparated,
 ) where
 
 import Control.Applicative ((<|>))
@@ -76,3 +78,14 @@ writeCsv path = CSV.writeCsv path . thaw
 -- | Write a typed DataFrame to a tab-separated file.
 writeTsv :: FilePath -> TypedDataFrame cols -> IO ()
 writeTsv path = CSV.writeTsv path . thaw
+
+-- | Read a character-separated file with custom options; throws on mismatch.
+readSeparated ::
+    forall cols.
+    (KnownSchema cols, RuntimeSchema cols) =>
+    ReadOptions -> FilePath -> IO (TypedDataFrame cols)
+readSeparated = readCsvWithOpts @cols
+
+-- | Write a typed DataFrame with the given separator.
+writeSeparated :: Char -> FilePath -> TypedDataFrame cols -> IO ()
+writeSeparated sep path = CSV.writeSeparated sep path . thaw

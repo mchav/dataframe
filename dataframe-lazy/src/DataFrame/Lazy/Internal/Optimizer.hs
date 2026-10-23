@@ -9,6 +9,7 @@ import qualified Data.Text as T
 import qualified DataFrame.Internal.Expression as E
 import DataFrame.Lazy.Internal.LogicalPlan
 import DataFrame.Lazy.Internal.PhysicalPlan
+import DataFrame.Operations.Permutation (sortOrderColumns)
 import DataFrame.Schema (Schema (..), elements)
 
 -- | Optimise a logical plan and lower it to a physical plan.
@@ -26,8 +27,8 @@ fuseFilters (Filter p1 (Filter p2 child)) =
 fuseFilters (Filter p child) = Filter p (fuseFilters child)
 fuseFilters (Project cols child) = Project cols (fuseFilters child)
 fuseFilters (Derive name expr child) = Derive name expr (fuseFilters child)
-fuseFilters (Join jt l r left right) =
-    Join jt l r (fuseFilters left) (fuseFilters right)
+fuseFilters (Join jt ks left right) =
+    Join jt ks (fuseFilters left) (fuseFilters right)
 fuseFilters (Aggregate keys aggs child) =
     Aggregate keys aggs (fuseFilters child)
 fuseFilters (Sort cols child) = Sort cols (fuseFilters child)
@@ -62,8 +63,8 @@ pushPredicates (Filter p (Project cols child))
 pushPredicates (Filter p child) = Filter p (pushPredicates child)
 pushPredicates (Project cols child) = Project cols (pushPredicates child)
 pushPredicates (Derive name expr child) = Derive name expr (pushPredicates child)
-pushPredicates (Join jt l r left right) =
-    Join jt l r (pushPredicates left) (pushPredicates right)
+pushPredicates (Join jt ks left right) =
+    Join jt ks (pushPredicates left) (pushPredicates right)
 pushPredicates (Aggregate keys aggs child) =
     Aggregate keys aggs (pushPredicates child)
 pushPredicates (Sort cols child) = Sort cols (pushPredicates child)
@@ -78,16 +79,18 @@ referencedCols (Filter p child) =
     fmap (S.union (S.fromList (E.getColumns p))) (referencedCols child)
 referencedCols (Derive _ expr child) =
     fmap (S.union (S.fromList (someExprCols expr))) (referencedCols child)
-referencedCols (Join _ l r left right) =
-    let keySet = S.fromList [l, r]
+referencedCols (Join _ ks left right) =
+    let keySet = S.fromList (map fst ks <> map snd ks)
         lRef = fmap (S.union keySet) (referencedCols left)
         rRef = fmap (S.union keySet) (referencedCols right)
      in S.union <$> lRef <*> rRef
 referencedCols (Aggregate keys aggs child) =
     let aggCols = S.fromList (keys <> concatMap (someExprCols . snd) aggs)
      in fmap (S.union aggCols) (referencedCols child)
-referencedCols (Sort cols child) =
-    fmap (S.union (S.fromList (fmap fst cols))) (referencedCols child)
+referencedCols (Sort ords child) =
+    fmap
+        (S.union (S.fromList (concatMap sortOrderColumns ords)))
+        (referencedCols child)
 referencedCols (Limit _ child) = referencedCols child
 referencedCols (SourceDF _) = Nothing
 
@@ -112,15 +115,18 @@ eliminateDeadColumns plan = go (referencedCols plan) plan
         Filter p (go (fmap (S.union (S.fromList (E.getColumns p))) needed) child)
     go _needed (Project cols child) =
         Project cols (go (Just (S.fromList cols)) child)
-    go needed (Join jt l r left right) =
-        let keySet = fmap (S.union (S.fromList [l, r])) needed
-         in Join jt l r (go keySet left) (go keySet right)
+    go needed (Join jt ks left right) =
+        let leftNeeded = fmap (S.union (S.fromList (map fst ks))) needed
+            rightNeeded = fmap (S.union (S.fromList (map snd ks))) needed
+         in Join jt ks (go leftNeeded left) (go rightNeeded right)
     go needed (Aggregate keys aggs child) =
         let aggCols =
                 fmap (S.union (S.fromList (keys <> concatMap (someExprCols . snd) aggs))) needed
          in Aggregate keys aggs (go aggCols child)
-    go needed (Sort cols child) =
-        Sort cols (go (fmap (S.union (S.fromList (fmap fst cols))) needed) child)
+    go needed (Sort ords child) =
+        Sort
+            ords
+            (go (fmap (S.union (S.fromList (concatMap sortOrderColumns ords))) needed) child)
     go needed (Limit n child) = Limit n (go needed child)
     go needed (Scan ds schema) =
         case needed of
@@ -170,17 +176,12 @@ toPhysical batchSz (Filter p child) =
     PhysicalFilter p (toPhysical batchSz child)
 toPhysical batchSz (Derive name expr child) =
     PhysicalDerive name expr (toPhysical batchSz child)
-toPhysical batchSz (Join jt l r left right) =
-    PhysicalHashJoin
-        jt
-        l
-        r
-        (toPhysical batchSz left)
-        (toPhysical batchSz right)
+toPhysical batchSz (Join jt ks left right) =
+    PhysicalHashJoin jt ks (toPhysical batchSz left) (toPhysical batchSz right)
 toPhysical batchSz (Aggregate keys aggs child) =
     PhysicalHashAggregate keys aggs (toPhysical batchSz child)
-toPhysical batchSz (Sort cols child) =
-    PhysicalSort cols (toPhysical batchSz child)
+toPhysical batchSz (Sort ords child) =
+    PhysicalSort ords (toPhysical batchSz child)
 toPhysical batchSz (Limit n child) =
     PhysicalLimit n (toPhysical batchSz child)
 toPhysical batchSz (SourceDF df) = PhysicalSourceDF batchSz df

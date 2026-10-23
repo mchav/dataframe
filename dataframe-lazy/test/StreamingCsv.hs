@@ -46,7 +46,7 @@ streamingPathReaderFillsWindow =
                     modifyIORef' calls (+ 1)
                     Csv.readSeparated opts windowPath
             df <-
-                L.runDataFrame
+                L.run
                     (L.scanCsvStreamingWith countingReader schema (T.pack path))
             assertEqual "all rows decoded" (rowCount, 1) (D.dataframeDimensions df)
             readIORef calls >>= assertEqual "one parser window" 1
@@ -73,7 +73,7 @@ streamingWindowBoundaryIsLossless =
                     modifyIORef' observations (observation :)
                     pure D.empty
             _ <-
-                L.runDataFrame
+                L.run
                     (L.scanCsvStreamingBytesWith observingReader schema (T.pack path))
             actual <- reverse <$> readIORef observations
             assertEqual
@@ -98,7 +98,7 @@ streamingQuotedNewlineSpansWindow =
                     modifyIORef' bodyLengths (BS.length body :)
                     pure D.empty
             _ <-
-                L.runDataFrame
+                L.run
                     (L.scanCsvStreamingBytesWith observingReader schema (T.pack path))
             actual <- reverse <$> readIORef bodyLengths
             assertEqual
@@ -121,7 +121,7 @@ streamingDefaultMatchesEager =
         withRawCsv input $ \path -> do
             let opts = Csv.schemaReadOptions schema
             eager <- Csv.readSeparated opts path
-            streamed <- L.runDataFrame (L.scanCsvStreaming schema (T.pack path))
+            streamed <- L.run (L.scanCsvStreaming schema (T.pack path))
             assertEqual "streaming bytes reader matches eager reader" eager streamed
 
 -- | A parser failure on the producer thread must fail the consumer.
@@ -134,7 +134,7 @@ streamingReaderFailurePropagates =
         withRawCsv input $ \path -> do
             result <-
                 try
-                    ( L.runDataFrame
+                    ( L.run
                         (L.scanCsvStreamingBytesWith failingReader schema (T.pack path))
                     )
             case result of
@@ -155,7 +155,7 @@ streamingKeepsTextPacked =
             schema = Schema $ M.fromList [("station", schemaType @T.Text)]
         withRawCsv input $ \path -> do
             df <-
-                L.runDataFrame
+                L.run
                     (L.scanCsvStreaming schema (T.pack path))
             case D.unsafeGetColumn "station" df of
                 PackedText{} -> pure ()

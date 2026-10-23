@@ -6,21 +6,25 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
--- | Type-safe lazy query pipelines with compile-time schema tracking.
+-- | Typed lazy queries with the same operations as "DataFrame.Typed".
 module DataFrame.Typed.Lazy (
-    -- * Core type
+    -- * Core types
     TypedLazyDataFrame,
+    TypedLazyGrouped,
+    TypedDataFrame,
 
     -- * Data sources
     scanCsv,
+    scanCsvWith,
     scanSeparated,
+    scanSeparatedWith,
     scanParquet,
     fromDataFrame,
-    fromTypedDataFrame,
 
     -- * Schema-preserving operations
     filter,
     take,
+    sortBy,
 
     -- * Schema-modifying operations
     derive,
@@ -28,24 +32,58 @@ module DataFrame.Typed.Lazy (
 
     -- * Aggregation
     groupBy,
+    as,
     aggregate,
 
     -- * Joins
+    JoinType (..),
+    join,
+    joinOn,
     innerJoin,
     leftJoin,
     rightJoin,
     fullOuterJoin,
 
-    -- * Sort
-    sortBy,
-
     -- * Execution
     run,
 
-    -- * Re-exports for pipeline construction
-    module DataFrame.Typed.Expr,
-    module DataFrame.Typed.Types,
-    SortOrder (..),
+    -- * Typed expressions (combinators live in "DataFrame.Typed.Functions")
+    TExpr (..),
+    TSortOrder (..),
+    col,
+    lit,
+    ifThenElse,
+    caseWhen,
+    orElse,
+    (.==.),
+    (./=.),
+    (.<.),
+    (.<=.),
+    (.>=.),
+    (.>.),
+    (.+.),
+    (.-.),
+    (.*.),
+    (./.),
+    (.^^.),
+    (.^.),
+    (.+),
+    (.-),
+    (.*),
+    (./),
+    (.^^),
+    (.^),
+    (.==),
+    (./=),
+    (.<),
+    (.<=),
+    (.>=),
+    (.>),
+    (.&&.),
+    (.||.),
+    (.&&),
+    (.||),
+    (|>),
 ) where
 
 import Data.Kind (Type)
@@ -54,15 +92,25 @@ import qualified Data.Text as T
 import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
 import Prelude hiding (filter, take)
 
+import DataFrame.Expression.Operators ((|>))
+import DataFrame.IO.CSV (CsvReader)
 import qualified DataFrame.Internal.Column as C
-import qualified DataFrame.Internal.Expression as E
 import DataFrame.Lazy.Internal.DataFrame (LazyDataFrame)
 import qualified DataFrame.Lazy.Internal.DataFrame as L
-import DataFrame.Lazy.Internal.LogicalPlan (SortOrder (..))
 import DataFrame.Operations.Join (JoinType (..))
-import DataFrame.Schema (Schema)
+import DataFrame.Schema (RuntimeSchema (..))
+import DataFrame.Typed.Aggregate (as)
 import DataFrame.Typed.Expr
 import DataFrame.Typed.Freeze (unsafeFreeze)
+import DataFrame.Typed.Join (
+    Fsts,
+    JoinKeys,
+    JoinOnSchema,
+    JoinSchema,
+    KnownJoinType (..),
+    SwapPairs,
+ )
+import DataFrame.Typed.Operations (AllKnownPairs (..), toUntypedSort)
 import DataFrame.Typed.Schema
 import DataFrame.Typed.Types
 
@@ -72,35 +120,38 @@ newtype TypedLazyDataFrame (cols :: [(Symbol, Type)]) = TLD {_unTLD :: LazyDataF
 instance Show (TypedLazyDataFrame cols) where
     show (TLD ldf) = "TypedLazyDataFrame { " ++ show ldf ++ " }"
 
--- | Scan a CSV file with a given schema.
+-- | Scan a CSV file; the column types come from @cols@.
 scanCsv ::
-    Schema ->
-    T.Text ->
-    TypedLazyDataFrame cols
-scanCsv schema path = TLD (L.scanCsv schema path)
+    forall cols. (RuntimeSchema cols) => T.Text -> TypedLazyDataFrame cols
+scanCsv path = TLD (L.scanCsv (runtimeSchema @cols) path)
 
--- | Scan a character-separated file with a given schema.
+-- | Like 'scanCsv' but with an explicit CSV reader.
+scanCsvWith ::
+    forall cols.
+    (RuntimeSchema cols) => CsvReader -> T.Text -> TypedLazyDataFrame cols
+scanCsvWith reader path = TLD (L.scanCsvWith reader (runtimeSchema @cols) path)
+
+-- | Scan a character-separated file; the column types come from @cols@.
 scanSeparated ::
-    Char ->
-    Schema ->
-    T.Text ->
-    TypedLazyDataFrame cols
-scanSeparated sep schema path = TLD (L.scanSeparated sep schema path)
+    forall cols. (RuntimeSchema cols) => Char -> T.Text -> TypedLazyDataFrame cols
+scanSeparated sep path = TLD (L.scanSeparated sep (runtimeSchema @cols) path)
 
--- | Scan a Parquet file, directory, or glob pattern with a given schema.
+-- | Like 'scanSeparated' but with an explicit CSV reader.
+scanSeparatedWith ::
+    forall cols.
+    (RuntimeSchema cols) =>
+    CsvReader -> Char -> T.Text -> TypedLazyDataFrame cols
+scanSeparatedWith reader sep path =
+    TLD (L.scanSeparatedWith reader sep (runtimeSchema @cols) path)
+
+-- | Scan a Parquet file, directory, or glob; the columns come from @cols@.
 scanParquet ::
-    Schema ->
-    T.Text ->
-    TypedLazyDataFrame cols
-scanParquet schema path = TLD (L.scanParquet schema path)
+    forall cols. (RuntimeSchema cols) => T.Text -> TypedLazyDataFrame cols
+scanParquet path = TLD (L.scanParquet (runtimeSchema @cols) path)
 
 -- | Lift an already-loaded eager 'TypedDataFrame' into a lazy plan.
 fromDataFrame :: TypedDataFrame cols -> TypedLazyDataFrame cols
 fromDataFrame (TDF df) = TLD (L.fromDataFrame df)
-
--- | Synonym for 'fromDataFrame'.
-fromTypedDataFrame :: TypedDataFrame cols -> TypedLazyDataFrame cols
-fromTypedDataFrame = fromDataFrame
 
 -- | Keep rows that satisfy the predicate.
 filter :: TExpr cols Bool -> TypedLazyDataFrame cols -> TypedLazyDataFrame cols
@@ -109,6 +160,11 @@ filter (TExpr expr) (TLD ldf) = TLD (L.filter expr ldf)
 -- | Retain at most @n@ rows.
 take :: Int -> TypedLazyDataFrame cols -> TypedLazyDataFrame cols
 take n (TLD ldf) = TLD (L.take n ldf)
+
+-- | Sort by the given typed orders, as the eager typed @sortBy@ does.
+sortBy ::
+    [TSortOrder cols] -> TypedLazyDataFrame cols -> TypedLazyDataFrame cols
+sortBy ords (TLD ldf) = TLD (L.sortBy (map toUntypedSort ords) ldf)
 
 -- | Add a computed column.
 derive ::
@@ -126,112 +182,86 @@ select ::
     (AllKnownSymbol names, AssertAllPresent names cols) =>
     TypedLazyDataFrame cols ->
     TypedLazyDataFrame (SubsetSchema names cols)
-select (TLD ldf) = TLD (L.select (DataFrame.Typed.Schema.symbolVals @names) ldf)
+select (TLD ldf) = TLD (L.select (symbolVals @names) ldf)
 
--- | A typed lazy grouped query.
-newtype TypedLazyGrouped (keys :: [Symbol]) (cols :: [(Symbol, Type)]) = TLG
-    { _unTLG :: ([T.Text], LazyDataFrame)
-    }
+-- | A typed lazy query grouped by @keys@, awaiting 'aggregate'.
+newtype TypedLazyGrouped (keys :: [Symbol]) (cols :: [(Symbol, Type)])
+    = TLG L.LazyGroupedDataFrame
 
--- | Group by key columns.
+-- | Group by key columns; finish with 'aggregate'.
 groupBy ::
     forall (keys :: [Symbol]) cols.
     (AllKnownSymbol keys, AssertAllPresent keys cols) =>
     TypedLazyDataFrame cols ->
     TypedLazyGrouped keys cols
-groupBy (TLD ldf) = TLG (DataFrame.Typed.Schema.symbolVals @keys, ldf)
+groupBy (TLD ldf) = TLG (L.groupBy (symbolVals @keys) ldf)
 
--- | Aggregate a grouped lazy query.
+-- | Aggregate each group; build the outputs with 'as', as in the eager API.
 aggregate ::
     forall keys cols aggs.
-    TAgg keys cols aggs ->
+    (TAgg keys cols '[] -> TAgg keys cols aggs) ->
     TypedLazyGrouped keys cols ->
     TypedLazyDataFrame (Append (GroupKeyColumns keys cols) (Reverse aggs))
-aggregate tagg (TLG (keys, ldf)) =
-    TLD (L.groupBy keys (aggToNamedExprs tagg) ldf)
+aggregate build (TLG grouped) =
+    TLD (L.aggregate (taggToNamedExprs (build TAggNil)) grouped)
 
--- | Typed inner join on a single key column present in both schemas.
-innerJoin ::
-    forall (key :: Symbol) left right.
-    ( KnownSymbol key
-    , AssertAllPresent '[key] left
-    , AssertAllPresent '[key] right
-    , AssertKeyTypesMatch '[key] left right
-    ) =>
+-- | Typed lazy join: @join \@'INNER \@'["key"] l r@.
+join ::
+    forall (jt :: JoinType) (keys :: [Symbol]) left right.
+    (KnownJoinType jt, JoinKeys keys left right) =>
     TypedLazyDataFrame left ->
     TypedLazyDataFrame right ->
-    TypedLazyDataFrame (InnerJoinSchema '[key] left right)
-innerJoin = joinOn @key INNER
+    TypedLazyDataFrame (JoinSchema jt keys left right)
+join (TLD l) (TLD r) = TLD (L.join (joinTypeVal @jt) (symbolVals @keys) l r)
 
--- | Typed left join. The right table's non-key columns become @Maybe@.
-leftJoin ::
-    forall (key :: Symbol) left right.
-    ( KnownSymbol key
-    , AssertAllPresent '[key] left
-    , AssertAllPresent '[key] right
-    , AssertKeyTypesMatch '[key] left right
-    ) =>
-    TypedLazyDataFrame left ->
-    TypedLazyDataFrame right ->
-    TypedLazyDataFrame (LeftJoinSchema '[key] left right)
-leftJoin = joinOn @key LEFT
-
--- | Typed right join. The left table's non-key columns become @Maybe@.
-rightJoin ::
-    forall (key :: Symbol) left right.
-    ( KnownSymbol key
-    , AssertAllPresent '[key] left
-    , AssertAllPresent '[key] right
-    , AssertKeyTypesMatch '[key] left right
-    ) =>
-    TypedLazyDataFrame left ->
-    TypedLazyDataFrame right ->
-    TypedLazyDataFrame (RightJoinSchema '[key] left right)
-rightJoin = joinOn @key RIGHT
-
--- | Typed full outer join. Non-key columns from both tables become @Maybe@.
-fullOuterJoin ::
-    forall (key :: Symbol) left right.
-    ( KnownSymbol key
-    , AssertAllPresent '[key] left
-    , AssertAllPresent '[key] right
-    , AssertKeyTypesMatch '[key] left right
-    ) =>
-    TypedLazyDataFrame left ->
-    TypedLazyDataFrame right ->
-    TypedLazyDataFrame (FullOuterJoinSchema '[key] left right)
-fullOuterJoin = joinOn @key FULL_OUTER
-
--- | Runtime delegation shared by the typed joins.
+-- | Join on @(leftKey, rightKey)@ pairs; the result keeps the left names.
 joinOn ::
-    forall (key :: Symbol) left right out.
-    (KnownSymbol key) =>
-    JoinType ->
+    forall (jt :: JoinType) (pairs :: [(Symbol, Symbol)]) left right.
+    ( KnownJoinType jt
+    , AllKnownPairs pairs
+    , JoinKeys (Fsts pairs) left (RenameManyInSchema (SwapPairs pairs) right)
+    ) =>
     TypedLazyDataFrame left ->
     TypedLazyDataFrame right ->
-    TypedLazyDataFrame out
-joinOn jt (TLD left) (TLD right) =
-    TLD (L.join jt keyName keyName left right)
-  where
-    keyName = T.pack (symbolVal (Proxy @key))
+    TypedLazyDataFrame (JoinOnSchema jt pairs left right)
+joinOn (TLD l) (TLD r) = TLD (L.joinOn (joinTypeVal @jt) (pairVals @pairs) l r)
 
--- | Sort the result by column name and direction.
-sortBy ::
-    [(T.Text, SortOrder)] ->
-    TypedLazyDataFrame cols ->
-    TypedLazyDataFrame cols
-sortBy cols (TLD ldf) = TLD (L.sortBy cols ldf)
+-- | Typed inner join on one or more key columns.
+innerJoin ::
+    forall (keys :: [Symbol]) left right.
+    (JoinKeys keys left right) =>
+    TypedLazyDataFrame left ->
+    TypedLazyDataFrame right ->
+    TypedLazyDataFrame (InnerJoinSchema keys left right)
+innerJoin = join @'INNER @keys
+
+-- | Typed left join; the right side's non-key columns become @Maybe@.
+leftJoin ::
+    forall (keys :: [Symbol]) left right.
+    (JoinKeys keys left right) =>
+    TypedLazyDataFrame left ->
+    TypedLazyDataFrame right ->
+    TypedLazyDataFrame (LeftJoinSchema keys left right)
+leftJoin = join @'LEFT @keys
+
+-- | Typed right join; the left side's non-key columns become @Maybe@.
+rightJoin ::
+    forall (keys :: [Symbol]) left right.
+    (JoinKeys keys left right) =>
+    TypedLazyDataFrame left ->
+    TypedLazyDataFrame right ->
+    TypedLazyDataFrame (RightJoinSchema keys left right)
+rightJoin = join @'RIGHT @keys
+
+-- | Typed full outer join; non-key columns on both sides become @Maybe@.
+fullOuterJoin ::
+    forall (keys :: [Symbol]) left right.
+    (JoinKeys keys left right) =>
+    TypedLazyDataFrame left ->
+    TypedLazyDataFrame right ->
+    TypedLazyDataFrame (FullOuterJoinSchema keys left right)
+fullOuterJoin = join @'FULL_OUTER @keys
 
 -- | Execute the lazy query and return a typed DataFrame.
-run ::
-    forall cols.
-    (KnownSchema cols) =>
-    TypedLazyDataFrame cols ->
-    IO (TypedDataFrame cols)
-run (TLD ldf) = unsafeFreeze <$> L.runDataFrame ldf
-
--- | Convert TAgg to untyped named expressions for the lazy groupBy.
-aggToNamedExprs :: TAgg keys cols aggs -> [(T.Text, E.SomeExpr)]
-aggToNamedExprs TAggNil = []
-aggToNamedExprs (TAggCons name (TExpr expr) rest) =
-    (name, E.SomeExpr expr) : aggToNamedExprs rest
+run :: TypedLazyDataFrame cols -> IO (TypedDataFrame cols)
+run (TLD ldf) = unsafeFreeze <$> L.run ldf

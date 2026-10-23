@@ -193,7 +193,7 @@ testDataFrameOperations = TestCase $ withTestDb $ do
     df <- fromPersistent @TestUser []
     liftIO $ do
         -- Filter operation
-        let youngUsers = DF.filter test_user_age (< 30) df
+        let youngUsers = DF.filterBy (< 30) test_user_age df
         assertEqual "Young users count" 2 (nRows youngUsers)
 
         -- Sort operation

@@ -198,7 +198,6 @@ D.columnNames (D.derive "prediction" (predict model) sales)
 > <!-- scripths:mime text/plain -->
 > <interactive>:87:47: error: [GHC-88464]
 >     Variable not in scope: model
->     Suggested fix: Perhaps use ‘T.mode’ (imported from DataFrame.Typed)
 > 
 > <interactive>:87:54: error: [GHC-88464]
 >     Variable not in scope: sales :: D.DataFrame

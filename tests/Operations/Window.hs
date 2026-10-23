@@ -33,7 +33,7 @@ globalFilterTest =
             "Global median filter removes global outliers"
             7
             ( purchases
-                & D.filterWhere
+                & D.filter
                     (F.col @Double "amount" .<=. F.median (F.col @Double "amount") * 10)
                 & D.nRows
             )
@@ -50,7 +50,7 @@ overMedianFilterTest =
   where
     actual =
         purchases
-            & D.filterWhere
+            & D.filter
                 ( F.col @Double "amount"
                     .<=. F.over ["country"] (F.median (F.col @Double "amount"))
                     * 10
@@ -76,13 +76,13 @@ globalVsOverDifferentResults =
   where
     globalResult =
         purchases
-            & D.filterWhere
+            & D.filter
                 (F.col @Double "amount" .<=. F.median (F.col @Double "amount") * 3)
             & D.sortBy [D.Asc (F.col @T.Text "country"), D.Asc (F.col @Double "amount")]
 
     overResult =
         purchases
-            & D.filterWhere
+            & D.filter
                 ( F.col @Double "amount"
                     .<=. F.over ["country"] (F.median (F.col @Double "amount"))
                     * 3
@@ -198,7 +198,7 @@ blogPostExampleGlobal =
     discount = F.col @Double "discount"
     actual =
         purchases
-            & D.filterWhere (amount .<=. F.median amount * 10)
+            & D.filter (amount .<=. F.median amount * 10)
             & D.groupBy ["country"]
             & D.aggregate [F.sum (amount - discount) `as` "total"]
             & D.sortBy [D.Asc (F.col @T.Text "country")]
@@ -222,7 +222,7 @@ blogPostExampleOver =
     discount = F.col @Double "discount"
     actual =
         purchases
-            & D.filterWhere (amount .<=. F.over ["country"] (F.median amount) * 10)
+            & D.filter (amount .<=. F.over ["country"] (F.median amount) * 10)
             & D.groupBy ["country"]
             & D.aggregate [F.sum (amount - discount) `as` "total"]
             & D.sortBy [D.Asc (F.col @T.Text "country")]

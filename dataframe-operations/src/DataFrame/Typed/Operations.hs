@@ -11,7 +11,6 @@
 
 module DataFrame.Typed.Operations (
     -- * Schema-preserving operations
-    filterWhere,
     filter,
     filterBy,
     filterAllJust,
@@ -19,6 +18,7 @@ module DataFrame.Typed.Operations (
     filterNothing,
     filterAllNothing,
     sortBy,
+    topBy,
     take,
     takeLast,
     drop,
@@ -31,6 +31,7 @@ module DataFrame.Typed.Operations (
 
     -- * Schema-modifying operations
     derive,
+    deriveMany,
     impute,
     select,
     exclude,
@@ -47,6 +48,11 @@ module DataFrame.Typed.Operations (
     valueCounts,
     valueProportions,
 
+    -- * Construction and folds
+    empty,
+    null,
+    fold,
+
     -- * Metadata
     dimensions,
     nRows,
@@ -61,14 +67,19 @@ module DataFrame.Typed.Operations (
     intersect,
     difference,
     symmetricDifference,
+
+    -- * Helpers
+    AllKnownPairs (..),
+    toUntypedSort,
 ) where
 
+import qualified Data.List as L
 import Data.Proxy (Proxy (..))
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
 import System.Random (RandomGen)
-import Prelude hiding (drop, filter, take)
+import Prelude hiding (drop, filter, null, take)
 
 import qualified DataFrame.Functions as DF
 import DataFrame.Internal.Column (Columnable)
@@ -84,19 +95,19 @@ import qualified DataFrame.Operations.Transformations as D
 
 import DataFrame.Typed.Freeze (unsafeFreeze)
 import DataFrame.Typed.Schema
-import DataFrame.Typed.Types (TExpr (..), TSortOrder (..), TypedDataFrame (..))
+import DataFrame.Typed.Types (
+    TAgg (..),
+    TExpr (..),
+    TSortOrder (..),
+    TypedDataFrame (..),
+    taggToNamedExprs,
+ )
 
 -- | Filter rows where a boolean expression evaluates to True.
-filterWhere :: TExpr cols Bool -> TypedDataFrame cols -> TypedDataFrame cols
-filterWhere (TExpr expr) (TDF df) = TDF (D.filterWhere expr df)
+filter :: TExpr cols Bool -> TypedDataFrame cols -> TypedDataFrame cols
+filter (TExpr expr) (TDF df) = TDF (D.filter expr df)
 
 -- | Filter rows by applying a predicate to a typed expression.
-filter ::
-    (Columnable a) =>
-    TExpr cols a -> (a -> Bool) -> TypedDataFrame cols -> TypedDataFrame cols
-filter (TExpr expr) pred' (TDF df) = TDF (D.filter expr pred' df)
-
--- | Filter rows by a predicate on a column expression (flipped argument order).
 filterBy ::
     (Columnable a) =>
     (a -> Bool) -> TExpr cols a -> TypedDataFrame cols -> TypedDataFrame cols
@@ -135,10 +146,16 @@ filterAllNothing (TDF df) = TDF (D.filterAllNothing df)
 -- | Sort by the given typed sort orders, validated against the schema.
 sortBy :: [TSortOrder cols] -> TypedDataFrame cols -> TypedDataFrame cols
 sortBy ords (TDF df) = TDF (D.sortBy (map toUntypedSort ords) df)
-  where
-    toUntypedSort :: TSortOrder cols -> D.SortOrder
-    toUntypedSort (Asc (TExpr e)) = D.Asc e
-    toUntypedSort (Desc (TExpr e)) = D.Desc e
+
+-- | Rows @[offset, offset + count)@ of the frame sorted by the given orders.
+topBy ::
+    Int -> Int -> [TSortOrder cols] -> TypedDataFrame cols -> TypedDataFrame cols
+topBy offset count ords (TDF df) =
+    TDF (D.topBy offset count (map toUntypedSort ords) df)
+
+toUntypedSort :: TSortOrder cols -> D.SortOrder
+toUntypedSort (Asc (TExpr e)) = D.Asc e
+toUntypedSort (Desc (TExpr e)) = D.Desc e
 
 -- | Take the first @n@ rows.
 take :: Int -> TypedDataFrame cols -> TypedDataFrame cols
@@ -190,6 +207,16 @@ derive ::
 derive (TExpr expr) (TDF df) = unsafeFreeze (D.derive colName expr df)
   where
     colName = T.pack (symbolVal (Proxy @name))
+
+-- | Add several columns at once; build them with 'DataFrame.Typed.as'.
+deriveMany ::
+    forall new cols.
+    (AssertAllAbsent (Reverse new) cols) =>
+    (TAgg '[] cols '[] -> TAgg '[] cols new) ->
+    TypedDataFrame cols ->
+    TypedDataFrame (Append cols (Reverse new))
+deriveMany build (TDF df) =
+    unsafeFreeze (D.deriveMany (taggToNamedExprs (build TAggNil)) df)
 
 impute ::
     forall name a cols.
@@ -335,6 +362,22 @@ difference (TDF a) (TDF b) = TDF (DS.difference a b)
 symmetricDifference ::
     TypedDataFrame cols -> TypedDataFrame cols -> TypedDataFrame cols
 symmetricDifference (TDF a) (TDF b) = TDF (DS.symmetricDifference a b)
+
+-- | The frame with no rows and no columns.
+empty :: TypedDataFrame '[]
+empty = TDF D.empty
+
+-- | True when the frame has no rows or no columns.
+null :: TypedDataFrame cols -> Bool
+null (TDF df) = D.null df
+
+-- | Thread the frame through a schema-preserving step for each element.
+fold ::
+    (a -> TypedDataFrame cols -> TypedDataFrame cols) ->
+    [a] ->
+    TypedDataFrame cols ->
+    TypedDataFrame cols
+fold f xs df = L.foldl' (flip f) df xs
 
 dimensions :: TypedDataFrame cols -> (Int, Int)
 dimensions (TDF df) = D.dimensions df

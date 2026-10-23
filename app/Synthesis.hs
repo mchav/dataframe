@@ -13,6 +13,7 @@ import DataFrame.DecisionTree
 import DataFrame.Expression.Operators
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 import System.Random
 
 $( DT.deriveSchemaFromCsvFileWith
@@ -106,9 +107,9 @@ clean ::
         )
 clean tdf =
     tdf
-        |> DT.replaceColumn @"Ticket" (DT.nullLift (T.filter isAlpha) (DT.col @"Ticket"))
-        |> DT.replaceColumn @"Name" (DT.nullLift extractTitle (DT.col @"Name"))
-        |> DT.replaceColumn @"Cabin" (DT.nullLift (T.take 1) (DT.col @"Cabin"))
+        |> DT.replaceColumn @"Ticket" (DTF.nullLift (T.filter isAlpha) (DT.col @"Ticket"))
+        |> DT.replaceColumn @"Name" (DTF.nullLift extractTitle (DT.col @"Name"))
+        |> DT.replaceColumn @"Cabin" (DTF.nullLift (T.take 1) (DT.col @"Cabin"))
         |> DT.renameMany
             @'[ '("Name", "title")
               , '("Cabin", "cabin_prefix")
@@ -133,7 +134,7 @@ computeAccuracy df =
                     df |> D.select ["Survived", "prediction"]
         survived = DT.col @"Survived"
         predCol = DT.col @"prediction"
-        count expr = fromIntegral (DT.nRows (DT.filterWhere expr tdf))
+        count expr = fromIntegral (DT.nRows (DT.filter expr tdf))
         tp = count ((survived DT..==. DT.lit 1) DT..&&. (predCol DT..==. DT.lit 1))
         tn = count ((survived DT..==. DT.lit 0) DT..&&. (predCol DT..==. DT.lit 0))
         fp = count ((survived DT..==. DT.lit 0) DT..&&. (predCol DT..==. DT.lit 1))

@@ -13,7 +13,6 @@ import qualified DataFrame.Functions as F
 import qualified DataFrame.IO.CSV as Csv
 import qualified DataFrame.Internal.Column as DI
 import qualified DataFrame.Internal.Expression as E
-import DataFrame.Lazy (SortOrder (Descending))
 import qualified DataFrame.Lazy as L
 import qualified DataFrame.Operations.Aggregation as Agg
 import DataFrame.Operations.Join (JoinType (LEFT))
@@ -99,10 +98,11 @@ joinPipelineParity =
                 let customersQ = L.scanCsv customersSchema (T.pack customersPath)
                 lazy <-
                     L.scanCsv ordersSchema (T.pack ordersPath)
-                        |> (\o -> L.join LEFT "customer_id" "customer_id" o customersQ)
-                        |> L.groupBy ["region", "plan"] aggs
-                        |> L.sortBy [("revenue", Descending)]
-                        |> L.runDataFrame
+                        |> (\o -> L.join LEFT ["customer_id"] o customersQ)
+                        |> L.groupBy ["region", "plan"]
+                        |> L.aggregate aggs
+                        |> L.sortBy [L.Desc (E.Col @Double "revenue")]
+                        |> L.run
                 assertEqual
                     "join pipeline lazy == eager"
                     (show eager)
@@ -125,9 +125,10 @@ groupByPipelineParity =
                             Agg.groupBy ["customer_id"] ordersDf
             lazy <-
                 L.scanCsv ordersSchema (T.pack ordersPath)
-                    |> L.groupBy ["customer_id"] aggs
-                    |> L.sortBy [("total", Descending)]
-                    |> L.runDataFrame
+                    |> L.groupBy ["customer_id"]
+                    |> L.aggregate aggs
+                    |> L.sortBy [L.Desc (E.Col @Double "total")]
+                    |> L.run
             assertEqual
                 "groupBy pipeline lazy == eager"
                 (show eager)
@@ -150,9 +151,10 @@ streamingMeanParity =
                     (L.scanCsvStreamingWith Csv.readSeparated ordersSchema (T.pack csvPath))
                         { L.batchSize = 2
                         }
-                        |> L.groupBy ["customer_id"] aggs
-                        |> L.sortBy [("customer_id", Descending)]
-            actual <- L.runDataFrame query
+                        |> L.groupBy ["customer_id"]
+                        |> L.aggregate aggs
+                        |> L.sortBy [L.Desc (E.Col @Int "customer_id")]
+            actual <- L.run query
             let expected =
                     Perm.sortBy [Perm.Desc (E.Col @Int "customer_id")] $
                         Agg.aggregate aggs $
@@ -174,5 +176,45 @@ streamingMeanParity =
             , ("discount", DI.fromList (replicate 12 (0 :: Double)))
             ]
 
+-- | Streaming (unbounded) probe side through the streaming hash join.
+streamingJoinParity :: Test
+streamingJoinParity =
+    TestCase $
+        withCsv (ordersFrame 5_000) $ \ordersPath ->
+            withCsv (customersFrame 257) $ \customersPath -> do
+                ordersDf <- Csv.readCsvWithSchema ordersSchema ordersPath
+                customersDf <- Csv.readCsvWithSchema customersSchema customersPath
+                let byOrder = Perm.sortBy [Perm.Asc (E.Col @Int "order_id")]
+                    orders =
+                        (L.scanCsvStreaming ordersSchema (T.pack ordersPath))
+                            { L.batchSize = 512
+                            }
+                    renamedCustomers = D.rename "customer_id" "cid" customersDf
+                    check lbl eager lazy = do
+                        actual <- L.run lazy
+                        assertEqual lbl (show (byOrder eager)) (show (byOrder actual))
+                check
+                    "streaming inner join"
+                    (Join.innerJoin ["customer_id"] ordersDf customersDf)
+                    (L.innerJoin ["customer_id"] orders (L.fromDataFrame customersDf))
+                check
+                    "streaming left join"
+                    (Join.leftJoin ["customer_id"] ordersDf customersDf)
+                    (L.leftJoin ["customer_id"] orders (L.fromDataFrame customersDf))
+                check
+                    "streaming joinOn"
+                    (Join.joinOn LEFT [("customer_id", "cid")] ordersDf renamedCustomers)
+                    ( L.joinOn
+                        LEFT
+                        [("customer_id", "cid")]
+                        orders
+                        (L.fromDataFrame renamedCustomers)
+                    )
+
 tests :: [Test]
-tests = [joinPipelineParity, groupByPipelineParity, streamingMeanParity]
+tests =
+    [ joinPipelineParity
+    , groupByPipelineParity
+    , streamingMeanParity
+    , streamingJoinParity
+    ]

@@ -9,6 +9,7 @@
 module DataFrame.Operations.Permutation (
     -- * Sorting
     SortOrder (..),
+    sortOrderColumns,
     sortBy,
     topBy,
 
@@ -75,6 +76,12 @@ instance Eq SortOrder where
     (==) (Desc _) (Desc _) = True
     (==) _ _ = False
 
+instance Show SortOrder where
+    showsPrec d (Asc e) = showParen (d > 10) (showString "Asc " . showsPrec 11 e)
+    showsPrec d (Desc e) =
+        showParen (d > 10) (showString "Desc " . showsPrec 11 e)
+
+-- | Columns a sort order reads.
 sortOrderColumns :: SortOrder -> [T.Text]
 sortOrderColumns (Asc e) = getColumns e
 sortOrderColumns (Desc e) = getColumns e

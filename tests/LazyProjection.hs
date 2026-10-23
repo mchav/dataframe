@@ -43,7 +43,7 @@ twoCols =
 -- | The scan keeps only the schema's columns, whatever their header position.
 scanProjects :: Test
 scanProjects = TestLabel "scan_projects" $ TestCase $ withCsv ',' $ \csvPath -> do
-    df <- L.runDataFrame (L.scanCsv twoCols (T.pack csvPath))
+    df <- L.run (L.scanCsv twoCols (T.pack csvPath))
     assertEqual "dims" (2, 2) (D.dimensions df)
     assertEqual "columns" ["dob", "id"] (D.columnNames df)
 
@@ -52,7 +52,7 @@ scanProjectsWithFastReader :: Test
 scanProjectsWithFastReader =
     TestLabel "scan_projects_fast_reader" $ TestCase $ withCsv ',' $ \csvPath -> do
         df <-
-            L.runDataFrame
+            L.run
                 (L.scanCsvWith Fast.fastReadCsvWithOpts twoCols (T.pack csvPath))
         assertEqual "dims" (2, 2) (D.dimensions df)
         assertEqual "columns" ["dob", "id"] (D.columnNames df)
@@ -60,9 +60,9 @@ scanProjectsWithFastReader =
 -- | Both readers must agree on what a scan produces.
 readersAgree :: Test
 readersAgree = TestLabel "scan_readers_agree" $ TestCase $ withCsv ',' $ \csvPath -> do
-    slow <- L.runDataFrame (L.scanCsv twoCols (T.pack csvPath))
+    slow <- L.run (L.scanCsv twoCols (T.pack csvPath))
     fast <-
-        L.runDataFrame (L.scanCsvWith Fast.fastReadCsvWithOpts twoCols (T.pack csvPath))
+        L.run (L.scanCsvWith Fast.fastReadCsvWithOpts twoCols (T.pack csvPath))
     assertEqual "same frame" slow fast
 
 -- | scanSeparated must honour its separator, not always split on commas.
@@ -70,7 +70,7 @@ scanHonoursSeparator :: Test
 scanHonoursSeparator =
     TestLabel "scan_honours_separator" $ TestCase $ withCsv ';' $ \csvPath -> do
         -- With the separator ignored, the schema's columns are not found.
-        df <- L.runDataFrame (L.scanSeparated ';' twoCols (T.pack csvPath))
+        df <- L.run (L.scanSeparated ';' twoCols (T.pack csvPath))
         assertEqual "dims" (2, 2) (D.dimensions df)
         assertEqual "columns" ["dob", "id"] (D.columnNames df)
 
@@ -80,7 +80,7 @@ scanMissingColumn = TestLabel "scan_missing_column" $ TestCase $ withCsv ',' $ \
     let bogus = Schema $ M.fromList [("nope", schemaType @Int)]
     r <-
         try
-            (L.runDataFrame (L.scanCsv bogus (T.pack csvPath)) >>= evaluate . forceDataFrame)
+            (L.run (L.scanCsv bogus (T.pack csvPath)) >>= evaluate . forceDataFrame)
     case r of
         Left (e :: SomeException) ->
             assertBool

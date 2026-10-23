@@ -21,13 +21,13 @@ import DataFrame.Lazy.Internal.Executor (execute)
 import DataFrame.Lazy.Internal.LogicalPlan (
     DataSource (..),
     LogicalPlan (..),
-    SortOrder (..),
  )
 import qualified DataFrame.Lazy.Internal.Optimizer as Opt
-import DataFrame.Operations.Join (JoinType)
+import DataFrame.Operations.Join (JoinType (..))
+import DataFrame.Operations.Permutation (SortOrder)
 import DataFrame.Schema (Schema)
 
--- | A lazy query: a 'LogicalPlan' whose execution waits for 'runDataFrame'.
+-- | A lazy query: a 'LogicalPlan' whose execution waits for 'run'.
 data LazyDataFrame = LazyDataFrame
     { plan :: LogicalPlan
     , batchSize :: Int
@@ -39,8 +39,8 @@ instance Show LazyDataFrame where
             <> (show (batchSize ldf) <> (", plan = " <> (show (plan ldf) <> " }")))
 
 -- | Optimise and stream-execute the lazy query into a 'D.DataFrame'.
-runDataFrame :: LazyDataFrame -> IO D.DataFrame
-runDataFrame ldf = execute (Opt.optimize (batchSize ldf) (plan ldf))
+run :: LazyDataFrame -> IO D.DataFrame
+run ldf = execute (Opt.optimize (batchSize ldf) (plan ldf))
 
 -- | Lift an already-loaded eager 'D.DataFrame' into the lazy plan.
 fromDataFrame :: D.DataFrame -> LazyDataFrame
@@ -113,37 +113,55 @@ select cols ldf = ldf{plan = Project cols (plan ldf)}
 filter :: E.Expr Bool -> LazyDataFrame -> LazyDataFrame
 filter cond ldf = ldf{plan = Filter cond (plan ldf)}
 
--- | Join two lazy queries on the given key columns.
-join ::
+-- | Join two lazy queries on key columns shared by name, like eager @join@.
+join :: JoinType -> [T.Text] -> LazyDataFrame -> LazyDataFrame -> LazyDataFrame
+join jt keys = joinOn jt [(k, k) | k <- keys]
+
+-- | Join on @(leftKey, rightKey)@ pairs; the result keeps the left names.
+joinOn ::
     JoinType ->
-    -- | Left join key column name
-    T.Text ->
-    -- | Right join key column name
-    T.Text ->
-    -- | Left sub-query
+    [(T.Text, T.Text)] ->
     LazyDataFrame ->
-    -- | Right sub-query
     LazyDataFrame ->
     LazyDataFrame
-join jt leftKey rightKey left right =
+joinOn jt keyPairs left right =
     LazyDataFrame
-        { plan = Join jt leftKey rightKey (plan left) (plan right)
+        { plan = Join jt keyPairs (plan left) (plan right)
         , batchSize = batchSize left
         }
 
--- | Group by a set of columns and compute aggregate expressions.
-groupBy ::
-    -- | Group-by key columns
-    [T.Text] ->
-    -- | @[(outputName, aggregateExpr)]@
-    [(T.Text, E.SomeExpr)] ->
-    LazyDataFrame ->
-    LazyDataFrame
-groupBy keys aggs ldf = ldf{plan = Aggregate keys aggs (plan ldf)}
+-- | Inner join on the given key columns.
+innerJoin :: [T.Text] -> LazyDataFrame -> LazyDataFrame -> LazyDataFrame
+innerJoin = join INNER
 
--- | Sort the result by the given @(column, direction)@ pairs.
-sortBy :: [(T.Text, SortOrder)] -> LazyDataFrame -> LazyDataFrame
-sortBy cols ldf = ldf{plan = Sort cols (plan ldf)}
+-- | Left join, keeping every row of the left query.
+leftJoin :: [T.Text] -> LazyDataFrame -> LazyDataFrame -> LazyDataFrame
+leftJoin = join LEFT
+
+-- | Right join, keeping every row of the right query.
+rightJoin :: [T.Text] -> LazyDataFrame -> LazyDataFrame -> LazyDataFrame
+rightJoin = join RIGHT
+
+-- | Full outer join, keeping every row of both queries.
+fullOuterJoin :: [T.Text] -> LazyDataFrame -> LazyDataFrame -> LazyDataFrame
+fullOuterJoin = join FULL_OUTER
+
+-- | A lazy query grouped by key columns, awaiting 'aggregate'.
+data LazyGroupedDataFrame = LazyGroupedDataFrame [T.Text] LazyDataFrame
+    deriving (Show)
+
+-- | Group by key columns; finish with 'aggregate', as in the eager API.
+groupBy :: [T.Text] -> LazyDataFrame -> LazyGroupedDataFrame
+groupBy = LazyGroupedDataFrame
+
+-- | Compute @[(outputName, aggregateExpr)]@ for each group.
+aggregate :: [E.NamedExpr] -> LazyGroupedDataFrame -> LazyDataFrame
+aggregate aggs (LazyGroupedDataFrame keys ldf) =
+    ldf{plan = Aggregate keys aggs (plan ldf)}
+
+-- | Sort by the given orders, as the eager @sortBy@ does.
+sortBy :: [SortOrder] -> LazyDataFrame -> LazyDataFrame
+sortBy ords ldf = ldf{plan = Sort ords (plan ldf)}
 
 -- | Retain at most @n@ rows.
 take :: Int -> LazyDataFrame -> LazyDataFrame

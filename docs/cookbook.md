@@ -21,14 +21,14 @@ The `:declareColumns` command makes column names available as variables in your 
 
 ## Filtering Data
 
-One of the most fundamental operations in data analysis is filtering - selecting rows that meet certain criteria. In Haskell's DataFrame library, we use the `filterWhere` function combined with comparison operators.
+One of the most fundamental operations in data analysis is filtering - selecting rows that meet certain criteria. In Haskell's DataFrame library, we use the `filter` function combined with comparison operators.
 
 ### Basic Comparisons
 
-The `filterWhere` function takes a boolean expression and returns only the rows where that expression evaluates to true. For example, to find rows where a column equals a specific value, we use the `.==.` operator (same-type, non-nullable) or `.==` (nullable-aware):
+The `filter` function takes a boolean expression and returns only the rows where that expression evaluates to true. For example, to find rows where a column equals a specific value, we use the `.==.` operator (same-type, non-nullable) or `.==` (nullable-aware):
 
 ```haskell
-df |> D.filterWhere (columnName .==. value)
+df |> D.filter (columnName .==. value)
 ```
 
 The pipe operator `|>` allows us to chain operations in a readable left-to-right style, similar to Unix pipes.
@@ -42,7 +42,7 @@ Query all columns for a city with the ID 1661.
 ### Solution
 
 ```haskell
-dataframe> df |> D.filterWhere (id .==. 1661)
+dataframe> df |> D.filter (id .==. 1661)
 -----------------------------------------------------
   id  |  name  | country_code | district | population
 ------|--------|--------------|----------|-----------
@@ -60,7 +60,7 @@ Query all columns of every Japanese city. The `country_code` for Japan is "JPN".
 ### Solution
 
 ```haskell
-dataframe> df |> D.filterWhere (country_code .==. "JPN")
+dataframe> df |> D.filter (country_code .==. "JPN")
 --------------------------------------------------------
   id  |   name   | country_code | district  | population
 ------|----------|--------------|-----------|-----------
@@ -84,7 +84,7 @@ Often you'll need to filter on multiple conditions simultaneously. You can combi
 For example, to find cities with large populations in a specific country:
 
 ```haskell
-df |> D.filterWhere ((population .>. 100000) .&&. (country_code .==. "USA"))
+df |> D.filter ((population .>. 100000) .&&. (country_code .==. "USA"))
 ```
 
 **Exercise 3: Basic filtering (cont)**
@@ -101,7 +101,7 @@ Query all columns for all American cities in city dataframe with:
 ```haskell
 dataframe> D.readCsv "./data/country.csv"
 dataframe> :declareColumns df
-dataframe> df |> D.filterWhere ((population .>. 100000) .&&. (country_code .==. "USA"))
+dataframe> df |> D.filter ((population .>. 100000) .&&. (country_code .==. "USA"))
 --------------------------------------------------------------
   id  |     name      | country_code |  district  | population
 ------|---------------|--------------|------------|-----------
@@ -183,7 +183,7 @@ dataframe> df |> D.select [F.name name] |> D.take 5
 The real power of these operations comes from chaining them together. You can filter rows and then select specific columns (or vice versa) to get exactly the data you need:
 
 ```haskell
-df |> D.filterWhere (condition) |> D.select [columns] |> D.take n
+df |> D.filter (condition) |> D.select [columns] |> D.take n
 ```
 
 The order of operations matters - filtering first reduces the data before selection, which can be more efficient.
@@ -197,7 +197,7 @@ Query the names of all the Japanese cities and show only the first 5 results.
 ### Solution
 
 ```haskell
-dataframe> df |> D.filterWhere (country_code .==. "JPN") |> D.select [F.name name] |> D.take 5
+dataframe> df |> D.filter (country_code .==. "JPN") |> D.select [F.name name] |> D.take 5
 ---------
    name
 ---------
@@ -251,7 +251,7 @@ Query a list of city names for cities that have an even ID number. Show the resu
 ### Solution
 
 ```haskell
-dataframe> df |> D.filterWhere (F.lift even id) |> D.select [F.name city] |> D.distinct
+dataframe> df |> D.filter (F.lift even id) |> D.select [F.name city] |> D.distinct
 ----------------------
          city
 ----------------------
@@ -326,7 +326,7 @@ dataframe> (letterSort D.Desc) <> (letterSort D.Asc)
 One of the strengths of working with dataframes in Haskell is the ability to use any Haskell function in your queries. The `F.lift` function allows you to apply regular Haskell functions to DataFrame columns. This means you can use string functions, mathematical operations, or even your own custom logic:
 
 ```haskell
-df |> D.filterWhere (F.lift customFunction columnName)
+df |> D.filter (F.lift customFunction columnName)
 ```
 
 This enables sophisticated filtering that goes beyond simple comparisons. For example, you can check string prefixes, perform calculations, or apply complex business logic.
@@ -340,7 +340,7 @@ Query the list of city names starting with vowels (i.e., a, e, i, o, or u). Your
 ### Solution
 
 ```haskell
-dataframe> df |> D.select [F.name city] |> D.filterWhere (F.lift (\c -> any (`T.isPrefixOf` (T.toLower c)) ["a", "e", "i", "o", "u"]) city) |> D.take 5
+dataframe> df |> D.select [F.name city] |> D.filter (F.lift (\c -> any (`T.isPrefixOf` (T.toLower c)) ["a", "e", "i", "o", "u"]) city) |> D.take 5
 ----------
    city
 ----------
@@ -500,6 +500,7 @@ module Main where
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 
 import DataFrame.Expression.Operators ((|>))
 import DataFrame.Typed ((.>.))
@@ -537,16 +538,16 @@ main = do
             submissions'
                 |> DT.groupBy @'["challenge_id"]
                 |> DT.aggregate
-                    ( (DT.sum (DT.col @"total_submissions") |> DT.as @"total_submissions")
-                        . (DT.sum (DT.col @"total_accepted_submissions")
+                    ( (DTF.sum (DT.col @"total_submissions") |> DT.as @"total_submissions")
+                        . (DTF.sum (DT.col @"total_accepted_submissions")
                               |> DT.as @"total_accepted_submissions")
                     )
     let viewTotals =
             views'
                 |> DT.groupBy @'["challenge_id"]
                 |> DT.aggregate
-                    ( (DT.sum (DT.col @"total_views") |> DT.as @"total_views")
-                        . (DT.sum (DT.col @"total_unique_views") |> DT.as @"total_unique_views")
+                    ( (DTF.sum (DT.col @"total_views") |> DT.as @"total_views")
+                        . (DTF.sum (DT.col @"total_unique_views") |> DT.as @"total_unique_views")
                     )
     print $
         contestsWithColleges
@@ -565,7 +566,7 @@ main = do
             |> DT.impute @"total_views" (0 :: Int)
             |> DT.impute @"total_submissions" (0 :: Int)
             |> DT.impute @"total_accepted_submissions" (0 :: Int)
-            |> DT.filterWhere
+            |> DT.filter
                 ( DT.col @"total_unique_views"
                     + DT.col @"total_views"
                     + DT.col @"total_submissions"
@@ -577,7 +578,7 @@ main = do
 
 You've now learned the fundamental operations for working with dataframes in Haskell:
 
-- **Filtering** with `filterWhere` to select rows based on conditions
+- **Filtering** with `filter` to select rows based on conditions
 - **Selecting** with `select` to choose specific columns
 - **Limiting** with `take` to control output size
 - **Removing duplicates** with `distinct`

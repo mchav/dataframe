@@ -3,8 +3,9 @@ module DataFrame.Lazy.Internal.PhysicalPlan where
 import qualified Data.Text as T
 import qualified DataFrame.Internal.DataFrame as D
 import qualified DataFrame.Internal.Expression as E
-import DataFrame.Lazy.Internal.LogicalPlan (DataSource, SortOrder)
+import DataFrame.Lazy.Internal.LogicalPlan (DataSource)
 import DataFrame.Operations.Join (JoinType)
+import DataFrame.Operations.Permutation (SortOrder)
 import DataFrame.Schema (Schema)
 
 -- | Scan-level configuration: batch size, separator, optional pushdowns.
@@ -22,10 +23,10 @@ data PhysicalPlan
     | PhysicalProject [T.Text] PhysicalPlan
     | PhysicalFilter (E.Expr Bool) PhysicalPlan
     | PhysicalDerive T.Text E.SomeExpr PhysicalPlan
-    | PhysicalHashJoin JoinType T.Text T.Text PhysicalPlan PhysicalPlan
-    | PhysicalSortMergeJoin JoinType T.Text T.Text PhysicalPlan PhysicalPlan
+    | PhysicalHashJoin JoinType [(T.Text, T.Text)] PhysicalPlan PhysicalPlan
+    | PhysicalSortMergeJoin JoinType [(T.Text, T.Text)] PhysicalPlan PhysicalPlan
     | PhysicalHashAggregate [T.Text] [(T.Text, E.SomeExpr)] PhysicalPlan
-    | PhysicalSort [(T.Text, SortOrder)] PhysicalPlan
+    | PhysicalSort [SortOrder] PhysicalPlan
     | PhysicalLimit Int PhysicalPlan
     | -- | Materialize child to a binary file on disk (used for build sides).
       PhysicalSpill PhysicalPlan FilePath
