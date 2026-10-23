@@ -78,7 +78,7 @@ main = do
         -- 2) creates a type safe reference to the newly created column.
         is_expensive <- deriveM "is_expensive" (median_house_value .>=. 500000)
         luxury <- deriveM "luxury" (is_expensive .&&. median_income .>=. 8)
-        filterWhereM luxury
+        filterM luxury
 ```
 
 ### As a commandline tool

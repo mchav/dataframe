@@ -14,6 +14,7 @@ module DataFrame.Operations.Join (
 
     -- * Joins
     join,
+    joinOn,
     innerJoin,
     leftJoin,
     rightJoin,
@@ -98,6 +99,20 @@ join INNER xs right = innerJoin xs right
 join LEFT xs right = leftJoin xs right
 join RIGHT xs right = rightJoin xs right
 join FULL_OUTER xs right = fullOuterJoin xs right
+
+-- | Join on @(leftKey, rightKey)@ pairs; the result keeps the left names.
+joinOn ::
+    JoinType ->
+    [(T.Text, T.Text)] ->
+    DataFrame ->
+    DataFrame ->
+    DataFrame
+joinOn jt keyPairs left right =
+    join
+        jt
+        (map fst keyPairs)
+        left
+        (renameMany [(r, l) | (l, r) <- keyPairs, l /= r] right)
 
 -- | Build-side row count above which the hash join switches strategy.
 joinStrategyThreshold :: Int

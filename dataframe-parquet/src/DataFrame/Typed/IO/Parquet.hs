@@ -8,15 +8,22 @@ module DataFrame.Typed.IO.Parquet (
     readParquetWithError,
     readParquetWithOpts,
     readParquetFiles,
+    readParquetFilesWithOpts,
+    writeParquet,
+    writeParquetWithOptions,
 ) where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
 import qualified Data.Text as T
 
-import DataFrame.IO.Parquet (ParquetReadOptions (..), defaultParquetReadOptions)
+import DataFrame.IO.Parquet (
+    ParquetReadOptions (..),
+    ParquetWriteOptions,
+    defaultParquetReadOptions,
+ )
 import qualified DataFrame.IO.Parquet as Parquet
-import DataFrame.Typed.Freeze (freezeOrThrow, freezeWithError)
+import DataFrame.Typed.Freeze (freezeOrThrow, freezeWithError, thaw)
 import DataFrame.Typed.Schema (KnownSchema, schemaColumnNames)
 import DataFrame.Typed.Types (TypedDataFrame)
 
@@ -58,8 +65,23 @@ readParquetWithOpts opts path =
 -- | Read a directory\/glob of Parquet files into a typed DataFrame.
 readParquetFiles ::
     forall cols. (KnownSchema cols) => FilePath -> IO (TypedDataFrame cols)
-readParquetFiles path =
-    Parquet.readParquetFilesWithOpts
-        (schemaOptions @cols defaultParquetReadOptions)
-        path
+readParquetFiles = readParquetFilesWithOpts @cols defaultParquetReadOptions
+
+-- | Read a directory\/glob of Parquet files with custom options.
+readParquetFilesWithOpts ::
+    forall cols.
+    (KnownSchema cols) =>
+    ParquetReadOptions -> FilePath -> IO (TypedDataFrame cols)
+readParquetFilesWithOpts opts path =
+    Parquet.readParquetFilesWithOpts (schemaOptions @cols opts) path
         >>= freezeOrThrow @cols
+
+-- | Write a typed DataFrame to a Parquet file.
+writeParquet :: FilePath -> TypedDataFrame cols -> IO ()
+writeParquet path = Parquet.writeParquet path . thaw
+
+-- | Write a typed DataFrame to a Parquet file with custom options.
+writeParquetWithOptions ::
+    ParquetWriteOptions -> FilePath -> TypedDataFrame cols -> IO ()
+writeParquetWithOptions opts path =
+    Parquet.writeParquetWithOptions opts path . thaw

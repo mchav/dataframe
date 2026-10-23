@@ -222,7 +222,7 @@ skewedTextParity filtered = TestCase $ do
             | otherwise = T.pack ("k" ++ show ((i * 7919) `mod` 40000))
         df0 =
             D.fromColumns [("k", packedCol (map key [0 .. n - 1])), mkInt "v" [0 .. n - 1]]
-        df = if filtered then D.filterWhere (F.col @T.Text "k" ./=. "") df0 else df0
+        df = if filtered then D.filter (F.col @T.Text "k" ./=. "") df0 else df0
     assertBool
         "skewed packed text: par == seq"
         (sameGrouping (groupByPar ["k"] df) (groupBySeq ["k"] df))

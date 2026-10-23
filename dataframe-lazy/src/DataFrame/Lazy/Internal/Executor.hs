@@ -25,16 +25,14 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Unsafe as BSU
 import Data.IORef
-import Data.Int (Int16, Int32, Int64, Int8)
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Maybe
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
-import Data.Typeable (Typeable)
-import qualified Data.Vector as VB
 import qualified Data.Vector.Unboxed as VU
-import Data.Word (Word16, Word32, Word64, Word8)
+import Data.Word (Word8)
 import DataFrame.IO.CSV (
     CsvBytesReader,
     CsvReader,
@@ -42,11 +40,17 @@ import DataFrame.IO.CSV (
     schemaReadOptions,
  )
 import qualified DataFrame.IO.Parquet as Parquet
+import DataFrame.IO.Parquet.Thrift (unField)
+import qualified DataFrame.IO.Parquet.Thrift as Thrift
 import qualified DataFrame.Internal.Column as C
 import qualified DataFrame.Internal.DataFrame as D
 import qualified DataFrame.Internal.Expression as E
 import qualified DataFrame.Lazy.IO.Binary as Bin
-import DataFrame.Lazy.Internal.LogicalPlan (DataSource (..), SortOrder (..))
+import DataFrame.Lazy.Internal.LogicalPlan (
+    BatchFn (..),
+    BatchFn2 (..),
+    DataSource (..),
+ )
 import DataFrame.Lazy.Internal.PhysicalPlan
 import qualified DataFrame.Operations.Aggregation as Agg
 import qualified DataFrame.Operations.Core as Core
@@ -74,6 +78,10 @@ materialized df = do
         mb <- readIORef ref
         writeIORef ref Nothing
         return mb
+
+-- | Apply a function to every batch of a stream.
+mapStream :: (D.DataFrame -> D.DataFrame) -> Stream -> Stream
+mapStream f s = Stream (fmap f <$> pullBatch s)
 
 -- | Drain a stream and concatenate its batches into one DataFrame.
 collectStream :: Stream -> IO D.DataFrame
@@ -109,8 +117,13 @@ isBounded (PhysicalSort _ c) = isBounded c
 isBounded (PhysicalHashAggregate _ _ c) = isBounded c
 isBounded (PhysicalSpill c _) = isBounded c
 isBounded (PhysicalSourceDF _ _) = True
-isBounded (PhysicalHashJoin _ _ _ l r) = isBounded l && isBounded r
-isBounded (PhysicalSortMergeJoin _ _ _ l r) = isBounded l && isBounded r
+isBounded (PhysicalRename _ c) = isBounded c
+isBounded (PhysicalOffset _ c) = isBounded c
+isBounded (PhysicalMapBatch _ _ c) = isBounded c
+isBounded (PhysicalBarrier _ _ c) = isBounded c
+isBounded (PhysicalBarrier2 _ _ l r) = isBounded l && isBounded r
+isBounded (PhysicalHashJoin _ _ l r) = isBounded l && isBounded r
+isBounded (PhysicalSortMergeJoin _ _ l r) = isBounded l && isBounded r
 
 -- | Execute a physical plan into a single complete 'DataFrame'.
 execute :: PhysicalPlan -> IO D.DataFrame
@@ -149,7 +162,7 @@ buildStream (PhysicalFilter p child) = do
     return . Stream $
         ( do
             mb <- pullBatch childStream
-            return $ fmap (Sub.filterWhere p) mb
+            return $ fmap (Sub.filter p) mb
         )
 buildStream (PhysicalProject cols child) = do
     childStream <- buildStream child
@@ -165,6 +178,32 @@ buildStream (PhysicalDerive name uexpr child) = do
             mb <- pullBatch childStream
             return $ fmap (Trans.deriveMany [(name, uexpr)]) mb
         )
+buildStream (PhysicalRename pairs child) =
+    mapStream (Core.renameMany pairs) <$> buildStream child
+buildStream (PhysicalMapBatch _ (BatchFn f) child) =
+    mapStream f <$> buildStream child
+buildStream (PhysicalBarrier _ (BatchFn f) child) =
+    execute child >>= materialized . f
+buildStream (PhysicalBarrier2 _ (BatchFn2 f) l r) = do
+    leftDf <- execute l
+    rightDf <- execute r
+    materialized (f leftDf rightDf)
+buildStream (PhysicalOffset n child) = do
+    childStream <- buildStream child
+    skippedRef <- newIORef (0 :: Int)
+    let next = do
+            mb <- pullBatch childStream
+            case mb of
+                Nothing -> return Nothing
+                Just df -> do
+                    skipped <- readIORef skippedRef
+                    let rows = Core.nRows df
+                        toSkip = min rows (n - skipped)
+                    writeIORef skippedRef (skipped + toSkip)
+                    if toSkip == rows && rows > 0
+                        then next
+                        else return (Just (Sub.drop toSkip df))
+    return (Stream next)
 buildStream (PhysicalLimit n child) = do
     childStream <- buildStream child
     countRef <- newIORef (0 :: Int)
@@ -182,10 +221,9 @@ buildStream (PhysicalLimit n child) = do
                             modifyIORef' countRef (+ toTake)
                             return $ Just (Sub.take toTake df)
         )
-buildStream (PhysicalSort cols child) = do
+buildStream (PhysicalSort ords child) = do
     df <- execute child
-    let sortOrds = fmap (toPermSortOrder df) cols
-    materialized (Perm.sortBy sortOrds df)
+    materialized (Perm.sortBy ords df)
 buildStream (PhysicalHashAggregate keys aggs child)
     | isBounded child = do
         df <- execute child
@@ -230,29 +268,26 @@ buildStream (PhysicalSourceDF bs df) = do
                     batch = Sub.range (i, i + n) df
                 writeIORef posRef (i + n)
                 return (Just batch)
-buildStream (PhysicalHashJoin jt leftKey rightKey leftPlan rightPlan)
+buildStream (PhysicalHashJoin jt keyPairs leftPlan rightPlan)
     | isBounded leftPlan = do
         leftDf <- execute leftPlan
         rightDf <- execute rightPlan
-        materialized (performJoin jt leftKey rightKey leftDf rightDf)
-buildStream (PhysicalHashJoin jt leftKey rightKey leftPlan rightPlan) =
+        materialized (performJoin jt keyPairs leftDf rightDf)
+buildStream (PhysicalHashJoin jt keyPairs leftPlan rightPlan) =
     case jt of
         Join.INNER -> streamingHashJoin assembleInnerBatch
         Join.LEFT -> streamingHashJoin assembleLeftBatch
         _ -> do
             leftDf <- execute leftPlan
             rightDf <- execute rightPlan
-            materialized (performJoin jt leftKey rightKey leftDf rightDf)
+            materialized (performJoin jt keyPairs leftDf rightDf)
   where
     streamingHashJoin assembleFn = do
         rightDf <- execute rightPlan
-        let rightDf' =
-                if leftKey == rightKey
-                    then rightDf
-                    else Core.rename rightKey leftKey rightDf
-            joinKey = leftKey
-            csSet = S.fromList [joinKey]
-            rightHashes = Join.buildHashColumn [joinKey] rightDf'
+        let rightDf' = renameRightKeys keyPairs rightDf
+            joinKeys = map fst keyPairs
+            csSet = S.fromList joinKeys
+            rightHashes = Join.buildHashColumn joinKeys rightDf'
             ci = Join.buildCompactIndex rightHashes
         leftStream <- buildStream leftPlan
         return . Stream $ do
@@ -260,7 +295,7 @@ buildStream (PhysicalHashJoin jt leftKey rightKey leftPlan rightPlan) =
             case mBatch of
                 Nothing -> return Nothing
                 Just probeBatch -> do
-                    let probeHashes = Join.buildHashColumn [joinKey] probeBatch
+                    let probeHashes = Join.buildHashColumn joinKeys probeBatch
                         (probeIxs, buildIxs) = Join.hashProbeKernel ci probeHashes
                     return . Just $ assembleFn csSet probeBatch rightDf' probeIxs buildIxs
 
@@ -277,10 +312,10 @@ buildStream (PhysicalHashJoin jt leftKey rightKey leftPlan rightPlan) =
          in Join.assembleLeft csSet probeBatch rightDf' allProbeIxs allBuildIxs
 
     assembleInnerBatch = Join.assembleInner
-buildStream (PhysicalSortMergeJoin jt leftKey rightKey leftPlan rightPlan) = do
+buildStream (PhysicalSortMergeJoin jt keyPairs leftPlan rightPlan) = do
     leftDf <- execute leftPlan
     rightDf <- execute rightPlan
-    materialized (performJoin jt leftKey rightKey leftDf rightDf)
+    materialized (performJoin jt keyPairs leftDf rightDf)
 
 -- | One worker's loop: pull shared batches into a per-worker accumulator.
 workerLoop ::
@@ -468,7 +503,12 @@ executeParquetScan path cfg = do
             [] -> return Nothing
             (f : rest) -> do
                 writeIORef ref rest
-                Just <$> Parquet.readParquetWithOpts opts f
+                -- One footer parse orders the selection and feeds the read.
+                metadata <- Parquet.readMetadataFromPath f
+                let names = Parquet.getColumnNames (drop 1 (unField (Thrift.schema metadata)))
+                    opts' =
+                        opts{Parquet.selectedColumns = fileOrder names <$> Parquet.selectedColumns opts}
+                Just <$> Parquet.readParquetWithMetadata Nothing metadata opts' f
 
 -- | Read options for a CSV scan: schema gives types, source the separator.
 scanReadOptions :: Char -> ScanConfig -> ReadOptions
@@ -479,9 +519,10 @@ scanReadOptions sep cfg =
 executeCsvScan :: FilePath -> Char -> CsvReader -> ScanConfig -> IO Stream
 executeCsvScan path sep reader cfg = do
     nCaps <- getNumCapabilities
+    header <- withFile path ReadMode C8.hGetLine
     chunkPaths <- splitCsvAtNewlines (max 1 nCaps) path
 
-    let opts = scanReadOptions sep cfg
+    let opts = inFileOrder (headerNames sep header) (scanReadOptions sep cfg)
         batchSz = scanBatchSize cfg
     chunkDfs <- mapConcurrently (reader opts) chunkPaths
     mapM_ removeFile chunkPaths
@@ -500,9 +541,33 @@ executeCsvScan path sep reader cfg = do
                 Just df ->
                     let df' = case scanPushdownPredicate cfg of
                             Nothing -> df
-                            Just p -> Sub.filterWhere p df
+                            Just p -> Sub.filter p df
                      in return (Just df')
         )
+
+-- | Column names in a CSV header line.
+headerNames :: Char -> BS.ByteString -> [T.Text]
+headerNames sep =
+    map (T.dropAround (\c -> c == '"' || c == '\r') . T.pack . C8.unpack)
+        . C8.split sep
+        . stripBom
+  where
+    stripBom b = Data.Maybe.fromMaybe b (BS.stripPrefix "\xEF\xBB\xBF" b)
+
+-- | Read the selected columns in file order, like eager reads do.
+inFileOrder :: [T.Text] -> ReadOptions -> ReadOptions
+inFileOrder names opts = opts{readColumns = fileOrder names <$> readColumns opts}
+
+-- | Order requested names as they appear in a file (matching by leaf name).
+fileOrder :: [T.Text] -> [T.Text] -> [T.Text]
+fileOrder names = L.sortOn position
+  where
+    leaf = T.takeWhileEnd (/= '.')
+    -- Unknown names trail, so the reader still reports them as missing.
+    position r =
+        Data.Maybe.fromMaybe
+            (length names)
+            (L.findIndex (\n -> n == r || leaf n == r) names)
 
 executeCsvScanStreaming ::
     FilePath -> Char -> CsvReader -> ScanConfig -> IO Stream
@@ -521,7 +586,7 @@ executeCsvScanStreamingWith ::
     ScanConfig ->
     IO Stream
 executeCsvScanStreamingWith path sep reader cfg = do
-    let opts = scanReadOptions sep cfg
+    let schemaOpts = scanReadOptions sep cfg
         batchSz = scanBatchSize cfg
         windowBytes = 64 * 1024 * 1024 :: Int
     queue <- newTBQueueIO 8
@@ -530,6 +595,7 @@ executeCsvScanStreamingWith path sep reader cfg = do
             ( withFile path ReadMode $ \h -> do
                 rawHeader <- C8.hGetLine h
                 let header = stripUtf8Bom rawHeader
+                    opts = inFileOrder (headerNames sep header) schemaOpts
                 let feed bytes =
                         unless (BS.null bytes) $ do
                             let window = header <> BS.singleton nl <> bytes
@@ -568,7 +634,7 @@ executeCsvScanStreamingWith path sep reader cfg = do
             Right (Just df) ->
                 let df' = case scanPushdownPredicate cfg of
                         Nothing -> df
-                        Just p -> Sub.filterWhere p df
+                        Just p -> Sub.filter p df
                  in return (Just df')
   where
     nl :: Word8
@@ -641,61 +707,17 @@ splitCsvAtNewlines n path = do
             Just i -> off + i + 1
             Nothing -> BS.length body
 
--- | Route a join to 'Operations.Join', renaming the right key if needed.
+-- | Join as the eager API does, after renaming right keys to left names.
 performJoin ::
-    Join.JoinType -> T.Text -> T.Text -> D.DataFrame -> D.DataFrame -> D.DataFrame
-performJoin jt leftKey rightKey leftDf rightDf =
-    case jt of
-        Join.LEFT -> Join.join jt [leftKey] leftDf rightRenamed
-        Join.RIGHT -> Join.join jt [leftKey] leftDf rightRenamed
-        _ -> Join.join jt [leftKey] rightRenamed leftDf
-  where
-    rightRenamed
-        | leftKey == rightKey = rightDf
-        | otherwise = Core.rename rightKey leftKey rightDf
+    Join.JoinType ->
+    [(T.Text, T.Text)] ->
+    D.DataFrame ->
+    D.DataFrame ->
+    D.DataFrame
+performJoin jt keyPairs leftDf rightDf =
+    Join.join jt (map fst keyPairs) leftDf (renameRightKeys keyPairs rightDf)
 
--- | Convert a plan-level (column, direction) into a Permutation 'SortOrder'.
-toPermSortOrder :: D.DataFrame -> (T.Text, SortOrder) -> Perm.SortOrder
-toPermSortOrder df (col, dir) =
-    case M.lookup col (D.columnIndices df) of
-        Nothing -> mk @T.Text
-        Just idx -> dispatch (D.columns df VB.! idx)
-  where
-    mk :: forall a. (C.Columnable a, Ord a) => Perm.SortOrder
-    mk = case dir of
-        Ascending -> Perm.Asc (E.Col @a col)
-        Descending -> Perm.Desc (E.Col @a col)
-
-    dispatch :: C.Column -> Perm.SortOrder
-    dispatch column = case column of
-        c@(C.MergedColumn _ _) -> dispatch (C.materializeMerged c)
-        C.PackedText{} -> mk @T.Text
-        C.BoxedColumn _ (_ :: VB.Vector b) -> pick @b
-        C.UnboxedColumn _ (_ :: VU.Vector b) -> pick @b
-
-    pick :: forall b. (Typeable b) => Perm.SortOrder
-    pick =
-        tryT @b @Int $
-            tryT @b @Double $
-                tryT @b @Float $
-                    tryT @b @Integer $
-                        tryT @b @Int8 $
-                            tryT @b @Int16 $
-                                tryT @b @Int32 $
-                                    tryT @b @Int64 $
-                                        tryT @b @Word8 $
-                                            tryT @b @Word16 $
-                                                tryT @b @Word32 $
-                                                    tryT @b @Word64 $
-                                                        tryT @b @Bool $
-                                                            tryT @b @Char $
-                                                                tryT @b @T.Text (mk @T.Text)
-
-    tryT ::
-        forall b a.
-        (Typeable b, C.Columnable a, Ord a) =>
-        Perm.SortOrder ->
-        Perm.SortOrder
-    tryT fallback = case testEquality (typeRep @b) (typeRep @a) of
-        Just Refl -> mk @a
-        Nothing -> fallback
+-- | Give each right key its left counterpart's name.
+renameRightKeys :: [(T.Text, T.Text)] -> D.DataFrame -> D.DataFrame
+renameRightKeys keyPairs =
+    Core.renameMany [(r, l) | (l, r) <- keyPairs, l /= r]

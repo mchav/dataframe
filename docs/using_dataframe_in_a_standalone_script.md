@@ -147,7 +147,7 @@ main = do
         meanBedrooms = D.meanMaybe total_bedrooms dfWithRoomsPerHousehold
         dfWithTotalBedroomsImputed = D.impute total_bedrooms meanBedrooms dfWithRoomsPerHousehold
 
-    print $ dfWithTotalBedroomsImputed |> D.filterWhere (isExpensive .&&. roomsPerHousehold .>=. 7 .&&. (F.col @Double "total_bedrooms") .>=. 200)
+    print $ dfWithTotalBedroomsImputed |> D.filter (isExpensive .&&. roomsPerHousehold .>=. 7 .&&. (F.col @Double "total_bedrooms") .>=. 200)
 ```
 
 Our code is now inundated with different dataframe variables and a bunch of pipeline management. Should we just revert back to using the old `derive` and keep track of names and types ourselves? Not at all. We can use a structure called a `FrameM` to remove this boilerplate while still keeping the guarantees we unlocked before.
@@ -175,7 +175,7 @@ main = do
               roomsPerHousehold <- deriveM "rooms_per_household" (total_rooms / households)
               meanBedrooms   <- inspectM (D.meanMaybe total_bedrooms)
               totalBedrooms  <- imputeM total_bedrooms meanBedrooms
-              filterWhereM (isExpensive .&&. roomsPerHousehold .>=. 7 .&&.totalBedrooms .>=. 200)
+              filterM (isExpensive .&&. roomsPerHousehold .>=. 7 .&&.totalBedrooms .>=. 200)
   print df'
 ```
 
@@ -183,7 +183,7 @@ In the earlier version (without FrameM), every operation has to take an input da
 
 FrameM is a way to say: "For the next few lines, assume we're working on one evolving dataframe, and keep passing it along for me." You can think of it as a do-block where the dataframe is the implicit context. Inside the block, each step sees "the current dataframe" and can update it, but you don’t have to keep writing the plumbing yourself.
 
-That’s what the M suffix is hinting at. When you see functions like deriveM, imputeM, or filterWhereM, the M is just a conventional signal that this version runs in a monad. And "monad", here, can be understood very simply: it’s a pattern for sequencing operations where each line may carry along some hidden context. In IO (like in the main function for example), the hidden context is "the outside world" (the console screen, system clocks, environment variables etc). In FrameM, the hidden context is "the current dataframe".
+That’s what the M suffix is hinting at. When you see functions like deriveM, imputeM, or filterM, the M is just a conventional signal that this version runs in a monad. And "monad", here, can be understood very simply: it’s a pattern for sequencing operations where each line may carry along some hidden context. In IO (like in the main function for example), the hidden context is "the outside world" (the console screen, system clocks, environment variables etc). In FrameM, the hidden context is "the current dataframe".
 
 A nice way to read the FrameM part without doing "monads as a theory lesson" is to treat it like a mini language for dataframe steps. You write your steps in a natural order, and the monad takes care of passing the context to the next step.
 
@@ -210,7 +210,7 @@ main = do
 
   print $
     df'
-      |> D.filterWhere (isExpensive .&&. totalBedrooms .>=. 200)
+      |> D.filter (isExpensive .&&. totalBedrooms .>=. 200)
 ```
 
 Now we can reuse the derived Exprs elsewhere - for example, in plotting, or further filtering with the regular dataframe API.
@@ -253,6 +253,7 @@ To start, we need to define our exact data structure. In the full code example, 
 
 import qualified DataFrame as D
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 
 $(DT.deriveSchemaFromCsvFile "Housing" "./data/housing.csv")
 
@@ -271,6 +272,7 @@ You can also define the schema by hand as follows:
 
 import qualified DataFrame as D
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 
 type Housing = [ '("latitude", Double)
                , '("longitude", Double)
@@ -296,6 +298,7 @@ When we read data from a file at runtime using D.readCsv, the initial dataframe 
 
 import qualified DataFrame as D
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 
 $(DT.deriveSchemaFromCsvFile "Housing" "./data/housing.csv")
 
@@ -318,6 +321,7 @@ Once your dataframe is safely frozen, you can perform transformations with compl
 
 import qualified DataFrame as D
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 
 import DataFrame.Expression.Operators ((|>))
 
@@ -349,6 +353,7 @@ This strict tracking is incredibly useful during complex operations like groupin
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 
 import DataFrame.Expression.Operators ((|>))
 
@@ -369,7 +374,7 @@ main = do
     print $ tdf
           |> DT.groupBy @'["ocean_proximity"]
           |> DT.aggregate
-                (DT.as @"total" (DT.count (DT.col @"median_house_value")))
+                (DT.as @"total" (DTF.count (DT.col @"median_house_value")))
 ```
 
 ## The Trade Off

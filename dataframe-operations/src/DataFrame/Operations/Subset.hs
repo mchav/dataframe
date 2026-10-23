@@ -23,7 +23,6 @@ module DataFrame.Operations.Subset (
     -- * Filtering
     filter,
     filterBy,
-    filterWhere,
     filterJust,
     filterNothing,
     filterAllJust,
@@ -190,25 +189,28 @@ range (start, end) d =
 clip :: Int -> Int -> Int -> Int
 clip n left right = min right $ max n left
 
--- | O(n * k) Filter rows by a given condition.
-filter ::
+-- | O(n * k) Keep rows whose value of the expression satisfies the predicate.
+filterBy ::
     forall a.
     (Columnable a) =>
-    -- | Column to filter by
-    Expr a ->
     -- | Filter condition
     (a -> Bool) ->
+    -- | Column to filter by
+    Expr a ->
     -- | Dataframe to filter
     DataFrame ->
     DataFrame
-filter e@(Col filterColumnName) condition df = case getColumn filterColumnName df of
+filterBy condition e@(Col filterColumnName) df = case getColumn filterColumnName df of
     Nothing ->
         throw $
-            ColumnsNotFoundException [filterColumnName] "filter" (M.keys $ columnIndices df)
+            ColumnsNotFoundException
+                [filterColumnName]
+                "filterBy"
+                (M.keys $ columnIndices df)
     Just c@(PackedText _ _) ->
-        filter e condition (insertColumn filterColumnName (materializePacked c) df)
+        filterBy condition e (insertColumn filterColumnName (materializePacked c) df)
     Just c@(MergedColumn _ _) ->
-        filter e condition (insertColumn filterColumnName (materializeMerged c) df)
+        filterBy condition e (insertColumn filterColumnName (materializeMerged c) df)
     Just _col@(BoxedColumn bm (column :: V.Vector b)) ->
         case testEquality (typeRep @a) (typeRep @b) of
             Just Refl -> filterByVector filterColumnName column condition df
@@ -234,7 +236,7 @@ filter e@(Col filterColumnName) condition df = case getColumn filterColumnName d
                         Nothing -> filterByVector filterColumnName column condition df
                     Nothing -> filterByVector filterColumnName column condition df
                 _ -> filterByVector filterColumnName column condition df
-filter expr condition df =
+filterBy condition expr df =
     let
         (TColumn col') = case interpret @a df (normalize expr) of
             Left e -> throw e
@@ -261,7 +263,7 @@ filterByVector filterColumnName column condition df = case testEquality (typeRep
                     { userType = Right $ typeRep @a
                     , expectedType = Right $ typeRep @b
                     , errorColumnName = Just (T.unpack filterColumnName)
-                    , callingFunctionName = Just "filter"
+                    , callingFunctionName = Just "filterBy"
                     }
                 )
     Just Refl ->
@@ -273,13 +275,9 @@ filterByVector filterColumnName column condition df = case testEquality (typeRep
                 , dataframeDimensions = (VG.length ixs, snd (dataframeDimensions df))
                 }
 
--- | O(k) A version of filter where the predicate comes first.
-filterBy :: (Columnable a) => (a -> Bool) -> Expr a -> DataFrame -> DataFrame
-filterBy = flip filter
-
 -- | O(k) Filter the dataframe with a boolean expression.
-filterWhere :: Expr Bool -> DataFrame -> DataFrame
-filterWhere expr df =
+filter :: Expr Bool -> DataFrame -> DataFrame
+filter expr df =
     let
         (TColumn col') = case interpret @Bool df (normalize expr) of
             Left e -> throw e
@@ -305,9 +303,9 @@ filterJust colName df = case getColumn colName df of
             ColumnsNotFoundException [colName] "filterJust" (M.keys $ columnIndices df)
     Just column | hasMissing column -> case column of
         BoxedColumn (Just _) (_col :: V.Vector a) ->
-            filter (Col @(Maybe a) colName) isJust df & apply @(Maybe a) fromJust colName
+            filterBy isJust (Col @(Maybe a) colName) df & apply @(Maybe a) fromJust colName
         UnboxedColumn (Just _) (_col :: VU.Vector a) ->
-            filter (Col @(Maybe a) colName) isJust df & apply @(Maybe a) fromJust colName
+            filterBy isJust (Col @(Maybe a) colName) df & apply @(Maybe a) fromJust colName
         c@(PackedText (Just _) _) ->
             filterJust colName (insertColumn colName (materializePacked c) df)
         _ -> df
@@ -320,8 +318,8 @@ filterNothing colName df = case getColumn colName df of
         throw $
             ColumnsNotFoundException [colName] "filterNothing" (M.keys $ columnIndices df)
     Just column | hasMissing column -> case column of
-        BoxedColumn (Just _) (_col :: V.Vector a) -> filter (Col @(Maybe a) colName) isNothing df
-        UnboxedColumn (Just _) (_col :: VU.Vector a) -> filter (Col @(Maybe a) colName) isNothing df
+        BoxedColumn (Just _) (_col :: V.Vector a) -> filterBy isNothing (Col @(Maybe a) colName) df
+        UnboxedColumn (Just _) (_col :: VU.Vector a) -> filterBy isNothing (Col @(Maybe a) colName) df
         c@(PackedText (Just _) _) ->
             filterNothing colName (insertColumn colName (materializePacked c) df)
         _ -> df
@@ -435,7 +433,7 @@ sample pureGen p df =
      in
         df
             & insertColumn (name cRand) rand
-            & filterWhere (cRand .>=. Lit (1 - p))
+            & filter (cRand .>=. Lit (1 - p))
             & exclude [name cRand]
 
 -- | Split a dataset in two: a sample of fraction p and the remainder.
@@ -448,10 +446,10 @@ randomSplit pureGen p df =
         withRand = df & insertColumn (name cRand) rand
      in
         ( withRand
-            & filterWhere (cRand .<=. Lit p)
+            & filter (cRand .<=. Lit p)
             & exclude [name cRand]
         , withRand
-            & filterWhere
+            & filter
                 (cRand .>. Lit p)
             & exclude [name cRand]
         )
@@ -465,12 +463,12 @@ kFolds pureGen folds df =
         withRand = df & insertColumn (name cRand) rand
         partitionSize = 1 / fromIntegral folds
         singleFold n d =
-            d & filterWhere (cRand .>=. Lit (fromIntegral n * partitionSize))
+            d & filter (cRand .>=. Lit (fromIntegral n * partitionSize))
         go (-1) _ = []
         go n d =
             let
                 d' = singleFold n d
-                d'' = d & filterWhere (cRand .<. Lit (fromIntegral n * partitionSize))
+                d'' = d & filter (cRand .<. Lit (fromIntegral n * partitionSize))
              in
                 d' : go (n - 1) d''
      in

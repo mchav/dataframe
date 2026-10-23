@@ -175,7 +175,7 @@ A filter on a column that doesn't exist (or has the wrong type) is a compile err
 runtime surprise:
 
 ```haskell
-D.toMarkdown' . DT.thaw . DT.filterWhere (DT.col @"Name" .==. DT.lit (Just "Accept")) <$> artists
+D.toMarkdown' . DT.thaw . DT.filter (DT.col @"Name" .==. DT.lit (Just "Accept")) <$> artists
 ```
 
 > <!-- scripths:mime text/plain -->

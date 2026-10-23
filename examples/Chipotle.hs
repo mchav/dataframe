@@ -45,7 +45,7 @@ run = do
         df
             |> D.select [F.name item_name, F.name quantity]
             -- It's more efficient to filter before grouping.
-            |> D.filterWhere (item_name .==. "Chicken Burrito")
+            |> D.filter (item_name .==. "Chicken Burrito")
             |> D.groupBy [F.name item_name]
             |> D.aggregate
                 [ "sum" .= F.sum quantity
@@ -56,7 +56,7 @@ run = do
 
     let firstOrder =
             df
-                |> D.filterWhere
+                |> D.filter
                     ( F.lift (maybe False (T.isInfixOf "Guacamole")) choice_description
                         .&&. (item_name .==. "Chicken Bowl")
                     )

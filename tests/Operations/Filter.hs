@@ -5,6 +5,7 @@ module Operations.Filter where
 
 import qualified Data.Text as T
 import qualified DataFrame as D
+import DataFrame.Expression.Operators ((.==.))
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
 
@@ -32,8 +33,8 @@ filterColumnDoesNotExist =
     TestCase
         ( assertExpectException
             "[Error Case]"
-            (D.columnNotFound "test0" "filter" (D.columnNames testData))
-            (print $ D.filter (F.col @Int "test0") even testData)
+            (D.columnNotFound "test0" "" (D.columnNames testData))
+            (print $ D.filter (F.col @Int "test0" .==. 0) testData)
         )
 
 filterColumnWrongType :: Test
@@ -42,7 +43,7 @@ filterColumnWrongType =
         ( assertExpectException
             "[Error Case]"
             (D.typeMismatchError (show $ typeRep @Integer) (show $ typeRep @Int))
-            (print $ D.filter (F.col @Integer "test1") even testData)
+            (print $ D.filter (F.col @Integer "test1" .==. 0) testData)
         )
 
 filterByColumnDoesNotExist :: Test
@@ -50,7 +51,7 @@ filterByColumnDoesNotExist =
     TestCase
         ( assertExpectException
             "[Error Case]"
-            (D.columnNotFound "test0" "filter" (D.columnNames testData))
+            (D.columnNotFound "test0" "filterBy" (D.columnNames testData))
             (print $ D.filterBy even (F.col @Int "test0") testData)
         )
 
@@ -69,7 +70,7 @@ filterColumnInexistentValues =
         ( assertEqual
             "Non existent filter value returns no rows"
             (0, 8)
-            (D.dimensions $ D.filter (F.col @Int "test1") (< 0) testData)
+            (D.dimensions $ D.filterBy (< 0) (F.col @Int "test1") testData)
         )
 
 filterColumnAllValues :: Test
@@ -78,7 +79,7 @@ filterColumnAllValues =
         ( assertEqual
             "Filters all columns"
             (26, 8)
-            (D.dimensions $ D.filter (F.col @Int "test1") (const True) testData)
+            (D.dimensions $ D.filterBy (const True) (F.col @Int "test1") testData)
         )
 
 filterJustWAI :: Test

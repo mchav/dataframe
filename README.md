@@ -235,7 +235,7 @@ $(D.declareColumnsFromCsvFile "./data/housing.csv")
 
 df <- D.readCsv "./data/housing.csv"
 df |> D.derive "rooms_per_household" (total_rooms / households)
-   |> D.filterWhere (median_income .>. 5)
+   |> D.filter (median_income .>. 5)
    |> D.groupBy ["ocean_proximity"]
    |> D.aggregate [F.mean median_house_value `as` "avg_value"]
    |> D.toMarkdown'
@@ -255,7 +255,7 @@ Compare this to the manual version which requires spelling out every column name
 -- Without TH — every column needs its name and type spelled out
 df |> D.derive "rooms_per_household"
         (F.col @Double "total_rooms" / F.col @Double "households")
-   |> D.filterWhere (F.col @Double "median_income" .>. F.lit 5)
+   |> D.filter (F.col @Double "median_income" .>. F.lit 5)
    |> D.take 5
    |> D.toMarkdown'
 ```
@@ -336,7 +336,7 @@ D.toRecords ordersDf :: Either Text [Order]
 And the typed bridge — `[Order]` to `TypedDataFrame OrderSchema` and back:
 
 ```haskell
-DT.thaw (DT.fromRecordsTyped xs :: DT.TypedDataFrame OrderSchema) |> D.toMarkdown'
+DT.thaw (DT.fromRecords xs :: DT.TypedDataFrame OrderSchema) |> D.toMarkdown'
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -368,7 +368,7 @@ $(D.deriveSchemaValues ''Order)
 orders :: IO D.DataFrame
 orders = do
     raw <- D.readCsvWithSchema orderSchema "./data/orders.csv"
-    pure (D.filter orderAmount (> 100) raw)
+    pure (D.filterBy (> 100) orderAmount raw)
 ```
 
 > <!-- scripths:mime text/plain -->
@@ -417,7 +417,7 @@ case DT.freeze @EmployeeSchema employees of
     Nothing  -> "Schema mismatch!"
     Just tdf -> tdf
         |> DT.derive @"bonus" (DT.col @"salary" * DT.lit 0.1)
-        |> DT.filterWhere (DT.col @"salary" DT..>. DT.lit 50000)
+        |> DT.filter (DT.col @"salary" DT..>. DT.lit 50000)
         |> DT.select @'["name", "bonus"]
         |> DT.thaw
         |> D.toMarkdown'
@@ -435,11 +435,11 @@ case DT.freeze @EmployeeSchema employees of
 
 ```text
 -- Typo in column name -> compile error
-tdf |> DT.filterWhere (DT.col @"slary" DT..>. DT.lit 50000)
+tdf |> DT.filter (DT.col @"slary" DT..>. DT.lit 50000)
 -- error: Column 'slary' not found in schema
 
 -- Wrong type -> compile error
-tdf |> DT.filterWhere (DT.col @"name" DT..>. DT.lit 50000)
+tdf |> DT.filter (DT.col @"name" DT..>. DT.lit 50000)
 -- error: Couldn't match type 'Text' with 'Double'
 ```
 
@@ -468,7 +468,7 @@ DT.thaw (DT.filterAllJust stdf |> DT.derive @"scaled" (DT.col @"score" * DT.lit 
 
 ## Lazy Queries
 
-For files too large to fit in memory, `DataFrame.Lazy` provides a streaming query engine. Declare a schema, build a query plan with the same familiar operations, and `runDataFrame` runs it through an optimizer before streaming results batch-by-batch:
+For files too large to fit in memory, `DataFrame.Lazy` provides a streaming query engine. Declare a schema, build a query plan with the same operations as the eager API, and `run` passes it through an optimizer before streaming results batch-by-batch:
 
 ```haskell
 import qualified DataFrame.Lazy as L
@@ -487,7 +487,7 @@ housingSchema = makeSchema
     , ("ocean_proximity",    schemaType @Text)
     ]
 
-lazyResult <- L.runDataFrame $
+lazyResult <- L.run $
     L.scanCsv housingSchema "./data/housing.csv"
     |> L.filter  (F.col @Double "median_income" .>. F.lit 5)
     |> L.derive  "value_per_income"
@@ -513,6 +513,23 @@ D.take 10 lazyResult |> D.toMarkdown'
 > | NEAR BAY                | 373600.0                     | 58895.860264211624         |
 
 The optimizer pushes the filter into the scan, drops unreferenced columns before reading, and stops pulling batches once 1000 rows have been collected.
+
+### Switching between APIs
+
+The eager, typed, lazy and typed-lazy APIs share operation names and argument
+order, so moving a pipeline between them is mostly a change of imports:
+
+| | Frame ops (`D`) | Expressions (`F`) |
+|---|---|---|
+| Eager | `DataFrame` | `DataFrame.Functions` |
+| Typed | `DataFrame.Typed` | `DataFrame.Typed.Functions` |
+| Lazy | `DataFrame.Lazy` | `DataFrame.Functions` |
+| Typed lazy | `DataFrame.Typed.Lazy` | `DataFrame.Typed.Functions` |
+
+A lazy pipeline starts from `scanCsv`/`scanParquet`/`fromDataFrame` and ends with
+`run`; ops that return a value (`mean`, `nRows`, `writeCsv`, …) run the query
+and return `IO`. Typed APIs name columns at the type level (`col @"x"`,
+`select @'["x"]`) where untyped ones take text.
 
 ## Documentation
 

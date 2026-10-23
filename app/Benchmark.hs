@@ -30,7 +30,7 @@ main = do
     let calculationTime = diffUTCTime endCalculation startCalculation
     putStrLn $ "Calculation Time: " ++ show calculationTime
     startFilter <- getCurrentTime
-    print $ D.filter (F.col @Double "0") (> 0.971) df D.|> D.take 10
+    print $ D.filterBy (> 0.971) (F.col @Double "0") df D.|> D.take 10
     endFilter <- getCurrentTime
     let filterTime = diffUTCTime endFilter startFilter
     putStrLn $ "Filter Time: " ++ show filterTime

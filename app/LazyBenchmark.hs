@@ -186,18 +186,18 @@ main = do
                     ]
 
     runQuery "Q1 — preview first 20 rows (no filter)" $
-        L.runDataFrame $
+        L.run $
             L.take 20 $
                 L.scanCsv schema pathT
 
     runQuery "Q2 — filter (x > 0.999), limit 20" $
-        L.runDataFrame $
+        L.run $
             L.take 20 $
                 L.filter (col @Double "x" .> lit (0.999 :: Double)) $
                     L.scanCsv schema pathT
 
     runQuery "Q3 — filter (x > 0.999), derive z = x*y, select [id,z], limit 20" $
-        L.runDataFrame $
+        L.run $
             L.take 20 $
                 L.select ["id", "z"] $
                     L.derive "z" (col @Double "x" * col @Double "y") $
@@ -205,7 +205,7 @@ main = do
                             L.scanCsv schema pathT
 
     runQuery "Q4 — filter fusion: (x > 0.5) . (y > 0.5), limit 20" $
-        L.runDataFrame $
+        L.run $
             L.take 20 $
                 L.filter (col @Double "y" .> lit (0.5 :: Double)) $
                     L.filter (col @Double "x" .> lit (0.5 :: Double)) $
@@ -216,7 +216,7 @@ main = do
             ++ approx (n `div` 1000)
             ++ " rows expected)"
         )
-        $ L.runDataFrame
+        $ L.run
         $ L.select ["id", "x"]
         $ L.filter (col @Double "x" .> lit (0.999 :: Double))
         $ L.scanCsv schema pathT

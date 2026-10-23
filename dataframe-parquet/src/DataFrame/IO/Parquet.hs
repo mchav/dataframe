@@ -899,7 +899,7 @@ applySelectedColumns opts df =
 
 applyPredicate :: ParquetReadOptions -> DataFrame -> DataFrame
 applyPredicate opts df =
-    maybe df (`DS.filterWhere` df) (predicate opts)
+    maybe df (`DS.filter` df) (predicate opts)
 
 applySafeRead :: ParquetReadOptions -> DataFrame -> DataFrame
 applySafeRead opts df

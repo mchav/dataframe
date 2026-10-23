@@ -9,7 +9,6 @@ import qualified Data.Text as T
 import Data.Time (UTCTime)
 import qualified DataFrame as D
 import qualified DataFrame.Functions as F
-import DataFrame.Lazy (SortOrder (..))
 import qualified DataFrame.Lazy as L
 import DataFrame.Schema (Schema (..), schemaType)
 import Test.HUnit
@@ -41,7 +40,7 @@ basicScan =
     TestCase
         ( do
             eager <- D.readParquet plainPath
-            actual <- L.runDataFrame (L.scanParquet allTypesSchema (T.pack plainPath))
+            actual <- L.run (L.scanParquet allTypesSchema (T.pack plainPath))
             assertEqual "basicScan dimensions" (D.dimensions eager) (D.dimensions actual)
         )
 
@@ -51,7 +50,7 @@ columnProjection =
     TestCase
         ( do
             actual <-
-                L.runDataFrame
+                L.run
                     (L.select ["id", "bool_col"] (L.scanParquet allTypesSchema (T.pack plainPath)))
             assertEqual "columnProjection" (8, 2) (D.dimensions actual)
         )
@@ -62,7 +61,7 @@ filterPushdown =
     TestCase
         ( do
             actual <-
-                L.runDataFrame
+                L.run
                     ( L.filter
                         (F.geq (F.col @Int32 "id") (F.lit 6))
                         (L.scanParquet allTypesSchema (T.pack plainPath))
@@ -76,7 +75,7 @@ filterAndProject =
     TestCase
         ( do
             actual <-
-                L.runDataFrame
+                L.run
                     ( L.select
                         ["id", "bool_col"]
                         ( L.filter
@@ -93,7 +92,7 @@ multiFileGlob =
     TestCase
         ( do
             actual <-
-                L.runDataFrame
+                L.run
                     ( L.scanParquet
                         allTypesSchema
                         "./tests/data/alltypes_plain*.parquet"
@@ -109,20 +108,31 @@ sortAndLimit =
     TestCase
         ( do
             actual <-
-                L.runDataFrame
+                L.run
                     ( L.take
                         3
                         ( L.sortBy
-                            [("id", Ascending)]
+                            [L.Asc (L.col @Int32 "id")]
                             (L.scanParquet allTypesSchema (T.pack plainPath))
                         )
                     )
             assertEqual "sortAndLimit rows" 3 (fst (D.dimensions actual))
         )
 
+-- | A scan returns its columns in file order, like an eager read.
+fileColumnOrder :: Test
+fileColumnOrder =
+    TestCase
+        ( do
+            actual <- L.run (L.scanParquet allTypesSchema (T.pack plainPath))
+            eager <- D.readParquet plainPath
+            assertEqual "column order" (D.columnNames eager) (D.columnNames actual)
+        )
+
 tests :: [Test]
 tests =
-    [ basicScan
+    [ fileColumnOrder
+    , basicScan
     , columnProjection
     , filterPushdown
     , filterAndProject

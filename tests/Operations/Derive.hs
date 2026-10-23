@@ -12,6 +12,7 @@ import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
 import qualified DataFrame.Internal.DataFrame as DI
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 
 import Test.HUnit
 
@@ -56,10 +57,10 @@ deriveWAITyped =
             ( DT.columnAsList @"test4" $
                 DT.derive
                     @"test4"
-                    ( DT.lift2
+                    ( DTF.lift2
                         (++)
-                        (DT.lift show (DT.col @"test1"))
-                        (DT.lift (: ([] :: [Char])) (DT.col @"test3"))
+                        (DTF.lift show (DT.col @"test1"))
+                        (DTF.lift (: ([] :: [Char])) (DT.col @"test3"))
                     )
                     ( either
                         (error . show)

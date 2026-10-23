@@ -68,6 +68,7 @@ import qualified Operations.VectorKernel
 import qualified Operations.Window
 import qualified Operations.WriteCsv
 import qualified PackedTextMigration
+import qualified Parity.FourWay
 import qualified Parquet
 import qualified Plotting
 import qualified PrettyPrint
@@ -139,6 +140,7 @@ tests =
             ++ Parquet.tests
             ++ LazyParquet.tests
             ++ LazyParity.tests
+            ++ Parity.FourWay.tests
             ++ LazyProjection.tests
             ++ Plotting.tests
             ++ Simplify.tests

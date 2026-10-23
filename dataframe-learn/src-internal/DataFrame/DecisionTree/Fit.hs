@@ -44,7 +44,8 @@ import DataFrame.Internal.DataFrame (DataFrame)
 import DataFrame.Internal.Expression (Expr (..))
 import DataFrame.Internal.Interpreter (interpret)
 import DataFrame.Operations.Core (nRows)
-import DataFrame.Operations.Subset (exclude, filterWhere)
+import DataFrame.Operations.Subset (exclude)
+import qualified DataFrame.Operations.Subset as Subset
 
 import Control.Exception (throw)
 import Data.Function (on)
@@ -101,7 +102,7 @@ pruneTree :: forall a. (Columnable a) => Expr a -> Expr a
 pruneTree = pruneExpr
 
 partitionDataFrame :: Expr Bool -> DataFrame -> (DataFrame, DataFrame)
-partitionDataFrame cond df = (filterWhere cond df, filterWhere (F.not cond) df)
+partitionDataFrame cond df = (Subset.filter cond df, Subset.filter (F.not cond) df)
 
 -- | Laplace-smoothed Gini impurity of the target distribution.
 calculateGini ::

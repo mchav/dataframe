@@ -34,6 +34,7 @@ module DataFrame.Typed.Schema (
     AssertAllPresent,
     AssertKeyTypesMatch,
     AssertDisjoint,
+    AssertAllAbsent,
     AssertAllColumnsHaveType,
     AssertRealColumn,
     AllColumnsReal,
@@ -200,6 +201,15 @@ type family
 type family ColumnNames (cols :: [(Symbol, Type)]) :: [Symbol] where
     ColumnNames '[] = '[]
     ColumnNames ('(n, _) ': rest) = n ': ColumnNames rest
+
+-- | Assert that none of the new columns already exists in the schema.
+type family
+    AssertAllAbsent (new :: [(Symbol, Type)]) (cols :: [(Symbol, Type)]) ::
+        Constraint
+    where
+    AssertAllAbsent '[] cols = ()
+    AssertAllAbsent ('(n, _) ': rest) cols =
+        (AssertAbsent n cols, AssertAllAbsent rest cols)
 
 -- | Assert that a column name is absent from the schema (for derive/insert).
 type family AssertAbsent (name :: Symbol) (cols :: [(Symbol, Type)]) :: Constraint where

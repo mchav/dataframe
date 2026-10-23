@@ -76,7 +76,7 @@ powVariants =
     two = F.lit (2 :: Int)
 
 rowsKept :: D.DataFrame -> Expr Bool -> Int
-rowsKept df p = D.nRows (D.filterWhere p df)
+rowsKept df p = D.nRows (D.filter p df)
 
 -- Both sides must keep the same rows before and after simplification.
 sameRows :: String -> D.DataFrame -> Expr Bool -> Test
@@ -204,7 +204,10 @@ everyFunctionIsBuiltin =
         , ("fromJust", hasKey (F.fromJust m))
         , ("recode", hasKey (F.recode [(1 :: Int, 'a')] x))
         , ("recodeWithDefault", hasKey (F.recodeWithDefault 'z' [(1 :: Int, 'a')] x))
-        , ("recodeWithCondition", hasKey (F.recodeWithCondition (F.lit (0 :: Int)) [((.> F.lit @Int 1), 1)] x))
+        ,
+            ( "recodeWithCondition"
+            , hasKey (F.recodeWithCondition (F.lit (0 :: Int)) [((.> F.lit @Int 1), 1)] x)
+            )
         , ("firstOrNothing", hasKey (F.firstOrNothing l))
         , ("lastOrNothing", hasKey (F.lastOrNothing l))
         , ("contains", hasKey (F.contains "a" t))

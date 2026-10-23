@@ -115,7 +115,10 @@ cast colName = CastWith colName (Builtin CCast) (either (const Nothing) Just)
 -- | Lenient coercion that substitutes a default for unconvertible values.
 castWithDefault :: forall a. (Columnable a, Read a) => a -> T.Text -> Expr a
 castWithDefault def colName =
-    CastWith colName (Builtin (CCastWithDefault (T.pack (show def)))) (fromRight def)
+    CastWith
+        colName
+        (Builtin (CCastWithDefault (T.pack (show def))))
+        (fromRight def)
 
 -- | Lenient coercion to @Either T.Text a@, keeping unparsed values as 'Left'.
 castEither ::
@@ -342,7 +345,8 @@ bottomK = kExtremes False
 {-# INLINEABLE bottomK #-}
 
 -- | The k largest (True) or smallest (False) values, dropping NaNs.
-kExtremes :: forall a. (Columnable a, Ord a) => Bool -> Int -> Expr a -> Expr [a]
+kExtremes ::
+    forall a. (Columnable a, Ord a) => Bool -> Int -> Expr a -> Expr [a]
 kExtremes largest k =
     Agg
         ( MergeAgg

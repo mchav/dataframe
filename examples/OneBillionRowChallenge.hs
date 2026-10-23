@@ -26,13 +26,13 @@ run = do
             readSeparated
             measurementSchema
             "../../1brc/measurements.txt"
-            |> L.groupBy
-                [F.name measurementNames]
+            |> L.groupBy [F.name measurementNames]
+            |> L.aggregate
                 [ F.minimum measurementTemperature `as` "minimum"
                 , F.mean measurementTemperature `as` "mean"
                 , F.maximum measurementTemperature `as` "maximum"
                 ]
-            |> L.runDataFrame
+            |> L.run
     print $ D.sortBy [D.Asc measurementNames] df
     endCalculation <- getCurrentTime
     let calculationTime = diffUTCTime endCalculation startCalculation

@@ -104,7 +104,7 @@ analyzeUsers = runSqlite "test.db" $ do
     
     liftIO $ do
         -- Filter
-        let youngUsers = DF.filter @Int "age" (< 30) df
+        let youngUsers = DF.filterBy (< 30) (F.col @Int "age") df
         
         -- Sort
         let sorted = DF.sortBy [DF.Asc "age"] df

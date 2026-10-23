@@ -8,17 +8,13 @@ module DataFrame.Typed (
     TypedGrouped,
     These (..),
 
-    -- * Typed expressions
+    -- * Typed expressions (combinators live in "DataFrame.Typed.Functions")
     TExpr (..),
     col,
     lit,
     ifThenElse,
     caseWhen,
     orElse,
-    lift,
-    lift2,
-    nullLift,
-    nullLift2,
 
     -- * Same-type comparison operators
     (.==.),
@@ -28,11 +24,21 @@ module DataFrame.Typed (
     (.>=.),
     (.>.),
 
+    -- * Same-type arithmetic operators
+    (.+.),
+    (.-.),
+    (.*.),
+    (./.),
+    (.^^.),
+    (.^.),
+
     -- * Nullable-aware arithmetic operators
     (.+),
     (.-),
     (.*),
     (./),
+    (.^^),
+    (.^),
 
     -- * Nullable-aware comparison operators (three-valued logic)
     (.==),
@@ -45,84 +51,11 @@ module DataFrame.Typed (
     -- * Logical operators
     (.&&.),
     (.||.),
-    DataFrame.Typed.Expr.not,
-
-    -- * Aggregation expression combinators
-    DataFrame.Typed.Expr.sum,
-    mean,
-    median,
-    count,
-    countAll,
-    DataFrame.Typed.Expr.minimum,
-    DataFrame.Typed.Expr.maximum,
-    collect,
-    over,
-
-    -- * Expression combinators (full DataFrame.Functions parity)
-    DataFrame.Typed.Expr.eq,
-    DataFrame.Typed.Expr.lt,
-    DataFrame.Typed.Expr.gt,
-    DataFrame.Typed.Expr.leq,
-    DataFrame.Typed.Expr.geq,
-    DataFrame.Typed.Expr.and,
-    DataFrame.Typed.Expr.or,
-    DataFrame.Typed.Expr.countDistinct,
-    DataFrame.Typed.Expr.topK,
-    DataFrame.Typed.Expr.bottomK,
-    DataFrame.Typed.Expr.isNull,
-    DataFrame.Typed.Expr.isNotNull,
-    DataFrame.Typed.Expr.contains,
-    DataFrame.Typed.Expr.length,
-    DataFrame.Typed.Expr.div,
-    DataFrame.Typed.Expr.mod,
-    mode,
-    sumMaybe,
-    DataFrame.Typed.Expr.meanMaybe,
-    DataFrame.Typed.Expr.variance,
-    DataFrame.Typed.Expr.medianMaybe,
-    DataFrame.Typed.Expr.percentile,
-    stddev,
-    stddevMaybe,
-    zScore,
-    pow,
-    relu,
-    DataFrame.Typed.Expr.min,
-    DataFrame.Typed.Expr.max,
-    reduce,
-    toMaybe,
-    fromMaybe,
-    isJust,
-    isNothing,
-    fromJust,
-    whenPresent,
-    whenBothPresent,
-    recode,
-    recodeWithCondition,
-    recodeWithDefault,
-    firstOrNothing,
-    lastOrNothing,
-    splitOn,
-    match,
-    matchAll,
-    parseDate,
-    daysBetween,
-    bind,
-
-    -- * Cast / coercion expressions
-    DataFrame.Typed.Expr.cast,
-    DataFrame.Typed.Expr.castWithDefault,
-    DataFrame.Typed.Expr.castEither,
-    DataFrame.Typed.Expr.unsafeCast,
-    castExpr,
-    castExprWithDefault,
-    castExprEither,
-    unsafeCastExpr,
-    toDouble,
+    (.&&),
+    (.||),
 
     -- * Typed sort orders
     TSortOrder (..),
-    asc,
-    desc,
 
     -- * Freeze / thaw boundary
     freeze,
@@ -142,7 +75,6 @@ module DataFrame.Typed (
     toIntMatrix,
 
     -- * Schema-preserving operations
-    filterWhere,
     filter,
     filterBy,
     filterAllJust,
@@ -150,6 +82,7 @@ module DataFrame.Typed (
     filterNothing,
     filterAllNothing,
     sortBy,
+    topBy,
     take,
     takeLast,
     drop,
@@ -162,6 +95,7 @@ module DataFrame.Typed (
 
     -- * Schema-modifying operations
     derive,
+    deriveMany,
     impute,
     select,
     exclude,
@@ -173,6 +107,12 @@ module DataFrame.Typed (
     cloneColumn,
     dropColumn,
     replaceColumn,
+
+    -- * Construction and folds
+    empty,
+    null,
+    fold,
+    (|>),
 
     -- * Metadata
     dimensions,
@@ -190,6 +130,9 @@ module DataFrame.Typed (
     symmetricDifference,
 
     -- * Joins
+    JoinType (..),
+    join,
+    joinOn,
     innerJoin,
     leftJoin,
     rightJoin,
@@ -202,7 +145,9 @@ module DataFrame.Typed (
     aggregateUntyped,
 
     -- * Column transformations
-    applyColumn,
+    apply,
+    applyInt,
+    applyDouble,
     applyMany,
     applyWhere,
     applyAtIndex,
@@ -224,6 +169,24 @@ module DataFrame.Typed (
     valueCounts,
     valueProportions,
 
+    -- * Statistics
+    mean,
+    meanMaybe,
+    median,
+    medianMaybe,
+    percentile,
+    genericPercentile,
+    standardDeviation,
+    skewness,
+    variance,
+    interQuartileRange,
+    sum,
+    correlation,
+    frequencies,
+    imputeWith,
+    summarize,
+    describeColumns,
+
 #ifdef WITH_TH
     -- * Template Haskell
     deriveSchema,
@@ -242,8 +205,48 @@ module DataFrame.Typed (
 
     -- * Record bridge (ADT <-> TypedDataFrame)
     HasSchema (..),
-    fromRecordsTyped,
-    toRecordsTyped,
+    fromRecords,
+    toRecords,
+
+    -- * Display and rendering
+    DisplayOptions (..),
+    defaultDisplayOptions,
+    display,
+    prettyPrint,
+    toMarkdown,
+    toMarkdown',
+    toCsv,
+    toCsv',
+    toSeparated,
+
+    -- * IO
+    readJSON,
+    readJSONEither,
+#ifdef WITH_CSV
+    ReadOptions (..),
+    defaultReadOptions,
+    readCsv,
+    readCsvWithError,
+    readCsvWithOpts,
+    readTsv,
+    readSeparated,
+    writeCsv,
+    writeTsv,
+    writeSeparated,
+#endif
+#ifdef WITH_PARQUET
+    ParquetReadOptions (..),
+    ParquetWriteOptions (..),
+    defaultParquetReadOptions,
+    defaultParquetWriteOptions,
+    readParquet,
+    readParquetWithError,
+    readParquetWithOpts,
+    readParquetFiles,
+    readParquetFilesWithOpts,
+    writeParquet,
+    writeParquetWithOptions,
+#endif
 
     -- * Generics opt-in for schema derivation
     SchemaOf,
@@ -286,7 +289,7 @@ module DataFrame.Typed (
     AllKnownSymbol (..),
 ) where
 
-import Prelude hiding (drop, filter, take)
+import Prelude hiding (drop, filter, null, sum, take)
 
 import DataFrame.Typed.Access (
     columnAsDoubleVector,
@@ -306,8 +309,10 @@ import DataFrame.Typed.Aggregate (
     groupBy,
  )
 import DataFrame.Typed.Apply (
+    apply,
+    applyDouble,
+    applyInt,
     applyAtIndex,
-    applyColumn,
     applyMany,
     applyWhere,
     deriveWithExpr,
@@ -324,7 +329,60 @@ import DataFrame.Typed.Sampling (
     stratifiedSample,
     stratifiedSplit,
  )
-import DataFrame.Typed.Expr
+import DataFrame.Typed.Expr (
+    TExpr (..),
+    caseWhen,
+    col,
+    ifThenElse,
+    lit,
+    orElse,
+    (.&&),
+    (.&&.),
+    (.*),
+    (.*.),
+    (.+),
+    (.+.),
+    (.-),
+    (.-.),
+    (./),
+    (./.),
+    (./=),
+    (./=.),
+    (.<),
+    (.<.),
+    (.<=),
+    (.<=.),
+    (.==),
+    (.==.),
+    (.>),
+    (.>.),
+    (.>=),
+    (.>=.),
+    (.^),
+    (.^.),
+    (.^^),
+    (.^^.),
+    (.||),
+    (.||.),
+ )
+import DataFrame.Typed.Statistics (
+    correlation,
+    describeColumns,
+    frequencies,
+    genericPercentile,
+    imputeWith,
+    interQuartileRange,
+    mean,
+    meanMaybe,
+    median,
+    medianMaybe,
+    percentile,
+    skewness,
+    standardDeviation,
+    summarize,
+    sum,
+    variance,
+ )
 import DataFrame.Typed.Freeze (freeze, freezeWithError, thaw, unsafeFreeze)
 import DataFrame.Typed.Generic (
     NameCase (..),
@@ -333,13 +391,61 @@ import DataFrame.Typed.Generic (
     genericFromColumns,
     genericToColumns,
  )
-import DataFrame.Typed.Join (fullOuterJoin, innerJoin, leftJoin, rightJoin)
-import DataFrame.Typed.Operations
-import DataFrame.Typed.Record (
-    HasSchema (..),
-    fromRecordsTyped,
-    toRecordsTyped,
+import DataFrame.Display (DisplayOptions (..), defaultDisplayOptions)
+import DataFrame.Expression.Operators ((|>))
+import DataFrame.Operations.Join (JoinType (..))
+#ifdef WITH_CSV
+import DataFrame.IO.CSV (ReadOptions (..), defaultReadOptions)
+import DataFrame.Typed.IO.CSV (
+    readCsv,
+    readCsvWithError,
+    readCsvWithOpts,
+    readSeparated,
+    readTsv,
+    writeCsv,
+    writeSeparated,
+    writeTsv,
  )
+#endif
+#ifdef WITH_PARQUET
+import DataFrame.IO.Parquet (
+    ParquetReadOptions (..),
+    ParquetWriteOptions (..),
+    defaultParquetReadOptions,
+    defaultParquetWriteOptions,
+ )
+import DataFrame.Typed.IO.Parquet (
+    readParquet,
+    readParquetFiles,
+    readParquetFilesWithOpts,
+    readParquetWithError,
+    readParquetWithOpts,
+    writeParquet,
+    writeParquetWithOptions,
+ )
+#endif
+import DataFrame.Typed.IO.JSON (readJSON, readJSONEither)
+import DataFrame.Typed.Interop (
+    display,
+    fromRecords,
+    prettyPrint,
+    toCsv,
+    toCsv',
+    toMarkdown,
+    toMarkdown',
+    toRecords,
+    toSeparated,
+ )
+import DataFrame.Typed.Join (
+    fullOuterJoin,
+    innerJoin,
+    join,
+    joinOn,
+    leftJoin,
+    rightJoin,
+ )
+import DataFrame.Typed.Operations
+import DataFrame.Typed.Record (HasSchema (..))
 import DataFrame.Typed.Schema
 #ifdef WITH_TH
 import DataFrame.Typed.TH (

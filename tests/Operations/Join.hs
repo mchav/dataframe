@@ -12,6 +12,7 @@ import qualified DataFrame.Functions as F
 import DataFrame.Internal.Column.Types (These (..))
 import DataFrame.Operations.Join
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 import Test.HUnit
 
 df1 :: D.DataFrame
@@ -102,7 +103,7 @@ testInnerJoinTyped =
                 , ("B", D.fromList ["B0" :: Text, "B1", "B2"])
                 ]
             )
-            (DT.thaw $ DT.sortBy [DT.asc (DT.col @"key")] (DT.innerJoin @'["key"] tdf1 tdf2))
+            (DT.thaw $ DT.sortBy [DTF.asc (DT.col @"key")] (DT.innerJoin @'["key"] tdf1 tdf2))
         )
 
 testLeftJoinTyped :: Test
@@ -116,7 +117,7 @@ testLeftJoinTyped =
                 , ("B", D.fromList [Just "B0", Just "B1" :: Maybe Text, Just "B2"])
                 ]
             )
-            (DT.thaw $ DT.sortBy [DT.asc (DT.col @"key")] (DT.leftJoin @'["key"] tdf1 tdf2))
+            (DT.thaw $ DT.sortBy [DTF.asc (DT.col @"key")] (DT.leftJoin @'["key"] tdf1 tdf2))
         )
 
 -- A right-hand frame whose payload column is already optional.
@@ -147,7 +148,7 @@ testLeftJoinTypedOptional =
                     )
                 ]
             )
-            (DT.thaw $ DT.sortBy [DT.asc (DT.col @"key")] joined)
+            (DT.thaw $ DT.sortBy [DTF.asc (DT.col @"key")] joined)
         )
   where
     joined ::
@@ -166,7 +167,7 @@ testRightJoinTyped =
                 , ("B", D.fromList ["B0" :: Text, "B1", "B2"])
                 ]
             )
-            (DT.thaw $ DT.sortBy [DT.asc (DT.col @"key")] (DT.rightJoin @'["key"] tdf1 tdf2))
+            (DT.thaw $ DT.sortBy [DTF.asc (DT.col @"key")] (DT.rightJoin @'["key"] tdf1 tdf2))
         )
 
 staffDf :: D.DataFrame

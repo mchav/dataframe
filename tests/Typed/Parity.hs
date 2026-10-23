@@ -10,10 +10,12 @@ import qualified Data.Text as T
 import System.Random (mkStdGen)
 
 import qualified DataFrame as D
+import DataFrame.Expression.Operators ((./=.))
 import qualified DataFrame.Functions as F
 import qualified DataFrame.Internal.Column as DI
 import DataFrame.Internal.Expression (eqExpr)
 import qualified DataFrame.Typed as DT
+import qualified DataFrame.Typed.Functions as DTF
 import qualified DataFrame.Typed.Statistics as TS
 
 import Test.HUnit
@@ -75,39 +77,39 @@ statParity =
 exprParity :: Test
 exprParity =
     TestList
-        [ deriveEq "pow" (DT.pow (DT.col @"x") 2) (F.pow (F.col @Int "x") 2)
-        , deriveEq "relu" (DT.relu (DT.col @"x")) (F.relu (F.col @Int "x"))
-        , deriveEq "toMaybe" (DT.toMaybe (DT.col @"x")) (F.toMaybe (F.col @Int "x"))
+        [ deriveEq "pow" (DTF.pow (DT.col @"x") 2) (F.pow (F.col @Int "x") 2)
+        , deriveEq "relu" (DTF.relu (DT.col @"x")) (F.relu (F.col @Int "x"))
+        , deriveEq "toMaybe" (DTF.toMaybe (DT.col @"x")) (F.toMaybe (F.col @Int "x"))
         , deriveEq
             "min"
-            (DT.min (DT.col @"x") (DT.lit 3))
+            (DTF.min (DT.col @"x") (DT.lit 3))
             (F.min (F.col @Int "x") (F.lit @Int 3))
         , deriveEq
             "splitOn"
-            (DT.splitOn "a" (DT.col @"g"))
+            (DTF.splitOn "a" (DT.col @"g"))
             (F.splitOn "a" (F.col @T.Text "g"))
         , deriveEq
             "recodeWithDefault"
-            (DT.recodeWithDefault 0 [(1 :: Int, 100 :: Int)] (DT.col @"x"))
+            (DTF.recodeWithDefault 0 [(1 :: Int, 100 :: Int)] (DT.col @"x"))
             (F.recodeWithDefault 0 [(1 :: Int, 100 :: Int)] (F.col @Int "x"))
         , deriveEq
             "eq"
-            (DT.eq (DT.col @"x") (DT.lit 3))
+            (DTF.eq (DT.col @"x") (DT.lit 3))
             (F.eq (F.col @Int "x") (F.lit @Int 3))
         , deriveEq
             "and"
-            (DT.and (DT.lt (DT.col @"x") (DT.lit 5)) (DT.geq (DT.col @"x") (DT.lit 2)))
+            (DTF.and (DTF.lt (DT.col @"x") (DT.lit 5)) (DTF.geq (DT.col @"x") (DT.lit 2)))
             (F.and (F.lt x (F.lit @Int 5)) (F.geq x (F.lit @Int 2)))
-        , deriveEq "contains" (DT.contains "a" (DT.col @"g")) (F.contains "a" g)
-        , deriveEq "length" (DT.length (DT.col @"g")) (F.length g)
+        , deriveEq "contains" (DTF.contains "a" (DT.col @"g")) (F.contains "a" g)
+        , deriveEq "length" (DTF.length (DT.col @"g")) (F.length g)
         , deriveEq
             "isNull"
-            (DT.isNull (DT.toMaybe (DT.col @"x")))
+            (DTF.isNull (DTF.toMaybe (DT.col @"x")))
             (F.isNull (F.toMaybe x))
-        , deriveEq "cast" (DT.cast @"x" @Int) (F.cast @Int "x")
+        , deriveEq "cast" (DTF.cast @"x" @Int) (F.cast @Int "x")
         , deriveEq
             "castWithDefault"
-            (DT.castWithDefault @"g" (0 :: Int))
+            (DTF.castWithDefault @"g" (0 :: Int))
             (F.castWithDefault (0 :: Int) "g")
         ]
   where
@@ -128,10 +130,10 @@ exprParity =
 aggParity :: Test
 aggParity =
     TestList
-        [ same "countDistinct" (DT.countDistinct (DT.col @"x")) (F.countDistinct x)
-        , same "topK" (DT.topK 2 (DT.col @"x")) (F.topK 2 x)
-        , same "bottomK" (DT.bottomK 2 (DT.col @"x")) (F.bottomK 2 x)
-        , same "not" (DT.not (DT.eq (DT.col @"x") 1)) (F.not (F.eq x 1))
+        [ same "countDistinct" (DTF.countDistinct (DT.col @"x")) (F.countDistinct x)
+        , same "topK" (DTF.topK 2 (DT.col @"x")) (F.topK 2 x)
+        , same "bottomK" (DTF.bottomK 2 (DT.col @"x")) (F.bottomK 2 x)
+        , same "not" (DTF.not (DTF.eq (DT.col @"x") 1)) (F.not (F.eq x 1))
         ]
   where
     x = F.col @Int "x"
@@ -144,9 +146,9 @@ applyParity =
     TestList
         [ TestCase
             ( assertEqual
-                "applyColumn type-change"
+                "apply type-change"
                 (D.apply (show :: Int -> String) "x" baseDF)
-                (DT.thaw (DT.applyColumn @"x" (show :: Int -> String) tdf))
+                (DT.thaw (DT.apply @"x" (show :: Int -> String) tdf))
             )
         , TestCase
             ( assertEqual
@@ -231,9 +233,73 @@ numericDF =
 numericT :: DT.TypedDataFrame '[ '("x", Int), '("y", Double)]
 numericT = either (error . show) id (DT.freezeWithError numericDF)
 
+-- Ops added for import-swap parity: same result through either API.
+newOpsParity :: Test
+newOpsParity =
+    TestList
+        [ same
+            "topBy"
+            (D.topBy 1 2 [D.Desc (F.col @Double "y")] baseDF)
+            (DT.topBy 1 2 [DT.Desc (DT.col @"y")] tdf)
+        , same
+            "deriveMany"
+            ( D.deriveMany
+                [ "x2" D..= (F.col @Int "x" * 2)
+                , "y2" D..= (F.col @Double "y" + 1)
+                ]
+                baseDF
+            )
+            ( DT.deriveMany
+                (DT.as @"y2" (DT.col @"y" + 1) . DT.as @"x2" (DT.col @"x" * 2))
+                tdf
+            )
+        , same
+            "join INNER"
+            (D.join D.INNER ["x"] leftDF numericDF)
+            (DT.join @'DT.INNER @'["x"] leftT numericT)
+        , same
+            "join LEFT"
+            (D.join D.LEFT ["x"] numericDF leftDF)
+            (DT.join @'DT.LEFT @'["x"] numericT leftT)
+        , same
+            "applyInt"
+            (D.applyInt (* 10) "x" baseDF)
+            (DT.applyInt @"x" (* 10) tdf)
+        , same
+            "applyDouble"
+            (D.applyDouble (> 20) "y" baseDF)
+            (DT.applyDouble @"y" (> 20) tdf)
+        , same
+            "fold"
+            (D.fold (\n -> D.filter (F.col @Int "x" ./=. F.lit n)) [2, 4] baseDF)
+            (DT.fold (\n -> DT.filter (DT.col @"x" DT../=. DT.lit n)) [2, 4] tdf)
+        , TestCase (assertBool "empty is null" (DT.null DT.empty))
+        , TestCase (assertEqual "null" (D.null baseDF) (DT.null tdf))
+        , TestCase (assertEqual "toCsv" (D.toCsv baseDF) (DT.toCsv tdf))
+        , TestCase
+            (assertEqual "toMarkdown" (D.toMarkdown baseDF) (DT.toMarkdown tdf))
+        , TestCase
+            ( assertEqual
+                "frame stats via DataFrame.Typed"
+                (D.mean (F.col @Double "y") baseDF)
+                (DT.mean (DT.col @"y") tdf)
+            )
+        , TestCase
+            ( assertEqual
+                "readJSONEither"
+                (D.toCsv <$> D.readJSONEither jsonBytes)
+                (DT.toCsv <$> DT.readJSONEither @'[ '("a", Maybe Double)] jsonBytes)
+            )
+        ]
+  where
+    same :: String -> D.DataFrame -> DT.TypedDataFrame cols -> Test
+    same lbl untyped typed = TestCase (assertEqual lbl untyped (DT.thaw typed))
+    jsonBytes = "[{\"a\": 1}, {\"a\": 2}]"
+
 tests :: [Test]
 tests =
-    [ statParity
+    [ newOpsParity
+    , statParity
     , exprParity
     , aggParity
     , applyParity

@@ -58,7 +58,7 @@ import DataFrame.Operations.Core (insertVector, renameMany)
 import DataFrame.Operations.Join (JoinType (..), join)
 import DataFrame.Operations.Permutation (SortOrder (..), sortBy)
 import qualified DataFrame.Operations.Statistics as Stats
-import DataFrame.Operations.Subset (exclude, filterWhere, range, select)
+import DataFrame.Operations.Subset (exclude, range, select)
 import qualified DataFrame.Operations.Subset as Subset
 import DataFrame.Operations.Transformations (derive)
 import DataFrame.Schema (Schema, makeSchema, schemaType)
@@ -176,7 +176,7 @@ executePlan reader (Limit k node) =
 executePlan reader (Filter predJson node) = do
     df <- executePlan reader node
     case decodeExprAt @Bool predJson of
-        Right pred_ -> return $ filterWhere pred_ df
+        Right pred_ -> return $ Subset.filter pred_ df
         Left err -> ioError $ userError $ "DataFrame.IR.Filter: " <> err
 executePlan reader (Derive name exprJson node) = do
     df <- executePlan reader node
@@ -232,10 +232,10 @@ executePlan reader (WriteCsv path node) = do
     return df
 executePlan reader (ScanCsv path schemaPairs) = do
     schema <- buildSchema schemaPairs
-    Lazy.runDataFrame (Lazy.scanCsvWith reader schema (T.pack path))
+    Lazy.run (Lazy.scanCsvWith reader schema (T.pack path))
 executePlan _reader (ScanParquet path schemaPairs) = do
     schema <- buildSchema schemaPairs
-    Lazy.runDataFrame (Lazy.scanParquet schema (T.pack path))
+    Lazy.run (Lazy.scanParquet schema (T.pack path))
 
 -- | Build a SortOrder from a column's runtime type.
 mkSortOrder :: Bool -> T.Text -> Column -> SortOrder

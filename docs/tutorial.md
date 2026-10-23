@@ -80,7 +80,7 @@ This is a common idiom in languages like R and Julia, where it's sometimes calle
 
 ## 3) Filter rows with typed predicates
 
-Let's say we want to filter all flowers whose petal width is greater than 6. We can use the `filterWhere` function. `filterWhere` takes a boolean expression (`Expr Bool`). Dataframes have an expression syntax (similar to Polars) that allow us to write logic on top of columns.
+Let's say we want to filter all flowers whose petal width is greater than 6. We can use the `filter` function. `filter` takes a boolean expression (`Expr Bool`). Dataframes have an expression syntax (similar to Polars) that allow us to write logic on top of columns.
 
 There are a couple of core functions we can use to define columns:
 
@@ -116,7 +116,7 @@ Armed with this knowledge, we can go back and filter all flowers with petal leng
 We can see from the sample we printed before that `petal.length` is of type `Double`. We write the expression as follows:
 
 ```haskell
-df |> D.filterWhere (F.col @Double "petal.length" .>. F.lit @Double 6)
+df |> D.filter (F.col @Double "petal.length" .>. F.lit @Double 6)
    |> D.select ["petal.width", "petal.length", "variety"]
 ```
 
@@ -126,7 +126,7 @@ Suppose we write out the wrong types in the expression. That is suppose we say t
 
 ```haskell
 -- This fails at runtime because "petal.length" is Double, not Int:
-df |> D.filterWhere (F.col @Int "petal.length" .>. F.lit @Int 6)
+df |> D.filter (F.col @Int "petal.length" .>. F.lit @Int 6)
 ```
 
 ![Screenshot of filtering with type error](./_static/filter_wrong_type.png)
@@ -154,7 +154,7 @@ and is re-exported from `DataFrame` for convenience.)
 In fact, we can make this even shorter. Since Haskell knows how to create any num instance from literals, we don't have to write `F.lit @Int 6`. It knows, from the context, to wrap `6` so it's an `Expr Double`. Thus, we can write:
 
 ```haskell
-df |> D.filterWhere (petal_length .>. 6)
+df |> D.filter (petal_length .>. 6)
    |> D.select ["petal.width", "petal.length", "variety"]
 ```
 

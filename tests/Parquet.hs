@@ -99,7 +99,7 @@ allTypesPlainSnappy = testBothReadParquetPaths $ \readParquet ->
     TestCase
         ( assertEqual
             "allTypesPlainSnappy"
-            (D.filter (F.col @Int32 "id") (`elem` [6, 7]) allTypes)
+            (D.filterBy (`elem` [6, 7]) (F.col @Int32 "id") allTypes)
             (unsafePerformIO (readParquet "./tests/data/alltypes_plain.snappy.parquet"))
         )
 
@@ -108,7 +108,7 @@ allTypesDictionary = testBothReadParquetPaths $ \readParquet ->
     TestCase
         ( assertEqual
             "allTypesPlainSnappy"
-            (D.filter (F.col @Int32 "id") (`elem` [0, 1]) allTypes)
+            (D.filterBy (`elem` [0, 1]) (F.col @Int32 "id") allTypes)
             (unsafePerformIO (readParquet "./tests/data/alltypes_dictionary.parquet"))
         )
 

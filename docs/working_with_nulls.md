@@ -79,7 +79,7 @@ These work on non-nullable columns and return plain `Bool`.
 
 ```haskell
 -- Both columns must be non-nullable
-D.filterWhere (F.col @Int "id" .==. F.lit 2) df
+D.filter (F.col @Int "id" .==. F.lit 2) df
 ```
 
 ### Nullable-aware operators (`.+`, `.-`, `.*`, `./`, `.==`, `.<`, …)
