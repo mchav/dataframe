@@ -48,8 +48,8 @@ import DataFrame.Internal.DataFrame (
  )
 import DataFrame.Internal.Expression (Expr)
 import DataFrame.Internal.Schema.TH (schemaTypeE)
-import DataFrame.TH.Identifier (sanitize)
 import DataFrame.Schema (Schema, makeSchema)
+import DataFrame.TH.Identifier (sanitize)
 import Prelude as P
 
 knownTypeNames :: M.Map String Name

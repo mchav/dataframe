@@ -560,8 +560,7 @@ inFileOrder names opts = opts{readColumns = fileOrder names <$> readColumns opts
 
 -- | Order requested names as they appear in a file (matching by leaf name).
 fileOrder :: [T.Text] -> [T.Text] -> [T.Text]
-fileOrder names requested =
-    L.sortOn position requested
+fileOrder names = L.sortOn position
   where
     leaf = T.takeWhileEnd (/= '.')
     -- Unknown names trail, so the reader still reports them as missing.
