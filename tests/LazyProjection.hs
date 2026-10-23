@@ -40,12 +40,12 @@ twoCols :: Schema
 twoCols =
     Schema $ M.fromList [("id", schemaType @Int), ("dob", schemaType @Int)]
 
--- | The scan keeps only the schema's columns, whatever their header position.
+-- | The scan keeps only the schema's columns, in header order like eager.
 scanProjects :: Test
 scanProjects = TestLabel "scan_projects" $ TestCase $ withCsv ',' $ \csvPath -> do
     df <- L.run (L.scanCsv twoCols (T.pack csvPath))
     assertEqual "dims" (2, 2) (D.dimensions df)
-    assertEqual "columns" ["dob", "id"] (D.columnNames df)
+    assertEqual "columns" ["id", "dob"] (D.columnNames df)
 
 -- | Same schema, same projection, through the SIMD reader.
 scanProjectsWithFastReader :: Test
@@ -55,7 +55,7 @@ scanProjectsWithFastReader =
             L.run
                 (L.scanCsvWith Fast.fastReadCsvWithOpts twoCols (T.pack csvPath))
         assertEqual "dims" (2, 2) (D.dimensions df)
-        assertEqual "columns" ["dob", "id"] (D.columnNames df)
+        assertEqual "columns" ["id", "dob"] (D.columnNames df)
 
 -- | Both readers must agree on what a scan produces.
 readersAgree :: Test
@@ -72,7 +72,7 @@ scanHonoursSeparator =
         -- With the separator ignored, the schema's columns are not found.
         df <- L.run (L.scanSeparated ';' twoCols (T.pack csvPath))
         assertEqual "dims" (2, 2) (D.dimensions df)
-        assertEqual "columns" ["dob", "id"] (D.columnNames df)
+        assertEqual "columns" ["id", "dob"] (D.columnNames df)
 
 -- | A schema naming a column the file lacks is an error, not a short frame.
 scanMissingColumn :: Test

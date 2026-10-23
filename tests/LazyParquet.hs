@@ -119,9 +119,20 @@ sortAndLimit =
             assertEqual "sortAndLimit rows" 3 (fst (D.dimensions actual))
         )
 
+-- | A scan returns its columns in file order, like an eager read.
+fileColumnOrder :: Test
+fileColumnOrder =
+    TestCase
+        ( do
+            actual <- L.run (L.scanParquet allTypesSchema (T.pack plainPath))
+            eager <- D.readParquet plainPath
+            assertEqual "column order" (D.columnNames eager) (D.columnNames actual)
+        )
+
 tests :: [Test]
 tests =
-    [ basicScan
+    [ fileColumnOrder
+    , basicScan
     , columnProjection
     , filterPushdown
     , filterAndProject

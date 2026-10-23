@@ -8,7 +8,7 @@ import qualified Data.Map.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified DataFrame as D
-import DataFrame.Expression.Operators (as, (|>))
+import DataFrame.Expression.Operators (as, (.=), (.>.), (|>))
 import qualified DataFrame.Functions as F
 import qualified DataFrame.IO.CSV as Csv
 import qualified DataFrame.Internal.Column as DI
@@ -211,9 +211,76 @@ streamingJoinParity =
                         (L.fromDataFrame renamedCustomers)
                     )
 
+-- | New plan nodes under a scan, where pruning and pushdown are active.
+optimizedNodesParity :: Test
+optimizedNodesParity =
+    TestCase $
+        withCsv (ordersFrame 3_000) $ \ordersPath -> do
+            df <- Csv.readCsvWithSchema ordersSchema ordersPath
+            let scan = (L.scanCsv ordersSchema (T.pack ordersPath)){L.batchSize = 256}
+                amount = F.col @Double "amount"
+                check lbl eager lazy = do
+                    actual <- L.run lazy
+                    assertEqual lbl (show eager) (show actual)
+            check
+                "rename, filter on new name, select"
+                ( D.select ["amt", "order_id"] $
+                    D.filter (F.col @Double "amt" .>. 1000) $
+                        D.rename "amount" "amt" df
+                )
+                ( L.select ["amt", "order_id"] $
+                    L.filter (F.col @Double "amt" .>. 1000) $
+                        L.rename "amount" "amt" scan
+                )
+            check
+                "filter above drop stays above"
+                (D.filter (amount .>. 100) (D.drop 50 df))
+                (L.filter (amount .>. 100) (L.drop 50 scan))
+            check
+                "filter above apply moves below it"
+                ( D.select ["order_id", "discount"] $
+                    D.filter (amount .>. 4000) $
+                        D.apply (* (2 :: Double)) "discount" df
+                )
+                ( L.select ["order_id", "discount"] $
+                    L.filter (amount .>. 4000) $
+                        L.apply (* (2 :: Double)) "discount" scan
+                )
+            check
+                "filter on applied column stays above"
+                ( D.filter
+                    (F.col @Double "discount" .>. 2)
+                    (D.apply (* (2 :: Double)) "discount" df)
+                )
+                ( L.filter
+                    (F.col @Double "discount" .>. 2)
+                    (L.apply (* (2 :: Double)) "discount" scan)
+                )
+            check
+                "exclude then select"
+                (D.select ["order_id"] (D.exclude ["discount"] df))
+                (L.select ["order_id"] (L.exclude ["discount"] scan))
+            check
+                "filter above takeLast stays above"
+                (D.filter (amount .>. 10) (D.takeLast 100 df))
+                (L.filter (amount .>. 10) (L.takeLast 100 scan))
+            check
+                "deriveMany then select a derived column"
+                ( D.select ["x"] $
+                    D.deriveMany ["x" .= (amount * 2), "y" .= amount] df
+                )
+                ( L.select ["x"] $
+                    L.deriveMany ["x" .= (amount * 2), "y" .= amount] scan
+                )
+            check
+                "append two scans"
+                (df <> D.take 10 df)
+                (scan <> L.take 10 scan)
+
 tests :: [Test]
 tests =
-    [ joinPipelineParity
+    [ optimizedNodesParity
+    , joinPipelineParity
     , groupByPipelineParity
     , streamingMeanParity
     , streamingJoinParity

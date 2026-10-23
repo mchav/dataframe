@@ -50,6 +50,15 @@
   `DataFrame.Internal.Statistics`.
 
 ### Additions
+* `DataFrame.Lazy` and `DataFrame.Typed.Lazy` cover the eager API: row ops
+  (`filterBy`, `filterJust`, `drop`, `takeLast`, `range`, `topBy`,
+  `distinct`, `sample`, `shuffle`, splits and folds), column ops (`exclude`,
+  `rename`, `deriveMany`, `impute`, `apply*`, `insert*`, `cloneColumn`, …),
+  merges and set operations (`<>`/`append`, `|||`, `union`, `intersect`,
+  `difference`, `symmetricDifference`), summaries, and value-returning ops
+  (`mean`, `nRows`, `columnAs*`, `toCsv`, `writeCsv`, `writeParquet`,
+  `display`, …) that run the query and return `IO`. Row-local ops stream
+  batch by batch; ops that need the whole input collect it first.
 * `joinOn jt [(leftKey, rightKey)]` in all four APIs (typed:
   `joinOn @'INNER @'[ '("id", "uid")]`); the result keeps the left names.
 * Typed parity with the untyped API: `topBy`, `deriveMany` (built with
@@ -65,8 +74,8 @@
   `contains` and `length`, completing parity with `DataFrame.Functions`.
 
 ### Fixes
-* Streaming CSV scans return columns in file order, like eager reads,
-  instead of alphabetical order.
+* Lazy CSV and Parquet scans return columns in file order, like eager
+  reads, instead of alphabetical order.
 * A user function named like a builtin (e.g. `"add"`) no longer runs the
   builtin's kernel instead of the user's function.
 * `eqExpr` no longer equates different `lift`/`lift2` functions, `fromMaybe`

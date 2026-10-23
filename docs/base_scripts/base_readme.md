@@ -401,6 +401,23 @@ D.take 10 lazyResult |> D.toMarkdown'
 
 The optimizer pushes the filter into the scan, drops unreferenced columns before reading, and stops pulling batches once 1000 rows have been collected.
 
+### Switching between APIs
+
+The eager, typed, lazy and typed-lazy APIs share operation names and argument
+order, so moving a pipeline between them is mostly a change of imports:
+
+| | Frame ops (`D`) | Expressions (`F`) |
+|---|---|---|
+| Eager | `DataFrame` | `DataFrame.Functions` |
+| Typed | `DataFrame.Typed` | `DataFrame.Typed.Functions` |
+| Lazy | `DataFrame.Lazy` | `DataFrame.Functions` |
+| Typed lazy | `DataFrame.Typed.Lazy` | `DataFrame.Typed.Functions` |
+
+A lazy pipeline starts from `scanCsv`/`scanParquet`/`fromDataFrame` and ends with
+`run`; ops that return a value (`mean`, `nRows`, `writeCsv`, …) run the query
+and return `IO`. Typed APIs name columns at the type level (`col @"x"`,
+`select @'["x"]`) where untyped ones take text.
+
 ## Documentation
 
 * User guide: https://dataframe.readthedocs.io/en/latest/

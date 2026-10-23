@@ -25,6 +25,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Unsafe as BSU
 import Data.IORef
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Maybe
 import qualified Data.Set as S
@@ -39,11 +40,17 @@ import DataFrame.IO.CSV (
     schemaReadOptions,
  )
 import qualified DataFrame.IO.Parquet as Parquet
+import DataFrame.IO.Parquet.Thrift (unField)
+import qualified DataFrame.IO.Parquet.Thrift as Thrift
 import qualified DataFrame.Internal.Column as C
 import qualified DataFrame.Internal.DataFrame as D
 import qualified DataFrame.Internal.Expression as E
 import qualified DataFrame.Lazy.IO.Binary as Bin
-import DataFrame.Lazy.Internal.LogicalPlan (DataSource (..))
+import DataFrame.Lazy.Internal.LogicalPlan (
+    BatchFn (..),
+    BatchFn2 (..),
+    DataSource (..),
+ )
 import DataFrame.Lazy.Internal.PhysicalPlan
 import qualified DataFrame.Operations.Aggregation as Agg
 import qualified DataFrame.Operations.Core as Core
@@ -71,6 +78,10 @@ materialized df = do
         mb <- readIORef ref
         writeIORef ref Nothing
         return mb
+
+-- | Apply a function to every batch of a stream.
+mapStream :: (D.DataFrame -> D.DataFrame) -> Stream -> Stream
+mapStream f s = Stream (fmap f <$> pullBatch s)
 
 -- | Drain a stream and concatenate its batches into one DataFrame.
 collectStream :: Stream -> IO D.DataFrame
@@ -106,6 +117,11 @@ isBounded (PhysicalSort _ c) = isBounded c
 isBounded (PhysicalHashAggregate _ _ c) = isBounded c
 isBounded (PhysicalSpill c _) = isBounded c
 isBounded (PhysicalSourceDF _ _) = True
+isBounded (PhysicalRename _ c) = isBounded c
+isBounded (PhysicalOffset _ c) = isBounded c
+isBounded (PhysicalMapBatch _ _ c) = isBounded c
+isBounded (PhysicalBarrier _ _ c) = isBounded c
+isBounded (PhysicalBarrier2 _ _ l r) = isBounded l && isBounded r
 isBounded (PhysicalHashJoin _ _ l r) = isBounded l && isBounded r
 isBounded (PhysicalSortMergeJoin _ _ l r) = isBounded l && isBounded r
 
@@ -162,6 +178,32 @@ buildStream (PhysicalDerive name uexpr child) = do
             mb <- pullBatch childStream
             return $ fmap (Trans.deriveMany [(name, uexpr)]) mb
         )
+buildStream (PhysicalRename pairs child) =
+    mapStream (Core.renameMany pairs) <$> buildStream child
+buildStream (PhysicalMapBatch _ (BatchFn f) child) =
+    mapStream f <$> buildStream child
+buildStream (PhysicalBarrier _ (BatchFn f) child) =
+    execute child >>= materialized . f
+buildStream (PhysicalBarrier2 _ (BatchFn2 f) l r) = do
+    leftDf <- execute l
+    rightDf <- execute r
+    materialized (f leftDf rightDf)
+buildStream (PhysicalOffset n child) = do
+    childStream <- buildStream child
+    skippedRef <- newIORef (0 :: Int)
+    let next = do
+            mb <- pullBatch childStream
+            case mb of
+                Nothing -> return Nothing
+                Just df -> do
+                    skipped <- readIORef skippedRef
+                    let rows = Core.nRows df
+                        toSkip = min rows (n - skipped)
+                    writeIORef skippedRef (skipped + toSkip)
+                    if toSkip == rows && rows > 0
+                        then next
+                        else return (Just (Sub.drop toSkip df))
+    return (Stream next)
 buildStream (PhysicalLimit n child) = do
     childStream <- buildStream child
     countRef <- newIORef (0 :: Int)
@@ -461,7 +503,12 @@ executeParquetScan path cfg = do
             [] -> return Nothing
             (f : rest) -> do
                 writeIORef ref rest
-                Just <$> Parquet.readParquetWithOpts opts f
+                -- One footer parse orders the selection and feeds the read.
+                metadata <- Parquet.readMetadataFromPath f
+                let names = Parquet.getColumnNames (drop 1 (unField (Thrift.schema metadata)))
+                    opts' =
+                        opts{Parquet.selectedColumns = fileOrder names <$> Parquet.selectedColumns opts}
+                Just <$> Parquet.readParquetWithMetadata Nothing metadata opts' f
 
 -- | Read options for a CSV scan: schema gives types, source the separator.
 scanReadOptions :: Char -> ScanConfig -> ReadOptions
@@ -472,9 +519,10 @@ scanReadOptions sep cfg =
 executeCsvScan :: FilePath -> Char -> CsvReader -> ScanConfig -> IO Stream
 executeCsvScan path sep reader cfg = do
     nCaps <- getNumCapabilities
+    header <- withFile path ReadMode C8.hGetLine
     chunkPaths <- splitCsvAtNewlines (max 1 nCaps) path
 
-    let opts = scanReadOptions sep cfg
+    let opts = inFileOrder (headerNames sep header) (scanReadOptions sep cfg)
         batchSz = scanBatchSize cfg
     chunkDfs <- mapConcurrently (reader opts) chunkPaths
     mapM_ removeFile chunkPaths
@@ -496,6 +544,31 @@ executeCsvScan path sep reader cfg = do
                             Just p -> Sub.filter p df
                      in return (Just df')
         )
+
+-- | Column names in a CSV header line.
+headerNames :: Char -> BS.ByteString -> [T.Text]
+headerNames sep =
+    map (T.dropAround (\c -> c == '"' || c == '\r') . T.pack . C8.unpack)
+        . C8.split sep
+        . stripBom
+  where
+    stripBom b = Data.Maybe.fromMaybe b (BS.stripPrefix "\xEF\xBB\xBF" b)
+
+-- | Read the selected columns in file order, like eager reads do.
+inFileOrder :: [T.Text] -> ReadOptions -> ReadOptions
+inFileOrder names opts = opts{readColumns = fileOrder names <$> readColumns opts}
+
+-- | Order requested names as they appear in a file (matching by leaf name).
+fileOrder :: [T.Text] -> [T.Text] -> [T.Text]
+fileOrder names requested =
+    L.sortOn position requested
+  where
+    leaf = T.takeWhileEnd (/= '.')
+    -- Unknown names trail, so the reader still reports them as missing.
+    position r =
+        Data.Maybe.fromMaybe
+            (length names)
+            (L.findIndex (\n -> n == r || leaf n == r) names)
 
 executeCsvScanStreaming ::
     FilePath -> Char -> CsvReader -> ScanConfig -> IO Stream
@@ -523,11 +596,7 @@ executeCsvScanStreamingWith path sep reader cfg = do
             ( withFile path ReadMode $ \h -> do
                 rawHeader <- C8.hGetLine h
                 let header = stripUtf8Bom rawHeader
-                    opts =
-                        schemaOpts
-                            { readColumns =
-                                fileOrder (headerNames header) <$> readColumns schemaOpts
-                            }
+                    opts = inFileOrder (headerNames sep header) schemaOpts
                 let feed bytes =
                         unless (BS.null bytes) $ do
                             let window = header <> BS.singleton nl <> bytes
@@ -574,17 +643,6 @@ executeCsvScanStreamingWith path sep reader cfg = do
 
     stripUtf8Bom bytes =
         Data.Maybe.fromMaybe bytes (BS.stripPrefix "\xEF\xBB\xBF" bytes)
-
-    headerNames =
-        map (T.dropAround (\c -> c == '"' || c == '\r') . T.pack . C8.unpack)
-            . C8.split sep
-
-    -- File order, like eager reads; unknown names trail so they still error.
-    fileOrder names requested =
-        let wanted = S.fromList requested
-            present = S.fromList names
-         in filter (`S.member` wanted) names
-                <> filter (`S.notMember` present) requested
 
 -- | Find the last record-ending LF in a CSV buffer.
 lastCompleteRecordNewline :: BS.ByteString -> Maybe Int
