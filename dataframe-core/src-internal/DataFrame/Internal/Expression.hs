@@ -13,7 +13,10 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
-module DataFrame.Internal.Expression where
+module DataFrame.Internal.Expression (
+    module DataFrame.Internal.Expression,
+    module DataFrame.Internal.Expression.OpId,
+) where
 
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
@@ -23,18 +26,19 @@ import Data.Type.Equality (TestEquality (testEquality), type (:~:) (Refl))
 import qualified Data.Vector.Generic as VG
 import DataFrame.Internal.Column
 import qualified DataFrame.Internal.Display.Pretty as P
+import DataFrame.Internal.Expression.OpId
 import Type.Reflection (Typeable, typeOf, typeRep)
 
 -- | Operators are an open typeclass so the simplifier can match them by 'cast'.
 class (Typeable op) => UnaryOp op where
     unaryFn :: op a b -> a -> b
-    unaryName :: op a b -> T.Text
+    unaryId :: op a b -> OpRef UnOpId
     unarySymbol :: op a b -> Maybe T.Text
     unarySymbol _ = Nothing
 
 class (Typeable op) => BinaryOp op where
     binaryFn :: op a b c -> a -> b -> c
-    binaryName :: op a b c -> T.Text
+    binaryId :: op a b c -> OpRef BinOpId
     binarySymbol :: op a b c -> Maybe T.Text
     binarySymbol _ = Nothing
     binaryCommutative :: op a b c -> Bool
@@ -42,15 +46,23 @@ class (Typeable op) => BinaryOp op where
     binaryPrecedence :: op a b c -> Int
     binaryPrecedence _ = 9
 
+-- | Display name of a unary operator.
+unaryName :: (UnaryOp op) => op a b -> T.Text
+unaryName = opRefName unOpName . unaryId
+
+-- | Display name of a binary operator.
+binaryName :: (BinaryOp op) => op a b c -> T.Text
+binaryName = opRefName binOpName . binaryId
+
 data UnUDF a b = MkUnaryOp
     { unaryFn :: a -> b
-    , unaryName :: T.Text
+    , unaryId :: OpRef UnOpId
     , unarySymbol :: Maybe T.Text
     }
 
 data BinUDF a b c = MkBinaryOp
     { binaryFn :: a -> b -> c
-    , binaryName :: T.Text
+    , binaryId :: OpRef BinOpId
     , binarySymbol :: Maybe T.Text
     , binaryCommutative :: Bool
     , binaryPrecedence :: Int
@@ -58,40 +70,50 @@ data BinUDF a b c = MkBinaryOp
 
 instance UnaryOp UnUDF where
     unaryFn (MkUnaryOp{unaryFn = f}) = f
-    unaryName (MkUnaryOp{unaryName = n}) = n
+    unaryId (MkUnaryOp{unaryId = n}) = n
     unarySymbol (MkUnaryOp{unarySymbol = s}) = s
 
 instance BinaryOp BinUDF where
     binaryFn (MkBinaryOp{binaryFn = f}) = f
-    binaryName (MkBinaryOp{binaryName = n}) = n
+    binaryId (MkBinaryOp{binaryId = n}) = n
     binarySymbol (MkBinaryOp{binarySymbol = s}) = s
     binaryCommutative (MkBinaryOp{binaryCommutative = c}) = c
     binaryPrecedence (MkBinaryOp{binaryPrecedence = p}) = p
 
 data AggStrategy a b where
     CollectAgg ::
-        (VG.Vector v b, Typeable v) => T.Text -> (v b -> a) -> AggStrategy a b
-    FoldAgg :: T.Text -> Maybe a -> (a -> b -> a) -> AggStrategy a b
+        (VG.Vector v b, Typeable v) =>
+        OpRef AggId -> (v b -> a) -> AggStrategy a b
+    FoldAgg :: OpRef AggId -> Maybe a -> (a -> b -> a) -> AggStrategy a b
     MergeAgg ::
         (Columnable acc) =>
-        T.Text ->
+        OpRef AggId ->
         acc ->
         (acc -> b -> acc) ->
         (acc -> acc -> acc) ->
         (acc -> a) ->
         AggStrategy a b
 
+aggStrategyId :: AggStrategy a b -> OpRef AggId
+aggStrategyId (CollectAgg i _) = i
+aggStrategyId (FoldAgg i _ _) = i
+aggStrategyId (MergeAgg i _ _ _ _) = i
+
+-- | Display name of an aggregation.
+aggStrategyName :: AggStrategy a b -> T.Text
+aggStrategyName = opRefName aggName . aggStrategyId
+
 data Expr a where
     Col :: (Columnable a) => T.Text -> Expr a
     CastWith ::
         (Columnable a, Columnable b, Read a) =>
         T.Text ->
-        T.Text ->
+        OpRef CastId ->
         (Either String a -> b) ->
         Expr b
     CastExprWith ::
         (Columnable a, Columnable b, Columnable src, Read a) =>
-        T.Text ->
+        OpRef CastId ->
         (Either String a -> b) ->
         Expr src ->
         Expr b
@@ -131,7 +153,7 @@ instance (Num a, Columnable a) => Num (Expr a) where
         Binary
             ( MkBinaryOp
                 { binaryFn = (+)
-                , binaryName = "add"
+                , binaryId = Builtin BAdd
                 , binarySymbol = Just "+"
                 , binaryCommutative = True
                 , binaryPrecedence = 6
@@ -143,7 +165,7 @@ instance (Num a, Columnable a) => Num (Expr a) where
         Binary
             ( MkBinaryOp
                 { binaryFn = (-)
-                , binaryName = "sub"
+                , binaryId = Builtin BSub
                 , binarySymbol = Just "-"
                 , binaryCommutative = False
                 , binaryPrecedence = 6
@@ -155,7 +177,7 @@ instance (Num a, Columnable a) => Num (Expr a) where
         Binary
             ( MkBinaryOp
                 { binaryFn = (*)
-                , binaryName = "mult"
+                , binaryId = Builtin BMult
                 , binarySymbol = Just "*"
                 , binaryCommutative = True
                 , binaryPrecedence = 7
@@ -168,15 +190,16 @@ instance (Num a, Columnable a) => Num (Expr a) where
     negate :: Expr a -> Expr a
     negate =
         Unary
-            (MkUnaryOp{unaryFn = negate, unaryName = "negate", unarySymbol = Nothing})
+            (MkUnaryOp{unaryFn = negate, unaryId = Builtin UNegate, unarySymbol = Nothing})
 
     abs :: (Num a) => Expr a -> Expr a
-    abs = Unary (MkUnaryOp{unaryFn = abs, unaryName = "abs", unarySymbol = Nothing})
+    abs =
+        Unary (MkUnaryOp{unaryFn = abs, unaryId = Builtin UAbs, unarySymbol = Nothing})
 
     signum :: (Num a) => Expr a -> Expr a
     signum =
         Unary
-            (MkUnaryOp{unaryFn = signum, unaryName = "signum", unarySymbol = Nothing})
+            (MkUnaryOp{unaryFn = signum, unaryId = Builtin USignum, unarySymbol = Nothing})
 
 add :: (Num a, Columnable a) => Expr a -> Expr a -> Expr a
 add = (+)
@@ -196,7 +219,7 @@ instance (Fractional a, Columnable a) => Fractional (Expr a) where
         Binary
             ( MkBinaryOp
                 { binaryFn = (/)
-                , binaryName = "divide"
+                , binaryId = Builtin BDivide
                 , binarySymbol = Just "/"
                 , binaryCommutative = False
                 , binaryPrecedence = 7
@@ -214,80 +237,96 @@ instance (Floating a, Columnable a) => Floating (Expr a) where
     pi :: (Floating a, Columnable a) => Expr a
     pi = Lit pi
     exp :: (Floating a, Columnable a) => Expr a -> Expr a
-    exp = Unary (MkUnaryOp{unaryFn = exp, unaryName = "exp", unarySymbol = Nothing})
+    exp =
+        Unary (MkUnaryOp{unaryFn = exp, unaryId = Builtin UExp, unarySymbol = Nothing})
     sqrt :: (Floating a, Columnable a) => Expr a -> Expr a
     sqrt =
-        Unary (MkUnaryOp{unaryFn = sqrt, unaryName = "sqrt", unarySymbol = Nothing})
+        Unary
+            (MkUnaryOp{unaryFn = sqrt, unaryId = Builtin USqrt, unarySymbol = Nothing})
     (**) :: (Floating a, Columnable a) => Expr a -> Expr a -> Expr a
     (**) =
         Binary
             ( MkBinaryOp
                 { binaryFn = (**)
-                , binaryName = "exponentiate"
+                , binaryId = Builtin BExponentiate
                 , binarySymbol = Just "**"
                 , binaryCommutative = False
                 , binaryPrecedence = 8
                 }
             )
     log :: (Floating a, Columnable a) => Expr a -> Expr a
-    log = Unary (MkUnaryOp{unaryFn = log, unaryName = "log", unarySymbol = Nothing})
+    log =
+        Unary (MkUnaryOp{unaryFn = log, unaryId = Builtin ULog, unarySymbol = Nothing})
     logBase :: (Floating a, Columnable a) => Expr a -> Expr a -> Expr a
     logBase =
         Binary
             ( MkBinaryOp
                 { binaryFn = logBase
-                , binaryName = "logBase"
+                , binaryId = Builtin BLogBase
                 , binarySymbol = Nothing
                 , binaryCommutative = False
                 , binaryPrecedence = 1
                 }
             )
     sin :: (Floating a, Columnable a) => Expr a -> Expr a
-    sin = Unary (MkUnaryOp{unaryFn = sin, unaryName = "sin", unarySymbol = Nothing})
+    sin =
+        Unary (MkUnaryOp{unaryFn = sin, unaryId = Builtin USin, unarySymbol = Nothing})
     cos :: (Floating a, Columnable a) => Expr a -> Expr a
-    cos = Unary (MkUnaryOp{unaryFn = cos, unaryName = "cos", unarySymbol = Nothing})
+    cos =
+        Unary (MkUnaryOp{unaryFn = cos, unaryId = Builtin UCos, unarySymbol = Nothing})
     tan :: (Floating a, Columnable a) => Expr a -> Expr a
-    tan = Unary (MkUnaryOp{unaryFn = tan, unaryName = "tan", unarySymbol = Nothing})
+    tan =
+        Unary (MkUnaryOp{unaryFn = tan, unaryId = Builtin UTan, unarySymbol = Nothing})
     asin :: (Floating a, Columnable a) => Expr a -> Expr a
     asin =
-        Unary (MkUnaryOp{unaryFn = asin, unaryName = "asin", unarySymbol = Nothing})
+        Unary
+            (MkUnaryOp{unaryFn = asin, unaryId = Builtin UAsin, unarySymbol = Nothing})
     acos :: (Floating a, Columnable a) => Expr a -> Expr a
     acos =
-        Unary (MkUnaryOp{unaryFn = acos, unaryName = "acos", unarySymbol = Nothing})
+        Unary
+            (MkUnaryOp{unaryFn = acos, unaryId = Builtin UAcos, unarySymbol = Nothing})
     atan :: (Floating a, Columnable a) => Expr a -> Expr a
     atan =
-        Unary (MkUnaryOp{unaryFn = atan, unaryName = "atan", unarySymbol = Nothing})
+        Unary
+            (MkUnaryOp{unaryFn = atan, unaryId = Builtin UAtan, unarySymbol = Nothing})
     sinh :: (Floating a, Columnable a) => Expr a -> Expr a
     sinh =
-        Unary (MkUnaryOp{unaryFn = sinh, unaryName = "sinh", unarySymbol = Nothing})
+        Unary
+            (MkUnaryOp{unaryFn = sinh, unaryId = Builtin USinh, unarySymbol = Nothing})
     cosh :: (Floating a, Columnable a) => Expr a -> Expr a
     cosh =
-        Unary (MkUnaryOp{unaryFn = cosh, unaryName = "cosh", unarySymbol = Nothing})
+        Unary
+            (MkUnaryOp{unaryFn = cosh, unaryId = Builtin UCosh, unarySymbol = Nothing})
     asinh :: (Floating a, Columnable a) => Expr a -> Expr a
     asinh =
         Unary
-            (MkUnaryOp{unaryFn = asinh, unaryName = "asinh", unarySymbol = Nothing})
+            (MkUnaryOp{unaryFn = asinh, unaryId = Builtin UAsinh, unarySymbol = Nothing})
     acosh :: (Floating a, Columnable a) => Expr a -> Expr a
     acosh =
         Unary
-            (MkUnaryOp{unaryFn = acosh, unaryName = "acosh", unarySymbol = Nothing})
+            (MkUnaryOp{unaryFn = acosh, unaryId = Builtin UAcosh, unarySymbol = Nothing})
     atanh :: (Floating a, Columnable a) => Expr a -> Expr a
     atanh =
         Unary
-            (MkUnaryOp{unaryFn = atanh, unaryName = "atanh", unarySymbol = Nothing})
+            (MkUnaryOp{unaryFn = atanh, unaryId = Builtin UAtanh, unarySymbol = Nothing})
 
 instance (Show a) => Show (Expr a) where
     show :: Expr a -> String
     show (Col name) = "(col @" ++ show (typeRep @a) ++ " " ++ show name ++ ")"
-    show (CastWith name tag _) = "(castWith " ++ show tag ++ " " ++ show name ++ ")"
-    show (CastExprWith tag _ inner) = "(castExprWith " ++ show tag ++ " " ++ show inner ++ ")"
+    show (CastWith name tag _) =
+        "(castWith " ++ show (opRefName castName tag) ++ " " ++ show name ++ ")"
+    show (CastExprWith tag _ inner) =
+        "(castExprWith "
+            ++ show (opRefName castExprName tag)
+            ++ " "
+            ++ show inner
+            ++ ")"
     show (Lit value) = "(lit (" ++ show value ++ "))"
     show (If cond l r) = "(ifThenElse " ++ show cond ++ " " ++ show l ++ " " ++ show r ++ ")"
     show (Unary op value) = "(" ++ T.unpack (unaryName op) ++ " " ++ show value ++ ")"
     show (Binary op a b) = "(" ++ T.unpack (binaryName op) ++ " " ++ show a ++ " " ++ show b ++ ")"
-    show (Agg (CollectAgg op _) expr) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
-    show (Agg (FoldAgg op _ _) expr) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
-    show (Agg (MergeAgg op _ _ _ _) expr) = "(" ++ T.unpack op ++ " " ++ show expr ++ ")"
+    show (Agg strat expr) =
+        "(" ++ T.unpack (aggStrategyName strat) ++ " " ++ show expr ++ ")"
     show (Over keys inner) = "(over " ++ show keys ++ " " ++ show inner ++ ")"
 
 normalize :: (Show a, Typeable a) => Expr a -> Expr a
@@ -318,41 +357,77 @@ compareExpr e1 e2 = compare (exprKey e1) (exprKey e2)
   where
     exprKey :: Expr a -> String
     exprKey (Col name) = "0:" ++ T.unpack name
-    exprKey (CastWith name tag _) = "0CW:" ++ T.unpack name ++ ":" ++ T.unpack tag
-    exprKey (CastExprWith tag _ _) = "0CE:" ++ T.unpack tag
+    exprKey (CastWith name tag _) = "0CW:" ++ T.unpack name ++ ":" ++ idKey tag
+    exprKey (CastExprWith tag _ _) = "0CE:" ++ idKey tag
     exprKey (Lit val) = "1:" ++ show val
     exprKey (If c t e) = "2:" ++ exprKey c ++ exprKey t ++ exprKey e
-    exprKey (Unary op e) = "3:" ++ T.unpack (unaryName op) ++ exprKey e
-    exprKey (Binary op e1' e2') = "4:" ++ T.unpack (binaryName op) ++ exprKey e1' ++ exprKey e2'
-    exprKey (Agg (CollectAgg name _) e) = "5:" ++ T.unpack name ++ exprKey e
-    exprKey (Agg (FoldAgg name _ _) e) = "5:" ++ T.unpack name ++ exprKey e
-    exprKey (Agg (MergeAgg name _ _ _ _) e) = "5:" ++ T.unpack name ++ exprKey e
+    exprKey (Unary op e) = "3:" ++ idKey (unaryId op) ++ exprKey e
+    exprKey (Binary op e1' e2') =
+        "4:" ++ idKey (binaryId op) ++ exprKey e1' ++ exprKey e2'
+    exprKey (Agg strat e) = "5:" ++ idKey (aggStrategyId strat) ++ exprKey e
     exprKey (Over keys e) = "6:over:" ++ show keys ++ exprKey e
+    idKey :: (Show k) => OpRef k -> String
+    idKey (Builtin k) = "b:" ++ show k
+    idKey (Named n) = "n:" ++ T.unpack n
+    idKey (Anonymous l) = "a:" ++ T.unpack l
 
+-- | A key equal only for provably equal expressions; Nothing if anonymous.
+structuralKey :: (Columnable a) => Expr a -> Maybe String
+structuralKey = go . normalize
+  where
+    go :: forall x. Expr x -> Maybe String
+    go e = case e of
+        Col name -> Just ("c" ++ show name ++ "@" ++ show (typeRep @x))
+        CastWith name tag _ ->
+            idKey tag >>= \k -> Just ("w" ++ show name ++ k ++ "@" ++ show (typeRep @x))
+        CastExprWith tag _ inner -> idKey tag >>= \k -> wrap ("x" ++ k) [go inner]
+        Lit v -> Just ("l" ++ show v ++ "@" ++ show (typeRep @x))
+        If c t f -> wrap "if" [go c, go t, go f]
+        Unary op inner -> idKey (unaryId op) >>= \k -> wrap k [go inner]
+        Binary op l r -> idKey (binaryId op) >>= \k -> wrap k [go l, go r]
+        Agg strat inner ->
+            idKey (aggStrategyId strat) >>= \k -> wrap ("agg" ++ k) [go inner]
+        Over keys inner -> wrap ("over" ++ show keys) [go inner]
+    wrap tag parts = (\ps -> tag ++ "(" ++ concatMap (++ ",") ps ++ ")") <$> sequence parts
+    idKey :: (Show k) => OpRef k -> Maybe String
+    idKey (Builtin k) = Just ("b" ++ show k)
+    idKey (Named n) = Just ("n" ++ show n)
+    idKey (Anonymous _) = Nothing
+
+-- | Provable equality; anonymous operators are never equal.
 eqExpr :: forall a. (Columnable a) => Expr a -> Expr a -> Bool
 eqExpr l r = eqNormalized (normalize l) (normalize r)
+
+eqNormalized :: forall a. Expr a -> Expr a -> Bool
+eqNormalized = go
   where
-    exprEq :: (Columnable b, Columnable c) => Expr b -> Expr c -> Bool
-    exprEq e1 e2 = case testEquality (typeOf e1) (typeOf e2) of
-        Just Refl -> eqExpr e1 e2
+    sub :: forall b c. (Columnable b, Columnable c) => Expr b -> Expr c -> Bool
+    sub e1 e2 = case testEquality (typeRep @b) (typeRep @c) of
+        Just Refl -> go e1 e2
         Nothing -> False
-    eqNormalized :: Expr a -> Expr a -> Bool
-    eqNormalized (Col n1) (Col n2) = n1 == n2
-    eqNormalized (CastWith n1 t1 _) (CastWith n2 t2 _) = n1 == n2 && t1 == t2
-    eqNormalized (CastExprWith t1 _ e1) (CastExprWith t2 _ e2) = t1 == t2 && e1 `exprEq` e2
-    eqNormalized (Lit v1) (Lit v2) = v1 == v2
-    eqNormalized (If c1 t1 e1) (If c2 t2 e2) =
-        eqExpr c1 c2 && t1 `exprEq` t2 && e1 `exprEq` e2
-    eqNormalized (Unary op1 e1) (Unary op2 e2) = unaryName op1 == unaryName op2 && e1 `exprEq` e2
-    eqNormalized (Binary op1 e1a e1b) (Binary op2 e2a e2b) = binaryName op1 == binaryName op2 && e1a `exprEq` e2a && e1b `exprEq` e2b
-    eqNormalized (Agg (CollectAgg n1 _) e1) (Agg (CollectAgg n2 _) e2) =
-        n1 == n2 && e1 `exprEq` e2
-    eqNormalized (Agg (FoldAgg n1 _ _) e1) (Agg (FoldAgg n2 _ _) e2) =
-        n1 == n2 && e1 `exprEq` e2
-    eqNormalized (Agg (MergeAgg n1 _ _ _ _) e1) (Agg (MergeAgg n2 _ _ _ _) e2) =
-        n1 == n2 && e1 `exprEq` e2
-    eqNormalized (Over k1 e1) (Over k2 e2) = k1 == k2 && e1 `exprEq` e2
-    eqNormalized _ _ = False
+    go :: forall x. Expr x -> Expr x -> Bool
+    go (Col n1) (Col n2) = n1 == n2
+    go (CastWith n1 t1 _) (CastWith n2 t2 _) = n1 == n2 && sameOp t1 t2
+    go (CastExprWith t1 _ e1) (CastExprWith t2 _ e2) = sameOp t1 t2 && e1 `sub` e2
+    go (Lit v1) (Lit v2) = v1 == v2
+    go (If c1 t1 e1) (If c2 t2 e2) = go c1 c2 && go t1 t2 && go e1 e2
+    go (Unary op1 e1) (Unary op2 e2) =
+        sameOp (unaryId op1) (unaryId op2) && e1 `sub` e2
+    go (Binary op1 e1a e1b) (Binary op2 e2a e2b) =
+        sameOp (binaryId op1) (binaryId op2)
+            && e1a `sub` e2a
+            && e1b `sub` e2b
+    go (Agg s1 e1) (Agg s2 e2) =
+        sameStrategy s1 s2
+            && sameOp (aggStrategyId s1) (aggStrategyId s2)
+            && e1 `sub` e2
+    go (Over k1 e1) (Over k2 e2) = k1 == k2 && go e1 e2
+    go _ _ = False
+    sameStrategy :: AggStrategy p q -> AggStrategy p' q' -> Bool
+    sameStrategy CollectAgg{} CollectAgg{} = True
+    sameStrategy FoldAgg{} FoldAgg{} = True
+    sameStrategy MergeAgg{} MergeAgg{} = True
+    sameStrategy _ _ = False
 
 replaceExpr ::
     forall a b.
@@ -435,7 +510,8 @@ prettyPrintWidth width = P.render width . toDoc 0
     toDoc prec expr = case expr of
         Col name -> P.text (T.unpack name)
         CastWith name _ _ -> P.text (T.unpack name)
-        CastExprWith tag _ inner -> P.text (T.unpack tag) <> P.parens (toDoc 0 inner)
+        CastExprWith tag _ inner ->
+            P.text (T.unpack (opRefName castExprName tag)) <> P.parens (toDoc 0 inner)
         Lit value -> P.text (show value)
         If{} -> renderIf prec expr
         Unary op arg ->
@@ -446,9 +522,8 @@ prettyPrintWidth width = P.render width . toDoc 0
             Nothing ->
                 P.text (T.unpack (binaryName op))
                     <> P.parens (toDoc 0 l <> P.text ", " <> toDoc 0 r)
-        Agg (CollectAgg op _) arg -> P.text (T.unpack op) <> P.parens (toDoc 0 arg)
-        Agg (FoldAgg op _ _) arg -> P.text (T.unpack op) <> P.parens (toDoc 0 arg)
-        Agg (MergeAgg op _ _ _ _) arg -> P.text (T.unpack op) <> P.parens (toDoc 0 arg)
+        Agg strat arg ->
+            P.text (T.unpack (aggStrategyName strat)) <> P.parens (toDoc 0 arg)
         Over keys inner ->
             toDoc 0 inner <> P.text (".over(" ++ show (map T.unpack keys) ++ ")")
 

@@ -59,6 +59,20 @@ module DataFrame.Typed (
     over,
 
     -- * Expression combinators (full DataFrame.Functions parity)
+    DataFrame.Typed.Expr.eq,
+    DataFrame.Typed.Expr.lt,
+    DataFrame.Typed.Expr.gt,
+    DataFrame.Typed.Expr.leq,
+    DataFrame.Typed.Expr.geq,
+    DataFrame.Typed.Expr.and,
+    DataFrame.Typed.Expr.or,
+    DataFrame.Typed.Expr.countDistinct,
+    DataFrame.Typed.Expr.topK,
+    DataFrame.Typed.Expr.bottomK,
+    DataFrame.Typed.Expr.isNull,
+    DataFrame.Typed.Expr.isNotNull,
+    DataFrame.Typed.Expr.contains,
+    DataFrame.Typed.Expr.length,
     DataFrame.Typed.Expr.div,
     DataFrame.Typed.Expr.mod,
     mode,
@@ -95,6 +109,10 @@ module DataFrame.Typed (
     bind,
 
     -- * Cast / coercion expressions
+    DataFrame.Typed.Expr.cast,
+    DataFrame.Typed.Expr.castWithDefault,
+    DataFrame.Typed.Expr.castEither,
+    DataFrame.Typed.Expr.unsafeCast,
     castExpr,
     castExprWithDefault,
     castExprEither,

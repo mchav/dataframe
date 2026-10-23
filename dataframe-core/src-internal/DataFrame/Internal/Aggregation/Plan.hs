@@ -28,10 +28,15 @@ import DataFrame.Internal.DataFrame (
     getColumn,
  )
 import DataFrame.Internal.Expression (
+    AggId (..),
     AggStrategy (..),
-    BinaryOp (binaryCommutative, binaryName),
+    BinOpId (..),
+    BinaryOp (binaryId),
     Expr (..),
+    OpRef (..),
     SomeExpr (..),
+    UnOpId (..),
+    UnaryOp (unaryId),
  )
 import Type.Reflection (Typeable, typeRep)
 
@@ -49,27 +54,25 @@ data AggPlan
 -- | Plan a named output expression, or 'Nothing' if the shape is unsupported.
 planAgg :: GroupedDataFrame -> SomeExpr -> Maybe AggPlan
 planAgg gdf (SomeExpr (expr :: Expr a)) = case expr of
-    Agg (FoldAgg tag _ _) (Col name) -> foldPlan tag name
-    Agg (MergeAgg tag _ _ _ _) (Col name) -> mergePlan tag name
-    Agg (CollectAgg tag _) (Col name) -> collectPlan tag name
+    Agg (FoldAgg (Builtin tag) _ _) (Col name) -> foldPlan tag name
+    Agg (MergeAgg (Builtin tag) _ _ _ _) (Col name) -> mergePlan tag name
+    Agg (CollectAgg (Builtin tag) _) (Col name) -> collectPlan tag name
     Binary
         op
-        (Agg (FoldAgg lt Nothing _) (Col a))
-        (Agg (FoldAgg rt Nothing _) (Col b)) ->
-            if binaryName op == "sub" && lt == "maximum" && rt == "minimum"
-                then requireBoth a b (PlanMaxMinusMin a b)
-                else Nothing
+        (Agg (FoldAgg (Builtin AMaximum) Nothing _) (Col a))
+        (Agg (FoldAgg (Builtin AMinimum) Nothing _) (Col b))
+            | Builtin BSub <- binaryId op -> requireBoth a b (PlanMaxMinusMin a b)
     _ -> Nothing
   where
     foldPlan tag name = case tag of
-        "sum" -> require name (PlanScatter RSum name)
-        "minimum" -> require name (PlanScatter RMin name)
-        "maximum" -> require name (PlanScatter RMax name)
+        ASum -> require name (PlanScatter RSum name)
+        AMinimum -> require name (PlanScatter RMin name)
+        AMaximum -> require name (PlanScatter RMax name)
         _ -> Nothing
     mergePlan tag name = case tag of
-        "mean" -> outputType @Double >> require name (PlanScatter RMean name)
-        "count" -> outputType @Int >> require name (PlanScatter RCount name)
-        "countDistinct" -> do
+        AMean -> outputType @Double >> require name (PlanScatter RMean name)
+        ACount -> outputType @Int >> require name (PlanScatter RCount name)
+        ACountDistinct -> do
             outputType @Int
             c <- getColumn name (fullDataframe gdf)
             if distinctSupported c then Just (PlanCountDistinct name) else Nothing
@@ -79,9 +82,9 @@ planAgg gdf (SomeExpr (expr :: Expr a)) = case expr of
         Just Refl -> Just ()
         Nothing -> Nothing
     collectPlan tag name = case tag of
-        "stddev" -> require name (PlanScatter RStd name)
-        "variance" -> require name (PlanScatter RVar name)
-        "median" -> require name (PlanMedian name)
+        AStddev -> require name (PlanScatter RStd name)
+        AVariance -> require name (PlanScatter RVar name)
+        AMedian -> require name (PlanMedian name)
         _ -> Nothing
     require name plan = colUnboxedNumeric name >> Just plan
     requireBoth a b plan = colUnboxedNumeric a >> colUnboxedNumeric b >> Just plan
@@ -162,8 +165,8 @@ data Role
 -- | Tag a single named aggregation with its moment role, or reject the group.
 classify :: M.Map T.Text SomeExpr -> (T.Text, SomeExpr) -> Maybe (T.Text, Role)
 classify exprs (name, SomeExpr expr) = case expr of
-    Agg (MergeAgg "count" _ _ _ _) _ -> Just (name, RoleN)
-    Agg (FoldAgg "sum" _ _) arg -> (\t -> (name, termRole t)) <$> resolveTerm exprs (SomeExpr arg)
+    Agg (MergeAgg (Builtin ACount) _ _ _ _) _ -> Just (name, RoleN)
+    Agg (FoldAgg (Builtin ASum) _ _) arg -> (\t -> (name, termRole t)) <$> resolveTerm exprs (SomeExpr arg)
     _ -> Nothing
 
 termRole :: Term -> Role
@@ -179,9 +182,10 @@ resolveTerm exprs = go (8 :: Int)
         Col nm -> case M.lookup nm exprs of
             Just ue -> go (fuel - 1) ue
             Nothing -> Just (Lin nm)
-        Unary _ inner -> go (fuel - 1) (SomeExpr inner)
+        Unary op inner
+            | Builtin UToDouble <- unaryId op -> go (fuel - 1) (SomeExpr inner)
         Binary op l r
-            | binaryName op == "mult" && binaryCommutative op -> do
+            | Builtin BMult <- binaryId op -> do
                 Lin a <- go (fuel - 1) (SomeExpr l)
                 Lin b <- go (fuel - 1) (SomeExpr r)
                 Just (sortProd a b)

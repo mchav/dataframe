@@ -383,7 +383,7 @@ fromOperand (K.Column v) = Flat (UnboxedColumn Nothing v)
 builtinBinary ::
     forall c b a.
     (Columnable c, Columnable b, Columnable a) =>
-    T.Text -> Maybe (Value c -> Value b -> Maybe (Value a))
+    BinOpId -> Maybe (Value c -> Value b -> Maybe (Value a))
 builtinBinary name = do
     Refl <- testEquality (typeRep @c) (typeRep @b)
     case (comparison, arithmetic, integral, textEquality, textContains) of
@@ -399,8 +399,8 @@ builtinBinary name = do
         Refl <- testEquality (typeRep @a) (typeRep @Int)
         Refl <- testEquality (typeRep @c) (typeRep @Int)
         op <- case name of
-            "div" -> Just div
-            "mod" -> Just mod
+            BDiv -> Just div
+            BMod -> Just mod
             _ -> Nothing
         -- Only non-zero literal divisors: lazy evaluation might skip a zero.
         Just $ \l r -> case r of
@@ -411,18 +411,18 @@ builtinBinary name = do
         Refl <- testEquality (typeRep @c) (typeRep @T.Text)
         Refl <- testEquality (typeRep @a) (typeRep @Bool)
         case name of
-            "contains" -> Just packedContains
+            BContains -> Just packedContains
             _ -> Nothing
     comparison :: (c ~ b) => Maybe (Value c -> Value c -> Maybe (Value a))
     comparison = do
         Refl <- testEquality (typeRep @a) (typeRep @Bool)
-        op <- K.cmpOpByName name
+        op <- K.cmpOpOf name
         run <- K.compareOperands @c
         Just (\l r -> fromOperand <$> (run op <$> operand l <*> operand r))
     arithmetic :: (c ~ b) => Maybe (Value c -> Value c -> Maybe (Value a))
     arithmetic = do
         Refl <- testEquality (typeRep @a) (typeRep @c)
-        op <- K.arithOpByName name
+        op <- K.arithOpOf name
         run <- K.arithOperands @c
         case sUnbox @c of
             STrue -> Just (\l r -> fromOperand <$> (run op <$> operand l <*> operand r))
@@ -432,8 +432,8 @@ builtinBinary name = do
         Refl <- testEquality (typeRep @c) (typeRep @T.Text)
         Refl <- testEquality (typeRep @a) (typeRep @Bool)
         wantEq <- case name of
-            "eq" -> Just True
-            "neq" -> Just False
+            BEq -> Just True
+            BNeq -> Just False
             _ -> Nothing
         Just (packedEquals wantEq)
 
@@ -458,14 +458,14 @@ packedEquals wantEq l r = do
 -- | As 'builtinBinary', for unary operators.
 builtinUnary ::
     forall b a.
-    (Columnable b, Columnable a) => T.Text -> Maybe (Value b -> Maybe (Value a))
-builtinUnary "toDouble"
+    (Columnable b, Columnable a) => UnOpId -> Maybe (Value b -> Maybe (Value a))
+builtinUnary UToDouble
     | Just Refl <- testEquality (typeRep @b) (typeRep @Int)
     , Just Refl <- testEquality (typeRep @a) (typeRep @Double) =
         Just $ \v -> case operand v of
             Just (K.Column x) -> Just (Flat (UnboxedColumn Nothing (K.intToDouble x)))
             _ -> Nothing
-builtinUnary "textLength"
+builtinUnary UTextLength
     | Just Refl <- testEquality (typeRep @b) (typeRep @T.Text)
     , Just Refl <- testEquality (typeRep @a) (typeRep @Int) =
         Just $ \case
@@ -477,15 +477,15 @@ applyUnary ::
     forall op b a.
     (UnaryOp op, Columnable b, Columnable a) =>
     op b a -> Value b -> Either DataFrameException (Value a)
-applyUnary op v = case builtinUnary @b @a (unaryName op) >>= ($ v) of
+applyUnary op v = case builtinOf (unaryId op) >>= builtinUnary @b @a >>= ($ v) of
     Just out -> Right out
-    Nothing -> liftValue (fastUnaryFn @b @a (unaryName op) (unaryFn op)) v
+    Nothing -> liftValue (fastUnaryFn @b @a (unaryId op) (unaryFn op)) v
 
 applyBinary ::
     forall op c b a.
     (BinaryOp op, Columnable c, Columnable b, Columnable a) =>
     op c b a -> Value c -> Value b -> Either DataFrameException (Value a)
-applyBinary op l r = case builtinBinary @c @b @a (binaryName op) >>= (\run -> run l r) of
+applyBinary op l r = case builtinOf (binaryId op) >>= builtinBinary @c @b @a >>= (\run -> run l r) of
     Just out -> Right out
     Nothing -> liftValue2 (binaryFn op) l r
 
@@ -519,8 +519,8 @@ narrow env positions = env{envRows = Rows rows}
 data Key
     = KeyColumn T.Text SomeTypeRep
     | KeyLiteral Literal
-    | KeyUnary T.Text SomeTypeRep Key
-    | KeyBinary T.Text SomeTypeRep Key Key
+    | KeyUnary UnOpId SomeTypeRep Key
+    | KeyBinary BinOpId SomeTypeRep Key Key
     deriving (Eq, Ord)
 
 data Literal
@@ -544,13 +544,15 @@ keyOf expr = fst <$> go maxKeyNodes expr
         Col name -> Just (KeyColumn name (SomeTypeRep (typeRep @x)), budget - 1)
         Lit v -> (\l -> (KeyLiteral l, budget - 1)) <$> literalKey v
         Unary op (inner :: Expr b) -> do
-            _ <- builtinUnary @b @x (unaryName op)
+            tag <- builtinOf (unaryId op)
+            _ <- builtinUnary @b @x tag
             (k, left) <- go (budget - 1) inner
-            Just (KeyUnary (unaryName op) (SomeTypeRep (typeRep @b)) k, left)
+            Just (KeyUnary tag (SomeTypeRep (typeRep @b)) k, left)
         Binary op (l :: Expr c) (r :: Expr b) -> do
-            _ <- builtinBinary @c @b @x (binaryName op)
+            tag <- builtinOf (binaryId op)
+            _ <- builtinBinary @c @b @x tag
             -- A division is shareable only with a non-zero literal divisor.
-            if binaryName op `elem` ["div", "mod"]
+            if tag `elem` [BDiv, BMod]
                 then case r of
                     Lit (k :: b)
                         | Just Refl <- testEquality (typeRep @b) (typeRep @Int)
@@ -560,7 +562,7 @@ keyOf expr = fst <$> go maxKeyNodes expr
                 else Just ()
             (kl, afterLeft) <- go (budget - 1) l
             (kr, left) <- go afterLeft r
-            Just (KeyBinary (binaryName op) (SomeTypeRep (typeRep @c)) kl kr, left)
+            Just (KeyBinary tag (SomeTypeRep (typeRep @c)) kl kr, left)
         _ -> Nothing
 
 literalKey :: forall a. (Columnable a) => a -> Maybe Literal
@@ -1181,7 +1183,7 @@ eval (GroupCtx gdf) expr@(Agg (FoldAgg _ Nothing (f :: a -> b -> a)) (Col name :
                     Just col ->
                         Flat <$> foldl1DirectGroups @b f col (valueIndices gdf) (offsets gdf)
 -- Fast path: countDistinct on a bare Col goes to the partitioned hash kernel.
-eval ctx (Agg (MergeAgg "countDistinct" _ _ _ _) (Col name))
+eval ctx (Agg (MergeAgg (Builtin ACountDistinct) _ _ _ _) (Col name))
     | Just Refl <- testEquality (typeRep @a) (typeRep @Int)
     , Just col <- getColumn name (ctxFrame ctx)
     , Just v <- distinctValue col =
@@ -1238,7 +1240,7 @@ eval ctx expr@(Agg (FoldAgg _ (Just seed) (f :: a -> b -> a)) inner) =
             Group gs ->
                 Flat . fromVector
                     <$> V.mapM (foldlColumn @b @a f seed) gs
-eval (FlatCtx df) (Agg (MergeAgg "mean" _ _ _ (_ :: acc -> a)) (Col name))
+eval (FlatCtx df) (Agg (MergeAgg (Builtin AMean) _ _ _ (_ :: acc -> a)) (Col name))
     | Just Refl <- testEquality (typeRep @a) (typeRep @Double)
     , Just v <- fusedMean df name =
         Right (Scalar v)
@@ -1265,7 +1267,7 @@ eval
                     Flat . fromVector
                         <$> V.mapM (fmap finalize . foldlColumn @b step seed) gs
 -- Fast path: whole-frame sum of a clean Int/Double column, one parallel loop.
-eval (FlatCtx df) (Agg (FoldAgg "sum" Nothing (_ :: a -> b -> a)) inner)
+eval (FlatCtx df) (Agg (FoldAgg (Builtin ASum) Nothing (_ :: a -> b -> a)) inner)
     | Just Refl <- testEquality (typeRep @a) (typeRep @b)
     , Just v <- fusedSum df inner =
         Right (Scalar v)
@@ -1294,9 +1296,9 @@ eval ctx expr@(Agg (FoldAgg _ Nothing (f :: a -> b -> a)) inner) =
 fastUnaryFn ::
     forall b a.
     (Columnable b, Columnable a) =>
-    T.Text -> (b -> a) -> (b -> a)
+    OpRef UnOpId -> (b -> a) -> (b -> a)
 fastUnaryFn name f
-    | name == "toDouble"
+    | Builtin UToDouble <- name
     , Just Refl <- testEquality (typeRep @a) (typeRep @Double) =
         integralToDouble @b f
     | otherwise = f
@@ -1394,15 +1396,15 @@ fusedSum df expr = case expr of
     Binary op (Col name :: Expr c) (Lit (k :: b))
         | Just Refl <- testEquality (typeRep @c) (typeRep @a)
         , Just Refl <- testEquality (typeRep @b) (typeRep @a) ->
-            withClean name (Just (binaryName op, k, False))
+            builtinOf (binaryId op) >>= \tag -> withClean name (Just (tag, k, False))
     Binary op (Lit (k :: c)) (Col name :: Expr b)
         | Just Refl <- testEquality (typeRep @c) (typeRep @a)
         , Just Refl <- testEquality (typeRep @b) (typeRep @a) ->
-            withClean name (Just (binaryName op, k, True))
+            builtinOf (binaryId op) >>= \tag -> withClean name (Just (tag, k, True))
     _ -> Nothing
   where
-    -- The operator is picked by name at a concrete element type.
-    withClean :: T.Text -> Maybe (T.Text, a, Bool) -> Maybe a
+    -- The operator is picked by tag at a concrete element type.
+    withClean :: T.Text -> Maybe (BinOpId, a, Bool) -> Maybe a
     withClean name combo = do
         UnboxedColumn Nothing (v :: VU.Vector t) <- getColumn name df
         Refl <- testEquality (typeRep @t) (typeRep @a)
@@ -1412,20 +1414,20 @@ fusedSum df expr = case expr of
                 Just Refl -> sumDouble combo v
                 Nothing -> Nothing
 
-sumInt :: Maybe (T.Text, Int, Bool) -> VU.Vector Int -> Maybe Int
+sumInt :: Maybe (BinOpId, Int, Bool) -> VU.Vector Int -> Maybe Int
 sumInt combo v = case combo of
     Nothing -> Just (K.parSumBy id v)
-    Just ("add", k, _) -> Just (K.parSumBy (+ k) v)
-    Just ("mult", k, _) -> Just (K.parSumBy (* k) v)
-    Just ("sub", k, False) -> Just (K.parSumBy (subtract k) v)
-    Just ("sub", k, True) -> Just (K.parSumBy (k -) v)
+    Just (BAdd, k, _) -> Just (K.parSumBy (+ k) v)
+    Just (BMult, k, _) -> Just (K.parSumBy (* k) v)
+    Just (BSub, k, False) -> Just (K.parSumBy (subtract k) v)
+    Just (BSub, k, True) -> Just (K.parSumBy (k -) v)
     _ -> Nothing
 
-sumDouble :: Maybe (T.Text, Double, Bool) -> VU.Vector Double -> Maybe Double
+sumDouble :: Maybe (BinOpId, Double, Bool) -> VU.Vector Double -> Maybe Double
 sumDouble combo v = case combo of
     Nothing -> Just (K.parSumBy id v)
-    Just ("add", k, _) -> Just (K.parSumBy (+ k) v)
-    Just ("mult", k, _) -> Just (K.parSumBy (* k) v)
-    Just ("sub", k, False) -> Just (K.parSumBy (subtract k) v)
-    Just ("sub", k, True) -> Just (K.parSumBy (k -) v)
+    Just (BAdd, k, _) -> Just (K.parSumBy (+ k) v)
+    Just (BMult, k, _) -> Just (K.parSumBy (* k) v)
+    Just (BSub, k, False) -> Just (K.parSumBy (subtract k) v)
+    Just (BSub, k, True) -> Just (K.parSumBy (k -) v)
     _ -> Nothing

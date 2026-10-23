@@ -235,13 +235,6 @@ _getColumnAsDouble name df = case getColumn name df of
     _ -> Nothing
 {-# INLINE _getColumnAsDouble #-}
 
-optionalToDoubleVector :: (Real a) => V.Vector (Maybe a) -> VU.Vector Double
-optionalToDoubleVector =
-    VU.fromList
-        . V.foldl'
-            (\acc e -> if isJust e then realToFrac (fromMaybe 0 e) : acc else acc)
-            []
-
 -- | Calculates the sum of a given column as a standalone value.
 sum ::
     forall a. (Columnable a, Num a) => Expr a -> DataFrame -> a

@@ -1,5 +1,46 @@
 # Revision history for dataframe
 
+## Unreleased
+
+### Breaking changes
+* Operators are identified by tag, not name. `UnaryOp`/`BinaryOp` expose
+  `unaryId`/`binaryId :: OpRef …` (`Builtin` tag, `Named` text or
+  `Anonymous` label); `unaryName`/`binaryName` are now plain functions.
+  `MkUnaryOp`/`MkBinaryOp` take an `OpRef` instead of a name, and
+  `AggStrategy` constructors take an `OpRef AggId`.
+* `liftDecorated`/`lift2Decorated` build `Named` ops, which never use a
+  builtin kernel; library code uses the new `liftBuiltin`/`lift2Builtin`.
+* `CastWith`/`CastExprWith` take an `OpRef CastId` instead of a text tag.
+* `kExtremes` takes a `Bool` (largest/smallest) instead of a tag and a
+  comparator, so the two can no longer disagree.
+* Every `DataFrame.Functions` combinator that does not take a Haskell
+  function is a builtin; `lift`, `lift2`, `nullLift`, `nullLift2`,
+  `reduce`, `whenPresent`, `whenBothPresent` and `bind` stay anonymous.
+* Typed `not` prints as `~`, like the untyped `not`.
+* `DataFrame.Functions` holds only expression combinators: `sanitize`,
+  `isHaskellIdentifier`, `isReservedId` and `isVarId` move to
+  `DataFrame.TH.Identifier` (dataframe-th), and `optionalToDoubleVector` to
+  `DataFrame.Internal.Statistics`.
+
+### Additions
+* `DataFrame.Typed` gains `cast`, `castWithDefault`, `castEither`,
+  `unsafeCast` (schema-checked column), `eq`, `lt`, `gt`, `leq`, `geq`,
+  `and`, `or`, `countDistinct`, `topK`, `bottomK`, `isNull`, `isNotNull`,
+  `contains` and `length`, completing parity with `DataFrame.Functions`.
+
+### Fixes
+* A user function named like a builtin (e.g. `"add"`) no longer runs the
+  builtin's kernel instead of the user's function.
+* `eqExpr` no longer equates different `lift`/`lift2` functions, `fromMaybe`
+  with different defaults, or `(^)` with `(^^)`.
+* The predicate simplifier no longer merges conditions on different
+  user functions, and no longer treats `fromMaybe True` as false on nulls.
+* The grouped moments fast path no longer drops a user function inside `sum`.
+* `medianMaybe` prints as `medianMaybe`, not `meanMaybe`.
+* Parquet row-group pruning recognises `F.and`/`.&&` conjunctions.
+* The expression wire format decodes `logBase`, `stddev` and
+  `countDistinct`; `(^^)` encodes as `powFrac`.
+
 ## 3.7.0.0
 
 * `dataframe-viz`: column names are escaped in Vega-Lite field references

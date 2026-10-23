@@ -27,6 +27,7 @@ common warnings
 library
     import:             warnings
     exposed-modules:
+                        DataFrame.TH.Identifier
                         DataFrame.TH.Records
                         DataFrame.Typed.TH.Records
     -- Internal record→schema TH; sealed (superseded publicly by

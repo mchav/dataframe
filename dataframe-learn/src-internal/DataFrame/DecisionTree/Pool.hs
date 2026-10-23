@@ -36,7 +36,7 @@ import DataFrame.Internal.Expression (
     eSize,
     eqExpr,
     getColumns,
-    normalize,
+    structuralKey,
  )
 
 import Control.Parallel.Strategies (parListChunk, rdeepseq, using)
@@ -157,12 +157,15 @@ admitKeys :: Set.Set String -> [CondVec] -> ([CondVec], Set.Set String)
 admitKeys = go []
   where
     go acc seen [] = (reverse acc, seen)
-    go acc !seen (c : cs)
-        | structuralKey c `Set.member` seen = go acc seen cs
-        | otherwise = go (c : acc) (Set.insert (structuralKey c) seen) cs
+    go acc !seen (c : cs) = case cvKey c of
+        Nothing -> go (c : acc) seen cs
+        Just k
+            | k `Set.member` seen -> go acc seen cs
+            | otherwise -> go (c : acc) (Set.insert k seen) cs
 
-structuralKey :: CondVec -> String
-structuralKey = show . normalize . cvExpr
+-- | Nothing for anonymous operators, which are never merged.
+cvKey :: CondVec -> Maybe String
+cvKey = structuralKey . cvExpr
 
 -- | Admit candidates by distinct truth vector, keeping the smallest expression.
 admitVecs ::
@@ -187,17 +190,20 @@ dedupCVByExpr :: [CondVec] -> [CondVec]
 dedupCVByExpr = go Set.empty
   where
     go _ [] = []
-    go seen (cv : cvs)
-        | structuralKey cv `Set.member` seen = go seen cvs
-        | otherwise = cv : go (Set.insert (structuralKey cv) seen) cvs
+    go seen (cv : cvs) = case cvKey cv of
+        Nothing -> cv : go seen cvs
+        Just k
+            | k `Set.member` seen -> go seen cvs
+            | otherwise -> cv : go (Set.insert k seen) cvs
 
 -- | Deduplicate expressions by normalized form, keeping the first.
 nubByExpr :: [Expr Bool] -> [Expr Bool]
 nubByExpr = go Set.empty
   where
+    go :: Set.Set String -> [Expr Bool] -> [Expr Bool]
     go _ [] = []
-    go seen (e : es)
-        | k `Set.member` seen = go seen es
-        | otherwise = e : go (Set.insert k seen) es
-      where
-        k = show (normalize e)
+    go seen (e : es) = case structuralKey e of
+        Nothing -> e : go seen es
+        Just k
+            | k `Set.member` seen -> go seen es
+            | otherwise -> e : go (Set.insert k seen) es

@@ -10,9 +10,9 @@ module DataFrame.Internal.Interpreter.Kernels (
     Operand (..),
     Branch (..),
     CmpOp (..),
-    cmpOpByName,
+    cmpOpOf,
     ArithOp (..),
-    arithOpByName,
+    arithOpOf,
     compareOperands,
     arithOperands,
     zipOperands,
@@ -44,6 +44,7 @@ import DataFrame.Internal.Data.PackedText (
     selAt,
     sliceEqBytes,
  )
+import DataFrame.Internal.Expression.OpId (BinOpId (..))
 import System.IO.Unsafe (unsafePerformIO)
 
 -- | One side of an operation: the same value in every row, or one per row.
@@ -52,24 +53,24 @@ data Operand a = Literal !a | Column !(VU.Vector a)
 data CmpOp = CmpLt | CmpLeq | CmpGt | CmpGeq | CmpEq | CmpNeq
     deriving (Eq, Show)
 
-cmpOpByName :: T.Text -> Maybe CmpOp
-cmpOpByName name = case name of
-    "lt" -> Just CmpLt
-    "leq" -> Just CmpLeq
-    "gt" -> Just CmpGt
-    "geq" -> Just CmpGeq
-    "eq" -> Just CmpEq
-    "neq" -> Just CmpNeq
+cmpOpOf :: BinOpId -> Maybe CmpOp
+cmpOpOf op = case op of
+    BLt -> Just CmpLt
+    BLeq -> Just CmpLeq
+    BGt -> Just CmpGt
+    BGeq -> Just CmpGeq
+    BEq -> Just CmpEq
+    BNeq -> Just CmpNeq
     _ -> Nothing
 
 data ArithOp = ArithAdd | ArithSub | ArithMult
     deriving (Eq, Show)
 
-arithOpByName :: T.Text -> Maybe ArithOp
-arithOpByName name = case name of
-    "add" -> Just ArithAdd
-    "sub" -> Just ArithSub
-    "mult" -> Just ArithMult
+arithOpOf :: BinOpId -> Maybe ArithOp
+arithOpOf op = case op of
+    BAdd -> Just ArithAdd
+    BSub -> Just ArithSub
+    BMult -> Just ArithMult
     _ -> Nothing
 
 -- | Runs @k@ with the element type known, only for 'Double' or 'Int'.

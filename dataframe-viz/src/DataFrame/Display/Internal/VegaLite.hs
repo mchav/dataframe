@@ -229,9 +229,7 @@ materialiseExpr df expr = either throw id $ do
     v <- eval (FlatCtx df) expr
     pure $ materialize @a (fst (dataframeDimensions df)) v
 
-{- | A column's values as JSON, with null slots as 'Null'. Vega-Lite groups a
-null category as its own bar and drops null positions from a numeric scale.
--}
+-- | A column's values as JSON, with null slots as 'Null'.
 columnToValues :: FieldType -> Column -> [Value]
 columnToValues ft col = case col of
     MergedColumn _ _ -> columnToValues ft (materializeMerged col)
@@ -329,10 +327,7 @@ transformValue (RegressionT yField xField) =
 transformValue (DensityT field) =
     object ["density" .= fieldRef field]
 
-{- | A column name as a Vega-Lite field reference. Vega-Lite reads @.@, @[@ and
-@]@ in a field string as nested access, so a column called @sepal.length@
-must be written @sepal\\.length@ or every datum resolves to undefined.
--}
+-- | A column as a Vega-Lite field; escapes @.@, @[@, @]@ (else nested).
 fieldRef :: T.Text -> T.Text
 fieldRef = T.concatMap esc
   where

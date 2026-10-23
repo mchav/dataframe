@@ -47,6 +47,7 @@ import qualified Operations.Merge
 import qualified Operations.MonomorphicLoops
 import qualified Operations.Nullable
 import qualified Operations.NullableHashing
+import qualified Operations.OperatorIdentity
 import qualified Operations.ParallelGroupBy
 import qualified Operations.ParallelJoin
 import qualified Operations.Provenance
@@ -109,6 +110,7 @@ tests =
             ++ Operations.Inference.tests
             ++ Operations.InsertColumn.tests
             ++ Operations.Join.tests
+            ++ Operations.OperatorIdentity.tests
             ++ Operations.Merge.tests
             ++ Operations.Nullable.tests
             ++ Operations.NullableHashing.tests
